@@ -15,9 +15,9 @@ export async function queryWinthor<T = Record<string, unknown>>(
   let connection: oracledb.Connection | undefined;
   try {
     connection = await oracledb.getConnection({
-      user: process.env.WINTHOR_ORACLE_USER,
-      password: process.env.WINTHOR_ORACLE_PASSWORD,
-      connectString: process.env.WINTHOR_ORACLE_CONNECT_STRING,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      connectString: `${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_SERVICE}`,
     });
     const result = await connection.execute<T>(sql, binds);
     return result.rows ?? [];

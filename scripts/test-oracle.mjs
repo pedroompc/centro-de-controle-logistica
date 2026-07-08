@@ -2,18 +2,18 @@
 // Rodar:  node --env-file=.env.local scripts/test-oracle.mjs
 import oracledb from "oracledb";
 
-const { WINTHOR_ORACLE_USER, WINTHOR_ORACLE_PASSWORD, WINTHOR_ORACLE_CONNECT_STRING } = process.env;
+const { DB_HOST, DB_PORT, DB_SERVICE, DB_USER, DB_PASSWORD } = process.env;
 
-if (!WINTHOR_ORACLE_USER || !WINTHOR_ORACLE_PASSWORD || !WINTHOR_ORACLE_CONNECT_STRING) {
-  console.error("❌ Faltam variáveis WINTHOR_ORACLE_* no .env.local.");
+if (!DB_HOST || !DB_PORT || !DB_SERVICE || !DB_USER || !DB_PASSWORD) {
+  console.error("❌ Faltam variáveis DB_* no .env.local (DB_HOST, DB_PORT, DB_SERVICE, DB_USER, DB_PASSWORD).");
   process.exit(1);
 }
 
 try {
   const conn = await oracledb.getConnection({
-    user: WINTHOR_ORACLE_USER,
-    password: WINTHOR_ORACLE_PASSWORD,
-    connectString: WINTHOR_ORACLE_CONNECT_STRING,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    connectString: `${DB_HOST}:${DB_PORT}/${DB_SERVICE}`,
   });
   const r = await conn.execute("SELECT 1 AS OK, SYSDATE AS AGORA FROM DUAL");
   console.log("✅ Conexão Winthor OK:", JSON.stringify(r.rows));
@@ -26,7 +26,7 @@ try {
   if (String(e.message).includes("NJS-138") || String(e.message).includes("thin")) {
     console.error(
       "→ O modo thin (padrão) não suporta essa versão do Oracle (provável 11g). " +
-      "Precisamos do thick mode + Oracle Instant Client. Me avise a versão.",
+      "Precisamos do thick mode + Oracle Instant Client.",
     );
   }
   process.exit(1);
