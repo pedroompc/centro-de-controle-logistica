@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapFuncionario, mapSetor, mapFalta } from "./mappers";
+import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal } from "./mappers";
 
 describe("mapFuncionario", () => {
   it("converte snake_case e custo_mensal string em number", () => {
@@ -51,8 +51,6 @@ describe("mapFalta", () => {
     });
   });
 });
-
-import { mapCustoFixo, mapCustoMensal } from "./mappers";
 
 describe("mapCustoFixo", () => {
   it("mapeia e converte valor string em number", () => {
