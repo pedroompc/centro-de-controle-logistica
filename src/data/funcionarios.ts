@@ -1,8 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapFuncionario } from "./mappers";
+import { revalidarEfetivo } from "./revalidate";
 import type { Funcionario } from "@/domain/types";
 
 const COLUNAS = "id, nome, cargo, setor_id, custo_mensal, data_admissao, status";
@@ -41,14 +41,12 @@ export async function salvarFuncionario(formData: FormData): Promise<void> {
     : supabase.from("funcionarios").insert(registro);
   const { error } = await query;
   if (error) throw new Error(error.message);
-  revalidatePath("/funcionarios");
-  revalidatePath("/setores");
-  revalidatePath("/");
+  revalidarEfetivo();
 }
 
 export async function excluirFuncionario(id: string): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("funcionarios").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidatePath("/funcionarios");
+  revalidarEfetivo();
 }

@@ -1,8 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapFalta } from "./mappers";
+import { revalidarEfetivo } from "./revalidate";
 import type { Falta } from "@/domain/types";
 
 const COLUNAS = "id, funcionario_id, data, tipo, observacao";
@@ -35,18 +35,12 @@ export async function registrarFalta(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("faltas").insert(registro);
   if (error) throw new Error(error.message);
-  revalidatePath(`/funcionarios/${registro.funcionario_id}`);
-  revalidatePath("/setores");
+  revalidarEfetivo();
 }
 
 export async function excluirFalta(id: string): Promise<void> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("faltas")
-    .delete()
-    .eq("id", id)
-    .select("funcionario_id")
-    .maybeSingle();
+  const { error } = await supabase.from("faltas").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  if (data) revalidatePath(`/funcionarios/${data.funcionario_id}`);
+  revalidarEfetivo();
 }
