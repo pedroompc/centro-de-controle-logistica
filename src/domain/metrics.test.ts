@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { custoDoSetor, headcountPorStatus, faltasNoPeriodo } from "./metrics";
+import { custoDoSetor, headcountPorStatus, faltasNoPeriodo, custoTotalAtivos } from "./metrics";
 import type { Funcionario, Falta } from "./types";
 
 const f = (over: Partial<Funcionario>): Funcionario => ({
@@ -59,5 +59,16 @@ describe("faltasNoPeriodo", () => {
 
   it("exclui funcionário fora da lista", () => {
     expect(faltasNoPeriodo(faltas, ["a"], "2026-07-01", "2026-07-31")).toBe(1);
+  });
+});
+
+describe("custoTotalAtivos", () => {
+  it("soma custo_mensal só dos ativos", () => {
+    const funcs = [
+      f({ id: "1", custoMensal: 3034, status: "ativo" }),
+      f({ id: "2", custoMensal: 3034, status: "ativo" }),
+      f({ id: "3", custoMensal: 3034, status: "desligado" }),
+    ];
+    expect(custoTotalAtivos(funcs)).toBe(6068);
   });
 });

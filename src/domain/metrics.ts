@@ -33,3 +33,9 @@ export function faltasNoPeriodo(
       ids.has(falta.funcionarioId) && falta.data >= inicio && falta.data <= fim,
   ).length;
 }
+
+export function custoTotalAtivos(funcionarios: Funcionario[]): number {
+  return funcionarios
+    .filter((f) => f.status === "ativo")
+    .reduce((total, f) => total + f.custoMensal, 0);
+}
