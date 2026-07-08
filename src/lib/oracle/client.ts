@@ -1,0 +1,33 @@
+import oracledb from "oracledb";
+
+// Retorna cada linha como objeto { COLUNA: valor }.
+oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
+
+/**
+ * Executa uma query de leitura no banco Oracle do Winthor.
+ * Abre uma conexão, roda a query e fecha (padrão simples; se o volume crescer,
+ * trocamos por um pool). Usa as credenciais de WINTHOR_ORACLE_* do ambiente.
+ */
+export async function queryWinthor<T = Record<string, unknown>>(
+  sql: string,
+  binds: oracledb.BindParameters = {},
+): Promise<T[]> {
+  let connection: oracledb.Connection | undefined;
+  try {
+    connection = await oracledb.getConnection({
+      user: process.env.WINTHOR_ORACLE_USER,
+      password: process.env.WINTHOR_ORACLE_PASSWORD,
+      connectString: process.env.WINTHOR_ORACLE_CONNECT_STRING,
+    });
+    const result = await connection.execute<T>(sql, binds);
+    return result.rows ?? [];
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch {
+        // conexão já pode ter caído; ignorável no fechamento
+      }
+    }
+  }
+}
