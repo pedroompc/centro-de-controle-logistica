@@ -29,3 +29,20 @@ export interface Falta {
   tipo: TipoFalta;
   observacao: string | null;
 }
+
+export type CustoTipo = "fixo" | "variavel";
+
+export interface CustoFixo {
+  id: string;
+  nome: string;
+  valor: number;
+  ativo: boolean;
+}
+
+export interface CustoMensal {
+  id: string;
+  mes: string; // ISO "yyyy-mm-01"
+  nome: string;
+  tipo: CustoTipo;
+  valor: number;
+}
