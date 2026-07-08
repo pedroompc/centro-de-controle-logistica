@@ -51,3 +51,21 @@ describe("mapFalta", () => {
     });
   });
 });
+
+import { mapCustoFixo, mapCustoMensal } from "./mappers";
+
+describe("mapCustoFixo", () => {
+  it("mapeia e converte valor string em number", () => {
+    expect(mapCustoFixo({ id: "cf1", nome: "Galpão", valor: "12000.00", ativo: true }))
+      .toEqual({ id: "cf1", nome: "Galpão", valor: 12000, ativo: true });
+  });
+});
+
+describe("mapCustoMensal", () => {
+  it("mapeia lançamento mensal", () => {
+    const row = { id: "cm1", mes: "2026-07-01", nome: "Gasolina", tipo: "variavel", valor: "3500.50" };
+    expect(mapCustoMensal(row)).toEqual({
+      id: "cm1", mes: "2026-07-01", nome: "Gasolina", tipo: "variavel", valor: 3500.5,
+    });
+  });
+});

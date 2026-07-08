@@ -1,4 +1,4 @@
-import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta } from "@/domain/types";
+import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo } from "@/domain/types";
 
 export function mapSetor(row: { id: string; nome: string }): Setor {
   return { id: row.id, nome: row.nome };
@@ -37,5 +37,23 @@ export function mapFalta(row: {
     data: row.data,
     tipo: row.tipo as TipoFalta,
     observacao: row.observacao,
+  };
+}
+
+export function mapCustoFixo(row: {
+  id: string; nome: string; valor: string | number; ativo: boolean;
+}): CustoFixo {
+  return { id: row.id, nome: row.nome, valor: Number(row.valor), ativo: row.ativo };
+}
+
+export function mapCustoMensal(row: {
+  id: string; mes: string; nome: string; tipo: string; valor: string | number;
+}): CustoMensal {
+  return {
+    id: row.id,
+    mes: row.mes,
+    nome: row.nome,
+    tipo: row.tipo as CustoTipo,
+    valor: Number(row.valor),
   };
 }
