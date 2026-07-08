@@ -20,6 +20,7 @@ export default async function AppLayout({
           <Link href="/">Dashboard</Link>
           <Link href="/setores">Setores</Link>
           <Link href="/funcionarios">Funcionários</Link>
+          <Link href="/custos">Custos</Link>
         </nav>
         <form action="/auth/signout" method="post">
           <button className="text-sm text-slate-500 hover:text-slate-800">Sair</button>

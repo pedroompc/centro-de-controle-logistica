@@ -4,19 +4,24 @@ import { listarSetores } from "@/data/setores";
 import { listarFaltas } from "@/data/faltas";
 import { custoDoSetor, faltasNoPeriodo } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
-import { inicioFimMesAtual } from "@/domain/periodo";
+import { inicioFimMesAtual, primeiroDiaDoMes } from "@/domain/periodo";
+import { listarLancamentosDoMes } from "@/data/custos-mensais";
+import { totalDoMes } from "@/domain/custos-metrics";
 
 export default async function Dashboard() {
-  const [funcionarios, setores, faltas] = await Promise.all([
+  const mesAtual = primeiroDiaDoMes();
+  const [funcionarios, setores, faltas, lancamentosMes] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarFaltas(),
+    listarLancamentosDoMes(mesAtual),
   ]);
   const { inicio, fim } = inicioFimMesAtual();
 
   const ativos = funcionarios.filter((f) => f.status === "ativo");
   const custoTotal = ativos.reduce((t, f) => t + f.custoMensal, 0);
   const faltasMes = faltasNoPeriodo(faltas, funcionarios.map((f) => f.id), inicio, fim);
+  const custoTotalMes = totalDoMes(lancamentosMes, custoTotal);
 
   return (
     <div className="space-y-6">
@@ -34,6 +39,10 @@ export default async function Dashboard() {
         <div className="rounded-xl border bg-white p-4">
           <p className="text-sm text-slate-500">Faltas no mês</p>
           <p className="text-2xl font-bold">{faltasMes}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <p className="text-sm text-slate-500">Custo total do mês</p>
+          <p className="text-2xl font-bold">{formatBRL(custoTotalMes)}</p>
         </div>
       </div>
 
