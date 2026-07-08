@@ -57,6 +57,10 @@ Hoje os cards de setor e o detalhe do setor mostram "X ativos · Y afastados · 
 - Endurecer o guard de login: `pathname === "/login"` em vez de `startsWith("/login")`.
 - Decidir e ligar UI de **excluir funcionário / excluir setor** (as Server Actions já existem, mas não têm botão na tela ainda).
 
+## Follow-ups do módulo de custos (não bloqueiam; baixa prioridade p/ 1 usuário)
+- **Estado "mês aberto" explícito**: hoje o "mês aberto" é inferido de `fixos.length > 0`. Isso causa dois cantos: (a) se apagar todos os fixos de um mês já aberto, o botão "Abrir mês" reaparece e reinsere; (b) risco teórico de corrida se dois cliques/abas concorrentes passarem pela verificação de idempotência (o clique-duplo já foi mitigado desabilitando o botão). Solução ideal: marcar o mês como aberto explicitamente (coluna/sentinela) ou índice único parcial `unique (mes, nome) where tipo='fixo'` + upsert ignoreDuplicates. Exige nova migration.
+- **"Abrir mês" sem fixos cadastrados**: vira no-op silencioso; mostrar mensagem apontando pra /custos/fixos.
+
 ## Próximo módulo grande
 - **Módulo de custos** (fixos: galpão, empilhadeira, paleteira, aluguel de 2 casas; variáveis: filme stretch, salário, frete, gasolina). Salário deve reusar o `custo_mensal` dos funcionários, não recadastrar.
 - Depois: **módulo de rendimentos**.
