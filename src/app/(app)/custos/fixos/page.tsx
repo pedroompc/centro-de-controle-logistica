@@ -33,7 +33,7 @@ export default async function CustosFixosPage() {
                 <td className="px-4 py-2">
                   <form action={editarValorCustoFixo} className="flex items-center gap-2">
                     <input type="hidden" name="id" value={f.id} />
-                    <input name="valor" type="number" step="0.01" min="0" defaultValue={f.valor}
+                    <input name="valor" type="number" step="0.01" min="0" defaultValue={f.valor} required
                       className="w-32 rounded-lg border border-slate-300 px-2 py-1" />
                     <button className="text-xs text-slate-600 underline">salvar</button>
                   </form>

@@ -28,7 +28,10 @@ export async function criarCustoFixo(formData: FormData): Promise<void> {
 
 export async function editarValorCustoFixo(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
-  const valor = Number(formData.get("valor") ?? 0);
+  const raw = formData.get("valor");
+  if (raw === null || String(raw).trim() === "") return;
+  const valor = Number(raw);
+  if (Number.isNaN(valor)) return;
   const supabase = await createClient();
   const { error } = await supabase.from("custos_fixos").update({ valor }).eq("id", id);
   if (error) throw new Error(error.message);

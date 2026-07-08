@@ -69,7 +69,8 @@ passados fica **fora de escopo** por ora (o efetivo muda pouco e começamos agor
 
 ## Materialização do mês (regra)
 
-Ao carregar a tela de Custos para um mês `M`:
+Disparada por uma ação explícita do usuário — o botão **"Abrir mês"** na tela de Custos —
+e não automaticamente ao carregar a página:
 - Se `M` **não tem nenhum lançamento `fixo`** ainda → materializa: para cada `custos_fixos`
   com `ativo = true`, insere um `custos_mensais(mes=M, nome, tipo='fixo', valor)`.
 - Se já tem → não faz nada (idempotente; não sobrescreve ajustes do usuário).
