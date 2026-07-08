@@ -31,12 +31,7 @@ export default async function CustosPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-800">Custos</h1>
-          <Link href="/custos/fixos" className="rounded-lg border px-3 py-1 text-sm text-slate-600 hover:bg-slate-50">
-            Gerenciar custos fixos
-          </Link>
-        </div>
+        <h1 className="text-2xl font-bold text-slate-800">Custos</h1>
         <div className="flex items-center gap-3 text-sm">
           <Link href={`/custos?mes=${mesAnterior(mes)}`} className="rounded-lg border px-3 py-1">◀</Link>
           <span className="font-semibold text-slate-700">{formatMesAno(mes)}</span>
@@ -60,7 +55,12 @@ export default async function CustosPage({
       )}
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">Fixos</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-800">Fixos</h2>
+          <Link href="/custos/fixos" className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white">
+            Gerenciar fixos
+          </Link>
+        </div>
         <BlocoLancamentos itens={fixos} vazio="Nenhum custo fixo neste mês." />
       </section>
 
