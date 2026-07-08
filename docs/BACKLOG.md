@@ -4,22 +4,34 @@ Itens combinados para fazer **quando os créditos voltarem**. Nada aqui foi impl
 
 ---
 
-## 1. Filtro / dimensão de TURNO nos setores  🔜 (prioridade do Pedro)
+## 1. Separar SETOR de TURNO + filtro por turno  🔜 (prioridade do Pedro)
 
-Cada setor tem equipe em três turnos. Pedro quer saber **quanto custa e quantas pessoas** tem em cada turno.
+**Decisão de design (definida com o Pedro):** setor e turno são **duas dimensões separadas**.
+- `setor` = a ÁREA onde a pessoa atua (ex: Depósito, Entrega...), independente do horário.
+- `turno` = QUANDO ela trabalha — campo próprio no funcionário.
+Assim dá pra cruzar: custo do Depósito inteiro, custo só do turno da manhã, ou custo do Depósito NO turno da noite.
+
+**Problema atual:** na importação da planilha, o turno ficou embutido no nome do setor
+("Depósito Manhã" e "Noite" viraram setores separados). Isso precisa ser desfeito.
 
 **Turnos:**
 - **Manhã:** 07:00 às 17:00
 - **Tarde:** 13:00 às 22:00
 - **Noite:** 22:00 às 07:00
 
-**O que fazer (esboço):**
+**⛔ BLOQUEADO — esperando input do Pedro:** a equipe dele está preenchendo, na planilha,
+o **setor real de cada uma das ~247 pessoas** (uma coluna de setor por funcionário). Só
+retomar quando a planilha voltar com essa coluna. NÃO implementar antes disso.
+
+**O que fazer quando a planilha voltar:**
+- Ver quais são os setores reais (valores distintos da nova coluna) e decidir a lista final de setores.
 - Adicionar campo `turno` na tabela `funcionarios` (enum: `manha` / `tarde` / `noite`). Nova migration.
+- Re-mapear/reclassificar cada funcionário: setor correto + turno correto (a partir da planilha atualizada — provavelmente um novo script de UPDATE, ou re-import limpo).
 - Adicionar `turno` no tipo de domínio `Funcionario` e no `mapFuncionario`.
-- Adicionar o campo no formulário de funcionário (`funcionario-form.tsx`) — `<select>` de turno.
-- Métricas por turno (funções puras em `src/domain/metrics.ts`, com testes): custo por turno e headcount por turno, filtráveis por setor.
-- Mostrar breakdown por turno no **detalhe do setor** e permitir **filtrar funcionários por turno** na lista.
-- Considerar mostrar no dashboard também (custo por turno geral).
+- Adicionar `turno` no formulário de funcionário (`funcionario-form.tsx`) — `<select>`.
+- Métricas por turno (puras em `src/domain/metrics.ts`, com testes): custo e headcount por turno, filtráveis por setor.
+- Breakdown por turno no **detalhe do setor** + **filtro por turno** na lista de funcionários. Considerar no dashboard também.
+- Limpar os setores antigos ("Depósito Manhã", "Noite" etc.) depois da migração.
 
 ---
 
