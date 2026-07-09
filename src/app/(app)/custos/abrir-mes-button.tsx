@@ -8,7 +8,7 @@ function SubmitBtn() {
   return (
     <button
       disabled={pending}
-      className="rounded-lg bg-slate-800 px-4 py-2 text-white disabled:opacity-60"
+      className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-60"
     >
       {pending ? "Abrindo..." : "Abrir mês (gerar custos fixos)"}
     </button>

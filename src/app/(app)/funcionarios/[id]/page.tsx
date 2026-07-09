@@ -3,14 +3,11 @@ import { buscarFuncionario } from "@/data/funcionarios";
 import { faltasDoFuncionario, excluirFalta } from "@/data/faltas";
 import { listarSetores } from "@/data/setores";
 import { formatBRL, formatDataBR } from "@/domain/format";
+import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge, Pill } from "@/components/ui";
 import { FuncionarioForm } from "../funcionario-form";
 import { FaltaForm } from "./falta-form";
 
-export default async function FuncionarioDetalhe({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function FuncionarioDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [funcionario, setores, faltas] = await Promise.all([
     buscarFuncionario(id),
@@ -21,66 +18,57 @@ export default async function FuncionarioDetalhe({
   const setor = setores.find((s) => s.id === funcionario.setorId);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">{funcionario.nome}</h1>
-          <p className="text-slate-500">
-            {funcionario.cargo} · {setor?.nome ?? "—"} · {funcionario.status}
-          </p>
-        </div>
+    <div>
+      <BackLink href="/funcionarios">Funcionários</BackLink>
+      <PageHeader title={funcionario.nome} subtitle={`${funcionario.cargo} · ${setor?.nome ?? "—"}`}>
+        <StatusBadge status={funcionario.status} />
         <FuncionarioForm setores={setores} inicial={funcionario} />
-      </div>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border bg-white p-4">
-          <p className="text-sm text-slate-500">Custo mensal</p>
-          <p className="text-lg font-bold">{formatBRL(funcionario.custoMensal)}</p>
-        </div>
-        <div className="rounded-xl border bg-white p-4">
-          <p className="text-sm text-slate-500">Admissão</p>
-          <p className="text-lg font-bold">{formatDataBR(funcionario.dataAdmissao)}</p>
-        </div>
-        <div className="rounded-xl border bg-white p-4">
-          <p className="text-sm text-slate-500">Total de faltas</p>
-          <p className="text-lg font-bold">{faltas.length}</p>
-        </div>
+        <StatCard label="Custo mensal" value={formatBRL(funcionario.custoMensal)} accent="gold" />
+        <StatCard label="Admissão" value={formatDataBR(funcionario.dataAdmissao)} accent="navy" />
+        <StatCard label="Total de faltas" value={`${faltas.length}`} accent={faltas.length > 0 ? "red" : "navy"} />
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-800">Faltas</h2>
-        <FaltaForm funcionarioId={funcionario.id} />
-        <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-500">
-              <tr>
-                <th className="px-4 py-2">Data</th>
-                <th className="px-4 py-2">Tipo</th>
-                <th className="px-4 py-2">Observação</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {faltas.map((falta) => (
-                <tr key={falta.id} className="border-b last:border-0">
-                  <td className="px-4 py-2">{formatDataBR(falta.data)}</td>
-                  <td className="px-4 py-2">{falta.tipo}</td>
-                  <td className="px-4 py-2 text-slate-500">{falta.observacao ?? "—"}</td>
-                  <td className="px-4 py-2 text-right">
-                    <form action={excluirFalta.bind(null, falta.id)}>
-                      <button className="text-sm text-red-600">Remover</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-              {faltas.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">
-                  Sem faltas registradas.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+      <section className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <SectionTitle>Faltas</SectionTitle>
+          <FaltaForm funcionarioId={funcionario.id} />
         </div>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-semibold">Data</th>
+                  <th className="px-5 py-3 font-semibold">Tipo</th>
+                  <th className="px-5 py-3 font-semibold">Observação</th>
+                  <th className="px-5 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {faltas.map((falta) => (
+                  <tr key={falta.id} className="border-b border-slate-50 last:border-0">
+                    <td className="px-5 py-3 tabular-nums text-slate-700">{formatDataBR(falta.data)}</td>
+                    <td className="px-5 py-3"><Pill tone="slate">{falta.tipo}</Pill></td>
+                    <td className="px-5 py-3 text-slate-500">{falta.observacao ?? "—"}</td>
+                    <td className="px-5 py-3 text-right">
+                      <form action={excluirFalta.bind(null, falta.id)}>
+                        <button className="text-sm font-medium text-rose-600 hover:text-rose-700">Remover</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {faltas.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-8 text-center text-slate-400">Sem faltas registradas.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       </section>
     </div>
   );
