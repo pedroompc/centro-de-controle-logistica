@@ -61,6 +61,40 @@ Hoje os cards de setor e o detalhe do setor mostram "X ativos · Y afastados · 
 - **Estado "mês aberto" explícito**: hoje o "mês aberto" é inferido de `fixos.length > 0`. Isso causa dois cantos: (a) se apagar todos os fixos de um mês já aberto, o botão "Abrir mês" reaparece e reinsere; (b) risco teórico de corrida se dois cliques/abas concorrentes passarem pela verificação de idempotência (o clique-duplo já foi mitigado desabilitando o botão). Solução ideal: marcar o mês como aberto explicitamente (coluna/sentinela) ou índice único parcial `unique (mes, nome) where tipo='fixo'` + upsert ignoreDuplicates. Exige nova migration.
 - **"Abrir mês" sem fixos cadastrados**: vira no-op silencioso; mostrar mensagem apontando pra /custos/fixos.
 
+## Integração Winthor — faturamento no dashboard  🔜 (em andamento; pausado por rede)
+
+**Objetivo:** puxar do Winthor (Oracle) e mostrar no dashboard, referentes ao **mês corrente
+(do 1º dia até HOJE — mês em andamento)**, os indicadores + derivados:
+- Total positivados, NFs emitidas, NFs devolvidas, Venda líquida, Valor devolução,
+  Peso faturado (kg), Peso devol. avulsa (kg).
+- **Taxa de devolução** e **% do custo logístico sobre o faturamento líquido** (custo total do
+  mês / venda líquida).
+
+**Conexão (PRONTA):** `oracledb` v7 thin mode. Módulo `src/lib/oracle/client.ts` (`queryWinthor`).
+Credenciais em `.env.local` como `DB_HOST/DB_PORT/DB_SERVICE/DB_USER/DB_PASSWORD` (usuário
+`diaread`, somente leitura). Teste: `node --env-file=.env.local scripts/test-oracle.mjs`.
+⚠️ O host só responde de dentro da **rede/VPN da empresa** (deu timeout fora). Conexão já foi
+validada com sucesso quando na rede.
+
+**Fonte dos números (DECIFRADA):** a rotina 111 (Resumo do Faturamento) usa a função Oracle
+**`FUNC_RESUMOFATURAMENTO`**, chamada assim:
+`SELECT * FROM table(CAST(FUNC_RESUMOFATURAMENTO(<54 params>) as tabela_faturamento))`.
+Do log `~/Downloads/LOG 111 JEITO CERTO.log` extraí os **54 binds exatos** (filial `'1','11'`,
+período, e ~50 flags: deduzir Devol/ST/IPI/FECP, tipo venda 1, etc.). O script de extração +
+chamada está em `scripts/_tmp_call_resumo.mjs` (auto-extrai os binds do log; NÃO commitado —
+depende do log local). `params=54 = binds=54` ✅.
+
+**Valores-alvo pra conferir (período 01→08/07/2026, filial 1,11):** positivados 2.526,
+emitidas 5.930, devolvidas 645, venda líquida 10.639.574,87, valor devolução 532.280,33,
+peso faturado 549.069,22 kg, peso devol. avulsa 1.952,70 kg.
+
+**Próximos passos (quando o banco estiver acessível — amanhã):**
+1. Rodar `scripts/_tmp_call_resumo.mjs` → ver as COLUNAS de retorno da função e conferir vs alvos.
+2. Trocar o período pros do mês corrente (1º dia → hoje) e um único conjunto de binds parametrizável.
+3. Criar `src/data/faturamento.ts` (usa `queryWinthor`) retornando os 7 indicadores do mês.
+4. Cards no dashboard + taxa de devolução + % custo logístico / venda líquida.
+5. Deploy: lembrar que Oracle é on-premise (Vercel precisaria de túnel/VPN).
+
 ## Próximo módulo grande
 - **Módulo de custos** (fixos: galpão, empilhadeira, paleteira, aluguel de 2 casas; variáveis: filme stretch, salário, frete, gasolina). Salário deve reusar o `custo_mensal` dos funcionários, não recadastrar.
 - Depois: **módulo de rendimentos**.
