@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sora } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
-import { DiaSol } from "./dia-sol";
 
 const sora = Sora({ subsets: ["latin"], weight: ["500", "600", "700", "800"], variable: "--font-sora" });
 
@@ -45,7 +44,7 @@ export default function LoginPage() {
       {/* Marca — painel escuro */}
       <section
         className="relative flex flex-col justify-between overflow-hidden px-8 py-10 md:w-[56%] md:px-16 md:py-16"
-        style={{ background: "linear-gradient(158deg,#0f1338 0%,#191f5e 52%,#242c88 100%)" }}
+        style={{ background: "linear-gradient(160deg,#071650 0%,#0c1a5e 60%,#142372 100%)" }}
       >
         {/* brilho do sol */}
         <div
@@ -56,7 +55,12 @@ export default function LoginPage() {
 
         {/* topo: logo */}
         <div className="surge relative z-10 flex items-center gap-4">
-          <DiaSol className="h-14 w-14 drop-shadow-[0_4px_16px_rgba(246,176,20,.35)]" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/sol-dia.gif"
+            alt="Sol DIA"
+            className="h-16 w-16 rounded-2xl object-cover shadow-lg shadow-black/30 ring-1 ring-white/10"
+          />
           <div className="leading-none">
             <div className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight text-white">DIA</div>
             <div className="mt-1 text-[10px] font-medium tracking-[0.38em] text-white/60">DISTRIBUIÇÃO</div>
