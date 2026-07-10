@@ -68,8 +68,8 @@ export default async function Dashboard() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
-        <StatCard label="Custo total do mês" value={formatBRL(custoTotalMes)} hint="efetivo + fixos + variáveis" accent="gold" href="/custos" />
-        <StatCard label="Faltas no mês" value={`${faltasMes}`} hint={formatMesAno(mesAtual)} accent="red" />
+        <StatCard label="Custo total do mês" value={formatBRL(custoTotalMes)} accent="gold" href="/custos" />
+        <StatCard label="Faltas no mês" value={`${faltasMes}`} accent="red" />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">

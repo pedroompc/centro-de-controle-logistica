@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Sora } from "next/font/google";
 import "./globals.css";
 
@@ -20,7 +20,14 @@ const sora = Sora({
 
 export const metadata: Metadata = {
   title: "Centro de Controle Logística",
-  description: "Plataforma de gestão do efetivo, custos e rendimentos da logística.",
+  description: "Efetivo, custos e faturamento da logística DIA em um só painel.",
+  applicationName: "Centro DIA",
+  // Abre em tela cheia quando adicionado à tela inicial do iPhone.
+  appleWebApp: { capable: true, title: "Centro DIA", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a1650",
 };
 
 export default function RootLayout({

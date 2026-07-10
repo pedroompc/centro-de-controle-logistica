@@ -1,18 +1,13 @@
 import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
 import { taxaDevolucao, percentualCustoLogistico } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
-import { StatCard, Card, SectionTitle } from "@/components/ui";
+import { StatCard, HeroStat, Card, SectionTitle } from "@/components/ui";
 
 function Heading() {
   return (
-    <div className="mb-4 flex items-center gap-2">
-      <h2 className="font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]">
-        Faturamento
-      </h2>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-        Winthor · Filial 1 · mês corrente
-      </span>
-    </div>
+    <h2 className="mb-4 font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]">
+      Faturamento
+    </h2>
   );
 }
 
@@ -54,13 +49,20 @@ export async function FaturamentoCards({ custoTotalMes }: { custoTotalMes: numbe
   return (
     <div>
       <Heading />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução" accent="gold" />
-        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint={`${r.devolvidas} NFs devolvidas`} accent="red" />
-        <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} hint="líquido de devolução" accent="navy" />
-        <StatCard label="NFs emitidas" value={`${r.emitidas}`} hint={`${r.positivados} clientes positivados`} accent="navy" />
-        <StatCard label="Taxa de devolução" value={formatPercent(taxaDevol)} hint="sobre a venda faturada" accent="red" />
-        <StatCard label="Custo logístico" value={formatPercent(pctCusto)} hint="do mês ÷ venda líquida" accent="navy" />
+
+      {/* Herói + o contraponto direto dele (o que voltou). */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <HeroStat label="Venda líquida" value={formatBRL(r.vendaLiquida)} />
+        </div>
+        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} accent="red" />
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" />
+        <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" />
+        <StatCard label="Taxa de devolução" value={formatPercent(taxaDevol)} accent="red" />
+        <StatCard label="Custo logístico" value={formatPercent(pctCusto)} accent="gold" />
       </div>
     </div>
   );
@@ -71,8 +73,12 @@ export function FaturamentoSkeleton() {
   return (
     <div>
       <Heading />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="h-[132px] animate-pulse rounded-2xl bg-slate-200/70 lg:col-span-2" />
+        <div className="h-[132px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
         ))}
       </div>

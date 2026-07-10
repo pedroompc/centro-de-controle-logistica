@@ -63,7 +63,7 @@ export function StatCard({
     <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-      <p className="mt-2 font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">
+      <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight tabular-nums text-[#141a4d] sm:text-3xl">
         {value}
       </p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
@@ -76,6 +76,31 @@ export function StatCard({
     </Link>
   ) : (
     inner
+  );
+}
+
+/**
+ * Indicador principal — o único cartão escuro da tela. Ancora a leitura do
+ * dashboard e carrega a identidade da marca (navy + dourado).
+ */
+export function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      className="relative h-full overflow-hidden rounded-2xl p-6 shadow-lg sm:p-7"
+      style={{ background: "linear-gradient(140deg,#0a1650 0%,#141a4d 55%,#1b2168 100%)" }}
+    >
+      <span className="absolute inset-y-0 left-0 w-1.5 bg-amber-400" />
+      {/* brilho sutil no canto, ecoando o sol da marca */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-20 blur-2xl"
+        style={{ background: "radial-gradient(circle,#f5b301 0%,transparent 70%)" }}
+      />
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">{label}</p>
+      <p className="mt-2 font-[family-name:var(--font-sora)] text-3xl font-extrabold leading-none tracking-tight tabular-nums text-white sm:text-4xl lg:text-5xl">
+        {value}
+      </p>
+    </div>
   );
 }
 
