@@ -4,7 +4,7 @@ import { listarLancamentosDoMes, editarLancamento, removerLancamento } from "@/d
 import { listarFuncionarios } from "@/data/funcionarios";
 import { custoTotalAtivos } from "@/domain/metrics";
 import { somaLancamentos, totalDoMes } from "@/domain/custos-metrics";
-import { formatBRL } from "@/domain/format";
+import { formatBRL, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, BarList } from "@/components/ui";
 import { isAdmin } from "@/data/auth";
@@ -80,7 +80,7 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
           <SectionTitle>Variáveis</SectionTitle>
           {admin && <LancarVariavelForm mes={mes} />}
         </div>
-        <BlocoLancamentos itens={variaveis} vazio="Nenhum custo variável lançado." admin={admin} />
+        <BlocoLancamentos itens={variaveis} vazio="Nenhum custo variável lançado." admin={admin} mostrarData />
       </section>
 
       <section className="mt-6">
@@ -97,7 +97,17 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
 const editInput =
   "w-32 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
 
-function BlocoLancamentos({ itens, vazio, admin }: { itens: CustoMensal[]; vazio: string; admin: boolean }) {
+function BlocoLancamentos({
+  itens,
+  vazio,
+  admin,
+  mostrarData = false,
+}: {
+  itens: CustoMensal[];
+  vazio: string;
+  admin: boolean;
+  mostrarData?: boolean;
+}) {
   if (itens.length === 0) return <p className="text-sm text-slate-400">{vazio}</p>;
   return (
     <Card className="overflow-hidden">
@@ -105,6 +115,7 @@ function BlocoLancamentos({ itens, vazio, admin }: { itens: CustoMensal[]; vazio
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
             <tr>
+              {mostrarData && <th className="px-5 py-3 font-semibold">Data</th>}
               <th className="px-5 py-3 font-semibold">Item</th>
               <th className="px-5 py-3 font-semibold">Valor</th>
               <th className="px-5 py-3"></th>
@@ -113,6 +124,11 @@ function BlocoLancamentos({ itens, vazio, admin }: { itens: CustoMensal[]; vazio
           <tbody>
             {itens.map((l) => (
               <tr key={l.id} className="border-b border-slate-50 last:border-0">
+                {mostrarData && (
+                  <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">
+                    {l.data ? formatDataBR(l.data) : "—"}
+                  </td>
+                )}
                 <td className="px-5 py-3 font-medium text-[#141a4d]">{l.nome}</td>
                 <td className="px-5 py-3">
                   {admin ? (

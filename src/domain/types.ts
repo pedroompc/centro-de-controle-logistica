@@ -47,4 +47,5 @@ export interface CustoMensal {
   nome: string;
   tipo: CustoTipo;
   valor: number;
+  data: string | null; // ISO "yyyy-mm-dd" — dia do lançamento (variáveis); null p/ fixos
 }

@@ -3,7 +3,7 @@ import { somaLancamentos, totalDoMes } from "./custos-metrics";
 import type { CustoMensal } from "./types";
 
 const c = (over: Partial<CustoMensal>): CustoMensal => ({
-  id: "1", mes: "2026-07-01", nome: "X", tipo: "fixo", valor: 100, ...over,
+  id: "1", mes: "2026-07-01", nome: "X", tipo: "fixo", valor: 100, data: null, ...over,
 });
 
 describe("somaLancamentos", () => {

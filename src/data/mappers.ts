@@ -47,7 +47,7 @@ export function mapCustoFixo(row: {
 }
 
 export function mapCustoMensal(row: {
-  id: string; mes: string; nome: string; tipo: string; valor: string | number;
+  id: string; mes: string; nome: string; tipo: string; valor: string | number; data?: string | null;
 }): CustoMensal {
   return {
     id: row.id,
@@ -55,5 +55,6 @@ export function mapCustoMensal(row: {
     nome: row.nome,
     tipo: row.tipo as CustoTipo,
     valor: Number(row.valor),
+    data: row.data ?? null,
   };
 }

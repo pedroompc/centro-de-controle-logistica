@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
+import { primeiroDiaDoMes } from "@/domain/periodo";
 import type { CustoMensal } from "@/domain/types";
 
-const COLUNAS = "id, mes, nome, tipo, valor";
+const COLUNAS = "id, mes, nome, tipo, valor, data";
 
 export async function listarLancamentosDoMes(mes: string): Promise<CustoMensal[]> {
   const supabase = await createClient();
@@ -52,11 +53,15 @@ export async function materializarMes(mes: string): Promise<void> {
 
 export async function adicionarLancamento(formData: FormData): Promise<void> {
   await assertAdmin();
+  const data = String(formData.get("data") ?? "").trim() || null;
   const registro = {
-    mes: String(formData.get("mes") ?? ""),
+    // Se houver data (variáveis), o mês vem dela — assim o lançamento cai no
+    // mês correto mesmo que a tela esteja em outro. Sem data, usa o mês da tela.
+    mes: data ? primeiroDiaDoMes(data) : String(formData.get("mes") ?? ""),
     nome: String(formData.get("nome") ?? "").trim(),
     tipo: String(formData.get("tipo") ?? "variavel"),
     valor: Number(formData.get("valor") ?? 0),
+    data,
   };
   if (!registro.mes || !registro.nome) return;
   const supabase = await createClient();
