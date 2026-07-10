@@ -3,6 +3,7 @@ import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { formatBRL } from "@/domain/format";
 import { PageHeader, Card, StatusBadge } from "@/components/ui";
+import { isAdmin } from "@/data/auth";
 import { FuncionarioForm } from "./funcionario-form";
 
 const inputCls =
@@ -14,7 +15,11 @@ export default async function FuncionariosPage({
   searchParams: Promise<{ setor?: string; status?: string; q?: string }>;
 }) {
   const { setor, status, q } = await searchParams;
-  const [funcionarios, setores] = await Promise.all([listarFuncionarios(), listarSetores()]);
+  const [funcionarios, setores, admin] = await Promise.all([
+    listarFuncionarios(),
+    listarSetores(),
+    isAdmin(),
+  ]);
   const nomeSetor = new Map(setores.map((s) => [s.id, s.nome]));
 
   const filtrados = funcionarios.filter((f) => {
@@ -27,7 +32,7 @@ export default async function FuncionariosPage({
   return (
     <div>
       <PageHeader title="Funcionários" subtitle={`${filtrados.length} de ${funcionarios.length} no efetivo`}>
-        <FuncionarioForm setores={setores} />
+        {admin && <FuncionarioForm setores={setores} />}
       </PageHeader>
 
       <Card className="mb-4 p-3">

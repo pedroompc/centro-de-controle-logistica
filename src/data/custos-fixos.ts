@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapCustoFixo } from "./mappers";
+import { assertAdmin } from "./auth";
 import type { CustoFixo } from "@/domain/types";
 
 export async function listarCustosFixos(): Promise<CustoFixo[]> {
@@ -17,6 +18,7 @@ export async function listarCustosFixos(): Promise<CustoFixo[]> {
 }
 
 export async function criarCustoFixo(formData: FormData): Promise<void> {
+  await assertAdmin();
   const nome = String(formData.get("nome") ?? "").trim();
   const valor = Number(formData.get("valor") ?? 0);
   if (!nome) return;
@@ -27,6 +29,7 @@ export async function criarCustoFixo(formData: FormData): Promise<void> {
 }
 
 export async function editarValorCustoFixo(formData: FormData): Promise<void> {
+  await assertAdmin();
   const id = String(formData.get("id") ?? "");
   const raw = formData.get("valor");
   if (raw === null || String(raw).trim() === "") return;
@@ -39,6 +42,7 @@ export async function editarValorCustoFixo(formData: FormData): Promise<void> {
 }
 
 export async function encerrarCustoFixo(id: string): Promise<void> {
+  await assertAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("custos_fixos").update({ ativo: false }).eq("id", id);
   if (error) throw new Error(error.message);

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapCustoMensal } from "./mappers";
+import { assertAdmin } from "./auth";
 import type { CustoMensal } from "@/domain/types";
 
 const COLUNAS = "id, mes, nome, tipo, valor";
@@ -20,6 +21,7 @@ export async function listarLancamentosDoMes(mes: string): Promise<CustoMensal[]
 }
 
 export async function materializarMes(mes: string): Promise<void> {
+  await assertAdmin();
   const supabase = await createClient();
   const { data: jaTem, error: e1 } = await supabase
     .from("custos_mensais")
@@ -49,6 +51,7 @@ export async function materializarMes(mes: string): Promise<void> {
 }
 
 export async function adicionarLancamento(formData: FormData): Promise<void> {
+  await assertAdmin();
   const registro = {
     mes: String(formData.get("mes") ?? ""),
     nome: String(formData.get("nome") ?? "").trim(),
@@ -64,6 +67,7 @@ export async function adicionarLancamento(formData: FormData): Promise<void> {
 }
 
 export async function editarLancamento(formData: FormData): Promise<void> {
+  await assertAdmin();
   const id = String(formData.get("id") ?? "");
   const raw = formData.get("valor");
   if (raw === null || String(raw).trim() === "") return;
@@ -77,6 +81,7 @@ export async function editarLancamento(formData: FormData): Promise<void> {
 }
 
 export async function removerLancamento(id: string): Promise<void> {
+  await assertAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("custos_mensais").delete().eq("id", id);
   if (error) throw new Error(error.message);

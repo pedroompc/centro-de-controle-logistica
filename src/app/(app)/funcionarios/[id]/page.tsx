@@ -1,28 +1,47 @@
-import { notFound } from "next/navigation";
-import { buscarFuncionario } from "@/data/funcionarios";
+import { notFound, redirect } from "next/navigation";
+import { buscarFuncionario, excluirFuncionario } from "@/data/funcionarios";
 import { faltasDoFuncionario, excluirFalta } from "@/data/faltas";
 import { listarSetores } from "@/data/setores";
+import { isAdmin } from "@/data/auth";
 import { formatBRL, formatDataBR } from "@/domain/format";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge, Pill } from "@/components/ui";
+import { BotaoConfirmar } from "@/components/confirm-button";
 import { FuncionarioForm } from "../funcionario-form";
 import { FaltaForm } from "./falta-form";
 
 export default async function FuncionarioDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [funcionario, setores, faltas] = await Promise.all([
+  const [funcionario, setores, faltas, admin] = await Promise.all([
     buscarFuncionario(id),
     listarSetores(),
     faltasDoFuncionario(id),
+    isAdmin(),
   ]);
   if (!funcionario) notFound();
   const setor = setores.find((s) => s.id === funcionario.setorId);
+
+  async function excluir() {
+    "use server";
+    await excluirFuncionario(id);
+    redirect("/funcionarios");
+  }
 
   return (
     <div>
       <BackLink href="/funcionarios">Funcionários</BackLink>
       <PageHeader title={funcionario.nome} subtitle={`${funcionario.cargo} · ${setor?.nome ?? "—"}`}>
         <StatusBadge status={funcionario.status} />
-        <FuncionarioForm setores={setores} inicial={funcionario} />
+        {admin && <FuncionarioForm setores={setores} inicial={funcionario} />}
+        {admin && (
+          <form action={excluir}>
+            <BotaoConfirmar
+              confirmacao={`Excluir o funcionário "${funcionario.nome}"? Essa ação não pode ser desfeita.`}
+              className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+            >
+              Excluir
+            </BotaoConfirmar>
+          </form>
+        )}
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -34,7 +53,7 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">
           <SectionTitle>Faltas</SectionTitle>
-          <FaltaForm funcionarioId={funcionario.id} />
+          {admin && <FaltaForm funcionarioId={funcionario.id} />}
         </div>
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
@@ -54,9 +73,16 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
                     <td className="px-5 py-3"><Pill tone="slate">{falta.tipo}</Pill></td>
                     <td className="px-5 py-3 text-slate-500">{falta.observacao ?? "—"}</td>
                     <td className="px-5 py-3 text-right">
-                      <form action={excluirFalta.bind(null, falta.id)}>
-                        <button className="text-sm font-medium text-rose-600 hover:text-rose-700">Remover</button>
-                      </form>
+                      {admin && (
+                        <form action={excluirFalta.bind(null, falta.id)}>
+                          <BotaoConfirmar
+                            confirmacao="Remover esta falta?"
+                            className="text-sm font-medium text-rose-600 hover:text-rose-700"
+                          >
+                            Remover
+                          </BotaoConfirmar>
+                        </form>
+                      )}
                     </td>
                   </tr>
                 ))}

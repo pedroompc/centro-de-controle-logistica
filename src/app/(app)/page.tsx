@@ -7,6 +7,13 @@ import { inicioFimMesAtual, primeiroDiaDoMes, formatMesAno } from "@/domain/peri
 import { listarLancamentosDoMes } from "@/data/custos-mensais";
 import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
 import { PageHeader, StatCard, Card, SectionTitle, BarList } from "@/components/ui";
+import { Suspense } from "react";
+import {
+  FaturamentoCards,
+  FaturamentoSkeleton,
+  FaturamentoDetalhe,
+  FaturamentoDetalheSkeleton,
+} from "./faturamento-cards";
 
 export default async function Dashboard() {
   const mesAtual = primeiroDiaDoMes();
@@ -55,9 +62,12 @@ export default async function Dashboard() {
     <div>
       <PageHeader title="Visão geral" subtitle={`Operação de logística · ${formatMesAno(mesAtual)}`} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Suspense fallback={<FaturamentoSkeleton />}>
+        <FaturamentoCards custoTotalMes={custoTotalMes} />
+      </Suspense>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
-        <StatCard label="Custo do efetivo" value={formatBRL(custoEfetivo)} hint="salários por mês" accent="navy" />
         <StatCard label="Custo total do mês" value={formatBRL(custoTotalMes)} hint="efetivo + fixos + variáveis" accent="gold" href="/custos" />
         <StatCard label="Faltas no mês" value={`${faltasMes}`} hint={formatMesAno(mesAtual)} accent="red" />
       </div>
@@ -85,6 +95,12 @@ export default async function Dashboard() {
           <SectionTitle>Efetivo por setor</SectionTitle>
           <BarList items={efetivoPorSetor} tone="navy" />
         </Card>
+      </div>
+
+      <div className="mt-6">
+        <Suspense fallback={<FaturamentoDetalheSkeleton />}>
+          <FaturamentoDetalhe />
+        </Suspense>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getPerfil } from "@/data/auth";
 import { SidebarNav } from "./sidebar-nav";
 
 function Marca({ compact = false }: { compact?: boolean }) {
@@ -28,6 +29,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const perfil = await getPerfil();
+  const admin = perfil?.role === "admin";
+
   const navy = { background: "linear-gradient(180deg,#0a1650 0%,#0b1a58 100%)" };
 
   return (
@@ -43,7 +47,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
         <div className="border-t border-white/10 pt-4">
-          <p className="truncate px-3 text-xs text-white/50" title={user.email ?? undefined}>
+          <div className="flex items-center gap-2 px-3">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                admin ? "bg-amber-400/90 text-[#141a4d]" : "bg-white/10 text-white/70"
+              }`}
+            >
+              {admin ? "Admin" : "Somente leitura"}
+            </span>
+          </div>
+          <p className="mt-1.5 truncate px-3 text-xs text-white/50" title={user.email ?? undefined}>
             {user.email}
           </p>
           <form action="/auth/signout" method="post" className="mt-2">

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapFuncionario } from "./mappers";
 import { revalidarEfetivo } from "./revalidate";
+import { assertAdmin } from "./auth";
 import type { Funcionario } from "@/domain/types";
 
 const COLUNAS = "id, nome, cargo, setor_id, custo_mensal, data_admissao, status";
@@ -26,6 +27,7 @@ export async function buscarFuncionario(id: string): Promise<Funcionario | null>
 }
 
 export async function salvarFuncionario(formData: FormData): Promise<void> {
+  await assertAdmin();
   const id = String(formData.get("id") ?? "").trim();
   const registro = {
     nome: String(formData.get("nome") ?? "").trim(),
@@ -45,6 +47,7 @@ export async function salvarFuncionario(formData: FormData): Promise<void> {
 }
 
 export async function excluirFuncionario(id: string): Promise<void> {
+  await assertAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("funcionarios").delete().eq("id", id);
   if (error) throw new Error(error.message);

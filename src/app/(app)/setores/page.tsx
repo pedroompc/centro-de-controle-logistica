@@ -6,20 +6,22 @@ import { custoDoSetor, headcountPorStatus, faltasNoPeriodo } from "@/domain/metr
 import { formatBRL } from "@/domain/format";
 import { inicioFimMesAtual } from "@/domain/periodo";
 import { PageHeader, Pill } from "@/components/ui";
+import { isAdmin } from "@/data/auth";
 import { SetorForm } from "./setor-form";
 
 export default async function SetoresPage() {
-  const [setores, funcionarios, faltas] = await Promise.all([
+  const [setores, funcionarios, faltas, admin] = await Promise.all([
     listarSetores(),
     listarFuncionarios(),
     listarFaltas(),
+    isAdmin(),
   ]);
   const { inicio, fim } = inicioFimMesAtual();
 
   return (
     <div>
       <PageHeader title="Setores" subtitle={`${setores.length} setores na operação`}>
-        <SetorForm />
+        {admin && <SetorForm />}
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

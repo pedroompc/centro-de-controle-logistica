@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatBRL, formatDataBR } from "./format";
+import { formatBRL, formatDataBR, formatKg, formatPercent } from "./format";
 
 describe("formatBRL", () => {
   it("formata em reais", () => {
@@ -13,5 +13,23 @@ describe("formatBRL", () => {
 describe("formatDataBR", () => {
   it("converte ISO para dd/mm/aaaa", () => {
     expect(formatDataBR("2026-07-08")).toBe("08/07/2026");
+  });
+});
+
+describe("formatKg", () => {
+  it("formata peso sem casas decimais", () => {
+    expect(formatKg(94871.23)).toBe("94.871 kg");
+  });
+  it("formata zero", () => {
+    expect(formatKg(0)).toBe("0 kg");
+  });
+});
+
+describe("formatPercent", () => {
+  it("converte fração em percentual pt-BR", () => {
+    expect(formatPercent(0.0718)).toBe("7,2%");
+  });
+  it("formata zero", () => {
+    expect(formatPercent(0)).toBe("0,0%");
   });
 });

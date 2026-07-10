@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapFalta } from "./mappers";
 import { revalidarEfetivo } from "./revalidate";
+import { assertAdmin } from "./auth";
 import type { Falta } from "@/domain/types";
 
 const COLUNAS = "id, funcionario_id, data, tipo, observacao";
@@ -26,6 +27,7 @@ export async function faltasDoFuncionario(funcionarioId: string): Promise<Falta[
 }
 
 export async function registrarFalta(formData: FormData): Promise<void> {
+  await assertAdmin();
   const registro = {
     funcionario_id: String(formData.get("funcionario_id") ?? ""),
     data: String(formData.get("data") ?? ""),
@@ -39,6 +41,7 @@ export async function registrarFalta(formData: FormData): Promise<void> {
 }
 
 export async function excluirFalta(id: string): Promise<void> {
+  await assertAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("faltas").delete().eq("id", id);
   if (error) throw new Error(error.message);

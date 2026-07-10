@@ -1,3 +1,5 @@
+export type UserRole = "admin" | "viewer";
+
 export type StatusFuncionario = "ativo" | "afastado" | "desligado";
 
 export type TipoFalta =
