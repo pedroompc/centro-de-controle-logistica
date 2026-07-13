@@ -55,7 +55,7 @@ export async function FaturamentoCards({ custoTotalMes }: { custoTotalMes: numbe
         <div className="lg:col-span-2">
           <HeroStat label="Venda líquida" value={formatBRL(r.vendaLiquida)} />
         </div>
-        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} accent="red" />
+        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -99,6 +99,7 @@ export async function FaturamentoDetalhe() {
       <SectionTitle>Detalhamento do mês · Winthor</SectionTitle>
       <Linha label="NFs emitidas" valor={`${r.emitidas}`} />
       <Linha label="NFs devolvidas" valor={`${r.devolvidas}`} />
+      <Linha label="Devolução avulsa" valor={`${formatBRL(r.valorDevolucaoAvulsa)} · ${r.devolvidasAvulsas} NFs`} />
       <Linha label="Clientes positivados" valor={`${r.positivados}`} />
       <Linha label="Peso faturado" valor={formatKg(r.pesoFaturado)} />
       <Linha label="Peso devolvido" valor={formatKg(r.pesoDevolucao)} />

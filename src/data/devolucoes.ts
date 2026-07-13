@@ -6,60 +6,101 @@ import type {
   ResumoDevolucoes,
   DevolucaoPorMotivo,
   DevolucaoPorCliente,
+  DevolucaoPorMotorista,
   SetorDevolucao,
 } from "@/domain/devolucoes";
 
 const FILIAL = "1";
 
-// Motivo (PCTABDEV) → setor responsável, conforme o cadastro de motivos do Winthor.
+const faixa = (col: string) =>
+  `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
+
+// Valor líquido do item de devolução — MESMA fórmula da venda faturada (rotina
+// 111): preço praticado menos ST, IPI e repasse. Garante que a soma da quebra
+// bata com o card oficial de devolução.
+const NET = `(m.PUNIT - NVL(m.ST,0) - NVL(m.VLIPI,0) - NVL(m.VLREPASSE,0)) * m.QT`;
+
+// Motivo (CODDEVOL) → setor responsável, conforme o cadastro de motivos do Winthor.
 const SETOR = `CASE
-    WHEN ne.CODDEVOL IN (85,86,87,88,89,90,91,97,98,99,100,101,102,103,104,111,112) THEN 'Logística'
-    WHEN ne.CODDEVOL IN (93,94,95,96,106,107,108,109,110) THEN 'Comercial'
-    WHEN ne.CODDEVOL IN (92,105) THEN 'Faturamento'
+    WHEN ed.CODDEVOL IN (85,86,87,88,89,90,91,97,98,99,100,101,102,103,104,111,112) THEN 'Logística'
+    WHEN ed.CODDEVOL IN (93,94,95,96,106,107,108,109,110) THEN 'Comercial'
+    WHEN ed.CODDEVOL IN (92,105) THEN 'Faturamento'
     ELSE 'Não classificado' END`;
 
-// Regra da rotina 1311 (valor bruto da nota de entrada de devolução).
-// A CTE é escopada às vendas do período (senão varre todo o histórico → ~70s).
-const CTES = `
-vendas AS (
-  SELECT nf.NUMTRANSVENDA, nf.CODCLI
-  FROM PCNFSAID nf
-  WHERE nf.CODFILIAL = :filial
-    AND nf.DTSAIDA >= TO_DATE(:ini, 'YYYY-MM-DD') AND nf.DTSAIDA < TO_DATE(:fim, 'YYYY-MM-DD') + 1
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4, 8, 10, 13, 20, 98, 99)
-),
-dev AS (
-  SELECT MAX(ec.NUMTRANSVENDA) AS NUMTRANSVENDA,
-         MAX(NVL(td.MOTIVO, 'Não informado')) AS MOTIVO,
-         ${SETOR} AS SETOR,
-         DECODE(ne.VLTOTAL, 0, MAX(NVL(ec.VLDEVOLUCAO, 0)), ne.VLTOTAL) AS VL
-  FROM PCNFENT ne
-  JOIN PCESTCOM ec ON ec.NUMTRANSENT = ne.NUMTRANSENT
-  LEFT JOIN PCTABDEV td ON td.CODDEVOL = ne.CODDEVOL
-  WHERE ne.CODFISCAL IN ('131','132','231','232','199','299')
-    AND ne.TIPODESCARGA IN ('6','7','T')
-    AND NVL(ne.OBS, 'X') <> 'NF CANCELADA'
-    AND ec.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
-    AND EXISTS (SELECT 1 FROM PCMOV pm
-                 WHERE pm.NUMTRANSENT = ne.NUMTRANSENT AND pm.NUMNOTA = ne.NUMNOTA AND pm.DTCANCEL IS NULL)
-  GROUP BY ne.NUMTRANSENT, ne.VLTOTAL, ne.CODDEVOL
+// Base única (rotina 111 líquido, por DATA DA DEVOLUÇÃO): uma linha por nota de
+// entrada de devolução (movimento ED do período), com valor líquido, motivo e o
+// vínculo com a NF de venda de origem. `NUMTRANSVENDA = 0` ⇒ devolução avulsa
+// (sem venda de origem) — excluída da quebra abaixo, como o 111 faz. O vínculo
+// é pré-agregado por NUMTRANSENT p/ não multiplicar a soma dos itens.
+const ED_CTE = `
+ed AS (
+  SELECT ne.NUMTRANSENT,
+         MAX(ne.CODDEVOL) CODDEVOL,
+         NVL(MAX(vlink.NUMTRANSVENDA), 0) NUMTRANSVENDA,
+         SUM(${NET}) VL -- sem arredondar aqui: só na agregação final, p/ bater centavo a centavo com o card
+  FROM PCMOV m
+  JOIN PCNFENT ne ON ne.NUMTRANSENT = m.NUMTRANSENT
+  LEFT JOIN (SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVENDA
+               FROM PCESTCOM GROUP BY NUMTRANSENT) vlink ON vlink.NUMTRANSENT = ne.NUMTRANSENT
+  WHERE m.CODFILIAL = :filial AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
+    AND m.DTCANCEL IS NULL
+  GROUP BY ne.NUMTRANSENT
 )`;
 
-const SQL_MOTIVO = `WITH ${CTES}
-  SELECT dev.MOTIVO, dev.SETOR, COUNT(*) NOTAS, ROUND(SUM(dev.VL), 2) VALOR
-  FROM vendas v JOIN dev ON dev.NUMTRANSVENDA = v.NUMTRANSVENDA
-  GROUP BY dev.MOTIVO, dev.SETOR
+const SQL_MOTIVO = `WITH ${ED_CTE}
+  SELECT NVL(td.MOTIVO, 'Não informado') MOTIVO, ${SETOR} SETOR,
+         COUNT(*) NOTAS, ROUND(SUM(ed.VL), 2) VALOR
+  FROM ed LEFT JOIN PCTABDEV td ON td.CODDEVOL = ed.CODDEVOL
+  WHERE ed.NUMTRANSVENDA > 0
+  GROUP BY NVL(td.MOTIVO, 'Não informado'), ${SETOR}
   ORDER BY VALOR DESC`;
 
-const SQL_CLIENTE = `SELECT * FROM (WITH ${CTES}
-  SELECT v.CODCLI, MAX(cli.CLIENTE) NOME, COUNT(DISTINCT v.NUMTRANSVENDA) NOTAS, ROUND(SUM(dev.VL), 2) VALOR
-  FROM vendas v JOIN dev ON dev.NUMTRANSVENDA = v.NUMTRANSVENDA
-  LEFT JOIN PCCLIENT cli ON cli.CODCLI = v.CODCLI
-  GROUP BY v.CODCLI ORDER BY VALOR DESC
+const SQL_CLIENTE = `SELECT * FROM (WITH ${ED_CTE}
+  SELECT s.CODCLI, MAX(cli.CLIENTE) NOME,
+         COUNT(DISTINCT ed.NUMTRANSENT) NOTAS, ROUND(SUM(ed.VL), 2) VALOR
+  FROM ed
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = ed.NUMTRANSVENDA
+  LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
+  WHERE ed.NUMTRANSVENDA > 0
+  GROUP BY s.CODCLI ORDER BY VALOR DESC
 ) WHERE ROWNUM <= 10`;
+
+// Devolução por motorista de entrega: expedição via carga (PCNFSAID.NUMCAR →
+// PCCARREG.CODMOTORISTA → PCEMPR.NOME), taxa = devolvidas/expedidas. Motorista
+// 9996 (DIALOG/pseudo) excluído. `expedidas` = NFs em carga saídas no período;
+// a devolução (valor líquido) é atribuída à carga da venda de origem.
+const SQL_MOTORISTA = `
+WITH ${ED_CTE},
+vendas AS (
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR
+  FROM PCNFSAID nf
+  WHERE nf.CODFILIAL = :filial AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.NUMCAR, 0) != 0
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+),
+devv AS (
+  SELECT NUMTRANSVENDA, SUM(VL) VL_DEVOLVIDO
+  FROM ed WHERE NUMTRANSVENDA > 0 GROUP BY NUMTRANSVENDA
+)
+SELECT car.CODMOTORISTA,
+       MAX(emp.NOME) NOME,
+       COUNT(DISTINCT v.NUMTRANSVENDA) EXPEDIDAS,
+       COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) DEVOLVIDAS,
+       ROUND(COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) * 100
+             / NULLIF(COUNT(DISTINCT v.NUMTRANSVENDA), 0), 2) TAXA,
+       ROUND(SUM(NVL(devv.VL_DEVOLVIDO, 0)), 2) VALOR_DEVOLVIDO
+FROM vendas v
+JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
+LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
+LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
+WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+GROUP BY car.CODMOTORISTA
+ORDER BY VALOR_DEVOLVIDO DESC`;
 
 interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
+interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
 
 function hojeISO(hoje = new Date()): string {
   const ano = hoje.getFullYear();
@@ -76,9 +117,10 @@ const n = (v: unknown): number => Number(v) || 0;
 export const getDevolucoesMesAtual = cache(async (): Promise<ResumoDevolucoes | null> => {
   const binds = { filial: FILIAL, ini: primeiroDiaDoMes(), fim: hojeISO() };
   try {
-    const [motivosRaw, clientesRaw] = await Promise.all([
+    const [motivosRaw, clientesRaw, motoristasRaw] = await Promise.all([
       queryWinthor<LinhaMotivo>(SQL_MOTIVO, binds),
       queryWinthor<LinhaCliente>(SQL_CLIENTE, binds),
+      queryWinthor<LinhaMotorista>(SQL_MOTORISTA, binds),
     ]);
 
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
@@ -93,12 +135,21 @@ export const getDevolucoesMesAtual = cache(async (): Promise<ResumoDevolucoes | 
       notas: n(r.NOTAS),
       valor: n(r.VALOR),
     }));
+    const porMotorista: DevolucaoPorMotorista[] = motoristasRaw.map((r) => ({
+      codMotorista: n(r.CODMOTORISTA),
+      nome: r.NOME ?? `Motorista ${r.CODMOTORISTA}`,
+      expedidas: n(r.EXPEDIDAS),
+      devolvidas: n(r.DEVOLVIDAS),
+      taxa: n(r.TAXA),
+      valorDevolvido: n(r.VALOR_DEVOLVIDO),
+    }));
 
     return {
       total: porMotivo.reduce((t, m) => t + m.valor, 0),
       porSetor: agregarPorSetor(porMotivo),
       porMotivo,
       topClientes,
+      porMotorista,
     };
   } catch (erro) {
     console.error("[devolucoes] Winthor indisponível:", (erro as Error).message);
