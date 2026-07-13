@@ -34,6 +34,53 @@ export function taxaDevolucaoMensal(
   return p.valorDevolucao / p.vendaFaturada;
 }
 
+export interface ResumoPeriodo {
+  vendaLiquidaTotal: number;
+  valorDevolucaoTotal: number;
+  pesoDevolucaoTotal: number;
+  taxaMedia: number; // 0..1, agregada: Σdevolução / Σvenda faturada
+}
+
+/** Totais do período + taxa média agregada (não a média das taxas mensais). */
+export function resumoPeriodo(serie: PontoTendencia[]): ResumoPeriodo {
+  const soma = (sel: (p: PontoTendencia) => number) => serie.reduce((t, p) => t + sel(p), 0);
+  const faturado = soma((p) => p.vendaFaturada);
+  const devolvido = soma((p) => p.valorDevolucao);
+  return {
+    vendaLiquidaTotal: soma((p) => p.vendaLiquida),
+    valorDevolucaoTotal: devolvido,
+    pesoDevolucaoTotal: soma((p) => p.pesoDevolucao),
+    taxaMedia: faturado > 0 ? devolvido / faturado : 0,
+  };
+}
+
+/** Variação relativa (fração, pode ser negativa): (atual − anterior) / anterior. */
+export function variacaoPercentual(atual: number, anterior: number): number {
+  if (anterior === 0) return 0;
+  return (atual - anterior) / anterior;
+}
+
+/** Diferença em pontos percentuais entre duas taxas (cada uma 0..1). */
+export function variacaoPP(atualFrac: number, anteriorFrac: number): number {
+  return (atualFrac - anteriorFrac) * 100;
+}
+
+/** Média simples de uma lista (0 se vazia). */
+export function media(valores: number[]): number {
+  return valores.length ? valores.reduce((s, v) => s + v, 0) / valores.length : 0;
+}
+
+/** Top `n` meses por valor de devolução (maior primeiro). */
+export function topPorDevolucao(serie: PontoTendencia[], n: number): PontoTendencia[] {
+  return [...serie].sort((a, b) => b.valorDevolucao - a.valorDevolucao).slice(0, n);
+}
+
+/** Cada valor como fração (0..1) do maior da lista — para barras indexadas. */
+export function indice(valores: number[]): number[] {
+  const max = Math.max(0, ...valores) || 1;
+  return valores.map((v) => v / max);
+}
+
 /**
  * Converte uma série de valores em pontos "x,y" para um <polyline> SVG.
  * Maior valor no topo, menor na base, respeitando o padding. Assume série sem
