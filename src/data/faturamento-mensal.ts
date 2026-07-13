@@ -58,7 +58,10 @@ export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia 
     .eq("mes", mes)
     .eq("filial", FILIAL)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("[faturamento-mensal] Supabase indisponível:", error.message);
+    return null;
+  }
   if (data) return rowToPonto(data as Record<string, unknown>);
 
   const { inicio, fim } = inicioFimDoMes(mes);
