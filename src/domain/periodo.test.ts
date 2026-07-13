@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "./periodo";
+import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno, inicioFimDoMes } from "./periodo";
 
 describe("primeiroDiaDoMes", () => {
   it("de uma data ISO string", () => {
@@ -25,5 +25,14 @@ describe("mesAnterior / mesProximo", () => {
 describe("formatMesAno", () => {
   it("formata em pt-BR", () => {
     expect(formatMesAno("2026-07-01")).toBe("Julho/2026");
+  });
+});
+
+describe("inicioFimDoMes", () => {
+  it("retorna 1º e último dia de um mês de 31 dias", () => {
+    expect(inicioFimDoMes("2026-05-01")).toEqual({ inicio: "2026-05-01", fim: "2026-05-31" });
+  });
+  it("trata fevereiro corretamente", () => {
+    expect(inicioFimDoMes("2026-02-01")).toEqual({ inicio: "2026-02-01", fim: "2026-02-28" });
   });
 });
