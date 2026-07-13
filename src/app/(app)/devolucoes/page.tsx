@@ -92,17 +92,11 @@ export default async function DevolucoesPage() {
         />
       </div>
 
-      <div className="mt-8 flex items-center gap-2">
+      <div className="mt-8 mb-4 flex items-center gap-2">
         <h2 className="font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]">
           Análise · de onde vêm
         </h2>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">rotina 111 · líquido</span>
       </div>
-      <p className="mb-4 text-xs text-slate-400">
-        Mesma regra do card oficial (rotina 111, valor líquido, pela data da devolução). A quebra
-        cobre só a devolução vinculada a uma venda — a avulsa fica isolada no card acima —, então a
-        soma das partes bate com o valor de devolução.
-      </p>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {r.porSetor.map((s) => (
