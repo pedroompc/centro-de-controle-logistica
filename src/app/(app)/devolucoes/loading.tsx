@@ -11,6 +11,7 @@ export default function Loading() {
       </div>
       <div className="mt-6 h-72 animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
       <div className="mt-6 h-64 animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
+      <div className="mt-6 h-64 animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
     </div>
   );
 }
