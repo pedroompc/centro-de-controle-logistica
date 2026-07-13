@@ -74,15 +74,14 @@ function hojeISO(hoje = new Date()): string {
 const n = (v: unknown): number => Number(v) || 0;
 
 /**
- * Resumo de faturamento da filial 1 no mês corrente (1º dia → hoje).
- * Retorna `null` se o Oracle do Winthor estiver indisponível (ex: fora da rede
- * da empresa) — o dashboard trata isso mostrando o bloco como indisponível.
+ * Resumo de faturamento da rotina 111 para um período/filial arbitrários.
+ * Retorna `null` se o Winthor estiver indisponível ou não houver dados.
  */
-export const getResumoFaturamentoMesAtual = cache(async (): Promise<ResumoFaturamento | null> => {
-  const ini = primeiroDiaDoMes(); // "yyyy-mm-01"
-  const fim = hojeISO();
+export async function getResumoFaturamento(
+  ini: string, fim: string, filial: string = FILIAL,
+): Promise<ResumoFaturamento | null> {
   try {
-    const rows = await queryWinthor<LinhaResumo>(SQL, { filial: FILIAL, ini, fim });
+    const rows = await queryWinthor<LinhaResumo>(SQL, { filial, ini, fim });
     const r = rows[0];
     if (!r) return null;
 
@@ -109,4 +108,10 @@ export const getResumoFaturamentoMesAtual = cache(async (): Promise<ResumoFatura
     console.error("[faturamento] Winthor indisponível:", (erro as Error).message);
     return null;
   }
-});
+}
+
+/** Resumo do mês corrente (1º dia → hoje), memoizado por request. */
+export const getResumoFaturamentoMesAtual = cache(
+  async (): Promise<ResumoFaturamento | null> =>
+    getResumoFaturamento(primeiroDiaDoMes(), hojeISO(), FILIAL),
+);
