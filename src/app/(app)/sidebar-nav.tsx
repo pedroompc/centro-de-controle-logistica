@@ -62,6 +62,16 @@ const items: Item[] = [
       </svg>
     ),
   },
+  {
+    href: "/tendencias",
+    label: "Tendências",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <path d="M3 17l6-6 4 4 8-8" />
+        <path d="M17 7h4v4" />
+      </svg>
+    ),
+  },
 ];
 
 function isActive(pathname: string, href: string) {
