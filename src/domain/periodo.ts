@@ -38,3 +38,10 @@ export function formatMesAno(mesISO: string): string {
   const [ano, mes] = mesISO.split("-").map(Number);
   return `${MESES_PT[mes - 1]}/${ano}`;
 }
+
+export function inicioFimDoMes(mesISO: string): { inicio: string; fim: string } {
+  const [ano, mes] = mesISO.split("-").map(Number);
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { inicio: iso(new Date(ano, mes - 1, 1)), fim: iso(new Date(ano, mes, 0)) };
+}
