@@ -71,58 +71,6 @@ export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
   );
 }
 
-export interface SerieChart { nome: string; cor: string; indices: number[]; abs: string[] }
-
-/**
- * Gráfico de barras agrupadas INDEXADO: cada série é normalizada pelo seu próprio
- * pico (0–100%), então as barras comparam a evolução de cada indicador entre os
- * meses numa escala única e honesta. Valor absoluto vai no tooltip de cada barra.
- */
-export function EvolucaoChart({ rotulos, series }: { rotulos: string[]; series: SerieChart[] }) {
-  const W = 1040, H = 300, padL = 40, padR = 14, padTop = 12, padBottom = 30;
-  const plotW = W - padL - padR, plotH = H - padTop - padBottom;
-  const y0 = padTop + plotH;
-  const nMeses = rotulos.length;
-  const groupW = plotW / nMeses;
-  const cluster = groupW * 0.72;
-  const nS = series.length;
-  const barGap = 2;
-  const barW = (cluster - barGap * (nS - 1)) / nS;
-  const linhas = [0, 0.25, 0.5, 0.75, 1];
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Evolução mensal indexada">
-      {linhas.map((t) => {
-        const y = y0 - t * plotH;
-        return (
-          <g key={t}>
-            <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="#eef1f6" strokeWidth="1" />
-            <text x={padL - 8} y={y + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{t * 100}%</text>
-          </g>
-        );
-      })}
-      {rotulos.map((rot, gi) => {
-        const gx = padL + gi * groupW + (groupW - cluster) / 2;
-        return (
-          <g key={gi}>
-            {series.map((s, si) => {
-              const idx = s.indices[gi] ?? 0;
-              const h = Math.max(1.5, idx * plotH);
-              const x = gx + si * (barW + barGap);
-              return (
-                <rect key={si} x={x} y={y0 - h} width={barW} height={h} rx="2.5" fill={s.cor}>
-                  <title>{`${rot} · ${s.nome}: ${s.abs[gi]}`}</title>
-                </rect>
-              );
-            })}
-            <text x={padL + gi * groupW + groupW / 2} y={H - 10} textAnchor="middle" fontSize="10.5" fill="#64748b">{rot}</text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
 /** Legenda de séries (marca colorida + nome; texto em tinta neutra). */
 export function Legenda({ series }: { series: { nome: string; cor: string }[] }) {
   return (

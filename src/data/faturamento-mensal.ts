@@ -45,30 +45,18 @@ function resumoToPonto(mes: string, r: ResumoFaturamento): PontoTendencia {
   };
 }
 
+type SB = Awaited<ReturnType<typeof createClient>>;
+
 /**
- * Foto de um mês. Lê do Supabase; se faltar e o mês estiver FECHADO, calcula do
- * Winthor uma vez e grava (INSERT ... ON CONFLICT DO NOTHING). Mês corrente/futuro
- * é calculado ao vivo e NÃO gravado. `null` se o Winthor estiver indisponível.
+ * Calcula um mês do Winthor e o congela (best-effort) se estiver fechado. Tenta
+ * 2 vezes — o Oracle às vezes derruba a conexão sob concorrência. `null` se o
+ * Winthor seguir indisponível.
  */
-export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("faturamento_mensal")
-    .select(COLUNAS)
-    .eq("mes", mes)
-    .eq("filial", FILIAL)
-    .maybeSingle();
-  if (error) {
-    console.error("[faturamento-mensal] Supabase indisponível:", error.message);
-    return null;
-  }
-  if (data) return rowToPonto(data as Record<string, unknown>);
-
+async function computarMes(supabase: SB, mes: string): Promise<PontoTendencia | null> {
   const { inicio, fim } = inicioFimDoMes(mes);
-  const r = await getResumoFaturamento(inicio, fim, FILIAL);
-  if (!r) return null; // Winthor offline: não grava
-
-  const ponto = resumoToPonto(mes, r);
+  let r = await getResumoFaturamento(inicio, fim, FILIAL);
+  if (!r) r = await getResumoFaturamento(inicio, fim, FILIAL); // 1 retry
+  if (!r) return null;
 
   // Só congela mês FECHADO (o corrente muda ao longo do dia).
   if (mes < primeiroDiaDoMes()) {
@@ -89,14 +77,59 @@ export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia 
       { onConflict: "mes,filial", ignoreDuplicates: true }, // = INSERT ... ON CONFLICT DO NOTHING
     );
   }
-  return ponto;
+  return resumoToPonto(mes, r);
 }
 
-/** Série dos últimos `qtd` meses fechados (backfill dos que faltam). */
+/**
+ * Foto de um mês. Lê do Supabase; se faltar e o mês estiver FECHADO, calcula do
+ * Winthor uma vez e grava. `null` se o Winthor estiver indisponível.
+ */
+export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("faturamento_mensal")
+    .select(COLUNAS)
+    .eq("mes", mes)
+    .eq("filial", FILIAL)
+    .maybeSingle();
+  if (error) {
+    console.error("[faturamento-mensal] Supabase indisponível:", error.message);
+    return null;
+  }
+  if (data) return rowToPonto(data as Record<string, unknown>);
+  return computarMes(supabase, mes);
+}
+
+/**
+ * Série dos últimos `qtd` meses fechados. Faz UMA leitura no Supabase para todos
+ * os meses e só calcula do Winthor os que faltam — e SEQUENCIALMENTE, para não
+ * abrir 12 conexões Oracle de uma vez (o que derrubava meses por timeout).
+ */
 export const getSerieTendencias = cache(
   async (qtd = 12): Promise<PontoTendencia[]> => {
     const meses = mesesFechados(new Date(), qtd);
-    const pontos = await Promise.all(meses.map((m) => getFaturamentoMensal(m)));
-    return pontos.filter((p): p is PontoTendencia => p !== null);
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("faturamento_mensal")
+      .select(COLUNAS)
+      .eq("filial", FILIAL)
+      .in("mes", meses);
+    if (error) console.error("[faturamento-mensal] Supabase indisponível:", error.message);
+
+    const porMes = new Map<string, PontoTendencia>();
+    for (const row of data ?? []) {
+      const p = rowToPonto(row as Record<string, unknown>);
+      porMes.set(p.mes, p);
+    }
+
+    const serie: PontoTendencia[] = [];
+    for (const mes of meses) {
+      const cached = porMes.get(mes);
+      if (cached) { serie.push(cached); continue; }
+      const p = await computarMes(supabase, mes); // sequencial: sem storm de conexões
+      if (p) serie.push(p);
+    }
+    return serie;
   },
 );

@@ -5,10 +5,8 @@ import {
 } from "@/domain/tendencias";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { PageHeader, Card, SectionTitle } from "@/components/ui";
-import {
-  CORES, KpiCard, EvolucaoChart, Legenda, RankingBars, ComparativoRow,
-  type Delta, type SerieChart,
-} from "./widgets";
+import { CORES, KpiCard, Legenda, RankingBars, ComparativoRow, type Delta } from "./widgets";
+import { EvolucaoChart, type SerieChart } from "./evolucao-chart";
 import { ExportButton } from "./export-button";
 
 const MES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
