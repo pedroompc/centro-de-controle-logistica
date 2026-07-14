@@ -7,6 +7,7 @@ import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { PageHeader, Card, SectionTitle } from "@/components/ui";
 import { CORES, KpiCard, Legenda, RankingBars, ComparativoRow, type Delta } from "./widgets";
 import { EvolucaoChart, type SerieChart } from "./evolucao-chart";
+import { CompararMeses, type MesComparavel } from "./comparar-meses";
 import { ExportButton } from "./export-button";
 
 const MES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
@@ -82,6 +83,14 @@ export default async function TendenciasPage() {
     { nome: "Taxa de devolução", cor: CORES.taxa, indices: indice(vTaxa), abs: vTaxa.map((t) => formatPercent(t)) },
   ];
 
+  const mesesComparaveis: MesComparavel[] = serie.map((p, i) => ({
+    rotulo: rotulos[i],
+    vendaLiquida: p.vendaLiquida,
+    valorDevolucao: p.valorDevolucao,
+    pesoDevolucao: p.pesoDevolucao,
+    taxa: vTaxa[i],
+  }));
+
   const resumo = resumoPeriodo(serie);
 
   const top5 = topPorDevolucao(serie, 5).map((p) => ({
@@ -138,6 +147,9 @@ export default async function TendenciasPage() {
         </div>
         <EvolucaoChart rotulos={rotulos} series={series} />
       </Card>
+
+      {/* Comparar dois meses */}
+      <CompararMeses meses={mesesComparaveis} />
 
       {/* Resumo · Ranking · Comparativos */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
