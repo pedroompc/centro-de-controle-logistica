@@ -1,4 +1,4 @@
-import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo } from "@/domain/types";
+import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo } from "@/domain/types";
 
 export function mapSetor(row: { id: string; nome: string }): Setor {
   return { id: row.id, nome: row.nome };
@@ -56,5 +56,33 @@ export function mapCustoMensal(row: {
     tipo: row.tipo as CustoTipo,
     valor: Number(row.valor),
     data: row.data ?? null,
+  };
+}
+
+export function mapFornecedor(row: { id: string; nome: string; ativo: boolean }): Fornecedor {
+  return { id: row.id, nome: row.nome, ativo: row.ativo };
+}
+
+export function mapPreco(row: { tipo: string; preco_por_tonelada: string | number }): PrecoDescarregamento {
+  return { tipo: row.tipo as DescarregamentoTipo, precoPorTonelada: Number(row.preco_por_tonelada) };
+}
+
+export function mapReceita(row: {
+  id: string; data: string; fornecedor_id: string;
+  fornecedores?: { nome: string } | { nome: string }[] | null;
+  peso_kg: string | number; tipo: string;
+  preco_por_tonelada: string | number; receita: string | number; observacao: string | null;
+}): Receita {
+  const forn = Array.isArray(row.fornecedores) ? row.fornecedores[0] : row.fornecedores;
+  return {
+    id: row.id,
+    data: row.data,
+    fornecedorId: row.fornecedor_id,
+    fornecedorNome: forn?.nome ?? "—",
+    pesoKg: Number(row.peso_kg),
+    tipo: row.tipo as DescarregamentoTipo,
+    precoPorTonelada: Number(row.preco_por_tonelada),
+    receita: Number(row.receita),
+    observacao: row.observacao,
   };
 }
