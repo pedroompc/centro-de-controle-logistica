@@ -68,14 +68,14 @@ export default async function DevolucoesPage() {
 
   return (
     <div>
-      <PageHeader title="Devoluções" subtitle={`${mes} · filial 1`} />
+      <PageHeader title="Devoluções" subtitle={`${mes} · filiais 1 e 11`} />
 
       {/* Números OFICIAIS = rotina 111 (os mesmos do dashboard, que o diretor usa). */}
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Valor devolução"
-          value={fat ? formatBRL(fat.valorDevolucao) : "—"}
-          hint="oficial · rotina 111"
+          value={formatBRL(r.total)}
+          hint="= soma por setor · ~igual ao 111"
           accent="red"
         />
         <StatCard

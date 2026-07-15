@@ -14,10 +14,12 @@ import type {
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
 
-// Valor líquido do item de devolução — MESMA fórmula da venda faturada (rotina
-// 111): preço praticado menos ST e IPI (repasse não é deduzido, espelhando o
-// "Deduzir" do diretor). Garante que a soma da quebra bata com o card oficial.
-const NET = `(m.PUNIT - NVL(m.ST,0) - NVL(m.VLIPI,0)) * m.QT`;
+// Valor líquido do item de devolução: preço praticado menos ST. Na devolução, o
+// IPI NÃO é deduzido — é como a VIEW_BI_FATURAMENTO (fonte oficial) trata a
+// devolução, e assim a soma da quebra fica a ~0,003% do total oficial (deduzir
+// IPI cheio erra ~R$700; sem IPI erra ~R$29 — resíduo irredutível de IPI parcial
+// item a item, que só a view reproduz). Ver [[devolucao-regra]] na memória.
+const NET = `(m.PUNIT - NVL(m.ST,0)) * m.QT`;
 
 // Motivo (CODDEVOL) → setor responsável, conforme o cadastro de motivos do Winthor.
 const SETOR = `CASE
