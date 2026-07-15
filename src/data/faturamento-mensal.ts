@@ -1,11 +1,10 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getResumoFaturamento } from "./faturamento";
+import { FILIAL_LABEL } from "./filiais";
 import type { ResumoFaturamento } from "@/domain/faturamento";
 import { primeiroDiaDoMes, inicioFimDoMes } from "@/domain/periodo";
 import { mesesFechados, type PontoTendencia } from "@/domain/tendencias";
-
-const FILIAL = "1";
 // Literal única (sem concatenação) para preservar o tipo literal que o
 // supabase-js usa para inferir o formato do retorno de `.select(COLUNAS)`.
 const COLUNAS =
@@ -54,15 +53,15 @@ type SB = Awaited<ReturnType<typeof createClient>>;
  */
 async function computarMes(supabase: SB, mes: string): Promise<PontoTendencia | null> {
   const { inicio, fim } = inicioFimDoMes(mes);
-  let r = await getResumoFaturamento(inicio, fim, FILIAL);
-  if (!r) r = await getResumoFaturamento(inicio, fim, FILIAL); // 1 retry
+  let r = await getResumoFaturamento(inicio, fim);
+  if (!r) r = await getResumoFaturamento(inicio, fim); // 1 retry
   if (!r) return null;
 
   // Só congela mês FECHADO (o corrente muda ao longo do dia).
   if (mes < primeiroDiaDoMes()) {
     await supabase.from("faturamento_mensal").upsert(
       {
-        mes, filial: FILIAL,
+        mes, filial: FILIAL_LABEL,
         venda_faturada: r.vendaFaturada,
         venda_liquida: r.vendaLiquida,
         valor_devolucao: r.valorDevolucao,
@@ -90,7 +89,7 @@ export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia 
     .from("faturamento_mensal")
     .select(COLUNAS)
     .eq("mes", mes)
-    .eq("filial", FILIAL)
+    .eq("filial", FILIAL_LABEL)
     .maybeSingle();
   if (error) {
     console.error("[faturamento-mensal] Supabase indisponível:", error.message);
@@ -113,7 +112,7 @@ export const getSerieTendencias = cache(
     const { data, error } = await supabase
       .from("faturamento_mensal")
       .select(COLUNAS)
-      .eq("filial", FILIAL)
+      .eq("filial", FILIAL_LABEL)
       .in("mes", meses);
     if (error) console.error("[faturamento-mensal] Supabase indisponível:", error.message);
 

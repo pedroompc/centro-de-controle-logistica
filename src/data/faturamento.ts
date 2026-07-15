@@ -1,10 +1,8 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { primeiroDiaDoMes } from "@/domain/periodo";
+import { filialIn } from "./filiais";
 import type { ResumoFaturamento } from "@/domain/faturamento";
-
-// A rotina 111 roda uma filial por vez; o dashboard usa a filial 1 (DIA Afogados).
-const FILIAL = "1";
 
 // Faixa de data indexável: `col >= :ini AND col < :fim + 1` (inclui o dia :fim
 // inteiro e usa índice — TRUNC(col) BETWEEN desabilitaria o índice e a query
@@ -12,13 +10,13 @@ const FILIAL = "1";
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini, 'YYYY-MM-DD') AND ${col} < TO_DATE(:fim, 'YYYY-MM-DD') + 1`;
 
-// Universo de NFs de venda (rotina 111): tipo VP/VV, não canceladas, filial e período.
-// "Todos os tipos de venda" na tela = VP + VV (SR/DF/transferências ficam fora).
-const FILTRO_NF = `n.CODFILIAL = :filial AND ${faixa("n.DTSAIDA")} AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL`;
+// Universo de NFs de venda (rotina 111): tipo VP/VV, não canceladas, filiais 1 e
+// 11 e período. "Todos os tipos de venda" na tela = VP + VV (SR/DF/transferências
+// ficam fora). Usado só para CONTAGENS (Emitidas/Positivados) e PESO — os VALORES
+// (faturada, devolução, avulsa) vêm da VIEW_BI_FATURAMENTO (ver SQL).
+const FILTRO_NF = `${filialIn("n.CODFILIAL")} AND ${faixa("n.DTSAIDA")} AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL`;
 const UNIVERSO_VENDA = `SELECT n.NUMTRANSVENDA FROM PCNFSAID n WHERE ${FILTRO_NF} AND n.NUMTRANSVENDA > 0`;
 
-// Deduções aplicadas ao preço praticado (o desconto já está embutido no PUNIT).
-const VALOR_ITEM = `(m.PUNIT - NVL(m.ST, 0) - NVL(m.VLIPI, 0) - NVL(m.VLREPASSE, 0)) * m.QT`;
 const PESO_ITEM = `NVL(m.PESOBRUTO, 0) * m.QT`;
 
 // Vínculo da nota de entrada de devolução com a NF de venda de origem. Uma
@@ -28,28 +26,35 @@ const VENDA_LINK = `(SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVEND
                        FROM PCESTCOM GROUP BY NUMTRANSENT)`;
 const EH_AVULSA = `NVL(vlink.NUMTRANSVENDA, 0) = 0`;
 
-// Três agregados de uma linha cada, combinados por cross join. Cada bloco varre
-// sua tabela uma única vez; PCMOV é podado por filial + data antes do resto.
+// Quatro agregados de uma linha cada, combinados por cross join. Cada bloco varre
+// sua fonte uma única vez.
+//   • VALORES (faturada, devolução, avulsa) → VIEW_BI_FATURAMENTO: view oficial
+//     de BI que já embute as regras do diretor (deduz ST, IPI, bonificação e
+//     avulsa). Bate no centavo com o "Deduzir Devol;ST;Bonif;IPI" do 111.
+//   • CONTAGENS (Emitidas/Positivados/Devolvidas) e PESO → PCNFSAID/PCMOV, pois a
+//     view não tem número de nota nem peso (kg).
 const SQL = `
-SELECT h.EMITIDAS, h.POSITIVADOS,
-       s.VENDA_FATURADA, s.PESO_VENDA,
-       d.DEVOLVIDAS, d.DEVOLVIDAS_AVULSAS,
-       d.VALOR_DEVOLUCAO, d.VALOR_DEVOLUCAO_AVULSA, d.PESO_DEVOLUCAO
+SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
+       h.EMITIDAS, h.POSITIVADOS, s.PESO_VENDA,
+       d.DEVOLVIDAS, d.DEVOLVIDAS_AVULSAS, d.PESO_DEVOLUCAO
   FROM
+  (SELECT NVL(SUM(v.VENDAS), 0) VENDA_FATURADA,
+          NVL(SUM(v.DEVOLUCAO), 0) VALOR_DEVOLUCAO,
+          NVL(SUM(v.AVULSA), 0) VALOR_DEVOLUCAO_AVULSA
+     FROM VIEW_BI_FATURAMENTO v
+    WHERE ${filialIn("v.CODFILIAL")} AND ${faixa("v.DTSAIDA")}) val,
   (SELECT COUNT(*) EMITIDAS, COUNT(DISTINCT n.CODCLI) POSITIVADOS
      FROM PCNFSAID n WHERE ${FILTRO_NF}) h,
-  (SELECT NVL(SUM(${VALOR_ITEM}), 0) VENDA_FATURADA, NVL(SUM(${PESO_ITEM}), 0) PESO_VENDA
+  (SELECT NVL(SUM(${PESO_ITEM}), 0) PESO_VENDA
      FROM PCMOV m
-    WHERE m.CODFILIAL = :filial AND ${faixa("m.DTMOV")} AND m.CODOPER = 'S'
+    WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'S'
       AND m.NUMTRANSVENDA IN (${UNIVERSO_VENDA})) s,
   (SELECT COUNT(DISTINCT CASE WHEN NOT (${EH_AVULSA}) THEN m.NUMNOTA END) DEVOLVIDAS,
           COUNT(DISTINCT CASE WHEN ${EH_AVULSA} THEN m.NUMNOTA END) DEVOLVIDAS_AVULSAS,
-          NVL(SUM(CASE WHEN NOT (${EH_AVULSA}) THEN ${VALOR_ITEM} END), 0) VALOR_DEVOLUCAO,
-          NVL(SUM(CASE WHEN ${EH_AVULSA} THEN ${VALOR_ITEM} END), 0) VALOR_DEVOLUCAO_AVULSA,
           NVL(SUM(${PESO_ITEM}), 0) PESO_DEVOLUCAO
      FROM PCMOV m
      LEFT JOIN ${VENDA_LINK} vlink ON vlink.NUMTRANSENT = m.NUMTRANSENT
-    WHERE m.CODFILIAL = :filial AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
+    WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
       AND m.DTCANCEL IS NULL) d`;
 
 interface LinhaResumo {
@@ -74,14 +79,15 @@ function hojeISO(hoje = new Date()): string {
 const n = (v: unknown): number => Number(v) || 0;
 
 /**
- * Resumo de faturamento da rotina 111 para um período/filial arbitrários.
- * Retorna `null` se o Winthor estiver indisponível ou não houver dados.
+ * Resumo de faturamento da rotina 111 (filiais 1 e 11 consolidadas) para um
+ * período arbitrário. Retorna `null` se o Winthor estiver indisponível ou não
+ * houver dados.
  */
 export async function getResumoFaturamento(
-  ini: string, fim: string, filial: string = FILIAL,
+  ini: string, fim: string,
 ): Promise<ResumoFaturamento | null> {
   try {
-    const rows = await queryWinthor<LinhaResumo>(SQL, { filial, ini, fim });
+    const rows = await queryWinthor<LinhaResumo>(SQL, { ini, fim });
     const r = rows[0];
     if (!r) return null;
 
@@ -113,5 +119,5 @@ export async function getResumoFaturamento(
 /** Resumo do mês corrente (1º dia → hoje), memoizado por request. */
 export const getResumoFaturamentoMesAtual = cache(
   async (): Promise<ResumoFaturamento | null> =>
-    getResumoFaturamento(primeiroDiaDoMes(), hojeISO(), FILIAL),
+    getResumoFaturamento(primeiroDiaDoMes(), hojeISO()),
 );

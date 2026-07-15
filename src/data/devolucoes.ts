@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { primeiroDiaDoMes } from "@/domain/periodo";
+import { filialIn } from "./filiais";
 import { agregarPorSetor } from "@/domain/devolucoes";
 import type {
   ResumoDevolucoes,
@@ -10,15 +11,13 @@ import type {
   SetorDevolucao,
 } from "@/domain/devolucoes";
 
-const FILIAL = "1";
-
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
 
 // Valor líquido do item de devolução — MESMA fórmula da venda faturada (rotina
-// 111): preço praticado menos ST, IPI e repasse. Garante que a soma da quebra
-// bata com o card oficial de devolução.
-const NET = `(m.PUNIT - NVL(m.ST,0) - NVL(m.VLIPI,0) - NVL(m.VLREPASSE,0)) * m.QT`;
+// 111): preço praticado menos ST e IPI (repasse não é deduzido, espelhando o
+// "Deduzir" do diretor). Garante que a soma da quebra bata com o card oficial.
+const NET = `(m.PUNIT - NVL(m.ST,0) - NVL(m.VLIPI,0)) * m.QT`;
 
 // Motivo (CODDEVOL) → setor responsável, conforme o cadastro de motivos do Winthor.
 const SETOR = `CASE
@@ -42,7 +41,7 @@ ed AS (
   JOIN PCNFENT ne ON ne.NUMTRANSENT = m.NUMTRANSENT
   LEFT JOIN (SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVENDA
                FROM PCESTCOM GROUP BY NUMTRANSENT) vlink ON vlink.NUMTRANSENT = ne.NUMTRANSENT
-  WHERE m.CODFILIAL = :filial AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
+  WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
     AND m.DTCANCEL IS NULL
   GROUP BY ne.NUMTRANSENT
 )`;
@@ -74,7 +73,7 @@ WITH ${ED_CTE},
 vendas AS (
   SELECT nf.NUMTRANSVENDA, nf.NUMCAR
   FROM PCNFSAID nf
-  WHERE nf.CODFILIAL = :filial AND ${faixa("nf.DTSAIDA")}
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
     AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
     AND nf.DTCANCEL IS NULL
@@ -111,11 +110,12 @@ function hojeISO(hoje = new Date()): string {
 const n = (v: unknown): number => Number(v) || 0;
 
 /**
- * Devoluções da filial 1 no mês corrente (1º dia → hoje): total, por setor,
- * por motivo e top clientes. Retorna `null` se o Winthor estiver indisponível.
+ * Devoluções das filiais 1 e 11 no mês corrente (1º dia → hoje): total, por
+ * setor, por motivo e top clientes. Retorna `null` se o Winthor estiver
+ * indisponível.
  */
 export const getDevolucoesMesAtual = cache(async (): Promise<ResumoDevolucoes | null> => {
-  const binds = { filial: FILIAL, ini: primeiroDiaDoMes(), fim: hojeISO() };
+  const binds = { ini: primeiroDiaDoMes(), fim: hojeISO() };
   try {
     const [motivosRaw, clientesRaw, motoristasRaw] = await Promise.all([
       queryWinthor<LinhaMotivo>(SQL_MOTIVO, binds),
