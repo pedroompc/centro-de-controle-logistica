@@ -1,6 +1,6 @@
 import { getDevolucoesMesAtual } from "@/data/devolucoes";
 import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
-import { taxaDevolucao } from "@/domain/faturamento";
+import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno } from "@/domain/periodo";
 import { piorMotorista } from "@/domain/devolucoes";
@@ -71,7 +71,7 @@ export default async function DevolucoesPage() {
       <PageHeader title="Devoluções" subtitle={`${mes} · filiais 1 e 11`} />
 
       {/* Números OFICIAIS = rotina 111 (os mesmos do dashboard, que o diretor usa). */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Valor devolução"
           value={formatBRL(r.total)}
@@ -85,9 +85,15 @@ export default async function DevolucoesPage() {
           accent="navy"
         />
         <StatCard
-          label="Taxa de devolução"
+          label="Taxa de devolução (valor)"
           value={fat ? formatPercent(taxaDevolucao(fat)) : "—"}
-          hint="sobre a venda faturada"
+          hint="R$ devolvido / venda faturada"
+          accent="gold"
+        />
+        <StatCard
+          label="Taxa de devolução (notas)"
+          value={fat ? formatPercent(taxaDevolucaoNotas(fat)) : "—"}
+          hint={fat ? `${fat.devolvidas} de ${fat.emitidas} NFs emitidas` : "—"}
           accent="gold"
         />
       </div>

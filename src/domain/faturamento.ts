@@ -30,6 +30,14 @@ export function taxaDevolucao(
   return r.valorDevolucao / r.vendaFaturada;
 }
 
+/** Taxa de devolução por NOTA (0..1) = NFs devolvidas / NFs emitidas. 0 se não houve emissão. */
+export function taxaDevolucaoNotas(
+  r: Pick<ResumoFaturamento, "devolvidas" | "emitidas">,
+): number {
+  if (r.emitidas <= 0) return 0;
+  return r.devolvidas / r.emitidas;
+}
+
 /** % do custo logístico sobre a venda líquida (0..1). 0 se não houve venda líquida. */
 export function percentualCustoLogistico(
   custoTotalMes: number,

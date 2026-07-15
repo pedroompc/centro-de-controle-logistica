@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { taxaDevolucao, percentualCustoLogistico } from "./faturamento";
+import { taxaDevolucao, taxaDevolucaoNotas, percentualCustoLogistico } from "./faturamento";
 
 describe("taxaDevolucao", () => {
   it("calcula a fração devolvida", () => {
@@ -11,6 +11,16 @@ describe("taxaDevolucao", () => {
   });
   it("é zero quando não houve venda", () => {
     expect(taxaDevolucao({ valorDevolucao: 100, vendaFaturada: 0 })).toBe(0);
+  });
+});
+
+describe("taxaDevolucaoNotas", () => {
+  it("calcula a fração de NFs devolvidas sobre emitidas", () => {
+    // 1.325 devolvidas / 13.685 emitidas ≈ 0,0968
+    expect(taxaDevolucaoNotas({ devolvidas: 1325, emitidas: 13685 })).toBeCloseTo(0.0968, 4);
+  });
+  it("é zero quando não houve emissão", () => {
+    expect(taxaDevolucaoNotas({ devolvidas: 5, emitidas: 0 })).toBe(0);
   });
 });
 
