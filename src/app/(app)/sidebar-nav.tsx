@@ -53,6 +53,16 @@ const items: Item[] = [
     ),
   },
   {
+    href: "/receitas",
+    label: "Receitas",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <path d="M12 3v18" />
+        <path d="M16 7.5c0-1.4-1.8-2.5-4-2.5S8 6.1 8 7.5 9.8 10 12 10s4 1.1 4 2.5S14.2 15 12 15s-4-1.1-4-2.5" />
+      </svg>
+    ),
+  },
+  {
     href: "/devolucoes",
     label: "Devoluções",
     icon: (

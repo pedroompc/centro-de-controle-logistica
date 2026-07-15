@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { CustoMensal } from "@/domain/types";
 import { listarLancamentosDoMes, editarLancamento, removerLancamento } from "@/data/custos-mensais";
 import { listarFuncionarios } from "@/data/funcionarios";
+import { receitaTotalDoMes } from "@/data/receitas";
+import { custoLiquido } from "@/domain/receitas-metrics";
 import { custoTotalAtivos } from "@/domain/metrics";
 import { somaLancamentos, totalDoMes } from "@/domain/custos-metrics";
 import { formatBRL, formatDataBR } from "@/domain/format";
@@ -15,9 +17,10 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
   const { mes: mesParam } = await searchParams;
   const mes = mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes();
 
-  const [lancamentos, funcionarios, admin] = await Promise.all([
+  const [lancamentos, funcionarios, receitas, admin] = await Promise.all([
     listarLancamentosDoMes(mes),
     listarFuncionarios(),
+    receitaTotalDoMes(mes),
     isAdmin(),
   ]);
 
@@ -26,7 +29,8 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
   const somaVariaveis = somaLancamentos(lancamentos, "variavel");
   const fixos = lancamentos.filter((l) => l.tipo === "fixo");
   const variaveis = lancamentos.filter((l) => l.tipo === "variavel");
-  const total = totalDoMes(lancamentos, salario);
+  const total = totalDoMes(lancamentos, salario); // custos brutos
+  const liquido = custoLiquido(total, receitas);
   const mesVazio = fixos.length === 0;
 
   const composicao = [
@@ -56,6 +60,33 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
             <BarList items={composicao} tone="navy" />
           </div>
         </div>
+      </Card>
+
+      <Card className="mt-4 p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <SectionTitle>Resultado logístico do mês</SectionTitle>
+          <Link href="/receitas" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">ver receitas →</Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Custos brutos</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">{formatBRL(total)}</p>
+            <p className="mt-1 text-xs text-slate-400">Salário + fixos + variáveis</p>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">
+              <span aria-hidden>▼</span> Receitas de descarregamento
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-emerald-700">− {formatBRL(receitas)}</p>
+            <p className="mt-1 text-xs text-emerald-600/80">Compensação demonstrada — não altera os custos</p>
+          </div>
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">= Custo líquido</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">{formatBRL(liquido)}</p>
+            <p className="mt-1 text-xs text-amber-700/80">Após abatimento das receitas</p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-slate-400">A receita é apresentada como compensação no resultado; os lançamentos de custo permanecem intactos.</p>
       </Card>
 
       {mesVazio && admin && (

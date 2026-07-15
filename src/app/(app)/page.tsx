@@ -5,7 +5,9 @@ import { custoDoSetor, faltasNoPeriodo } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
 import { inicioFimMesAtual, primeiroDiaDoMes, formatMesAno } from "@/domain/periodo";
 import { listarLancamentosDoMes } from "@/data/custos-mensais";
+import { receitaTotalDoMes } from "@/data/receitas";
 import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
+import { custoLiquido } from "@/domain/receitas-metrics";
 import { PageHeader, StatCard, Card, SectionTitle, BarList } from "@/components/ui";
 import { Suspense } from "react";
 import {
@@ -17,11 +19,12 @@ import {
 
 export default async function Dashboard() {
   const mesAtual = primeiroDiaDoMes();
-  const [funcionarios, setores, faltas, lancamentosMes] = await Promise.all([
+  const [funcionarios, setores, faltas, lancamentosMes, receitasMes] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarFaltas(),
     listarLancamentosDoMes(mesAtual),
+    receitaTotalDoMes(mesAtual),
   ]);
   const { inicio, fim } = inicioFimMesAtual();
 
@@ -31,6 +34,7 @@ export default async function Dashboard() {
   const fixos = somaLancamentos(lancamentosMes, "fixo");
   const variaveis = somaLancamentos(lancamentosMes, "variavel");
   const custoTotalMes = totalDoMes(lancamentosMes, custoEfetivo);
+  const custoLiquidoMes = custoLiquido(custoTotalMes, receitasMes);
 
   const custoPorSetor = setores
     .map((s) => ({
@@ -66,9 +70,10 @@ export default async function Dashboard() {
         <FaturamentoCards custoTotalMes={custoTotalMes} />
       </Suspense>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
-        <StatCard label="Custo total do mês" value={formatBRL(custoTotalMes)} accent="gold" href="/custos" />
+        <StatCard label="Custo bruto do mês" value={formatBRL(custoTotalMes)} accent="gold" href="/custos" />
+        <StatCard label="Custo líquido do mês" value={formatBRL(custoLiquidoMes)} hint={`Receitas: ${formatBRL(receitasMes)}`} accent="green" href="/receitas" />
         <StatCard label="Faltas no mês" value={`${faltasMes}`} accent="red" />
       </div>
 
