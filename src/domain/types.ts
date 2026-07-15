@@ -49,3 +49,28 @@ export interface CustoMensal {
   valor: number;
   data: string | null; // ISO "yyyy-mm-dd" — dia do lançamento (variáveis); null p/ fixos
 }
+
+export type DescarregamentoTipo = "batido" | "paletizado";
+
+export interface Fornecedor {
+  id: string;
+  nome: string;
+  ativo: boolean;
+}
+
+export interface PrecoDescarregamento {
+  tipo: DescarregamentoTipo;
+  precoPorTonelada: number;
+}
+
+export interface Receita {
+  id: string;
+  data: string; // ISO "yyyy-mm-dd"
+  fornecedorId: string;
+  fornecedorNome: string;
+  pesoKg: number;
+  tipo: DescarregamentoTipo;
+  precoPorTonelada: number;
+  receita: number;
+  observacao: string | null;
+}
