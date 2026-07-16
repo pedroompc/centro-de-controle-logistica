@@ -14,6 +14,12 @@ import type {
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
 
+/** Filtros aplicados no SQL — estreitam motivo, clientes e motoristas de uma vez. */
+export interface FiltrosDevolucao {
+  motivo?: string;
+  setor?: string;
+}
+
 // Valor líquido do item de devolução: preço praticado menos ST. Na devolução, o
 // IPI NÃO é deduzido — é como a VIEW_BI_FATURAMENTO (fonte oficial) trata a
 // devolução, e assim a soma da quebra fica a ~0,003% do total oficial (deduzir
@@ -48,21 +54,41 @@ ed AS (
   GROUP BY ne.NUMTRANSENT
 )`;
 
-const SQL_MOTIVO = `WITH ${ED_CTE}
-  SELECT NVL(td.MOTIVO, 'Não informado') MOTIVO, ${SETOR} SETOR,
-         COUNT(*) NOTAS, ROUND(SUM(ed.VL), 2) VALOR
+/**
+ * `edf` = `ed` com motivo/setor resolvidos e os filtros aplicados num ÚNICO ponto
+ * — as três queries (motivo/cliente/motorista) leem daqui, então o filtro
+ * estreita todas de uma vez. As cláusulas só entram quando há filtro (o Oracle
+ * recusa bind que não aparece na query).
+ */
+function ctes(f: FiltrosDevolucao): string {
+  const cond = [
+    f.motivo ? `AND NVL(td.MOTIVO, 'Não informado') = :motivo` : "",
+    f.setor ? `AND ${SETOR} = :setor` : "",
+  ].join("\n    ");
+  return `${ED_CTE},
+edf AS (
+  SELECT ed.NUMTRANSENT, ed.NUMTRANSVENDA, ed.VL,
+         NVL(td.MOTIVO, 'Não informado') MOTIVO, ${SETOR} SETOR
   FROM ed LEFT JOIN PCTABDEV td ON td.CODDEVOL = ed.CODDEVOL
-  WHERE ed.NUMTRANSVENDA > 0
-  GROUP BY NVL(td.MOTIVO, 'Não informado'), ${SETOR}
+  WHERE 1 = 1
+    ${cond}
+)`;
+}
+
+const sqlMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+  SELECT MOTIVO, SETOR, COUNT(*) NOTAS, ROUND(SUM(VL), 2) VALOR
+  FROM edf
+  WHERE NUMTRANSVENDA > 0
+  GROUP BY MOTIVO, SETOR
   ORDER BY VALOR DESC`;
 
-const SQL_CLIENTE = `SELECT * FROM (WITH ${ED_CTE}
+const sqlCliente = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
   SELECT s.CODCLI, MAX(cli.CLIENTE) NOME,
-         COUNT(DISTINCT ed.NUMTRANSENT) NOTAS, ROUND(SUM(ed.VL), 2) VALOR
-  FROM ed
-  JOIN PCNFSAID s ON s.NUMTRANSVENDA = ed.NUMTRANSVENDA
+         COUNT(DISTINCT edf.NUMTRANSENT) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
-  WHERE ed.NUMTRANSVENDA > 0
+  WHERE edf.NUMTRANSVENDA > 0
   GROUP BY s.CODCLI ORDER BY VALOR DESC
 ) WHERE ROWNUM <= 10`;
 
@@ -70,8 +96,8 @@ const SQL_CLIENTE = `SELECT * FROM (WITH ${ED_CTE}
 // PCCARREG.CODMOTORISTA → PCEMPR.NOME), taxa = devolvidas/expedidas. Motorista
 // 9996 (DIALOG/pseudo) excluído. `expedidas` = NFs em carga saídas no período;
 // a devolução (valor líquido) é atribuída à carga da venda de origem.
-const SQL_MOTORISTA = `
-WITH ${ED_CTE},
+const sqlMotorista = (f: FiltrosDevolucao) => `
+WITH ${ctes(f)},
 vendas AS (
   SELECT nf.NUMTRANSVENDA, nf.NUMCAR
   FROM PCNFSAID nf
@@ -82,7 +108,7 @@ vendas AS (
 ),
 devv AS (
   SELECT NUMTRANSVENDA, SUM(VL) VL_DEVOLVIDO
-  FROM ed WHERE NUMTRANSVENDA > 0 GROUP BY NUMTRANSVENDA
+  FROM edf WHERE NUMTRANSVENDA > 0 GROUP BY NUMTRANSVENDA
 )
 SELECT car.CODMOTORISTA,
        MAX(emp.NOME) NOME,
@@ -112,17 +138,47 @@ function hojeISO(hoje = new Date()): string {
 const n = (v: unknown): number => Number(v) || 0;
 
 /**
- * Devoluções das filiais 1 e 11 no mês corrente (1º dia → hoje): total, por
- * setor, por motivo e top clientes. Retorna `null` se o Winthor estiver
- * indisponível.
+ * Motivos que tiveram devolução no mês — popula o `select` do filtro. Sempre SEM
+ * filtro (senão, ao filtrar, o dropdown ficaria com uma opção só).
  */
-export const getDevolucoesMesAtual = cache(async (): Promise<ResumoDevolucoes | null> => {
+export const listarMotivosDoMes = cache(async (): Promise<string[]> => {
   const binds = { ini: primeiroDiaDoMes(), fim: hojeISO() };
   try {
+    const rows = await queryWinthor<{ MOTIVO: string }>(
+      `WITH ${ctes({})}
+       SELECT DISTINCT MOTIVO FROM edf WHERE NUMTRANSVENDA > 0 ORDER BY MOTIVO`,
+      binds,
+    );
+    return rows.map((r) => r.MOTIVO);
+  } catch (erro) {
+    console.error("[devolucoes] motivos indisponíveis:", (erro as Error).message);
+    return [];
+  }
+});
+
+/**
+ * Devoluções das filiais 1 e 11 no mês corrente (1º dia → hoje): total, por
+ * setor, por motivo e top clientes. `motivo`/`setor` estreitam as três quebras
+ * de uma vez (via a CTE `edf`). Retorna `null` se o Winthor estiver indisponível.
+ *
+ * Parâmetros primitivos (e não um objeto) de propósito: `cache()` do React
+ * compara argumentos por identidade — um objeto literal novo a cada chamada
+ * furaria a memoização.
+ */
+export const getDevolucoesMesAtual = cache(async (
+  motivo?: string,
+  setor?: string,
+): Promise<ResumoDevolucoes | null> => {
+  const f: FiltrosDevolucao = { motivo, setor };
+  // Bind só do que aparece na query — o Oracle recusa bind não referenciado.
+  const binds: Record<string, string> = { ini: primeiroDiaDoMes(), fim: hojeISO() };
+  if (motivo) binds.motivo = motivo;
+  if (setor) binds.setor = setor;
+  try {
     const [motivosRaw, clientesRaw, motoristasRaw] = await Promise.all([
-      queryWinthor<LinhaMotivo>(SQL_MOTIVO, binds),
-      queryWinthor<LinhaCliente>(SQL_CLIENTE, binds),
-      queryWinthor<LinhaMotorista>(SQL_MOTORISTA, binds),
+      queryWinthor<LinhaMotivo>(sqlMotivo(f), binds),
+      queryWinthor<LinhaCliente>(sqlCliente(f), binds),
+      queryWinthor<LinhaMotorista>(sqlMotorista(f), binds),
     ]);
 
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
