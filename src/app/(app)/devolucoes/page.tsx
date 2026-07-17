@@ -4,26 +4,16 @@ import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno } from "@/domain/periodo";
-import { piorMotorista } from "@/domain/devolucoes";
 import type { SetorDevolucao, DevolucaoPorMotivo } from "@/domain/devolucoes";
-import { PageHeader, Card, SectionTitle, StatCard } from "@/components/ui";
-
-// Quantas linhas cada seção mostra antes do "ver todos".
-const TOP_MOTIVOS = 8;
-const TOP_MOTORISTAS = 8;
-const TOP_CLIENTES = 5;
+import { PageHeader, Card, StatCard, PanelHeader } from "@/components/ui";
+import PainelClientes from "./painel-clientes";
+import TabelaMotoristas from "./tabela-motoristas";
+import { IconeEtiqueta } from "./icons";
 
 const SETORES: SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
 
 const inputCls =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
-
-// Cor da taxa de devolução por severidade.
-function corTaxa(taxa: number) {
-  if (taxa >= 15) return "text-rose-600";
-  if (taxa >= 8) return "text-amber-600";
-  return "text-slate-500";
-}
 
 // Cor da barra/etiqueta por setor responsável.
 const CORES: Record<SetorDevolucao, { barra: string; pill: string }> = {
@@ -37,7 +27,7 @@ function LinhaMotivo({ m, max }: { m: DevolucaoPorMotivo; max: number }) {
   const pct = Math.max(2, Math.round((m.valor / max) * 100));
   const cor = CORES[m.setor];
   return (
-    <div className="py-2.5">
+    <div className="px-5 py-2.5">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-medium text-[#141a4d]" title={m.motivo}>{m.motivo}</span>
@@ -55,38 +45,15 @@ function LinhaMotivo({ m, max }: { m: DevolucaoPorMotivo; max: number }) {
   );
 }
 
-/** Cabeçalho de seção com "X de Y" e o link ver todos / ver menos. */
-function CabecalhoSecao({
-  titulo, mostrados, total, href, expandido,
-}: {
-  titulo: string; mostrados: number; total: number; href: string; expandido: boolean;
-}) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between gap-3">
-      <SectionTitle>{titulo}</SectionTitle>
-      <div className="flex items-baseline gap-3">
-        {total > 0 && <span className="text-xs text-slate-400">{mostrados} de {total}</span>}
-        {total > mostrados || expandido ? (
-          <Link href={href} className="text-xs font-medium text-amber-600 hover:text-amber-700">
-            {expandido ? "ver menos" : "ver todos"}
-          </Link>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 export default async function DevolucoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ motivo?: string; setor?: string; motorista?: string; expandir?: string }>;
+  searchParams: Promise<{ motivo?: string; setor?: string }>;
 }) {
   const sp = await searchParams;
   const motivo = sp.motivo || undefined;
   const setor = sp.setor || undefined;
-  const buscaMotorista = (sp.motorista ?? "").trim();
-  const expandir = sp.expandir;
-  const temFiltro = Boolean(motivo || setor || buscaMotorista);
+  const temFiltro = Boolean(motivo || setor);
 
   const [r, fat, motivosDisponiveis] = await Promise.all([
     getDevolucoesMesAtual(motivo, setor),
@@ -109,30 +76,17 @@ export default async function DevolucoesPage({
     );
   }
 
-  // Monta URL preservando os filtros vigentes; `over` sobrescreve/limpa chaves.
+  // Monta URL preservando o filtro vigente; `over` sobrescreve/limpa chaves.
   const url = (over: Record<string, string | undefined>) => {
-    const atual: Record<string, string | undefined> = {
-      motivo, setor, motorista: buscaMotorista || undefined, expandir, ...over,
-    };
+    const atual: Record<string, string | undefined> = { motivo, setor, ...over };
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(atual)) if (v) p.set(k, v);
     const qs = p.toString();
     return qs ? `/devolucoes?${qs}` : "/devolucoes";
   };
 
-  // Busca de motorista: filtro por nome, em memória (não faz sentido propagar
-  // para motivo/clientes).
-  const motoristasFiltrados = buscaMotorista
-    ? r.porMotorista.filter((m) => m.nome.toLowerCase().includes(buscaMotorista.toLowerCase()))
-    : r.porMotorista;
-
-  const motivosVis = expandir === "motivos" ? r.porMotivo : r.porMotivo.slice(0, TOP_MOTIVOS);
-  const motoristasVis = expandir === "motoristas" ? motoristasFiltrados : motoristasFiltrados.slice(0, TOP_MOTORISTAS);
-  const clientesVis = expandir === "clientes" ? r.topClientes : r.topClientes.slice(0, TOP_CLIENTES);
-
   const maxMotivo = Math.max(1, ...r.porMotivo.map((m) => m.valor));
-  const accentSetor = (s: SetorDevolucao) => (s === "Logística" ? "red" : s === "Comercial" ? "gold" : "navy");
-  const pior = piorMotorista(motoristasFiltrados);
+  const totalSetor = Math.max(1, r.porSetor.reduce((t, s) => t + s.valor, 0));
 
   return (
     <div>
@@ -170,7 +124,7 @@ export default async function DevolucoesPage({
         )}
       </div>
 
-      {/* Filtro: motivo/setor vão no SQL (estreitam as 3 seções); motorista é busca por nome. */}
+      {/* Filtro: motivo/setor vão no SQL e estreitam as três seções. */}
       <Card className="mb-4 p-3">
         <form method="get" className="flex flex-wrap gap-2">
           <select name="motivo" defaultValue={motivo ?? ""} className={`${inputCls} min-w-[12rem] flex-1`}>
@@ -181,136 +135,79 @@ export default async function DevolucoesPage({
             <option value="">Todos os setores</option>
             {SETORES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <input name="motorista" defaultValue={buscaMotorista} placeholder="Buscar motorista" className={`${inputCls} min-w-[10rem]`} />
           <button className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]">
             Filtrar
           </button>
         </form>
       </Card>
 
-      {/* Cards de setor — clicáveis: viram atalho de filtro. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {r.porSetor.map((s) => (
-          <StatCard
-            key={s.setor}
-            label={s.setor}
-            value={formatBRL(s.valor)}
-            hint={`${s.notas} notas`}
-            accent={accentSetor(s.setor)}
-            href={url({ setor: setor === s.setor ? undefined : s.setor, expandir: undefined })}
+      {/* Responsabilidade por setor: barra empilhada + cards clicáveis (filtram). */}
+      <Card className="mb-6 p-5">
+        <h3 className="mb-3 text-sm font-semibold text-[#141a4d]">Responsabilidade por setor (no período)</h3>
+        <div className="mb-4 flex h-3 overflow-hidden rounded-full">
+          {r.porSetor.map((s) => (
+            <div
+              key={s.setor}
+              className={CORES[s.setor].barra}
+              style={{ width: `${(s.valor / totalSetor) * 100}%` }}
+              title={`${s.setor}: ${((s.valor / totalSetor) * 100).toFixed(1)}%`}
+            />
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {r.porSetor.map((s) => {
+            const pct = (s.valor / totalSetor) * 100;
+            const ativo = setor === s.setor;
+            return (
+              <Link
+                key={s.setor}
+                href={url({ setor: ativo ? undefined : s.setor })}
+                className={`rounded-lg border p-3 transition hover:shadow-sm ${ativo ? "border-amber-400 ring-1 ring-amber-300" : "border-slate-200"}`}
+              >
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${CORES[s.setor].pill}`}>
+                  {s.setor}
+                </span>
+                <div className="mt-2 flex items-baseline gap-1.5">
+                  <span className="font-[family-name:var(--font-sora)] text-lg font-extrabold leading-none tabular-nums text-[#141a4d]">
+                    {pct.toFixed(1)}%
+                  </span>
+                  <span className="text-xs text-slate-400">do valor</span>
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500">{s.notas} notas · {formatBRL(s.valor)}</div>
+              </Link>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Motivo + Clientes lado a lado no desktop. */}
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card className="overflow-hidden">
+          <PanelHeader
+            icon={<IconeEtiqueta />}
+            tone="gold"
+            title="Por motivo"
+            context={`${r.porMotivo.length} motivos · por valor`}
           />
-        ))}
+          <div className="max-h-[28rem] divide-y divide-slate-100 overflow-y-auto">
+            {r.porMotivo.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-slate-400">Sem devoluções no período.</p>
+            ) : (
+              r.porMotivo.map((m) => <LinhaMotivo key={`${m.motivo}-${m.setor}`} m={m} max={maxMotivo} />)
+            )}
+          </div>
+        </Card>
+
+        <PainelClientes clientes={r.topClientes} />
       </div>
 
-      <section className="mt-6">
-        <CabecalhoSecao
-          titulo="Por motivo"
-          mostrados={motivosVis.length}
-          total={r.porMotivo.length}
-          expandido={expandir === "motivos"}
-          href={url({ expandir: expandir === "motivos" ? undefined : "motivos" })}
-        />
-        <Card className="p-5">
-          {motivosVis.length === 0 ? (
-            <p className="text-sm text-slate-400">Sem devoluções no período.</p>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {motivosVis.map((m) => (
-                <LinhaMotivo key={`${m.motivo}-${m.setor}`} m={m} max={maxMotivo} />
-              ))}
-            </div>
-          )}
-        </Card>
-      </section>
-
-      <section className="mt-6">
-        <CabecalhoSecao
-          titulo="Por motorista"
-          mostrados={motoristasVis.length}
-          total={motoristasFiltrados.length}
-          expandido={expandir === "motoristas"}
-          href={url({ expandir: expandir === "motoristas" ? undefined : "motoristas" })}
-        />
-        {pior && (
-          <p className="mb-3 text-sm text-slate-500">
-            Maior taxa (com 50+ entregas):{" "}
-            <span className="font-semibold text-rose-600">{pior.nome}</span> —{" "}
-            {formatPercent(pior.taxa / 100)} ({pior.devolvidas} de {pior.expedidas}).
-          </p>
-        )}
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">Motorista</th>
-                  <th className="px-5 py-3 font-semibold text-right">Entregas</th>
-                  <th className="px-5 py-3 font-semibold text-right">Devolvidas</th>
-                  <th className="px-5 py-3 font-semibold text-right">Taxa</th>
-                  <th className="px-5 py-3 font-semibold text-right">Valor devolvido</th>
-                </tr>
-              </thead>
-              <tbody>
-                {motoristasVis.map((m) => (
-                  <tr key={m.codMotorista} className="border-b border-slate-50 last:border-0">
-                    <td className="px-5 py-3 font-medium text-[#141a4d]">{m.nome}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-500">{m.expedidas}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-500">{m.devolvidas}</td>
-                    <td className={`px-5 py-3 text-right tabular-nums font-semibold ${corTaxa(m.taxa)}`}>
-                      {formatPercent(m.taxa / 100)}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums font-semibold text-[#141a4d]">{formatBRL(m.valorDevolvido)}</td>
-                  </tr>
-                ))}
-                {motoristasVis.length === 0 && (
-                  <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-400">
-                    {buscaMotorista ? `Nenhum motorista encontrado para "${buscaMotorista}".` : "Sem entregas em carga no período."}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </section>
-
-      <section className="mt-6">
-        <CabecalhoSecao
-          titulo="Clientes que mais devolvem"
-          mostrados={clientesVis.length}
-          total={r.topClientes.length}
-          expandido={expandir === "clientes"}
-          href={url({ expandir: expandir === "clientes" ? undefined : "clientes" })}
-        />
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">Cliente</th>
-                  <th className="px-5 py-3 font-semibold">Notas</th>
-                  <th className="px-5 py-3 font-semibold text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clientesVis.map((c) => (
-                  <tr key={c.codcli} className="border-b border-slate-50 last:border-0">
-                    <td className="px-5 py-3 font-medium text-[#141a4d]">{c.nome}</td>
-                    <td className="px-5 py-3 tabular-nums text-slate-500">{c.notas}</td>
-                    <td className="px-5 py-3 text-right tabular-nums font-semibold text-[#141a4d]">{formatBRL(c.valor)}</td>
-                  </tr>
-                ))}
-                {clientesVis.length === 0 && (
-                  <tr><td colSpan={3} className="px-5 py-8 text-center text-slate-400">Sem devoluções no período.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </section>
+      <div className="mt-6">
+        <TabelaMotoristas motoristas={r.porMotorista} />
+      </div>
 
       <p className="mt-4 text-xs text-slate-400">
         Os indicadores no topo são sempre o total do mês (não reagem ao filtro). Motivo e setor
-        estreitam as três seções; a busca de motorista filtra só a tabela de motoristas.
+        estreitam as três seções abaixo; a busca dentro de cada painel filtra só aquele painel.
         Valor líquido da devolução (rotina 111), pela data da devolução.
       </p>
     </div>

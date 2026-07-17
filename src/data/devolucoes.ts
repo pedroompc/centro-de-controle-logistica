@@ -90,7 +90,7 @@ const sqlCliente = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
   LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   WHERE edf.NUMTRANSVENDA > 0
   GROUP BY s.CODCLI ORDER BY VALOR DESC
-) WHERE ROWNUM <= 10`;
+) WHERE ROWNUM <= 50`;
 
 // Devolução por motorista de entrega: expedição via carga (PCNFSAID.NUMCAR →
 // PCCARREG.CODMOTORISTA → PCEMPR.NOME), taxa = devolvidas/expedidas. Motorista
