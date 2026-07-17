@@ -172,3 +172,32 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
     </Link>
   );
 }
+
+/** Cabeçalho de painel — chip de ícone + título + contexto + slot à direita (busca). */
+export function PanelHeader({
+  icon,
+  tone = "navy",
+  title,
+  context,
+  right,
+}: {
+  icon: ReactNode;
+  tone?: "navy" | "gold";
+  title: string;
+  context?: string;
+  right?: ReactNode;
+}) {
+  const chip = tone === "gold" ? "bg-amber-50 text-amber-600" : "bg-[#eef0fb] text-[#1b2168]";
+  return (
+    <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center">
+      <div className="flex items-center gap-2">
+        <div className={`rounded-lg p-1.5 ${chip}`}>{icon}</div>
+        <div>
+          <h2 className="text-sm font-semibold text-[#141a4d]">{title}</h2>
+          {context && <p className="mt-0.5 text-xs text-slate-400">{context}</p>}
+        </div>
+      </div>
+      {right && <div className="sm:ml-auto">{right}</div>}
+    </div>
+  );
+}
