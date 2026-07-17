@@ -56,7 +56,7 @@ describe("ordenarMotoristas", () => {
 });
 
 describe("corTaxa (semáforo)", () => {
-  it("verde abaixo de 8%", () => expect(corTaxa(5)).toBe("text-emerald-600"));
+  it("neutro abaixo de 8%", () => expect(corTaxa(5)).toBe("text-slate-500"));
   it("âmbar de 8% a 15%", () => expect(corTaxa(10)).toBe("text-amber-600"));
   it("vermelho em 15% ou mais", () => expect(corTaxa(15)).toBe("text-rose-600"));
 });

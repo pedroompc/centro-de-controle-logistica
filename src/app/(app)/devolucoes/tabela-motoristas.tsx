@@ -20,7 +20,15 @@ function Th({
   return (
     <th
       onClick={() => onSort(col)}
-      className="cursor-pointer select-none px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSort(col);
+        }
+      }}
+      tabIndex={0}
+      aria-sort={ativo ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      className="cursor-pointer select-none px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
     >
       <span className="inline-flex items-center gap-1">
         {rotulo}
@@ -62,6 +70,7 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
         placeholder="Buscar motorista…"
+        aria-label="Buscar motorista"
         className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50 sm:w-56"
       />
     </div>

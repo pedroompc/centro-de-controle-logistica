@@ -25,9 +25,10 @@ export function ordenarMotoristas(
   return [...lista].sort((a, b) => (dir === "asc" ? a[col] - b[col] : b[col] - a[col]));
 }
 
-/** Semáforo da taxa de devolução: verde < 8%, âmbar 8–15%, vermelho >= 15%. */
+/** Semáforo da taxa de devolução: neutro < 8%, âmbar 8–15%, vermelho >= 15%.
+ * Taxa saudável fica em cinza (não verde) — a identidade do site evita verde. */
 export function corTaxa(taxa: number): string {
   if (taxa >= 15) return "text-rose-600";
   if (taxa >= 8) return "text-amber-600";
-  return "text-emerald-600";
+  return "text-slate-500";
 }

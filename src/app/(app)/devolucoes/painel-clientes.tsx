@@ -24,6 +24,7 @@ export default function PainelClientes({ clientes }: { clientes: DevolucaoPorCli
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
         placeholder="Buscar cliente…"
+        aria-label="Buscar cliente"
         className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50 sm:w-48"
       />
     </div>
