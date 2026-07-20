@@ -15,16 +15,17 @@ export async function GET(req: NextRequest) {
   const tipo = (sp.get("tipo") as DescarregamentoTipo) || undefined;
   const receitas = await listarReceitasDoMes(mes, { fornecedorId, tipo });
 
-  const header = ["Data", "Fornecedor", "Peso (kg)", "Peso (t)", "Tipo", "Preço/ton", "Receita"];
+  const header = ["Data", "Fornecedor", "Peso (kg)", "Peso (t)", "Tipo", "Preço/ton", "Receita", "Mínimo aplicado"];
   const linhas = receitas.map((r) =>
     [
       r.data,
       esc(r.fornecedorNome),
       num(r.pesoKg),
       num(toneladas(r.pesoKg)),
-      ROTULO_TIPO[r.tipo],
+      ROTULO_TIPO[r.tipo] ?? r.tipo,
       num(r.precoPorTonelada),
       num(r.receita),
+      num(r.minimoAplicado),
     ].join(";"),
   );
   const csv = "﻿" + [header.join(";"), ...linhas].join("\n"); // BOM p/ Excel PT-BR

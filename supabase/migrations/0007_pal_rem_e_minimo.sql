@@ -2,7 +2,9 @@
 -- rebatida (mesa/altura) ou conferida por avaria. Preço/ton próprio.
 -- E valor mínimo global cobrado por descarregamento (R$ 25,00 por padrão).
 --
--- Aditiva e idempotente: roda igual com a 0006 já aplicada ou não.
+-- Aditiva e idempotente: pode ser reexecutada com segurança, sem duplicar
+-- dados nem falhar (requer a 0006 já aplicada, pois referencia
+-- descarregamento_tipo e precos_descarregamento).
 
 -- ALTER TYPE ... ADD VALUE não pode ser usado na mesma transação que insere
 -- usando o valor novo. Daí o commit explícito antes do INSERT abaixo.

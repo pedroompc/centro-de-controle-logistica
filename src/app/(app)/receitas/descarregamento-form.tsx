@@ -103,7 +103,7 @@ export function DescarregamentoForm({
       />
       <input name="observacao" defaultValue={receita?.observacao ?? ""} placeholder="Observação" className={field} />
       <span className="px-2 py-2 text-sm font-semibold text-emerald-700">
-        {toneladas(peso || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t → {formatBRL(previa)}
+        {toneladas(peso || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t → {peso ? formatBRL(previa) : "—"}
       </span>
       <button className="rounded-xl bg-[#181d55] px-4 py-2 font-semibold text-white transition hover:bg-[#10143f]">
         {receita ? "Salvar" : "Adicionar"}

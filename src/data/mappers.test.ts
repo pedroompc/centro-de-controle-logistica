@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal } from "./mappers";
+import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapConfig } from "./mappers";
 
 describe("mapFuncionario", () => {
   it("converte snake_case e custo_mensal string em number", () => {
@@ -65,5 +65,47 @@ describe("mapCustoMensal", () => {
     expect(mapCustoMensal(row)).toEqual({
       id: "cm1", mes: "2026-07-01", nome: "Gasolina", tipo: "variavel", valor: 3500.5,
     });
+  });
+});
+
+describe("mapReceita", () => {
+  it("converte campos numeric (string) do PostgREST em number", () => {
+    const row = {
+      id: "r1",
+      data: "2026-07-10",
+      fornecedor_id: "f1",
+      fornecedores: { nome: "Fornecedor 1" },
+      peso_kg: "1234.500",
+      tipo: "pal_rem",
+      preco_por_tonelada: "33.33",
+      receita: "41.13",
+      minimo_aplicado: "25.00",
+      observacao: null,
+    };
+    const receita = mapReceita(row);
+    expect(receita).toEqual({
+      id: "r1",
+      data: "2026-07-10",
+      fornecedorId: "f1",
+      fornecedorNome: "Fornecedor 1",
+      pesoKg: 1234.5,
+      tipo: "pal_rem",
+      precoPorTonelada: 33.33,
+      receita: 41.13,
+      minimoAplicado: 25,
+      observacao: null,
+    });
+    expect(typeof receita.pesoKg).toBe("number");
+    expect(typeof receita.precoPorTonelada).toBe("number");
+    expect(typeof receita.receita).toBe("number");
+    expect(typeof receita.minimoAplicado).toBe("number");
+  });
+});
+
+describe("mapConfig", () => {
+  it("converte valor_minimo (string do PostgREST) em number", () => {
+    const config = mapConfig({ valor_minimo: "25.00" });
+    expect(config).toEqual({ valorMinimo: 25 });
+    expect(typeof config.valorMinimo).toBe("number");
   });
 });

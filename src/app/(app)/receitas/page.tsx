@@ -150,7 +150,7 @@ export default async function ReceitasPage({
                       </td>
                       <td className="px-5 py-3">
                         <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "green" : "slate"}>
-                          {ROTULO_TIPO[r.tipo]}
+                          {ROTULO_TIPO[r.tipo] ?? r.tipo}
                         </Pill>
                       </td>
                       <td className="px-5 py-3 tabular-nums text-slate-600">{formatBRL(r.precoPorTonelada)}</td>
