@@ -75,12 +75,6 @@ export function topPorDevolucao(serie: PontoTendencia[], n: number): PontoTenden
   return [...serie].sort((a, b) => b.valorDevolucao - a.valorDevolucao).slice(0, n);
 }
 
-/** Cada valor como fração (0..1) do maior da lista — para barras indexadas. */
-export function indice(valores: number[]): number[] {
-  const max = Math.max(0, ...valores) || 1;
-  return valores.map((v) => v / max);
-}
-
 /**
  * Converte uma série de valores em pontos "x,y" para um <polyline> SVG.
  * Maior valor no topo, menor na base, respeitando o padding. Assume série sem
