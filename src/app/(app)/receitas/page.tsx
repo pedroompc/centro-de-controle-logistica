@@ -149,7 +149,7 @@ export default async function ReceitasPage({
                         {formatKg(r.pesoKg)} <span className="text-slate-400">({fmtTon(toneladas(r.pesoKg))})</span>
                       </td>
                       <td className="px-5 py-3">
-                        <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "green" : "slate"}>
+                        <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "navy" : "slate"}>
                           {ROTULO_TIPO[r.tipo] ?? r.tipo}
                         </Pill>
                       </td>
