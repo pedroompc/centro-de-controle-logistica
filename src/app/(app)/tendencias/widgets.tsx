@@ -16,9 +16,11 @@ export const CORES = {
   devolucao: "#c2820a",
   peso: "#c2820a",
   taxa: "#c2820a",
-  // Status (bom/ruim da variação) — reservados, não são "mais uma cor de série".
-  positivo: "#059669",
-  negativo: "#dc2626",
+  // Status da variação. Sem verde, por regra de identidade do site: variação boa
+  // fica NEUTRA e só a ruim ganha cor, como o semáforo de `corTaxa` em Devoluções
+  // (slate → âmbar → rose). A direção continua legível pela seta, não pela cor.
+  positivo: "#64748b", // slate-500
+  negativo: "#e11d48", // rose-600
 } as const;
 
 export interface Delta {
