@@ -43,6 +43,12 @@ describe("receitas-metrics", () => {
     expect(calcularReceita(500, 30)).toBe(15);
   });
 
+  it("arredonda o mínimo para 2 casas quando é retornado como resultado final", () => {
+    // Mínimo com ruído float (3+ casas) deve ser arredondado: 25.555 → 25.56
+    // 500 kg = 0,5 t × 30 = 15,00 < 25.555 (mínimo), logo retorna 25.555 arredondado
+    expect(calcularReceita(500, 30, 25.555)).toBe(25.56);
+  });
+
   it("soma receita total e toneladas totais", () => {
     const rs = [r({ receita: 250, pesoKg: 12500 }), r({ receita: 100, pesoKg: 5000 })];
     expect(receitaTotal(rs)).toBe(350);
