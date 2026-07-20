@@ -1,15 +1,26 @@
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
 
-// Paleta validada (dataviz, light): venda azul, devolução vermelho, peso laranja,
-// taxa violeta; verde/vermelho para variação boa/ruim.
+/**
+ * Paleta semântica, não categórica: navy = operação normal, âmbar = devolução
+ * (o que se quer vigiar). Antes eram quatro hues que só distinguiam séries num
+ * plot compartilhado; com um painel por indicador, o título já faz esse trabalho
+ * e a cor ficou livre para significar algo.
+ *
+ * Tons da identidade do site, ajustados para passar nas checagens de dataviz —
+ * o navy da marca (#181d55, L 0.27) fica fora da faixa de luminosidade; #3d47a8
+ * é o mais próximo dele que passa. Par validado: ΔE 35,5 normal / 34+ sob CVD.
+ */
 export const CORES = {
-  venda: "#2563eb",
-  devolucao: "#e11d48",
-  peso: "#d97706",
-  taxa: "#7c3aed",
-  positivo: "#059669",
-  negativo: "#dc2626",
+  venda: "#3d47a8",
+  devolucao: "#c2820a",
+  peso: "#c2820a",
+  taxa: "#c2820a",
+  // Status da variação. Sem verde, por regra de identidade do site: variação boa
+  // fica NEUTRA e só a ruim ganha cor, como o semáforo de `corTaxa` em Devoluções
+  // (slate → âmbar → rose). A direção continua legível pela seta, não pela cor.
+  positivo: "#64748b", // slate-500
+  negativo: "#e11d48", // rose-600
 } as const;
 
 export interface Delta {
@@ -71,20 +82,6 @@ export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
   );
 }
 
-/** Legenda de séries (marca colorida + nome; texto em tinta neutra). */
-export function Legenda({ series }: { series: { nome: string; cor: string }[] }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-      {series.map((s) => (
-        <span key={s.nome} className="flex items-center gap-2 text-xs font-medium text-slate-600">
-          <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.cor }} />
-          {s.nome}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 /** Ranking horizontal: top meses por valor de devolução. */
 export function RankingBars({ itens }: { itens: { rotulo: string; valor: number; abs: string }[] }) {
   const max = Math.max(1, ...itens.map((i) => i.valor));
@@ -95,7 +92,7 @@ export function RankingBars({ itens }: { itens: { rotulo: string; valor: number;
           <span className="w-12 shrink-0 text-xs font-medium text-slate-500">{it.rotulo}</span>
           <div className="h-6 flex-1 overflow-hidden rounded-md bg-slate-100">
             <div className="flex h-full items-center rounded-md"
-              style={{ width: `${Math.max(6, (it.valor / max) * 100)}%`, backgroundColor: i === 0 ? CORES.devolucao : "#f2647d" }} />
+              style={{ width: `${Math.max(6, (it.valor / max) * 100)}%`, backgroundColor: i === 0 ? CORES.devolucao : "#e0a63f" }} />
           </div>
           <span className="w-28 shrink-0 text-right text-xs font-semibold tabular-nums text-[#141a4d]">{it.abs}</span>
         </div>
@@ -104,21 +101,26 @@ export function RankingBars({ itens }: { itens: { rotulo: string; valor: number;
   );
 }
 
-/** Linha de indicador comparativo: nome, mini-barras, variação com seta/cor. */
-export function ComparativoRow({ icone, nome, base, delta, valores, cor }: {
-  icone: ReactNode; nome: string; base: string; delta: Delta; valores: number[]; cor: string;
+/**
+ * Linha de indicador comparativo: ícone, nome e variação com seta/cor.
+ *
+ * Sem mini-barras de propósito. Este card vive numa coluna de 1/3, e as barrinhas
+ * (108px fixos) espremiam o nome até sobrar "Ven…". As mesmas séries já aparecem
+ * como sparkline nos KpiCard do topo, então nada se perde ao tirá-las daqui.
+ */
+export function ComparativoRow({ icone, nome, base, delta, cor }: {
+  icone: ReactNode; nome: string; base: string; delta: Delta; cor: string;
 }) {
   const deltaCor = delta.positivo ? CORES.positivo : CORES.negativo;
   return (
-    <div className="flex items-center gap-3 py-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+    <div className="flex items-center gap-3 py-3.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
         style={{ backgroundColor: `${cor}14`, color: cor }}>{icone}</span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-[#141a4d]">{nome}</p>
+        <p className="text-sm font-semibold text-[#141a4d]">{nome}</p>
         <p className="text-xs text-slate-400">{base}</p>
       </div>
-      <MiniBars valores={valores} cor={cor} />
-      <span className="flex w-20 shrink-0 items-center justify-end gap-1 text-sm font-bold tabular-nums" style={{ color: deltaCor }}>
+      <span className="flex shrink-0 items-center gap-1 text-sm font-bold tabular-nums" style={{ color: deltaCor }}>
         <Seta subindo={delta.subindo} />{delta.texto}
       </span>
     </div>

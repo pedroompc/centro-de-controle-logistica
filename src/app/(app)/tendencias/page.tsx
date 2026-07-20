@@ -1,12 +1,12 @@
 import { getSerieTendencias } from "@/data/faturamento-mensal";
 import {
   taxaDevolucaoMensal, resumoPeriodo, variacaoPercentual, variacaoPP, media,
-  topPorDevolucao, indice,
+  topPorDevolucao,
 } from "@/domain/tendencias";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { PageHeader, Card, SectionTitle } from "@/components/ui";
-import { CORES, KpiCard, Legenda, RankingBars, ComparativoRow, type Delta } from "./widgets";
-import { EvolucaoChart, type SerieChart } from "./evolucao-chart";
+import { CORES, KpiCard, RankingBars, ComparativoRow, type Delta } from "./widgets";
+import { EvolucaoChart, type SeriePainel } from "./evolucao-chart";
 import { CompararMeses, type MesComparavel } from "./comparar-meses";
 import { ExportButton } from "./export-button";
 
@@ -75,12 +75,12 @@ export default async function TendenciasPage() {
   const dValor: Delta = { texto: pctComSinal(deltaValor), subindo: deltaValor > 0, positivo: deltaValor < 0 };
   const dPeso: Delta = { texto: pctComSinal(deltaPeso), subindo: deltaPeso > 0, positivo: deltaPeso < 0 };
 
-  // Gráfico indexado (cada série normalizada pelo próprio pico).
-  const series: SerieChart[] = [
-    { nome: "Venda líquida", cor: CORES.venda, indices: indice(vVenda), abs: vVenda.map(formatBRL) },
-    { nome: "Valor devolução", cor: CORES.devolucao, indices: indice(vValor), abs: vValor.map(formatBRL) },
-    { nome: "Peso devolvido", cor: CORES.peso, indices: indice(vPeso), abs: vPeso.map(formatKg) },
-    { nome: "Taxa de devolução", cor: CORES.taxa, indices: indice(vTaxa), abs: vTaxa.map((t) => formatPercent(t)) },
+  // Um painel por indicador, cada um na sua unidade real (sem índice).
+  const series: SeriePainel[] = [
+    { nome: "Venda líquida", cor: CORES.venda, valores: vVenda, abs: vVenda.map(formatBRL) },
+    { nome: "Valor devolução", cor: CORES.devolucao, valores: vValor, abs: vValor.map(formatBRL) },
+    { nome: "Peso devolvido", cor: CORES.peso, valores: vPeso, abs: vPeso.map(formatKg) },
+    { nome: "Taxa de devolução", cor: CORES.taxa, valores: vTaxa, abs: vTaxa.map((t) => formatPercent(t)) },
   ];
 
   const mesesComparaveis: MesComparavel[] = serie.map((p, i) => ({
@@ -138,12 +138,9 @@ export default async function TendenciasPage() {
 
       {/* Gráfico principal */}
       <Card className="p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <SectionTitle>Evolução mensal</SectionTitle>
-            <p className="text-xs text-slate-400">Índice — cada indicador em % do seu maior mês, para comparar a evolução. Valor exato ao passar o mouse.</p>
-          </div>
-          <Legenda series={series} />
+        <div className="mb-4">
+          <SectionTitle>Evolução mensal</SectionTitle>
+          <p className="text-xs text-slate-400">Cada indicador na sua unidade, {rotulos[0]} a {rotulos[rotulos.length - 1]}. Passe o mouse para ver o mês.</p>
         </div>
         <EvolucaoChart rotulos={rotulos} series={series} />
       </Card>
@@ -178,11 +175,11 @@ export default async function TendenciasPage() {
         <Card className="p-6">
           <SectionTitle>Comparativo · vs média 12 meses</SectionTitle>
           <div className="mt-1 divide-y divide-slate-100">
-            <ComparativoRow icone={IcVenda} nome="Venda líquida" base="vs média 12 meses" cor={CORES.venda} valores={vVenda}
+            <ComparativoRow icone={IcVenda} nome="Venda líquida" base="vs média 12 meses" cor={CORES.venda}
               delta={{ texto: pctComSinal(cVenda), subindo: cVenda > 0, positivo: cVenda > 0 }} />
-            <ComparativoRow icone={IcTaxa} nome="Taxa de devolução" base="vs média 12 meses" cor={CORES.taxa} valores={vTaxa}
+            <ComparativoRow icone={IcTaxa} nome="Taxa de devolução" base="vs média 12 meses" cor={CORES.taxa}
               delta={{ texto: ppComSinal(cTaxaPP), subindo: taxaAtual > mediaTaxa, positivo: taxaAtual < mediaTaxa }} />
-            <ComparativoRow icone={IcPeso} nome="Peso devolvido" base="vs média 12 meses" cor={CORES.peso} valores={vPeso}
+            <ComparativoRow icone={IcPeso} nome="Peso devolvido" base="vs média 12 meses" cor={CORES.peso}
               delta={{ texto: pctComSinal(cPeso), subindo: cPeso > 0, positivo: cPeso < 0 }} />
           </div>
         </Card>

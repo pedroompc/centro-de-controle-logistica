@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   mesesFechados, taxaDevolucaoMensal, pontosLinha,
-  resumoPeriodo, variacaoPercentual, variacaoPP, media, topPorDevolucao, indice,
+  resumoPeriodo, variacaoPercentual, variacaoPP, media, topPorDevolucao,
   type PontoTendencia,
 } from "./tendencias";
 
@@ -97,11 +97,3 @@ describe("topPorDevolucao", () => {
   });
 });
 
-describe("indice", () => {
-  it("normaliza cada valor como fração do maior", () => {
-    expect(indice([25, 50, 100])).toEqual([0.25, 0.5, 1]);
-  });
-  it("não divide por zero quando tudo é 0", () => {
-    expect(indice([0, 0])).toEqual([0, 0]);
-  });
-});
