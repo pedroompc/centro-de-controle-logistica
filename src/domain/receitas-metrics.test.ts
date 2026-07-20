@@ -49,9 +49,18 @@ describe("receitas-metrics", () => {
     ]);
   });
 
-  it("agrupa receita por tipo", () => {
-    const rs = [r({ tipo: "batido", receita: 100 }), r({ tipo: "paletizado", receita: 40 }), r({ tipo: "batido", receita: 10 })];
-    expect(receitaPorTipo(rs)).toEqual({ batido: 110, paletizado: 40 });
+  it("agrupa receita por tipo, incluindo pal_rem", () => {
+    const rs = [
+      r({ tipo: "batido", receita: 100 }),
+      r({ tipo: "paletizado", receita: 40 }),
+      r({ tipo: "batido", receita: 10 }),
+      r({ tipo: "pal_rem", receita: 25 }),
+    ];
+    expect(receitaPorTipo(rs)).toEqual({ batido: 110, paletizado: 40, pal_rem: 25 });
+  });
+
+  it("zera os tipos sem lançamento em vez de omiti-los", () => {
+    expect(receitaPorTipo([])).toEqual({ batido: 0, paletizado: 0, pal_rem: 0 });
   });
 
   it("custo líquido = brutos − receitas", () => {

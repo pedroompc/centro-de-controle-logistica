@@ -1,4 +1,5 @@
-import type { Receita } from "./types";
+import type { Receita, DescarregamentoTipo } from "./types";
+import { TIPOS_DESCARREGAMENTO } from "./descarregamento";
 
 /** Arredonda a 2 casas (centavos), estável para somas de dinheiro. */
 export function arredonda2(n: number): number {
@@ -37,8 +38,10 @@ export function receitaPorFornecedor(rs: Receita[]): { fornecedorId: string; nom
   return [...mapa.values()].sort((a, b) => b.valor - a.valor);
 }
 
-export function receitaPorTipo(rs: Receita[]): { batido: number; paletizado: number } {
-  const acc = { batido: 0, paletizado: 0 };
+export function receitaPorTipo(rs: Receita[]): Record<DescarregamentoTipo, number> {
+  const acc = Object.fromEntries(
+    TIPOS_DESCARREGAMENTO.map((t) => [t, 0]),
+  ) as Record<DescarregamentoTipo, number>;
   for (const r of rs) acc[r.tipo] = arredonda2(acc[r.tipo] + r.receita);
   return acc;
 }
