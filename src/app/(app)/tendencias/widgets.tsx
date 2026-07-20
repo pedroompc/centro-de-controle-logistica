@@ -1,13 +1,22 @@
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
 
-// Paleta validada (dataviz, light): venda azul, devolução vermelho, peso laranja,
-// taxa violeta; verde/vermelho para variação boa/ruim.
+/**
+ * Paleta semântica, não categórica: navy = operação normal, âmbar = devolução
+ * (o que se quer vigiar). Antes eram quatro hues que só distinguiam séries num
+ * plot compartilhado; com um painel por indicador, o título já faz esse trabalho
+ * e a cor ficou livre para significar algo.
+ *
+ * Tons da identidade do site, ajustados para passar nas checagens de dataviz —
+ * o navy da marca (#181d55, L 0.27) fica fora da faixa de luminosidade; #3d47a8
+ * é o mais próximo dele que passa. Par validado: ΔE 35,5 normal / 34+ sob CVD.
+ */
 export const CORES = {
-  venda: "#2563eb",
-  devolucao: "#e11d48",
-  peso: "#d97706",
-  taxa: "#7c3aed",
+  venda: "#3d47a8",
+  devolucao: "#c2820a",
+  peso: "#c2820a",
+  taxa: "#c2820a",
+  // Status (bom/ruim da variação) — reservados, não são "mais uma cor de série".
   positivo: "#059669",
   negativo: "#dc2626",
 } as const;
@@ -81,7 +90,7 @@ export function RankingBars({ itens }: { itens: { rotulo: string; valor: number;
           <span className="w-12 shrink-0 text-xs font-medium text-slate-500">{it.rotulo}</span>
           <div className="h-6 flex-1 overflow-hidden rounded-md bg-slate-100">
             <div className="flex h-full items-center rounded-md"
-              style={{ width: `${Math.max(6, (it.valor / max) * 100)}%`, backgroundColor: i === 0 ? CORES.devolucao : "#f2647d" }} />
+              style={{ width: `${Math.max(6, (it.valor / max) * 100)}%`, backgroundColor: i === 0 ? CORES.devolucao : "#e0a63f" }} />
           </div>
           <span className="w-28 shrink-0 text-right text-xs font-semibold tabular-nums text-[#141a4d]">{it.abs}</span>
         </div>
