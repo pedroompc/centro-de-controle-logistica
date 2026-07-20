@@ -10,9 +10,17 @@ export function toneladas(pesoKg: number): number {
   return pesoKg / 1000;
 }
 
-/** Receita de um descarregamento = toneladas × preço/ton, em centavos. */
-export function calcularReceita(pesoKg: number, precoPorTonelada: number): number {
-  return arredonda2(toneladas(pesoKg) * precoPorTonelada);
+/**
+ * Receita de um descarregamento = toneladas × preço/ton, respeitando o valor
+ * mínimo cobrado por descarrego. O mínimo é piso, nunca teto.
+ * Default `0` preserva o cálculo puro para quem não passa o mínimo (prévias e testes).
+ */
+export function calcularReceita(
+  pesoKg: number,
+  precoPorTonelada: number,
+  valorMinimo = 0,
+): number {
+  return Math.max(arredonda2(toneladas(pesoKg) * precoPorTonelada), valorMinimo);
 }
 
 export function receitaTotal(rs: Receita[]): number {

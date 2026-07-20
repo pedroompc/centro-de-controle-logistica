@@ -25,6 +25,24 @@ describe("receitas-metrics", () => {
     expect(arredonda2(41.129)).toBe(41.13);
   });
 
+  it("eleva a receita ao mínimo quando o cálculo fica abaixo dele", () => {
+    // 500 kg = 0,5 t × 30 = R$ 15,00 → cobra o mínimo de R$ 25,00
+    expect(calcularReceita(500, 30, 25)).toBe(25);
+  });
+
+  it("não usa o mínimo como teto: cálculo maior prevalece", () => {
+    expect(calcularReceita(12500, 20, 25)).toBe(250);
+  });
+
+  it("cálculo exatamente igual ao mínimo devolve o mínimo", () => {
+    // 1000 kg = 1 t × 25 = R$ 25,00
+    expect(calcularReceita(1000, 25, 25)).toBe(25);
+  });
+
+  it("sem mínimo informado, mantém o cálculo puro", () => {
+    expect(calcularReceita(500, 30)).toBe(15);
+  });
+
   it("soma receita total e toneladas totais", () => {
     const rs = [r({ receita: 250, pesoKg: 12500 }), r({ receita: 100, pesoKg: 5000 })];
     expect(receitaTotal(rs)).toBe(350);
