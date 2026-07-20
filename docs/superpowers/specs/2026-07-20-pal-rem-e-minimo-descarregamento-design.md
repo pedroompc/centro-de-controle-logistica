@@ -136,6 +136,32 @@ Em `receitas-metrics.test.ts`:
 ## Fora de escopo
 
 - Mínimo diferenciado por tipo ou por fornecedor.
-- Recálculo retroativo de lançamentos já gravados. O mínimo vale da aplicação em diante;
-  os registros anteriores ficam com `minimo_aplicado = 0` e receita original.
 - Badge visual de "mínimo aplicado" na tabela.
+
+## Revisão de 2026-07-20 (pós-implementação)
+
+Duas decisões do Pedro que **revertem** o que este spec dizia. Ficam aqui em vez de
+serem editadas por cima, para que a mudança de entendimento fique registrada.
+
+### Recálculo retroativo: agora SIM, via backfill
+
+O spec original excluía recálculo retroativo, partindo da premissa de que a regra do
+mínimo era nova. **A premissa estava errada.** A regra não é nova na empresa — é nova
+no sistema. A Dia sempre cobrou R$ 25,00 nos descarregamentos que calculavam menos
+que isso; o software é que gravava o valor cru.
+
+Logo, os lançamentos históricos abaixo de R$ 25 são registros **errados**: divergem do
+que foi de fato faturado. O backfill (`0008_backfill_minimo_descarregamento.sql`) sobe
+para 25,00 as linhas com `minimo_aplicado = 0` e `receita < 25,00`, corrigindo o sistema
+para bater com a realidade. A migration faz backup da tabela antes e documenta a reversão.
+
+### Edição de lançamento aplica o mínimo vigente
+
+O review final levantou que `editarReceita` lê o mínimo de hoje e sobrescreve a receita,
+mesmo quando a edição foi só num campo de texto — de modo que corrigir uma observação
+pode mudar o valor cobrado. **Decisão do Pedro: manter esse comportamento.** Qualquer
+edição traz o lançamento para a regra vigente.
+
+Consequência a ter em mente se o mínimo mudar no futuro (ex.: 25 → 30): editar a
+observação de um lançamento antigo vai re-cobrá-lo pelo mínimo novo. O formulário mostra
+o valor na prévia antes de salvar, mas não avisa que ele mudou.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listarReceitasDoMes, serieReceitasMensais, removerReceita, type FiltrosReceita } from "@/data/receitas";
 import { listarFornecedores } from "@/data/fornecedores";
 import { listarPrecos } from "@/data/precos-descarregamento";
+import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin } from "@/data/auth";
 import {
   receitaTotal, toneladasTotal, valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, toneladas,
@@ -10,12 +11,11 @@ import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
 import { DescarregamentoForm } from "./descarregamento-form";
+import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo } from "@/domain/types";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
-
-const rotuloTipo: Record<DescarregamentoTipo, string> = { batido: "Batido", paletizado: "Paletizado" };
 
 function fmtTon(t: number): string {
   return `${t.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t`;
@@ -41,10 +41,11 @@ export default async function ReceitasPage({
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
   };
 
-  const [receitas, fornecedores, precos, serie, admin] = await Promise.all([
+  const [receitas, fornecedores, precos, config, serie, admin] = await Promise.all([
     listarReceitasDoMes(mes, filtros),
     listarFornecedores(),
     listarPrecos(),
+    lerConfig(),
     serieReceitasMensais(),
     isAdmin(),
   ]);
@@ -58,8 +59,8 @@ export default async function ReceitasPage({
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
   }));
-  const barrasTipo = (["batido", "paletizado"] as const).map((t) => ({
-    label: rotuloTipo[t], value: porTipo[t], display: formatBRL(porTipo[t]),
+  const barrasTipo = TIPOS_DESCARREGAMENTO.map((t) => ({
+    label: ROTULO_TIPO[t], value: porTipo[t], display: formatBRL(porTipo[t]),
   }));
   const barrasMensal = serie.map((p) => ({
     label: formatMesAno(p.mes), value: p.valor, display: formatBRL(p.valor),
@@ -91,8 +92,9 @@ export default async function ReceitasPage({
           </select>
           <select name="tipo" defaultValue={filtros.tipo ?? ""} className={field}>
             <option value="">Todos os tipos</option>
-            <option value="batido">Batido</option>
-            <option value="paletizado">Paletizado</option>
+            {TIPOS_DESCARREGAMENTO.map((t) => (
+              <option key={t} value={t}>{ROTULO_TIPO[t]}</option>
+            ))}
           </select>
           <button className="rounded-xl border border-slate-200 px-4 py-2 font-medium text-slate-600 hover:bg-slate-50">Filtrar</button>
         </form>
@@ -101,7 +103,7 @@ export default async function ReceitasPage({
             className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Exportar CSV</Link>
           <Link href="/receitas/fornecedores" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Fornecedores</Link>
           {admin && <Link href="/receitas/precos" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Preços</Link>}
-          {admin && <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} />}
+          {admin && <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} />}
         </div>
       </div>
 
@@ -146,14 +148,18 @@ export default async function ReceitasPage({
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
                         {formatKg(r.pesoKg)} <span className="text-slate-400">({fmtTon(toneladas(r.pesoKg))})</span>
                       </td>
-                      <td className="px-5 py-3"><Pill tone={r.tipo === "paletizado" ? "gold" : "slate"}>{rotuloTipo[r.tipo]}</Pill></td>
+                      <td className="px-5 py-3">
+                        <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "green" : "slate"}>
+                          {ROTULO_TIPO[r.tipo] ?? r.tipo}
+                        </Pill>
+                      </td>
                       <td className="px-5 py-3 tabular-nums text-slate-600">{formatBRL(r.precoPorTonelada)}</td>
                       <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(r.receita)}</td>
                       <td className="px-5 py-3 max-w-[16rem] truncate text-slate-500" title={r.observacao ?? ""}>{r.observacao ?? "—"}</td>
                       {admin && (
                         <td className="px-5 py-3">
                           <div className="flex flex-col items-end gap-2">
-                            <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} receita={r} />
+                            <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} receita={r} />
                             <form action={removerReceita.bind(null, r.id)}>
                               <button className="text-sm font-medium text-rose-600 hover:text-rose-700">remover</button>
                             </form>

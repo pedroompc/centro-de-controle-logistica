@@ -7,7 +7,8 @@ import type { Receita } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
-  pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20, observacao: null, ...over,
+  pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20,
+  minimoAplicado: 0, observacao: null, ...over,
 });
 
 describe("receitas-metrics", () => {
@@ -23,6 +24,30 @@ describe("receitas-metrics", () => {
     // 1234 kg = 1,234 t × 33,33 = 41,12922 → 41,13
     expect(calcularReceita(1234, 33.33)).toBe(41.13);
     expect(arredonda2(41.129)).toBe(41.13);
+  });
+
+  it("eleva a receita ao mínimo quando o cálculo fica abaixo dele", () => {
+    // 500 kg = 0,5 t × 30 = R$ 15,00 → cobra o mínimo de R$ 25,00
+    expect(calcularReceita(500, 30, 25)).toBe(25);
+  });
+
+  it("não usa o mínimo como teto: cálculo maior prevalece", () => {
+    expect(calcularReceita(12500, 20, 25)).toBe(250);
+  });
+
+  it("cálculo exatamente igual ao mínimo devolve o mínimo", () => {
+    // 1000 kg = 1 t × 25 = R$ 25,00
+    expect(calcularReceita(1000, 25, 25)).toBe(25);
+  });
+
+  it("sem mínimo informado, mantém o cálculo puro", () => {
+    expect(calcularReceita(500, 30)).toBe(15);
+  });
+
+  it("arredonda o mínimo para 2 casas quando é retornado como resultado final", () => {
+    // Mínimo com ruído float (3+ casas) deve ser arredondado: 25.555 → 25.56
+    // 500 kg = 0,5 t × 30 = 15,00 < 25.555 (mínimo), logo retorna 25.555 arredondado
+    expect(calcularReceita(500, 30, 25.555)).toBe(25.56);
   });
 
   it("soma receita total e toneladas totais", () => {
@@ -49,9 +74,18 @@ describe("receitas-metrics", () => {
     ]);
   });
 
-  it("agrupa receita por tipo", () => {
-    const rs = [r({ tipo: "batido", receita: 100 }), r({ tipo: "paletizado", receita: 40 }), r({ tipo: "batido", receita: 10 })];
-    expect(receitaPorTipo(rs)).toEqual({ batido: 110, paletizado: 40 });
+  it("agrupa receita por tipo, incluindo pal_rem", () => {
+    const rs = [
+      r({ tipo: "batido", receita: 100 }),
+      r({ tipo: "paletizado", receita: 40 }),
+      r({ tipo: "batido", receita: 10 }),
+      r({ tipo: "pal_rem", receita: 25 }),
+    ];
+    expect(receitaPorTipo(rs)).toEqual({ batido: 110, paletizado: 40, pal_rem: 25 });
+  });
+
+  it("zera os tipos sem lançamento em vez de omiti-los", () => {
+    expect(receitaPorTipo([])).toEqual({ batido: 0, paletizado: 0, pal_rem: 0 });
   });
 
   it("custo líquido = brutos − receitas", () => {

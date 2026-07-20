@@ -6,10 +6,11 @@ import { mapReceita } from "./mappers";
 import { assertAdmin } from "./auth";
 import { calcularReceita } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
+import { lerConfig } from "./config-descarregamento";
 import type { Receita, DescarregamentoTipo } from "@/domain/types";
 
 const COLS =
-  "id, data, fornecedor_id, peso_kg, tipo, preco_por_tonelada, receita, observacao, fornecedores(nome)";
+  "id, data, fornecedor_id, peso_kg, tipo, preco_por_tonelada, receita, minimo_aplicado, observacao, fornecedores(nome)";
 
 export interface FiltrosReceita {
   fornecedorId?: string;
@@ -73,7 +74,8 @@ export async function criarReceita(formData: FormData): Promise<void> {
   await assertAdmin();
   const f = parseForm(formData);
   if (!f.data || !f.fornecedorId || !f.pesoKg) return;
-  const receita = calcularReceita(f.pesoKg, f.precoPorTonelada); // cálculo no backend
+  const { valorMinimo } = await lerConfig();
+  const receita = calcularReceita(f.pesoKg, f.precoPorTonelada, valorMinimo); // cálculo no backend
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_descarregamento").insert({
     data: f.data,
@@ -82,6 +84,7 @@ export async function criarReceita(formData: FormData): Promise<void> {
     tipo: f.tipo,
     preco_por_tonelada: f.precoPorTonelada,
     receita,
+    minimo_aplicado: valorMinimo,
     observacao: f.observacao,
   });
   if (error) throw new Error(error.message);
@@ -95,7 +98,8 @@ export async function editarReceita(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const f = parseForm(formData);
   if (!id || !f.data || !f.fornecedorId || !f.pesoKg) return;
-  const receita = calcularReceita(f.pesoKg, f.precoPorTonelada);
+  const { valorMinimo } = await lerConfig();
+  const receita = calcularReceita(f.pesoKg, f.precoPorTonelada, valorMinimo);
   const supabase = await createClient();
   const { error } = await supabase
     .from("receitas_descarregamento")
@@ -106,6 +110,7 @@ export async function editarReceita(formData: FormData): Promise<void> {
       tipo: f.tipo,
       preco_por_tonelada: f.precoPorTonelada,
       receita,
+      minimo_aplicado: valorMinimo,
       observacao: f.observacao,
     })
     .eq("id", id);

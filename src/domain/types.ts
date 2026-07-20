@@ -50,7 +50,7 @@ export interface CustoMensal {
   data: string | null; // ISO "yyyy-mm-dd" — dia do lançamento (variáveis); null p/ fixos
 }
 
-export type DescarregamentoTipo = "batido" | "paletizado";
+export type DescarregamentoTipo = "batido" | "paletizado" | "pal_rem";
 
 export interface Fornecedor {
   id: string;
@@ -63,6 +63,11 @@ export interface PrecoDescarregamento {
   precoPorTonelada: number;
 }
 
+export interface ConfigDescarregamento {
+  /** Valor mínimo cobrado por descarregamento, em reais. */
+  valorMinimo: number;
+}
+
 export interface Receita {
   id: string;
   data: string; // ISO "yyyy-mm-dd"
@@ -72,5 +77,6 @@ export interface Receita {
   tipo: DescarregamentoTipo;
   precoPorTonelada: number;
   receita: number;
+  minimoAplicado: number; // SNAPSHOT do mínimo vigente no lançamento
   observacao: string | null;
 }
