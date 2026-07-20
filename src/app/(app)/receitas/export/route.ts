@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { listarReceitasDoMes } from "@/data/receitas";
 import { toneladas } from "@/domain/receitas-metrics";
 import { primeiroDiaDoMes } from "@/domain/periodo";
+import { ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo } from "@/domain/types";
 
 const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
       esc(r.fornecedorNome),
       num(r.pesoKg),
       num(toneladas(r.pesoKg)),
-      r.tipo,
+      ROTULO_TIPO[r.tipo],
       num(r.precoPorTonelada),
       num(r.receita),
     ].join(";"),
