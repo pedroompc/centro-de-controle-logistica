@@ -7,7 +7,8 @@ import type { Receita } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
-  pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20, observacao: null, ...over,
+  pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20,
+  minimoAplicado: 0, observacao: null, ...over,
 });
 
 describe("receitas-metrics", () => {
