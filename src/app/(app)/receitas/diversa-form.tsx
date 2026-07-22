@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useId } from "react";
 import { criarDiversa, editarDiversa } from "@/data/receitas-diversas";
 import { calcularValorDiversa } from "@/domain/receitas-metrics";
 import { formatBRL } from "@/domain/format";
@@ -18,6 +18,10 @@ export function DiversaForm({ mes, diversa }: { mes: string; diversa?: ReceitaDi
   // Uma vez que o usuário mexe no valor, digitar quantidade/preço não sobrescreve
   // mais o que ele pôs — o negociado manda.
   const [valorTocado, setValorTocado] = useState(Boolean(diversa));
+
+  // id único por instância: o form é montado uma vez por linha da tabela, e
+  // datalists com id repetido deixam o atributo `list` indefinido.
+  const idMateriais = useId();
 
   const sugerido = calcularValorDiversa(quantidade || 0, preco || 0);
   const divergente = valorTocado && valor > 0 && sugerido > 0 && valor !== sugerido;
@@ -57,12 +61,12 @@ export function DiversaForm({ mes, diversa }: { mes: string; diversa?: ReceitaDi
       <input name="data" type="date" required defaultValue={dataPadrao} className={field} />
       <input
         name="material"
-        list="materiais-sugeridos"
+        list={idMateriais}
         defaultValue={diversa?.material ?? ""}
         placeholder="Material"
         className={field}
       />
-      <datalist id="materiais-sugeridos">
+      <datalist id={idMateriais}>
         {MATERIAIS_SUGERIDOS.map((m) => <option key={m} value={m} />)}
       </datalist>
       <input
