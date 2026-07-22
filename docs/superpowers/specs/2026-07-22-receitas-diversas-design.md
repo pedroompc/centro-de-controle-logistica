@@ -105,6 +105,21 @@ interface `ReceitaDiversa`, ao lado de `DescarregamentoTipo` e `Receita`.
   **sugerir** o valor no formulário e para detectar divergência; não é a fonte da verdade.
 - `valorTotalDiversas(ds)` — soma dos valores.
 
+### Regra do preço médio por kg (para quando o indicador existir)
+
+Decidido com o Pedro, mas **não implementado agora** — o indicador não existe hoje e nada
+no escopo atual depende dele. Fica registrado para não virar discussão depois:
+
+> Preço médio por kg = **soma dos valores ÷ soma das quantidades**. Nunca a média dos
+> `preco_unitario` digitados.
+
+O motivo é o mesmo que tornou o valor editável: o `preco_unitario` é a intenção, o `valor`
+é o que aconteceu. Um mês com desconto real renderia um "preço médio" acima do que de fato
+entrou no caixa se a média saísse do campo digitado.
+
+O mesmo raciocínio já vale hoje em `valorMedioPorTonelada`, que divide receita realizada
+por toneladas — a coerência entre os dois indicadores é proposital.
+
 ## A armadilha do valor médio por tonelada
 
 `valorMedioPorTonelada` é `receita total ÷ toneladas`. Se o total passar a incluir venda de
