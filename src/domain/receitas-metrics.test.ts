@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
-  calcularValorDiversa, valorTotalDiversas, resumoReceitas,
+  calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa } from "./types";
 
@@ -139,5 +139,36 @@ describe("receitas-metrics", () => {
     const resumo = resumoReceitas([], [d({ valor: 50 })]);
     expect(resumo.total).toBe(50);
     expect(resumo.medioPorTonelada).toBe(0);
+  });
+});
+
+describe("resolverValorDiversa", () => {
+  // Regra central da feature: o valor negociado com o comprador manda sobre o
+  // produto quantidade × preço. Só cai no cálculo quando o valor bruto do
+  // formulário não é um número válido e positivo.
+
+  it("mantém o valor informado mesmo divergente do produto (desconto negociado)", () => {
+    // Produto seria 100 × 1,2 = 120, mas o negociado foi 110.
+    expect(resolverValorDiversa("110", 100, 1.2)).toBe(110);
+  });
+
+  it("cai no produto quando o valor bruto é null", () => {
+    expect(resolverValorDiversa(null, 100, 1.2)).toBe(120);
+  });
+
+  it("cai no produto quando o valor bruto é string vazia", () => {
+    expect(resolverValorDiversa("", 100, 1.2)).toBe(120);
+  });
+
+  it('cai no produto quando o valor bruto é "0"', () => {
+    expect(resolverValorDiversa("0", 100, 1.2)).toBe(120);
+  });
+
+  it("cai no produto quando o valor bruto é negativo", () => {
+    expect(resolverValorDiversa("-5", 100, 1.2)).toBe(120);
+  });
+
+  it("cai no produto quando o valor bruto não é numérico", () => {
+    expect(resolverValorDiversa("abc", 100, 1.2)).toBe(120);
   });
 });

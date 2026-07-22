@@ -69,6 +69,30 @@ export function calcularValorDiversa(quantidade: number, precoUnitario: number):
   return arredonda2(quantidade * precoUnitario);
 }
 
+/**
+ * Decide o valor a gravar de uma receita diversa: o informado no formulário
+ * manda; o produto quantidade × preço só entra quando não veio nada válido.
+ *
+ * Existe porque o preço combinado com o comprador às vezes diverge do produto
+ * exato — arredondamento de conversa, desconto negociado no balcão. Se essa
+ * precedência fosse invertida (sempre recalcular), todo desconto seria apagado
+ * na gravação e o total do mês deixaria de bater com o dinheiro que entrou.
+ *
+ * `valorBruto` é o valor cru do formulário (`FormData.get` devolve
+ * `string | null`) — a validação de "válido" fica aqui, não espalhada pelas
+ * chamadoras.
+ */
+export function resolverValorDiversa(
+  valorBruto: string | null,
+  quantidade: number,
+  precoUnitario: number,
+): number {
+  const valorInformado = Number(valorBruto ?? NaN);
+  return Number.isFinite(valorInformado) && valorInformado > 0
+    ? valorInformado
+    : calcularValorDiversa(quantidade, precoUnitario);
+}
+
 /** Soma o valor gravado das receitas diversas — nunca o recalculado. */
 export function valorTotalDiversas(ds: ReceitaDiversa[]): number {
   return arredonda2(ds.reduce((t, d) => t + d.valor, 0));

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapReceitaDiversa } from "./mappers";
 import { assertAdmin } from "./auth";
-import { calcularValorDiversa } from "@/domain/receitas-metrics";
+import { resolverValorDiversa } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
 import type { ReceitaDiversa, ReceitaCategoria } from "@/domain/types";
 
@@ -54,15 +54,12 @@ function parseForm(formData: FormData) {
   const material = String(formData.get("material") ?? "").trim() || null;
   const quantidade = Number(formData.get("quantidade") ?? 0);
   const precoUnitario = Number(formData.get("preco_unitario") ?? 0);
-  const valorBruto = formData.get("valor");
+  const valorBruto = formData.get("valor") as string | null;
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
 
-  // O valor informado é o negociado e manda sobre o produto. Só cai no cálculo
-  // quando não veio nada — nunca sobrescreve um valor válido do usuário.
-  const valorInformado = Number(valorBruto ?? NaN);
-  const valor = Number.isFinite(valorInformado) && valorInformado > 0
-    ? valorInformado
-    : calcularValorDiversa(quantidade, precoUnitario);
+  // Precedência do valor negociado sobre o produto quantidade × preço: regra de
+  // domínio, testada em src/domain/receitas-metrics.test.ts — não duplicar aqui.
+  const valor = resolverValorDiversa(valorBruto, quantidade, precoUnitario);
 
   return { data, categoria, material, quantidade, precoUnitario, valor, observacao };
 }
