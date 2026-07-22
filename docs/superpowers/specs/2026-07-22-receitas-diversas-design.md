@@ -19,13 +19,15 @@ nova**: adicionar um tipo deve custar uma linha de migration, no mesmo espírito
 1. **Tabela separada** de `receitas_descarregamento`, não uma coluna discriminadora nela.
 2. **Preço varia a cada venda** — o valor unitário entra no lançamento, sem tabela de
    preços global (diferente de descarregamento).
-3. **Sem cadastro de comprador.** Não interessa de quem veio, só quanto entrou.
-4. **Material como texto livre.** Hoje só plástico do stretch; pode crescer sem virar
+3. **O valor é editável.** O negociado às vezes difere do produto exato de quantidade ×
+   preço (arredondamento de conversa, desconto, ajuste na hora). Quem manda é o valor.
+4. **Sem cadastro de comprador.** Não interessa de quem veio, só quanto entrou.
+5. **Material como texto livre.** Hoje só plástico do stretch; pode crescer sem virar
    cadastro formal.
-5. **Entra no custo líquido.** Dinheiro que entra abate o custo da operação,
+6. **Entra no custo líquido.** Dinheiro que entra abate o custo da operação,
    independentemente da origem.
-6. **Mesma página `/receitas`**, em seção própria abaixo dos descarregamentos.
-7. **Export CSV único**, com as duas origens no mesmo arquivo.
+7. **Mesma página `/receitas`**, em seção própria abaixo dos descarregamentos.
+8. **Export CSV único**, com as duas origens no mesmo arquivo.
 
 ## Modelo de dados — `supabase/migrations/0009_receitas_diversas.sql`
 
@@ -40,7 +42,7 @@ create table receitas_diversas (
   quantidade numeric(14,3),       -- nullable
   unidade text not null default 'kg',
   preco_unitario numeric(14,2),   -- nullable
-  valor numeric(14,2) not null,   -- SNAPSHOT: round(quantidade * preco_unitario, 2)
+  valor numeric(14,2) not null,   -- o valor negociado; pode divergir do produto
   observacao text,
   created_at timestamptz not null default now()
 );
@@ -59,13 +61,31 @@ plástico — um lançamento de R$ 8 viraria R$ 25 por acidente de modelagem.
 
 ### Por que `quantidade` e `preco_unitario` são nullable, mas `valor` não
 
-É o que dá a extensão futura barata. `valor` é sempre a fonte da verdade:
+`valor` é sempre a fonte da verdade — é o dinheiro que entrou. Quantidade e preço unitário
+são o memorial de como se chegou nele, não a definição dele:
 
-- Receita por quantidade (reciclagem hoje): preenche os três, `valor` = snapshot do produto.
+- Receita por quantidade (reciclagem hoje): preenche os três. O valor **pode** divergir do
+  produto exato, e isso é legítimo (ver abaixo).
 - Receita de montante fixo (hipótese futura): preenche só `valor`.
+
+Nada de coluna `valor_ajustado`: a divergência é derivável comparando `valor` com
+`quantidade × preco_unitario`, e um flag redundante só criaria uma segunda verdade para
+sair de sincronia.
 
 `unidade` como texto (`kg` por padrão) evita migration caso algum material passe a ser
 vendido por peça ou por fardo.
+
+### O valor negociado manda
+
+O preço combinado com o comprador nem sempre é o produto exato: arredonda-se na conversa,
+dá-se um desconto, ajusta-se na balança. Gravar o produto calculado em vez do valor real
+faria a receita do mês não bater com o dinheiro que entrou.
+
+Então o valor é editável, e o servidor grava o que foi informado. A proteção contra erro
+de digitação é de **visibilidade, não de bloqueio**: o formulário auto-preenche o valor
+conforme quantidade e preço são digitados e, quando o usuário sobrescreve com número
+diferente, mostra uma nota discreta com o calculado e a diferença. Um R$ 60 que virou
+R$ 600 aparece na hora; um desconto real de R$ 10 passa sem atrito.
 
 ## Domínio
 
@@ -81,7 +101,8 @@ interface `ReceitaDiversa`, ao lado de `DescarregamentoTipo` e `Receita`.
 **`src/domain/receitas-metrics.ts`** ganha:
 
 - `calcularValorDiversa(quantidade, precoUnitario)` — produto arredondado a 2 casas,
-  reusando `arredonda2`. Sem piso mínimo (isso é regra de descarregamento).
+  reusando `arredonda2`. Sem piso mínimo (isso é regra de descarregamento). Serve para
+  **sugerir** o valor no formulário e para detectar divergência; não é a fonte da verdade.
 - `valorTotalDiversas(ds)` — soma dos valores.
 
 ## A armadilha do valor médio por tonelada
@@ -118,8 +139,9 @@ demonstrado.
 Segue o padrão de `src/data/receitas.ts`:
 
 - `listarDiversasDoMes(mes)` — filtra por intervalo de datas do mês.
-- `criarDiversa(input)` — calcula `valor` no servidor a partir de quantidade e preço; nunca
-  confia no valor vindo do cliente.
+- `criarDiversa(input)` — grava o `valor` informado. Valida que é número finito e maior que
+  zero; se vier ausente, cai no produto `quantidade × preco_unitario`. Rejeitar o valor do
+  cliente aqui seria descartar justamente o dado que importa.
 - `removerDiversa(id)` — Server Action, com `assertAdmin()` como todas as escritas.
 - `totalDiversasDoMes(mes)` — usado por `receitaTotalDoMes`.
 
@@ -131,8 +153,10 @@ Segue o padrão de `src/data/receitas.ts`:
   (descarregamento / outras) — sem isso o número cresce e não se sabe por quê.
 - **Seção "Outras receitas"** abaixo dos descarregamentos: formulário + lista do mês.
 - **Formulário**: data, material (input com `datalist` de sugestões), quantidade em kg,
-  preço por kg, observação. O valor calculado aparece em tempo real antes de salvar, como
-  no form de descarregamento.
+  preço por kg, **valor** e observação. O valor auto-preenche conforme quantidade e preço
+  são digitados; editá-lo não é sobrescrito por digitação posterior nos outros campos.
+  Divergência em relação ao produto vira nota discreta abaixo do campo, com o valor
+  calculado e a diferença — informativa, nunca bloqueante.
 - **Lista** com exclusão gated por admin, igual ao resto do módulo.
 
 Verde é permitido nesta seção: é receita, a única exceção da regra de identidade visual
@@ -140,22 +164,30 @@ Verde é permitido nesta seção: é receita, a única exceção da regra de ide
 
 ## Export CSV
 
-`/receitas/export` passa a emitir as duas origens no mesmo arquivo, com uma coluna
-`origem` (`Descarregamento` / `Reciclagem`) e as colunas específicas vazias onde não se
-aplicam (fornecedor e tipo em reciclagem; material, quantidade e preço unitário em
-descarregamento). Linhas ordenadas por data.
+`/receitas/export` passa a emitir as duas origens no mesmo arquivo, com uma coluna `origem`
+e as colunas específicas vazias onde não se aplicam (fornecedor e tipo em reciclagem;
+material, quantidade e preço unitário em descarregamento). Linhas ordenadas por data.
+
+A coluna `origem` traz `Descarregamento` para a tabela de descarregamento e o rótulo da
+categoria (`ROTULO_CATEGORIA`) para as diversas — não a string literal "Reciclagem", para
+que uma categoria futura apareça corretamente sem ninguém lembrar de editar o export.
 
 ## Fora de escopo
 
-Cadastro de compradores, tabela de preços de reciclagem, cadastro formal de materiais,
-edição de lançamento (o módulo de descarregamento também só cria e remove — a simetria é
-proposital).
+Cadastro de compradores, tabela de preços de reciclagem, cadastro formal de materiais.
+
+**Edição de lançamento já salvo** também está fora: o módulo de descarregamento só cria e
+remove, e a simetria é proposital. Errou o valor? Exclui e lança de novo. Não confundir com
+a decisão 3 — lá o que é editável é o **campo de valor dentro do formulário**, antes de
+salvar.
 
 ## Testes
 
 Em `src/domain/receitas-metrics.test.ts`:
 
 - `calcularValorDiversa` — produto correto, arredondamento a centavos, quantidade zero.
-- `valorTotalDiversas` — soma estável.
+- `valorTotalDiversas` — soma estável, e soma o **valor gravado**, não o recalculado a
+  partir de quantidade × preço (um lançamento com valor negociado divergente tem que
+  entrar no total pelo que foi negociado).
 - **Regressão do médio/ton**: cenário misto não pode alterar `valorMedioPorTonelada`,
   `toneladasTotal`, `receitaPorFornecedor` nem `receitaPorTipo`.
