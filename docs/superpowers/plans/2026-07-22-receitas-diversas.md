@@ -752,7 +752,7 @@ import { ROTULO_CATEGORIA } from "@/domain/receitas-diversas";
 import { DiversaForm } from "./diversa-form";
 ```
 
-E acrescentar `valorTotalDiversas` ao import **já existente** de `@/domain/receitas-metrics` (que hoje traz `receitaTotal, toneladasTotal, valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, toneladas`). Não criar um segundo import do mesmo módulo.
+E acrescentar `resumoReceitas` ao import **já existente** de `@/domain/receitas-metrics` (que hoje traz `receitaTotal, toneladasTotal, valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, toneladas`). Não criar um segundo import do mesmo módulo. O Step 3 remove desse import o que ficar sem uso.
 
 - [ ] **Step 2: Carregar as diversas junto do resto**
 
@@ -770,15 +770,28 @@ No `Promise.all` existente, adicionar `listarDiversasDoMes(mes)` como último it
   ]);
 ```
 
-- [ ] **Step 3: Calcular os totais das duas origens**
+- [ ] **Step 3: Compor os totais pela função de domínio**
 
-Substituir a linha `const total = receitaTotal(receitas);` por estas três:
+A composição vem de `resumoReceitas` (Task 3), não de contas soltas na página — é ela que carrega a regra do médio/ton e está coberta por teste.
+
+Substituir as três linhas existentes:
 
 ```typescript
-  const totalDescarregamento = receitaTotal(receitas);
-  const totalDiversas = valorTotalDiversas(diversas);
-  const total = totalDescarregamento + totalDiversas;
+  const total = receitaTotal(receitas);
+  const tons = toneladasTotal(receitas);
+  ...
+  const medioTon = valorMedioPorTonelada(receitas);
 ```
+
+por:
+
+```typescript
+  const resumo = resumoReceitas(receitas, diversas);
+```
+
+E trocar os usos ao longo do arquivo: `total` → `resumo.total`, `tons` → `resumo.toneladas`, `medioTon` → `resumo.medioPorTonelada`. Os novos `resumo.totalDescarregamento` e `resumo.totalDiversas` alimentam os StatCards do Step 4.
+
+Remover do import de `@/domain/receitas-metrics` o que deixou de ser usado (`receitaTotal`, `toneladasTotal`, `valorMedioPorTonelada`), mantendo `toneladas`, `receitaPorFornecedor` e `receitaPorTipo`, que continuam em uso. Rodar `npx eslint src` confirma se sobrou import morto.
 
 - [ ] **Step 4: Trocar o subtítulo e os StatCards do topo**
 
@@ -788,22 +801,22 @@ O bloco de indicadores passa a ser:
 
 ```tsx
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="lg:col-span-1"><HeroStat label="Receita total" value={formatBRL(total)} /></div>
+        <div className="lg:col-span-1"><HeroStat label="Receita total" value={formatBRL(resumo.total)} /></div>
         <StatCard
           label="Descarregamento"
-          value={formatBRL(totalDescarregamento)}
-          hint={`${receitas.length} lançamentos · ${fmtTon(tons)}`}
+          value={formatBRL(resumo.totalDescarregamento)}
+          hint={`${receitas.length} lançamentos · ${fmtTon(resumo.toneladas)}`}
           accent="green"
         />
         <StatCard
           label="Outras receitas"
-          value={formatBRL(totalDiversas)}
+          value={formatBRL(resumo.totalDiversas)}
           hint={`${diversas.length} lançamentos`}
           accent="green"
         />
         <StatCard
           label="Valor médio / tonelada"
-          value={formatBRL(medioTon)}
+          value={formatBRL(resumo.medioPorTonelada)}
           hint="só descarregamento"
           accent="gold"
         />
