@@ -13,7 +13,7 @@ export interface ResultadoLogistico {
 
 /**
  * Resultado logístico do mês: custos brutos (salário + fixos + variáveis) menos
- * as receitas de descarregamento. A receita é só demonstrada — não altera nenhum
+ * as receitas logísticas (descarregamento + diversas). A receita é só demonstrada — não altera nenhum
  * lançamento de custo.
  */
 export async function resultadoLogisticoDoMes(mes: string): Promise<ResultadoLogistico> {

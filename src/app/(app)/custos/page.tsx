@@ -75,7 +75,7 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">
-              <span aria-hidden>▼</span> Receitas de descarregamento
+              <span aria-hidden>▼</span> Receitas logísticas
             </p>
             <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-emerald-700">− {formatBRL(receitas)}</p>
             <p className="mt-1 text-xs text-emerald-600/80">Compensação demonstrada — não altera os custos</p>
