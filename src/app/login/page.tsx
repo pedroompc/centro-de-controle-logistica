@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sora } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
@@ -14,6 +14,13 @@ export default function LoginPage() {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [expirou, setExpirou] = useState(false);
+
+  // Lido do window em vez de useSearchParams: o hook exigiria um limite de
+  // Suspense em volta do formulário só para mostrar um aviso.
+  useEffect(() => {
+    setExpirou(new URLSearchParams(window.location.search).has("expirou"));
+  }, []);
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
@@ -98,6 +105,12 @@ export default function LoginPage() {
             Bem-vindo de volta
           </h2>
           <p className="mt-2 text-sm text-slate-500">Entre com suas credenciais para acessar o painel.</p>
+
+          {expirou && (
+            <p className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
+              Sua sessão expirou por segurança. Entre novamente para continuar.
+            </p>
+          )}
 
           <form onSubmit={entrar} className="mt-8 space-y-4">
             <div>
