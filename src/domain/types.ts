@@ -80,3 +80,22 @@ export interface Receita {
   minimoAplicado: number; // SNAPSHOT do mínimo vigente no lançamento
   observacao: string | null;
 }
+
+export type ReceitaCategoria = "reciclagem";
+
+/**
+ * Receita que não vem de descarregamento. `valor` é a fonte da verdade — o
+ * dinheiro que entrou. `quantidade` e `precoUnitario` são o memorial de como se
+ * chegou nele e podem divergir do produto exato.
+ */
+export interface ReceitaDiversa {
+  id: string;
+  data: string; // ISO "yyyy-mm-dd"
+  categoria: ReceitaCategoria;
+  material: string | null;
+  quantidade: number | null;
+  unidade: string;
+  precoUnitario: number | null;
+  valor: number;
+  observacao: string | null;
+}
