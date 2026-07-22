@@ -157,8 +157,12 @@ Segue o padrão de `src/data/receitas.ts`:
 - `criarDiversa(input)` — grava o `valor` informado. Valida que é número finito e maior que
   zero; se vier ausente, cai no produto `quantidade × preco_unitario`. Rejeitar o valor do
   cliente aqui seria descartar justamente o dado que importa.
+- `editarDiversa(formData)` — mesma validação de `criarDiversa`, por `id`.
 - `removerDiversa(id)` — Server Action, com `assertAdmin()` como todas as escritas.
 - `totalDiversasDoMes(mes)` — usado por `receitaTotalDoMes`.
+
+Todas as escritas chamam `assertAdmin()` e revalidam `/receitas`, `/custos` e `/`, como as
+de descarregamento.
 
 ## Tela — `/receitas`
 
@@ -172,7 +176,7 @@ Segue o padrão de `src/data/receitas.ts`:
   são digitados; editá-lo não é sobrescrito por digitação posterior nos outros campos.
   Divergência em relação ao produto vira nota discreta abaixo do campo, com o valor
   calculado e a diferença — informativa, nunca bloqueante.
-- **Lista** com exclusão gated por admin, igual ao resto do módulo.
+- **Lista** com editar e remover por linha, gated por admin, igual ao resto do módulo.
 
 Verde é permitido nesta seção: é receita, a única exceção da regra de identidade visual
 (verde nunca para status ou categoria).
@@ -191,10 +195,11 @@ que uma categoria futura apareça corretamente sem ninguém lembrar de editar o 
 
 Cadastro de compradores, tabela de preços de reciclagem, cadastro formal de materiais.
 
-**Edição de lançamento já salvo** também está fora: o módulo de descarregamento só cria e
-remove, e a simetria é proposital. Errou o valor? Exclui e lança de novo. Não confundir com
-a decisão 3 — lá o que é editável é o **campo de valor dentro do formulário**, antes de
-salvar.
+**Edição de lançamento está DENTRO do escopo** (correção — uma versão anterior desta spec
+afirmava o contrário). O módulo de descarregamento já tem `editarReceita` em
+`src/data/receitas.ts` e um botão "editar" por linha; o `DescarregamentoForm` alterna entre
+criar e editar por uma prop opcional. Reciclagem segue o mesmo padrão: `editarDiversa` e o
+mesmo formulário nos dois modos.
 
 ## Testes
 
