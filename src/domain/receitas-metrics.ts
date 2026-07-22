@@ -73,3 +73,36 @@ export function calcularValorDiversa(quantidade: number, precoUnitario: number):
 export function valorTotalDiversas(ds: ReceitaDiversa[]): number {
   return arredonda2(ds.reduce((t, d) => t + d.valor, 0));
 }
+
+export interface ResumoReceitas {
+  totalDescarregamento: number;
+  totalDiversas: number;
+  total: number;
+  toneladas: number;
+  /** Divide SÓ a receita de descarregamento pelas toneladas. */
+  medioPorTonelada: number;
+}
+
+/**
+ * Compõe os totais da tela de receitas a partir das duas origens.
+ *
+ * Existe como função de domínio, e não solta na página, porque carrega a regra
+ * mais fácil de quebrar do módulo: o total soma as duas origens, mas o médio por
+ * tonelada divide só o descarregamento. Receita de reciclagem não vem de tonelada
+ * nenhuma — deixá-la entrar no numerador infla o indicador sem ninguém perceber.
+ */
+export function resumoReceitas(
+  descarregamentos: Receita[],
+  diversas: ReceitaDiversa[],
+): ResumoReceitas {
+  const totalDescarregamento = receitaTotal(descarregamentos);
+  const totalDiversas = valorTotalDiversas(diversas);
+  const tons = toneladasTotal(descarregamentos);
+  return {
+    totalDescarregamento,
+    totalDiversas,
+    total: arredonda2(totalDescarregamento + totalDiversas),
+    toneladas: tons,
+    medioPorTonelada: tons === 0 ? 0 : arredonda2(totalDescarregamento / tons),
+  };
+}

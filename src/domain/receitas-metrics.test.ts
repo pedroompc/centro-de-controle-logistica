@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
-  calcularValorDiversa, valorTotalDiversas,
+  calcularValorDiversa, valorTotalDiversas, resumoReceitas,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa } from "./types";
 
@@ -122,12 +122,22 @@ describe("receitas-metrics", () => {
     expect(valorTotalDiversas([d({ valor: 10.1 }), d({ valor: 20.2 })])).toBe(30.3);
   });
 
-  it("receita diversa NÃO contamina os indicadores de descarregamento", () => {
-    // A armadilha central da spec: valor médio/tonelada tem que ignorar
-    // receita que não veio de tonelada nenhuma.
-    const descarregamentos = [r({ pesoKg: 10000, receita: 200 })];
-    expect(valorMedioPorTonelada(descarregamentos)).toBe(20);
-    expect(toneladasTotal(descarregamentos)).toBe(10);
-    expect(receitaTotal(descarregamentos)).toBe(200);
+  it("soma as duas origens no total, mas mantém o médio/ton só do descarregamento", () => {
+    // A armadilha do módulo: se a receita de reciclagem vazar para o numerador
+    // do médio/ton, ele vira 31,00 — dinheiro que não veio de tonelada nenhuma.
+    const resumo = resumoReceitas(
+      [r({ pesoKg: 10000, receita: 200 })],
+      [d({ valor: 110 })],
+    );
+    expect(resumo.total).toBe(310);
+    expect(resumo.totalDescarregamento).toBe(200);
+    expect(resumo.totalDiversas).toBe(110);
+    expect(resumo.medioPorTonelada).toBe(20); // 200 / 10 t — NÃO 310 / 10
+  });
+
+  it("não divide por zero quando não há descarregamento no período", () => {
+    const resumo = resumoReceitas([], [d({ valor: 50 })]);
+    expect(resumo.total).toBe(50);
+    expect(resumo.medioPorTonelada).toBe(0);
   });
 });
