@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
+  calcularValorDiversa, valorTotalDiversas,
 } from "./receitas-metrics";
-import type { Receita } from "./types";
+import type { Receita, ReceitaDiversa } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
@@ -90,5 +91,43 @@ describe("receitas-metrics", () => {
 
   it("custo líquido = brutos − receitas", () => {
     expect(custoLiquido(50000, 8000)).toBe(42000);
+  });
+
+  const d = (over: Partial<ReceitaDiversa>): ReceitaDiversa => ({
+    id: "d1", data: "2026-07-10", categoria: "reciclagem",
+    material: "Plástico stretch", quantidade: 100, unidade: "kg",
+    precoUnitario: 1.2, valor: 120, observacao: null, ...over,
+  });
+
+  it("calcula o valor sugerido de uma receita diversa", () => {
+    expect(calcularValorDiversa(100, 1.2)).toBe(120);
+  });
+
+  it("arredonda o valor sugerido a centavos", () => {
+    // 33,3 kg × 1,17 = 38,961 → 38,96
+    expect(calcularValorDiversa(33.3, 1.17)).toBe(38.96);
+  });
+
+  it("não aplica piso mínimo em receita diversa (regra é de descarregamento)", () => {
+    expect(calcularValorDiversa(1, 0.5)).toBe(0.5);
+  });
+
+  it("soma o valor GRAVADO, não o recalculado de quantidade × preço", () => {
+    // Valor negociado (110) difere do produto (120): manda o negociado.
+    const negociado = d({ quantidade: 100, precoUnitario: 1.2, valor: 110 });
+    expect(valorTotalDiversas([negociado])).toBe(110);
+  });
+
+  it("soma várias diversas de forma estável", () => {
+    expect(valorTotalDiversas([d({ valor: 10.1 }), d({ valor: 20.2 })])).toBe(30.3);
+  });
+
+  it("receita diversa NÃO contamina os indicadores de descarregamento", () => {
+    // A armadilha central da spec: valor médio/tonelada tem que ignorar
+    // receita que não veio de tonelada nenhuma.
+    const descarregamentos = [r({ pesoKg: 10000, receita: 200 })];
+    expect(valorMedioPorTonelada(descarregamentos)).toBe(20);
+    expect(toneladasTotal(descarregamentos)).toBe(10);
+    expect(receitaTotal(descarregamentos)).toBe(200);
   });
 });

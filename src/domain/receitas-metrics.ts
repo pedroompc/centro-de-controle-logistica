@@ -1,4 +1,4 @@
-import type { Receita, DescarregamentoTipo } from "./types";
+import type { Receita, DescarregamentoTipo, ReceitaDiversa } from "./types";
 import { TIPOS_DESCARREGAMENTO } from "./descarregamento";
 
 /** Arredonda a 2 casas (centavos), estável para somas de dinheiro. */
@@ -58,4 +58,18 @@ export function receitaPorTipo(rs: Receita[]): Record<DescarregamentoTipo, numbe
 /** Custo logístico líquido = custos brutos − receitas (só demonstração; não altera custos). */
 export function custoLiquido(custosBrutos: number, receitas: number): number {
   return arredonda2(custosBrutos - receitas);
+}
+
+/**
+ * Valor SUGERIDO de uma receita diversa = quantidade × preço unitário.
+ * Só sugere: o valor gravado é o negociado e pode divergir de propósito.
+ * Sem piso mínimo — isso é regra de descarregamento.
+ */
+export function calcularValorDiversa(quantidade: number, precoUnitario: number): number {
+  return arredonda2(quantidade * precoUnitario);
+}
+
+/** Soma o valor gravado das receitas diversas — nunca o recalculado. */
+export function valorTotalDiversas(ds: ReceitaDiversa[]): number {
+  return arredonda2(ds.reduce((t, d) => t + d.valor, 0));
 }
