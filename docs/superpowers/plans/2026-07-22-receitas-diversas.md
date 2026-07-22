@@ -281,6 +281,7 @@ git commit -m "feat(receitas): cálculo e soma de receitas diversas"
 
 **Files:**
 - Modify: `src/data/mappers.ts`
+- Test: `src/data/mappers.test.ts`
 - Create: `src/data/receitas-diversas.ts`
 
 **Interfaces:**
@@ -294,7 +295,45 @@ git commit -m "feat(receitas): cálculo e soma de receitas diversas"
   - `editarDiversa(formData: FormData): Promise<void>`
   - `removerDiversa(id: string): Promise<void>`
 
-- [ ] **Step 1: Adicionar o mapper em `src/data/mappers.ts`**
+- [ ] **Step 1: Escrever o teste do mapper que falha**
+
+Adicionar no fim de `src/data/mappers.test.ts`, e `mapReceitaDiversa` ao import de `./mappers` no topo. O PostgREST devolve `numeric` como **string** — o mapper existe para converter. E `null` é significativo aqui: `Number(null)` é `0`, o que transformaria "sem quantidade" em "zero kg" sem ninguém perceber.
+
+```typescript
+describe("mapReceitaDiversa", () => {
+  it("converte campos numeric (string) do PostgREST em number", () => {
+    expect(
+      mapReceitaDiversa({
+        id: "d1", data: "2026-07-10", categoria: "reciclagem",
+        material: "Plástico stretch", quantidade: "100.500", unidade: "kg",
+        preco_unitario: "1.20", valor: "120.60", observacao: null,
+      }),
+    ).toEqual({
+      id: "d1", data: "2026-07-10", categoria: "reciclagem",
+      material: "Plástico stretch", quantidade: 100.5, unidade: "kg",
+      precoUnitario: 1.2, valor: 120.6, observacao: null,
+    });
+  });
+
+  it("preserva null em quantidade e preço — não vira zero", () => {
+    const m = mapReceitaDiversa({
+      id: "d2", data: "2026-07-11", categoria: "reciclagem",
+      material: null, quantidade: null, unidade: "kg",
+      preco_unitario: null, valor: "80", observacao: "ajuste",
+    });
+    expect(m.quantidade).toBeNull();
+    expect(m.precoUnitario).toBeNull();
+    expect(m.valor).toBe(80);
+  });
+});
+```
+
+- [ ] **Step 2: Rodar o teste para ver falhar**
+
+Run: `npx vitest run src/data/mappers.test.ts`
+Expected: FAIL — `mapReceitaDiversa is not a function`. (O arquivo também tem a falha pré-existente `mapeia lançamento mensal`; ignorar essa.)
+
+- [ ] **Step 3: Adicionar o mapper em `src/data/mappers.ts`**
 
 Adicionar `ReceitaDiversa, ReceitaCategoria` ao import de tipos no topo do arquivo, e a função após `mapReceita`:
 
@@ -320,7 +359,12 @@ export function mapReceitaDiversa(row: {
 }
 ```
 
-- [ ] **Step 2: Criar `src/data/receitas-diversas.ts`**
+- [ ] **Step 4: Rodar o teste do mapper para ver passar**
+
+Run: `npx vitest run src/data/mappers.test.ts`
+Expected: os dois testes de `mapReceitaDiversa` passam. Continua falhando só `mapeia lançamento mensal` (pré-existente).
+
+- [ ] **Step 5: Criar `src/data/receitas-diversas.ts`**
 
 ```typescript
 "use server";
@@ -442,15 +486,15 @@ export async function removerDiversa(id: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 3: Verificar que compila**
+- [ ] **Step 6: Verificar que compila**
 
 Run: `npx tsc --noEmit`
 Expected: sem saída.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/data/mappers.ts src/data/receitas-diversas.ts
+git add src/data/mappers.ts src/data/mappers.test.ts src/data/receitas-diversas.ts
 git commit -m "feat(receitas): camada de dados das receitas diversas"
 ```
 
@@ -843,13 +887,16 @@ Inserir entre o `</section>` da tabela de descarregamentos e o `{/* Comparação
 Run: `npx tsc --noEmit`
 Expected: sem saída.
 
-- [ ] **Step 7: Verificar no navegador**
+- [ ] **Step 7: Verificar via build de produção**
 
-Subir o preview (`preview_start` com `{name: "dev"}`) e conferir:
-1. `/receitas` carrega sem erro no console.
-2. Os quatro indicadores do topo aparecem; "Outras receitas" mostra R$ 0,00 com o banco vazio.
-3. A seção "Outras receitas do mês" aparece com o texto de vazio.
-4. Se a migration da Task 1 ainda não foi aplicada no Supabase, a página vai estourar erro de tabela inexistente — nesse caso PARE e reporte que a migration precisa ser aplicada.
+Não tente verificar no navegador. Duas razões conhecidas: `/receitas` exige login do Supabase e você não pode inserir credenciais; e a migration da Task 1 provavelmente ainda não foi aplicada, então a página estouraria erro de tabela inexistente de qualquer forma.
+
+A verificação possível nesta etapa é o build de produção, que compila todas as rotas e prova que os imports resolvem e que o JSX é válido:
+
+Run: `npm run build`
+Expected: build completo sem erro, com `/receitas` na lista de rotas compiladas.
+
+Reportar honestamente que a verificação visual ficou pendente — não afirmar que a tela funciona.
 
 - [ ] **Step 8: Commit**
 
