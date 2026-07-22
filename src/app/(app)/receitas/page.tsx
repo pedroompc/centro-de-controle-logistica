@@ -225,7 +225,9 @@ export default async function ReceitasPage({
                       </td>
                       <td className="px-5 py-3 font-medium text-[#141a4d]">{d.material ?? "—"}</td>
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
-                        {d.quantidade === null ? "—" : `${formatKg(d.quantidade)}`}
+                        {/* 3 casas: pesagem de reciclagem é fracionária (numeric(14,3)), diferente do
+                            descarregamento acima — arredondar pra inteiro esconderia a quantidade real. */}
+                        {d.quantidade === null ? "—" : `${formatKg(d.quantidade, 3)}`}
                       </td>
                       <td className="px-5 py-3 tabular-nums text-slate-600">
                         {d.precoUnitario === null ? "—" : formatBRL(d.precoUnitario)}
