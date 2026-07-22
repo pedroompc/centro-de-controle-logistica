@@ -7,6 +7,7 @@ import { assertAdmin } from "./auth";
 import { calcularReceita } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
 import { lerConfig } from "./config-descarregamento";
+import { totalDiversasDoMes, serieDiversasMensais } from "./receitas-diversas";
 import type { Receita, DescarregamentoTipo } from "@/domain/types";
 
 const COLS =
@@ -33,26 +34,44 @@ export async function listarReceitasDoMes(mes: string, filtros: FiltrosReceita =
   return (data ?? []).map((row) => mapReceita(row as Parameters<typeof mapReceita>[0]));
 }
 
+/**
+ * Receita total do mês: descarregamento + diversas. Alimenta o custo líquido do
+ * dashboard, da página de custos e do resultado logístico.
+ */
 export async function receitaTotalDoMes(mes: string): Promise<number> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("receitas_descarregamento")
-    .select("receita")
-    .gte("data", inicio)
-    .lte("data", fim);
-  if (error) throw new Error(error.message);
-  return (data ?? []).reduce((t, r) => t + Number(r.receita), 0);
+  const [descarregamento, diversas] = await Promise.all([
+    supabase
+      .from("receitas_descarregamento")
+      .select("receita")
+      .gte("data", inicio)
+      .lte("data", fim),
+    totalDiversasDoMes(mes),
+  ]);
+  if (descarregamento.error) throw new Error(descarregamento.error.message);
+  const somaDesc = (descarregamento.data ?? []).reduce((t, r) => t + Number(r.receita), 0);
+  return somaDesc + diversas;
 }
 
+/**
+ * Série mensal somando as duas origens — precisa bater com o total exibido logo
+ * acima do gráfico, senão o usuário vê dois números diferentes para a mesma coisa.
+ */
 export async function serieReceitasMensais(qtd = 12): Promise<{ mes: string; valor: number }[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("receitas_descarregamento").select("data, receita");
-  if (error) throw new Error(error.message);
+  const [desc, diversas] = await Promise.all([
+    supabase.from("receitas_descarregamento").select("data, receita"),
+    serieDiversasMensais(),
+  ]);
+  if (desc.error) throw new Error(desc.error.message);
   const porMes = new Map<string, number>();
-  for (const r of data ?? []) {
+  for (const r of desc.data ?? []) {
     const mes = primeiroDiaDoMes(String(r.data));
     porMes.set(mes, (porMes.get(mes) ?? 0) + Number(r.receita));
+  }
+  for (const d of diversas) {
+    porMes.set(d.mes, (porMes.get(d.mes) ?? 0) + d.valor);
   }
   return [...porMes.entries()]
     .map(([mes, valor]) => ({ mes, valor }))
