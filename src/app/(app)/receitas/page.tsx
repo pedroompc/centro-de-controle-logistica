@@ -54,7 +54,15 @@ export default async function ReceitasPage({
     listarDiversasDoMes(mes),
   ]);
 
-  const resumo = resumoReceitas(receitas, diversas);
+  // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
+  // tem nenhum dos dois. Com um desses filtros ativo, o usuário pediu um recorte de
+  // descarregamento; misturar reciclagem nos totais (e no CSV) exibiria uma "receita
+  // total" que soma dinheiro de fora do filtro, sem nada avisando. Por isso as
+  // diversas somem do recorte inteiro — lista, totais e export — quando filtrado.
+  const filtrandoDescarregamento = Boolean(filtros.fornecedorId || filtros.tipo);
+  const diversasVisiveis = filtrandoDescarregamento ? [] : diversas;
+
+  const resumo = resumoReceitas(receitas, diversasVisiveis);
   const porFornecedor = receitaPorFornecedor(receitas);
   const porTipo = receitaPorTipo(receitas);
 
@@ -88,7 +96,7 @@ export default async function ReceitasPage({
         <StatCard
           label="Outras receitas"
           value={formatBRL(resumo.totalDiversas)}
-          hint={`${diversas.length} lançamentos`}
+          hint={filtrandoDescarregamento ? "fora do filtro atual" : `${diversasVisiveis.length} lançamentos`}
           accent="green"
         />
         <StatCard
@@ -196,9 +204,16 @@ export default async function ReceitasPage({
       <section className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionTitle>Outras receitas do mês</SectionTitle>
-          {admin && <DiversaForm mes={mes} />}
+          {admin && !filtrandoDescarregamento && <DiversaForm mes={mes} />}
         </div>
-        {diversas.length === 0 ? (
+        {filtrandoDescarregamento ? (
+          <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-4">
+            <p className="text-sm text-amber-800">
+              Filtro por fornecedor ou tipo ativo — esses conceitos só existem em descarregamento.
+              As outras receitas (reciclagem) ficam fora deste recorte. Limpe o filtro para vê-las.
+            </p>
+          </div>
+        ) : diversasVisiveis.length === 0 ? (
           <p className="text-sm text-slate-400">Nenhuma outra receita no período.</p>
         ) : (
           <Card className="overflow-hidden">
@@ -217,7 +232,7 @@ export default async function ReceitasPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {diversas.map((d) => (
+                  {diversasVisiveis.map((d) => (
                     <tr key={d.id} className="border-b border-slate-50 last:border-0 align-top">
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(d.data)}</td>
                       <td className="px-5 py-3">

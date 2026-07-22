@@ -21,6 +21,13 @@ export async function GET(req: NextRequest) {
     listarDiversasDoMes(mes),
   ]);
 
+  // Fornecedor e tipo são conceitos exclusivos de descarregamento — com um dos dois
+  // ativo, o pedido é um recorte de descarregamento. Emitir linhas de reciclagem
+  // (que não têm fornecedor nem tipo) junto inflaria o CSV com dados de fora do
+  // filtro, sem coluna nenhuma para explicar por quê. Mesma regra da página.
+  const filtrandoDescarregamento = Boolean(fornecedorId || tipo);
+  const diversasVisiveis = filtrandoDescarregamento ? [] : diversas;
+
   // Arquivo único com as duas origens: colunas específicas ficam vazias onde
   // não se aplicam. Decisão do Pedro — facilita jogar tudo numa dinâmica só.
   const header = [
@@ -44,7 +51,7 @@ export async function GET(req: NextRequest) {
     ],
   }));
 
-  const linhasDiv = diversas.map((d) => ({
+  const linhasDiv = diversasVisiveis.map((d) => ({
     data: d.data,
     campos: [
       // Rótulo da categoria, não string fixa: uma categoria futura sai certa
