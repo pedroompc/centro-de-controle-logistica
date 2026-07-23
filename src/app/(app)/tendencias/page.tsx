@@ -79,7 +79,7 @@ export default async function TendenciasPage() {
   const series: SeriePainel[] = [
     { nome: "Venda líquida", cor: CORES.venda, valores: vVenda, abs: vVenda.map(formatBRL) },
     { nome: "Valor devolução", cor: CORES.devolucao, valores: vValor, abs: vValor.map(formatBRL) },
-    { nome: "Peso devolvido", cor: CORES.peso, valores: vPeso, abs: vPeso.map(formatKg) },
+    { nome: "Peso devolvido", cor: CORES.peso, valores: vPeso, abs: vPeso.map((p) => formatKg(p)) },
     { nome: "Taxa de devolução", cor: CORES.taxa, valores: vTaxa, abs: vTaxa.map((t) => formatPercent(t)) },
   ];
 
