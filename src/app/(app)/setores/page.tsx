@@ -33,13 +33,13 @@ export default async function SetoresPage() {
             <Link
               key={setor.id}
               href={`/setores/${setor.id}`}
-              className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              className="group @container rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="flex items-start justify-between">
                 <h2 className="font-[family-name:var(--font-sora)] font-bold text-[#141a4d]">{setor.nome}</h2>
                 <span className="text-slate-300 transition group-hover:text-amber-500">→</span>
               </div>
-              <p className="mt-3 font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight text-[#141a4d]">
+              <p className="mt-3 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.5rem)] font-extrabold tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
                 {formatBRL(custoDoSetor(funcionarios, setor.id))}
               </p>
               <p className="text-xs text-slate-400">custo mensal (ativos)</p>
