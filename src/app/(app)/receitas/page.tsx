@@ -5,7 +5,7 @@ import { listarPrecos } from "@/data/precos-descarregamento";
 import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin } from "@/data/auth";
 import {
-  receitaTotal, toneladasTotal, valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, toneladas,
+  resumoReceitas, receitaPorFornecedor, receitaPorTipo, toneladas,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
@@ -13,6 +13,9 @@ import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } fro
 import { DescarregamentoForm } from "./descarregamento-form";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo } from "@/domain/types";
+import { listarDiversasDoMes, removerDiversa } from "@/data/receitas-diversas";
+import { ROTULO_CATEGORIA } from "@/domain/receitas-diversas";
+import { DiversaForm } from "./diversa-form";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -41,20 +44,27 @@ export default async function ReceitasPage({
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
   };
 
-  const [receitas, fornecedores, precos, config, serie, admin] = await Promise.all([
+  const [receitas, fornecedores, precos, config, serie, admin, diversas] = await Promise.all([
     listarReceitasDoMes(mes, filtros),
     listarFornecedores(),
     listarPrecos(),
     lerConfig(),
     serieReceitasMensais(),
     isAdmin(),
+    listarDiversasDoMes(mes),
   ]);
 
-  const total = receitaTotal(receitas);
-  const tons = toneladasTotal(receitas);
+  // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
+  // tem nenhum dos dois. Com um desses filtros ativo, o usuário pediu um recorte de
+  // descarregamento; misturar reciclagem nos totais (e no CSV) exibiria uma "receita
+  // total" que soma dinheiro de fora do filtro, sem nada avisando. Por isso as
+  // diversas somem do recorte inteiro — lista, totais e export — quando filtrado.
+  const filtrandoDescarregamento = Boolean(filtros.fornecedorId || filtros.tipo);
+  const diversasVisiveis = filtrandoDescarregamento ? [] : diversas;
+
+  const resumo = resumoReceitas(receitas, diversasVisiveis);
   const porFornecedor = receitaPorFornecedor(receitas);
   const porTipo = receitaPorTipo(receitas);
-  const medioTon = valorMedioPorTonelada(receitas);
 
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
@@ -68,7 +78,7 @@ export default async function ReceitasPage({
 
   return (
     <div>
-      <PageHeader title="Receitas Logísticas" subtitle="Descarregamentos cobrados de fornecedores">
+      <PageHeader title="Receitas Logísticas" subtitle="Descarregamentos e outras receitas da operação">
         <Link href={qs(mesAnterior(mes), filtros)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">◀</Link>
         <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
         <Link href={qs(mesProximo(mes), filtros)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">▶</Link>
@@ -76,10 +86,25 @@ export default async function ReceitasPage({
 
       {/* Indicadores */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="lg:col-span-1"><HeroStat label="Receita total" value={formatBRL(total)} /></div>
-        <StatCard label="Toneladas descarregadas" value={fmtTon(tons)} accent="navy" />
-        <StatCard label="Descarregamentos" value={String(receitas.length)} accent="navy" />
-        <StatCard label="Valor médio / tonelada" value={formatBRL(medioTon)} accent="gold" />
+        <div className="lg:col-span-1"><HeroStat label="Receita total" value={formatBRL(resumo.total)} /></div>
+        <StatCard
+          label="Descarregamento"
+          value={formatBRL(resumo.totalDescarregamento)}
+          hint={`${receitas.length} lançamentos · ${fmtTon(resumo.toneladas)}`}
+          accent="green"
+        />
+        <StatCard
+          label="Outras receitas"
+          value={formatBRL(resumo.totalDiversas)}
+          hint={filtrandoDescarregamento ? "fora do filtro atual" : `${diversasVisiveis.length} lançamentos`}
+          accent="green"
+        />
+        <StatCard
+          label="Valor médio / tonelada"
+          value={formatBRL(resumo.medioPorTonelada)}
+          hint="só descarregamento"
+          accent="gold"
+        />
       </div>
 
       {/* Ações + filtros */}
@@ -161,6 +186,74 @@ export default async function ReceitasPage({
                           <div className="flex flex-col items-end gap-2">
                             <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} receita={r} />
                             <form action={removerReceita.bind(null, r.id)}>
+                              <button className="text-sm font-medium text-rose-600 hover:text-rose-700">remover</button>
+                            </form>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </section>
+
+      {/* Outras receitas */}
+      <section className="mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionTitle>Outras receitas do mês</SectionTitle>
+          {admin && !filtrandoDescarregamento && <DiversaForm mes={mes} />}
+        </div>
+        {filtrandoDescarregamento ? (
+          <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-4">
+            <p className="text-sm text-amber-800">
+              Filtro por fornecedor ou tipo ativo — esses conceitos só existem em descarregamento.
+              As outras receitas (reciclagem) ficam fora deste recorte. Limpe o filtro para vê-las.
+            </p>
+          </div>
+        ) : diversasVisiveis.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhuma outra receita no período.</p>
+        ) : (
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">Data</th>
+                    <th className="px-5 py-3 font-semibold">Categoria</th>
+                    <th className="px-5 py-3 font-semibold">Material</th>
+                    <th className="px-5 py-3 font-semibold">Quantidade</th>
+                    <th className="px-5 py-3 font-semibold">R$/kg</th>
+                    <th className="px-5 py-3 font-semibold">Valor</th>
+                    <th className="px-5 py-3 font-semibold">Obs.</th>
+                    {admin && <th className="px-5 py-3"></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {diversasVisiveis.map((d) => (
+                    <tr key={d.id} className="border-b border-slate-50 last:border-0 align-top">
+                      <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(d.data)}</td>
+                      <td className="px-5 py-3">
+                        <Pill tone="navy">{ROTULO_CATEGORIA[d.categoria] ?? d.categoria}</Pill>
+                      </td>
+                      <td className="px-5 py-3 font-medium text-[#141a4d]">{d.material ?? "—"}</td>
+                      <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
+                        {/* 3 casas: pesagem de reciclagem é fracionária (numeric(14,3)), diferente do
+                            descarregamento acima — arredondar pra inteiro esconderia a quantidade real. */}
+                        {d.quantidade === null ? "—" : `${formatKg(d.quantidade, 3)}`}
+                      </td>
+                      <td className="px-5 py-3 tabular-nums text-slate-600">
+                        {d.precoUnitario === null ? "—" : formatBRL(d.precoUnitario)}
+                      </td>
+                      <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(d.valor)}</td>
+                      <td className="px-5 py-3 max-w-[16rem] truncate text-slate-500" title={d.observacao ?? ""}>{d.observacao ?? "—"}</td>
+                      {admin && (
+                        <td className="px-5 py-3">
+                          <div className="flex flex-col items-end gap-2">
+                            <DiversaForm mes={mes} diversa={d} />
+                            <form action={removerDiversa.bind(null, d.id)}>
                               <button className="text-sm font-medium text-rose-600 hover:text-rose-700">remover</button>
                             </form>
                           </div>

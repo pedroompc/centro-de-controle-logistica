@@ -1,11 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Sora } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 
 const sora = Sora({ subsets: ["latin"], weight: ["500", "600", "700", "800"], variable: "--font-sora" });
+
+/**
+ * Isolado num componente próprio porque `useSearchParams` força renderização no
+ * cliente até o limite de Suspense mais próximo. Contido aqui, o resto da tela
+ * de login continua sendo pré-renderizado.
+ */
+function AvisoSessaoExpirada() {
+  if (!useSearchParams().has("expirou")) return null;
+  return (
+    <p className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
+      Sua sessão expirou por segurança. Entre novamente para continuar.
+    </p>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,13 +28,6 @@ export default function LoginPage() {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
-  const [expirou, setExpirou] = useState(false);
-
-  // Lido do window em vez de useSearchParams: o hook exigiria um limite de
-  // Suspense em volta do formulário só para mostrar um aviso.
-  useEffect(() => {
-    setExpirou(new URLSearchParams(window.location.search).has("expirou"));
-  }, []);
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
@@ -106,11 +113,9 @@ export default function LoginPage() {
           </h2>
           <p className="mt-2 text-sm text-slate-500">Entre com suas credenciais para acessar o painel.</p>
 
-          {expirou && (
-            <p className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
-              Sua sessão expirou por segurança. Entre novamente para continuar.
-            </p>
-          )}
+          <Suspense fallback={null}>
+            <AvisoSessaoExpirada />
+          </Suspense>
 
           <form onSubmit={entrar} className="mt-8 space-y-4">
             <div>

@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
+  calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
 } from "./receitas-metrics";
-import type { Receita } from "./types";
+import type { Receita, ReceitaDiversa } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
@@ -90,5 +91,84 @@ describe("receitas-metrics", () => {
 
   it("custo líquido = brutos − receitas", () => {
     expect(custoLiquido(50000, 8000)).toBe(42000);
+  });
+
+  const d = (over: Partial<ReceitaDiversa>): ReceitaDiversa => ({
+    id: "d1", data: "2026-07-10", categoria: "reciclagem",
+    material: "Plástico stretch", quantidade: 100, unidade: "kg",
+    precoUnitario: 1.2, valor: 120, observacao: null, ...over,
+  });
+
+  it("calcula o valor sugerido de uma receita diversa", () => {
+    expect(calcularValorDiversa(100, 1.2)).toBe(120);
+  });
+
+  it("arredonda o valor sugerido a centavos", () => {
+    // 33,3 kg × 1,17 = 38,961 → 38,96
+    expect(calcularValorDiversa(33.3, 1.17)).toBe(38.96);
+  });
+
+  it("não aplica piso mínimo em receita diversa (regra é de descarregamento)", () => {
+    expect(calcularValorDiversa(1, 0.5)).toBe(0.5);
+  });
+
+  it("soma o valor GRAVADO, não o recalculado de quantidade × preço", () => {
+    // Valor negociado (110) difere do produto (120): manda o negociado.
+    const negociado = d({ quantidade: 100, precoUnitario: 1.2, valor: 110 });
+    expect(valorTotalDiversas([negociado])).toBe(110);
+  });
+
+  it("soma várias diversas de forma estável", () => {
+    expect(valorTotalDiversas([d({ valor: 10.1 }), d({ valor: 20.2 })])).toBe(30.3);
+  });
+
+  it("soma as duas origens no total, mas mantém o médio/ton só do descarregamento", () => {
+    // A armadilha do módulo: se a receita de reciclagem vazar para o numerador
+    // do médio/ton, ele vira 31,00 — dinheiro que não veio de tonelada nenhuma.
+    const resumo = resumoReceitas(
+      [r({ pesoKg: 10000, receita: 200 })],
+      [d({ valor: 110 })],
+    );
+    expect(resumo.total).toBe(310);
+    expect(resumo.totalDescarregamento).toBe(200);
+    expect(resumo.totalDiversas).toBe(110);
+    expect(resumo.medioPorTonelada).toBe(20); // 200 / 10 t — NÃO 310 / 10
+  });
+
+  it("não divide por zero quando não há descarregamento no período", () => {
+    const resumo = resumoReceitas([], [d({ valor: 50 })]);
+    expect(resumo.total).toBe(50);
+    expect(resumo.medioPorTonelada).toBe(0);
+  });
+});
+
+describe("resolverValorDiversa", () => {
+  // Regra central da feature: o valor negociado com o comprador manda sobre o
+  // produto quantidade × preço. Só cai no cálculo quando o valor bruto do
+  // formulário não é um número válido e positivo.
+
+  it("mantém o valor informado mesmo divergente do produto (desconto negociado)", () => {
+    // Produto seria 100 × 1,2 = 120, mas o negociado foi 110.
+    expect(resolverValorDiversa("110", 100, 1.2)).toBe(110);
+  });
+
+  it("cai no produto quando o valor bruto é null", () => {
+    expect(resolverValorDiversa(null, 100, 1.2)).toBe(120);
+  });
+
+  it("cai no produto quando o valor bruto é string vazia", () => {
+    expect(resolverValorDiversa("", 100, 1.2)).toBe(120);
+  });
+
+  it('cai no produto quando o valor bruto é "0"', () => {
+    expect(resolverValorDiversa("0", 100, 1.2)).toBe(120);
+  });
+
+  it("cai no produto quando o valor bruto é negativo", () => {
+    expect(resolverValorDiversa("-5", 100, 1.2)).toBe(120);
+  });
+
+  it("cai no produto quando o valor bruto não é numérico", () => {
+    expect(resolverValorDiversa("abc", 100, 1.2)).toBe(120);
   });
 });

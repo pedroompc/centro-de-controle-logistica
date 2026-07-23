@@ -1,4 +1,4 @@
-import type { Receita, DescarregamentoTipo } from "./types";
+import type { Receita, DescarregamentoTipo, ReceitaDiversa } from "./types";
 import { TIPOS_DESCARREGAMENTO } from "./descarregamento";
 
 /** Arredonda a 2 casas (centavos), estável para somas de dinheiro. */
@@ -58,4 +58,75 @@ export function receitaPorTipo(rs: Receita[]): Record<DescarregamentoTipo, numbe
 /** Custo logístico líquido = custos brutos − receitas (só demonstração; não altera custos). */
 export function custoLiquido(custosBrutos: number, receitas: number): number {
   return arredonda2(custosBrutos - receitas);
+}
+
+/**
+ * Valor SUGERIDO de uma receita diversa = quantidade × preço unitário.
+ * Só sugere: o valor gravado é o negociado e pode divergir de propósito.
+ * Sem piso mínimo — isso é regra de descarregamento.
+ */
+export function calcularValorDiversa(quantidade: number, precoUnitario: number): number {
+  return arredonda2(quantidade * precoUnitario);
+}
+
+/**
+ * Decide o valor a gravar de uma receita diversa: o informado no formulário
+ * manda; o produto quantidade × preço só entra quando não veio nada válido.
+ *
+ * Existe porque o preço combinado com o comprador às vezes diverge do produto
+ * exato — arredondamento de conversa, desconto negociado no balcão. Se essa
+ * precedência fosse invertida (sempre recalcular), todo desconto seria apagado
+ * na gravação e o total do mês deixaria de bater com o dinheiro que entrou.
+ *
+ * `valorBruto` é o valor cru do formulário (`FormData.get` devolve
+ * `string | null`) — a validação de "válido" fica aqui, não espalhada pelas
+ * chamadoras.
+ */
+export function resolverValorDiversa(
+  valorBruto: string | null,
+  quantidade: number,
+  precoUnitario: number,
+): number {
+  const valorInformado = Number(valorBruto ?? NaN);
+  return Number.isFinite(valorInformado) && valorInformado > 0
+    ? valorInformado
+    : calcularValorDiversa(quantidade, precoUnitario);
+}
+
+/** Soma o valor gravado das receitas diversas — nunca o recalculado. */
+export function valorTotalDiversas(ds: ReceitaDiversa[]): number {
+  return arredonda2(ds.reduce((t, d) => t + d.valor, 0));
+}
+
+export interface ResumoReceitas {
+  totalDescarregamento: number;
+  totalDiversas: number;
+  total: number;
+  toneladas: number;
+  /** Divide SÓ a receita de descarregamento pelas toneladas. */
+  medioPorTonelada: number;
+}
+
+/**
+ * Compõe os totais da tela de receitas a partir das duas origens.
+ *
+ * Existe como função de domínio, e não solta na página, porque carrega a regra
+ * mais fácil de quebrar do módulo: o total soma as duas origens, mas o médio por
+ * tonelada divide só o descarregamento. Receita de reciclagem não vem de tonelada
+ * nenhuma — deixá-la entrar no numerador infla o indicador sem ninguém perceber.
+ */
+export function resumoReceitas(
+  descarregamentos: Receita[],
+  diversas: ReceitaDiversa[],
+): ResumoReceitas {
+  const totalDescarregamento = receitaTotal(descarregamentos);
+  const totalDiversas = valorTotalDiversas(diversas);
+  const tons = toneladasTotal(descarregamentos);
+  return {
+    totalDescarregamento,
+    totalDiversas,
+    total: arredonda2(totalDescarregamento + totalDiversas),
+    toneladas: tons,
+    medioPorTonelada: tons === 0 ? 0 : arredonda2(totalDescarregamento / tons),
+  };
 }

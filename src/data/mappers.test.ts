@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapConfig } from "./mappers";
+import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapConfig, mapReceitaDiversa } from "./mappers";
 
 describe("mapFuncionario", () => {
   it("converte snake_case e custo_mensal string em number", () => {
@@ -107,5 +107,32 @@ describe("mapConfig", () => {
     const config = mapConfig({ valor_minimo: "25.00" });
     expect(config).toEqual({ valorMinimo: 25 });
     expect(typeof config.valorMinimo).toBe("number");
+  });
+});
+
+describe("mapReceitaDiversa", () => {
+  it("converte campos numeric (string) do PostgREST em number", () => {
+    expect(
+      mapReceitaDiversa({
+        id: "d1", data: "2026-07-10", categoria: "reciclagem",
+        material: "Plástico stretch", quantidade: "100.500", unidade: "kg",
+        preco_unitario: "1.20", valor: "120.60", observacao: null,
+      }),
+    ).toEqual({
+      id: "d1", data: "2026-07-10", categoria: "reciclagem",
+      material: "Plástico stretch", quantidade: 100.5, unidade: "kg",
+      precoUnitario: 1.2, valor: 120.6, observacao: null,
+    });
+  });
+
+  it("preserva null em quantidade e preço — não vira zero", () => {
+    const m = mapReceitaDiversa({
+      id: "d2", data: "2026-07-11", categoria: "reciclagem",
+      material: null, quantidade: null, unidade: "kg",
+      preco_unitario: null, valor: "80", observacao: "ajuste",
+    });
+    expect(m.quantidade).toBeNull();
+    expect(m.precoUnitario).toBeNull();
+    expect(m.valor).toBe(80);
   });
 });

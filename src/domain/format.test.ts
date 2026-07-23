@@ -23,6 +23,12 @@ describe("formatKg", () => {
   it("formata zero", () => {
     expect(formatKg(0)).toBe("0 kg");
   });
+  it("preserva casas decimais quando pedido (reciclagem, balança fracionária)", () => {
+    expect(formatKg(47.35, 3)).toBe("47,350 kg");
+  });
+  it("não engole quantidade fracionária pequena", () => {
+    expect(formatKg(0.4, 3)).toBe("0,400 kg");
+  });
 });
 
 describe("formatPercent", () => {

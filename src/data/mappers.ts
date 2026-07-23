@@ -1,4 +1,4 @@
-import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo, ConfigDescarregamento } from "@/domain/types";
+import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo, ConfigDescarregamento, ReceitaDiversa, ReceitaCategoria } from "@/domain/types";
 
 export function mapSetor(row: { id: string; nome: string }): Setor {
   return { id: row.id, nome: row.nome };
@@ -91,4 +91,24 @@ export function mapReceita(row: {
 
 export function mapConfig(row: { valor_minimo: string | number }): ConfigDescarregamento {
   return { valorMinimo: Number(row.valor_minimo) };
+}
+
+export function mapReceitaDiversa(row: {
+  id: string; data: string; categoria: string;
+  material: string | null; quantidade: string | number | null;
+  unidade: string; preco_unitario: string | number | null;
+  valor: string | number; observacao: string | null;
+}): ReceitaDiversa {
+  return {
+    id: row.id,
+    data: row.data,
+    categoria: row.categoria as ReceitaCategoria,
+    material: row.material,
+    // null é significativo (receita sem quantidade), então não vira 0.
+    quantidade: row.quantidade === null ? null : Number(row.quantidade),
+    unidade: row.unidade,
+    precoUnitario: row.preco_unitario === null ? null : Number(row.preco_unitario),
+    valor: Number(row.valor),
+    observacao: row.observacao,
+  };
 }
