@@ -61,7 +61,7 @@ export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
 }) {
   const deltaCor = delta.positivo ? CORES.positivo : CORES.negativo;
   return (
-    <Card className="p-5">
+    <Card className="@container p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl"
@@ -70,7 +70,8 @@ export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
         </div>
         <MiniBars valores={valores} cor={cor} />
       </div>
-      <p className="mt-3 font-[family-name:var(--font-sora)] text-[26px] font-extrabold leading-none tracking-tight text-[#141a4d]">
+      {/* Fluido: venda líquida pode ser o maior número do app; escala com o card. */}
+      <p className="mt-3 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.625rem)] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
         {valor}
       </p>
       <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold" style={{ color: deltaCor }}>

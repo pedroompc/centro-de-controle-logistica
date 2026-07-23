@@ -49,9 +49,9 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
 
       <Card className="p-6">
         <div className="grid gap-6 md:grid-cols-2">
-          <div>
+          <div className="@container">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total do mês</p>
-            <p className="mt-1 font-[family-name:var(--font-sora)] text-4xl font-extrabold tracking-tight text-[#141a4d]">
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.5rem,11cqi,2.25rem)] font-extrabold tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
               {formatBRL(total)}
             </p>
             <p className="mt-1 text-sm text-slate-400">{formatMesAno(mes)}</p>
@@ -68,21 +68,21 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
           <Link href="/receitas" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">ver receitas →</Link>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <div className="@container rounded-xl border border-slate-200 bg-slate-50/60 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Custos brutos</p>
-            <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">{formatBRL(total)}</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.5rem)] font-extrabold tabular-nums whitespace-nowrap text-[#141a4d]">{formatBRL(total)}</p>
             <p className="mt-1 text-xs text-slate-400">Salário + fixos + variáveis</p>
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+          <div className="@container rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">
               <span aria-hidden>▼</span> Receitas logísticas
             </p>
-            <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-emerald-700">− {formatBRL(receitas)}</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.5rem)] font-extrabold tabular-nums whitespace-nowrap text-emerald-700">− {formatBRL(receitas)}</p>
             <p className="mt-1 text-xs text-emerald-600/80">Compensação demonstrada — não altera os custos</p>
           </div>
-          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4">
+          <div className="@container rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">= Custo líquido</p>
-            <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">{formatBRL(liquido)}</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.5rem)] font-extrabold tabular-nums whitespace-nowrap text-[#141a4d]">{formatBRL(liquido)}</p>
             <p className="mt-1 text-xs text-amber-700/80">Após abatimento das receitas</p>
           </div>
         </div>

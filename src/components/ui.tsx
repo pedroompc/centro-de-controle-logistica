@@ -60,10 +60,12 @@ export function StatCard({
   }[accent];
 
   const inner = (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div className="@container relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-      <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight tabular-nums text-[#141a4d] sm:text-3xl">
+      {/* Fonte fluida: escala com a largura real do card (cqi) e nunca quebra
+          linha, então valores longos (R$ 999.999,99) cabem em qualquer coluna. */}
+      <p className="mt-2 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.875rem)] font-extrabold leading-tight tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
         {value}
       </p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
@@ -86,7 +88,7 @@ export function StatCard({
 export function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="relative h-full overflow-hidden rounded-2xl p-6 shadow-lg sm:p-7"
+      className="@container relative h-full overflow-hidden rounded-2xl p-6 shadow-lg sm:p-7"
       style={{ background: "linear-gradient(140deg,#0a1650 0%,#141a4d 55%,#1b2168 100%)" }}
     >
       <span className="absolute inset-y-0 left-0 w-1.5 bg-amber-400" />
@@ -97,7 +99,10 @@ export function HeroStat({ label, value }: { label: string; value: string }) {
         style={{ background: "radial-gradient(circle,#f5b301 0%,transparent 70%)" }}
       />
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">{label}</p>
-      <p className="mt-2 font-[family-name:var(--font-sora)] text-3xl font-extrabold leading-none tracking-tight tabular-nums text-white sm:text-4xl lg:text-5xl">
+      {/* Fluido por container query: enche o card quando ele é largo (mobile,
+          dashboard) e encolhe pra caber na coluna estreita do grid de 4, sem
+          quebrar linha — antes o text-5xl fixo estourava a borda. */}
+      <p className="mt-2 font-[family-name:var(--font-sora)] text-[clamp(1.375rem,12cqi,3rem)] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap text-white">
         {value}
       </p>
     </div>
