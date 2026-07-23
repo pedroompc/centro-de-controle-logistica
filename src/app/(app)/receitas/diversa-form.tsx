@@ -57,7 +57,10 @@ export function DiversaForm({ mes, diversa }: { mes: string; diversa?: ReceitaDi
   return (
     <form action={diversa ? editarDiversa : criarDiversa} className="flex flex-wrap items-end gap-2 text-sm">
       {diversa && <input type="hidden" name="id" value={diversa.id} />}
-      <input type="hidden" name="categoria" value="reciclagem" />
+      {/* Preserva a categoria original ao editar — hoje o enum tem só "reciclagem",
+          mas fixar o literal faria uma categoria futura virar reciclagem ao salvar
+          uma edição sem o TypeScript apontar nada quando o union crescer. */}
+      <input type="hidden" name="categoria" value={diversa?.categoria ?? "reciclagem"} />
       <input name="data" type="date" required defaultValue={dataPadrao} className={field} />
       <input
         name="material"
