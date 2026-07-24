@@ -220,7 +220,7 @@ export default async function ReceitasPage({
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
                         {formatKg(d.pesoKg)} <span className="text-slate-400">({fmtTon(toneladas(d.pesoKg))})</span>
                       </td>
-                      <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(d.receita)}</td>
+                      <td className="px-5 py-3 whitespace-nowrap font-semibold tabular-nums text-emerald-700">{formatBRL(d.receita)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -233,7 +233,7 @@ export default async function ReceitasPage({
                     <td className="px-5 py-3 whitespace-nowrap tabular-nums font-semibold text-[#141a4d]">
                       {formatKg(pesoTotalKg)} <span className="font-normal text-slate-400">({fmtTon(toneladas(pesoTotalKg))})</span>
                     </td>
-                    <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(resumo.totalDescarregamento)}</td>
+                    <td className="px-5 py-3 whitespace-nowrap font-semibold tabular-nums text-emerald-700">{formatBRL(resumo.totalDescarregamento)}</td>
                   </tr>
                 </tfoot>
               </table>
