@@ -3,6 +3,7 @@ import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
+  receitaPorDia,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa } from "./types";
 
@@ -170,5 +171,46 @@ describe("resolverValorDiversa", () => {
 
   it("cai no produto quando o valor bruto não é numérico", () => {
     expect(resolverValorDiversa("abc", 100, 1.2)).toBe(120);
+  });
+});
+
+describe("receitaPorDia", () => {
+  it("agrupa lançamentos do mesmo dia somando contagem, peso e receita", () => {
+    const dias = receitaPorDia([
+      r({ id: "a", data: "2026-07-10", pesoKg: 1000, receita: 20 }),
+      r({ id: "b", data: "2026-07-10", pesoKg: 2500, receita: 62.5 }),
+    ]);
+    expect(dias).toEqual([
+      { data: "2026-07-10", descarregos: 2, pesoKg: 3500, receita: 82.5 },
+    ]);
+  });
+
+  it("ordena do dia mais recente para o mais antigo", () => {
+    const dias = receitaPorDia([
+      r({ id: "a", data: "2026-07-03" }),
+      r({ id: "b", data: "2026-07-21" }),
+      r({ id: "c", data: "2026-07-12" }),
+    ]);
+    expect(dias.map((d) => d.data)).toEqual(["2026-07-21", "2026-07-12", "2026-07-03"]);
+  });
+
+  it("devolve lista vazia sem lançamentos", () => {
+    expect(receitaPorDia([])).toEqual([]);
+  });
+
+  it("a soma das receitas por dia bate com receitaTotal", () => {
+    // Invariante do módulo: a direção lê o total do rodapé da vista simples e a
+    // operação lê o card do topo. Os dois vêm de caminhos diferentes de soma —
+    // se divergirem por centavo de arredondamento, ninguém sabe qual acreditar.
+    const rs = [
+      r({ id: "a", data: "2026-07-10", pesoKg: 1234, receita: 24.68 }),
+      r({ id: "b", data: "2026-07-10", pesoKg: 777, receita: 15.54 }),
+      r({ id: "c", data: "2026-07-11", pesoKg: 3333, receita: 66.67 }),
+      r({ id: "d", data: "2026-07-12", pesoKg: 91, receita: 1.83 }),
+    ];
+    const somaDosDias = arredonda2(
+      receitaPorDia(rs).reduce((t, d) => t + d.receita, 0),
+    );
+    expect(somaDosDias).toBe(receitaTotal(rs));
   });
 });

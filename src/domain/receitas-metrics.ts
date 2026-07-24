@@ -55,6 +55,43 @@ export function receitaPorTipo(rs: Receita[]): Record<DescarregamentoTipo, numbe
   return acc;
 }
 
+export interface DiaDescarregamento {
+  data: string; // ISO "yyyy-mm-dd"
+  descarregos: number;
+  pesoKg: number;
+  receita: number;
+}
+
+/**
+ * Colapsa os lançamentos em uma linha por dia: quantos descarregos entraram,
+ * quanto pesaram e quanto renderam. É a leitura de quem só quer o resultado do
+ * dia, sem o detalhe de fornecedor, tipo e R$/ton.
+ *
+ * Só descarregamento — receita diversa não tem peso nem contagem de descarrego,
+ * então somá-la aqui produziria uma linha em que os três números medem coisas
+ * diferentes.
+ *
+ * Soma o dinheiro com `arredonda2` a cada passo, igual ao resto do módulo: é o
+ * que garante que o total do rodapé da tabela feche com o card do topo, que vem
+ * por outro caminho de soma.
+ *
+ * Dias sem lançamento não aparecem — a lista é dos dias com movimento, não do
+ * calendário do mês. Ordena do mais recente para o mais antigo, como a tabela
+ * detalhada.
+ */
+export function receitaPorDia(rs: Receita[]): DiaDescarregamento[] {
+  const mapa = new Map<string, DiaDescarregamento>();
+  for (const r of rs) {
+    const atual = mapa.get(r.data) ?? { data: r.data, descarregos: 0, pesoKg: 0, receita: 0 };
+    atual.descarregos += 1;
+    atual.pesoKg += r.pesoKg;
+    atual.receita = arredonda2(atual.receita + r.receita);
+    mapa.set(r.data, atual);
+  }
+  // Datas ISO comparam corretamente como string (yyyy-mm-dd é ordenável lexicalmente).
+  return [...mapa.values()].sort((a, b) => b.data.localeCompare(a.data));
+}
+
 /** Custo logístico líquido = custos brutos − receitas (só demonstração; não altera custos). */
 export function custoLiquido(custosBrutos: number, receitas: number): number {
   return arredonda2(custosBrutos - receitas);

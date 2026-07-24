@@ -5,7 +5,7 @@ import { listarPrecos } from "@/data/precos-descarregamento";
 import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin } from "@/data/auth";
 import {
-  resumoReceitas, receitaPorFornecedor, receitaPorTipo, toneladas,
+  resumoReceitas, receitaPorFornecedor, receitaPorTipo, receitaPorDia, toneladas,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
@@ -24,18 +24,58 @@ function fmtTon(t: number): string {
   return `${t.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t`;
 }
 
-// Monta querystring preservando filtros ao navegar entre meses.
-function qs(mes: string, f: FiltrosReceita): string {
+/**
+ * Granularidade da tabela de descarregamentos. "detalhado" é a leitura de quem
+ * opera (um lançamento por linha); "simples" é a de quem só quer o resultado do
+ * dia. Detalhado é o default — qualquer valor desconhecido cai nele.
+ */
+type Vista = "detalhado" | "simples";
+
+function lerVista(bruto: string | undefined): Vista {
+  return bruto === "simples" ? "simples" : "detalhado";
+}
+
+// Monta querystring preservando filtros e vista ao navegar entre meses.
+function qs(mes: string, f: FiltrosReceita, vista: Vista): string {
   const p = new URLSearchParams({ mes });
   if (f.fornecedorId) p.set("fornecedor", f.fornecedorId);
   if (f.tipo) p.set("tipo", f.tipo);
+  if (vista === "simples") p.set("vista", vista);
   return `/receitas?${p.toString()}`;
+}
+
+const VISTAS: { valor: Vista; rotulo: string }[] = [
+  { valor: "detalhado", rotulo: "Detalhado" },
+  { valor: "simples", rotulo: "Simples" },
+];
+
+/** Alterna a granularidade da tabela preservando mês e filtros ativos. */
+function SeletorVista({ mes, filtros, vista }: { mes: string; filtros: FiltrosReceita; vista: Vista }) {
+  return (
+    <div className="mb-3 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+      {VISTAS.map((v) => {
+        const ativo = v.valor === vista;
+        return (
+          <Link
+            key={v.valor}
+            href={qs(mes, filtros, v.valor)}
+            aria-current={ativo ? "page" : undefined}
+            className={`rounded-[0.6rem] px-3 py-1.5 text-xs font-semibold transition ${
+              ativo ? "bg-white text-[#141a4d] shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {v.rotulo}
+          </Link>
+        );
+      })}
+    </div>
+  );
 }
 
 export default async function ReceitasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string }>;
+  searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string; vista?: string }>;
 }) {
   const sp = await searchParams;
   const mes = sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes();
@@ -43,6 +83,7 @@ export default async function ReceitasPage({
     fornecedorId: sp.fornecedor || undefined,
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
   };
+  const vista = lerVista(sp.vista);
 
   const [receitas, fornecedores, precos, config, serie, admin, diversas] = await Promise.all([
     listarReceitasDoMes(mes, filtros),
@@ -65,6 +106,11 @@ export default async function ReceitasPage({
   const resumo = resumoReceitas(receitas, diversasVisiveis);
   const porFornecedor = receitaPorFornecedor(receitas);
   const porTipo = receitaPorTipo(receitas);
+  const porDia = receitaPorDia(receitas);
+  // Somado da própria coluna, não derivado de `resumo.toneladas`: aquele valor é
+  // arredondado a 2 casas de tonelada (granularidade de 10 kg) e o rodapé deixaria
+  // de fechar com os kg exibidos nas linhas.
+  const pesoTotalKg = porDia.reduce((t, d) => t + d.pesoKg, 0);
 
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
@@ -79,9 +125,9 @@ export default async function ReceitasPage({
   return (
     <div>
       <PageHeader title="Receitas Logísticas" subtitle="Descarregamentos e outras receitas da operação">
-        <Link href={qs(mesAnterior(mes), filtros)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">◀</Link>
+        <Link href={qs(mesAnterior(mes), filtros, vista)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">◀</Link>
         <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
-        <Link href={qs(mesProximo(mes), filtros)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">▶</Link>
+        <Link href={qs(mesProximo(mes), filtros, vista)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">▶</Link>
       </PageHeader>
 
       {/* Indicadores */}
@@ -111,6 +157,8 @@ export default async function ReceitasPage({
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
           <input type="hidden" name="mes" value={mes} />
+          {/* Sem isto, "Filtrar" recarrega sem `vista` e devolve o usuário ao detalhado. */}
+          <input type="hidden" name="vista" value={vista} />
           <select name="fornecedor" defaultValue={filtros.fornecedorId ?? ""} className={field}>
             <option value="">Todos os fornecedores</option>
             {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
@@ -146,9 +194,51 @@ export default async function ReceitasPage({
 
       {/* Tabela de lançamentos */}
       <section className="mt-6">
-        <SectionTitle>Descarregamentos do mês</SectionTitle>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionTitle>Descarregamentos do mês</SectionTitle>
+          <SeletorVista mes={mes} filtros={filtros} vista={vista} />
+        </div>
         {receitas.length === 0 ? (
           <p className="text-sm text-slate-400">Nenhum descarregamento no período.</p>
+        ) : vista === "simples" ? (
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">Data</th>
+                    <th className="px-5 py-3 font-semibold">Descarregos</th>
+                    <th className="px-5 py-3 font-semibold">Peso</th>
+                    <th className="px-5 py-3 font-semibold">Receita</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {porDia.map((d) => (
+                    <tr key={d.data} className="border-b border-slate-50 last:border-0">
+                      <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(d.data)}</td>
+                      <td className="px-5 py-3 tabular-nums font-medium text-[#141a4d]">{d.descarregos}</td>
+                      <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
+                        {formatKg(d.pesoKg)} <span className="text-slate-400">({fmtTon(toneladas(d.pesoKg))})</span>
+                      </td>
+                      <td className="px-5 py-3 whitespace-nowrap font-semibold tabular-nums text-emerald-700">{formatBRL(d.receita)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-slate-200 bg-slate-50/70 text-slate-600">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Total do mês
+                    </th>
+                    <td className="px-5 py-3 tabular-nums font-semibold text-[#141a4d]">{receitas.length}</td>
+                    <td className="px-5 py-3 whitespace-nowrap tabular-nums font-semibold text-[#141a4d]">
+                      {formatKg(pesoTotalKg)} <span className="font-normal text-slate-400">({fmtTon(toneladas(pesoTotalKg))})</span>
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap font-semibold tabular-nums text-emerald-700">{formatBRL(resumo.totalDescarregamento)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
         ) : (
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
