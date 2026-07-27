@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { listarReceitasDoMes } from "@/data/receitas";
 import { listarDiversasDoMes } from "@/data/receitas-diversas";
+import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
 import { toneladas } from "@/domain/receitas-metrics";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import { ROTULO_TIPO } from "@/domain/descarregamento";
@@ -16,9 +17,10 @@ export async function GET(req: NextRequest) {
   const fornecedorId = sp.get("fornecedor") || undefined;
   const tipo = (sp.get("tipo") as DescarregamentoTipo) || undefined;
 
-  const [receitas, diversas] = await Promise.all([
+  const [receitas, diversas, totais] = await Promise.all([
     listarReceitasDoMes(mes, { fornecedorId, tipo }),
     listarDiversasDoMes(mes),
+    listarTotaisDiariosDoMes(mes),
   ]);
 
   // Fornecedor e tipo são conceitos exclusivos de descarregamento — com um dos dois
@@ -27,6 +29,7 @@ export async function GET(req: NextRequest) {
   // filtro, sem coluna nenhuma para explicar por quê. Mesma regra da página.
   const filtrandoDescarregamento = Boolean(fornecedorId || tipo);
   const diversasVisiveis = filtrandoDescarregamento ? [] : diversas;
+  const totaisVisiveis = filtrandoDescarregamento ? [] : totais;
 
   // Arquivo único com as duas origens: colunas específicas ficam vazias onde
   // não se aplicam. Decisão do Pedro — facilita jogar tudo numa dinâmica só.
@@ -66,7 +69,25 @@ export async function GET(req: NextRequest) {
     ],
   }));
 
-  const linhas = [...linhasDesc, ...linhasDiv]
+  const linhasDiario = totaisVisiveis.map((t) => ({
+    data: t.data,
+    campos: [
+      "Total do dia",
+      t.data,
+      "",                        // Fornecedor
+      num(t.pesoKg),             // Peso (kg)
+      num(toneladas(t.pesoKg)),  // Peso (t)
+      "",                        // Tipo
+      "",                        // Preço/ton
+      "",                        // Mínimo aplicado
+      "",                        // Material
+      String(t.descarregos),     // Quantidade → nº de descarregos
+      "",                        // Preço unitário
+      num(t.receita),            // Valor
+    ],
+  }));
+
+  const linhas = [...linhasDesc, ...linhasDiv, ...linhasDiario]
     .sort((a, b) => a.data.localeCompare(b.data))
     .map((l) => l.campos.join(";"));
 
