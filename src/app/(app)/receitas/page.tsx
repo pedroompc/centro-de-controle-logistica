@@ -11,6 +11,7 @@ import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
 import { DescarregamentoForm } from "./descarregamento-form";
+import { FornecedorRanking } from "./fornecedor-ranking";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo } from "@/domain/types";
 import { listarDiversasDoMes, removerDiversa } from "@/data/receitas-diversas";
@@ -197,11 +198,7 @@ export default async function ReceitasPage({
           não esticar a página. */}
       <section className="mt-6">
         <SectionTitle>Receita por fornecedor</SectionTitle>
-        <Card className="p-5">
-          <div className="max-h-[32rem] overflow-y-auto pr-1">
-            <BarList items={barrasFornecedor} tone="gold" />
-          </div>
-        </Card>
+        <Card className="p-5"><FornecedorRanking items={barrasFornecedor} /></Card>
       </section>
       <section className="mt-6">
         <SectionTitle>Receita por tipo</SectionTitle>
