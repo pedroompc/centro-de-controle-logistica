@@ -14,41 +14,49 @@ export default async function PrecosPage() {
   return (
     <div>
       <BackLink href="/receitas">Receitas</BackLink>
-      <PageHeader title="Preços por tonelada" subtitle="Valores globais aplicados por tipo de descarregamento" />
+      <PageHeader title="Preços" subtitle="Valores globais por tipo de descarregamento (por tonelada; o Volume é por caixa)" />
 
       <Card className="max-w-lg overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-5 py-3 font-semibold">Tipo</th>
-              <th className="px-5 py-3 font-semibold">Preço / tonelada</th>
+              <th className="px-5 py-3 font-semibold">Preço</th>
             </tr>
           </thead>
           <tbody>
-            {precos.map((p) => (
-              <tr key={p.tipo} className="border-b border-slate-50 last:border-0">
-                <td className="px-5 py-3 font-medium text-[#141a4d]">{ROTULO_TIPO[p.tipo] ?? p.tipo}</td>
-                <td className="px-5 py-3">
-                  {admin ? (
-                    <form action={editarPreco} className="flex items-center gap-2">
-                      <input type="hidden" name="tipo" value={p.tipo} />
-                      <input
-                        name="preco"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        defaultValue={p.precoPorTonelada}
-                        required
-                        className={editInput}
-                      />
-                      <button className="text-xs font-medium text-slate-500 hover:text-[#141a4d]">salvar</button>
-                    </form>
-                  ) : (
-                    <span className="tabular-nums text-slate-600">{formatBRL(p.precoPorTonelada)}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {precos.map((p) => {
+              const ehVolume = p.tipo === "volume";
+              const valor = ehVolume ? p.precoPorUnidade ?? 0 : p.precoPorTonelada;
+              const unidade = ehVolume ? "/caixa" : "/ton";
+              return (
+                <tr key={p.tipo} className="border-b border-slate-50 last:border-0">
+                  <td className="px-5 py-3 font-medium text-[#141a4d]">{ROTULO_TIPO[p.tipo] ?? p.tipo}</td>
+                  <td className="px-5 py-3">
+                    {admin ? (
+                      <form action={editarPreco} className="flex items-center gap-2">
+                        <input type="hidden" name="tipo" value={p.tipo} />
+                        <input
+                          name="preco"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={valor}
+                          required
+                          className={editInput}
+                        />
+                        <span className="text-xs text-slate-400">{unidade}</span>
+                        <button className="text-xs font-medium text-slate-500 hover:text-[#141a4d]">salvar</button>
+                      </form>
+                    ) : (
+                      <span className="tabular-nums text-slate-600">
+                        {formatBRL(valor)} <span className="text-slate-400">{unidade}</span>
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
