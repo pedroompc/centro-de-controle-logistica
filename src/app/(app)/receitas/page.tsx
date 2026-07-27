@@ -292,7 +292,7 @@ export default async function ReceitasPage({
                     <th className="px-5 py-3 font-semibold">Fornecedor</th>
                     <th className="px-5 py-3 font-semibold">Peso</th>
                     <th className="px-5 py-3 font-semibold">Tipo</th>
-                    <th className="px-5 py-3 font-semibold">R$/ton</th>
+                    <th className="px-5 py-3 font-semibold">Preço</th>
                     <th className="px-5 py-3 font-semibold">Receita</th>
                     <th className="px-5 py-3 font-semibold">Obs.</th>
                     {admin && <th className="px-5 py-3"></th>}
@@ -311,7 +311,11 @@ export default async function ReceitasPage({
                           {ROTULO_TIPO[r.tipo] ?? r.tipo}
                         </Pill>
                       </td>
-                      <td className="px-5 py-3 tabular-nums text-slate-600">{formatBRL(r.precoPorTonelada)}</td>
+                      <td className="px-5 py-3 tabular-nums text-slate-600">
+                        {r.tipo === "volume"
+                          ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)}`
+                          : formatBRL(r.precoPorTonelada)}
+                      </td>
                       <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(r.receita)}</td>
                       <td className="px-5 py-3 max-w-[16rem] truncate text-slate-500" title={r.observacao ?? ""}>{r.observacao ?? "—"}</td>
                       {admin && (
