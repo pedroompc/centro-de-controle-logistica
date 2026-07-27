@@ -35,38 +35,51 @@ export async function listarReceitasDoMes(mes: string, filtros: FiltrosReceita =
 }
 
 /**
- * Receita total do mês: descarregamento + diversas. Alimenta o custo líquido do
- * dashboard, da página de custos e do resultado logístico.
+ * Receita total do mês: descarregamento + totais diários + diversas. Alimenta o
+ * custo líquido do dashboard, da página de custos e do resultado logístico.
  */
 export async function receitaTotalDoMes(mes: string): Promise<number> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const supabase = await createClient();
-  const [descarregamento, diversas] = await Promise.all([
+  const [descarregamento, diarios, diversas] = await Promise.all([
     supabase
       .from("receitas_descarregamento")
+      .select("receita")
+      .gte("data", inicio)
+      .lte("data", fim),
+    supabase
+      .from("receitas_descarregamento_diario")
       .select("receita")
       .gte("data", inicio)
       .lte("data", fim),
     totalDiversasDoMes(mes),
   ]);
   if (descarregamento.error) throw new Error(descarregamento.error.message);
+  if (diarios.error) throw new Error(diarios.error.message);
   const somaDesc = (descarregamento.data ?? []).reduce((t, r) => t + Number(r.receita), 0);
-  return somaDesc + diversas;
+  const somaDiarios = (diarios.data ?? []).reduce((t, r) => t + Number(r.receita), 0);
+  return somaDesc + somaDiarios + diversas;
 }
 
 /**
- * Série mensal somando as duas origens — precisa bater com o total exibido logo
+ * Série mensal somando as três origens — precisa bater com o total exibido logo
  * acima do gráfico, senão o usuário vê dois números diferentes para a mesma coisa.
  */
 export async function serieReceitasMensais(qtd = 12): Promise<{ mes: string; valor: number }[]> {
   const supabase = await createClient();
-  const [desc, diversas] = await Promise.all([
+  const [desc, diarios, diversas] = await Promise.all([
     supabase.from("receitas_descarregamento").select("data, receita"),
+    supabase.from("receitas_descarregamento_diario").select("data, receita"),
     serieDiversasMensais(),
   ]);
   if (desc.error) throw new Error(desc.error.message);
+  if (diarios.error) throw new Error(diarios.error.message);
   const porMes = new Map<string, number>();
   for (const r of desc.data ?? []) {
+    const mes = primeiroDiaDoMes(String(r.data));
+    porMes.set(mes, (porMes.get(mes) ?? 0) + Number(r.receita));
+  }
+  for (const r of diarios.data ?? []) {
     const mes = primeiroDiaDoMes(String(r.data));
     porMes.set(mes, (porMes.get(mes) ?? 0) + Number(r.receita));
   }
