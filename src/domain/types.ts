@@ -61,6 +61,7 @@ export interface Fornecedor {
 export interface PrecoDescarregamento {
   tipo: DescarregamentoTipo;
   precoPorTonelada: number;
+  precoPorUnidade: number | null; // preço/caixa; só o Volume usa
 }
 
 export interface ConfigDescarregamento {
@@ -75,7 +76,9 @@ export interface Receita {
   fornecedorNome: string;
   pesoKg: number;
   tipo: DescarregamentoTipo;
-  precoPorTonelada: number;
+  precoPorTonelada: number;     // 0 no Volume (n/a)
+  quantidade: number | null;    // só Volume: nº de caixas
+  precoPorUnidade: number | null; // só Volume: R$/caixa
   receita: number;
   minimoAplicado: number; // SNAPSHOT do mínimo vigente no lançamento
   observacao: string | null;

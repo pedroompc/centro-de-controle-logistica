@@ -24,6 +24,19 @@ export function calcularReceita(
   return arredonda2(Math.max(toneladas(pesoKg) * precoPorTonelada, valorMinimo));
 }
 
+/**
+ * Receita de um descarregamento por Volume = caixas × preço/caixa, respeitando o
+ * mesmo mínimo por descarrego. Sem peso na conta — o peso do Volume é registrado,
+ * mas não entra no valor.
+ */
+export function calcularReceitaVolume(
+  quantidade: number,
+  precoPorUnidade: number,
+  valorMinimo = 0,
+): number {
+  return arredonda2(Math.max(quantidade * precoPorUnidade, valorMinimo));
+}
+
 export function receitaTotal(rs: Receita[]): number {
   return arredonda2(rs.reduce((t, r) => t + r.receita, 0));
 }
@@ -175,18 +188,24 @@ export function resumoReceitas(
   diversas: ReceitaDiversa[],
   totaisDiarios: TotalDiarioDescarregamento[] = [],
 ): ResumoReceitas {
-  const totalDetalhado = receitaTotal(descarregamentos);
   const totalTotaisDiarios = arredonda2(totaisDiarios.reduce((t, x) => t + x.receita, 0));
-  const totalDescarregamento = arredonda2(totalDetalhado + totalTotaisDiarios);
-  const totalDiversas = valorTotalDiversas(diversas);
-  const tonsDetalhado = toneladasTotal(descarregamentos);
   const tonsTotaisDiarios = arredonda2(totaisDiarios.reduce((t, x) => t + toneladas(x.pesoKg), 0));
-  const tons = arredonda2(tonsDetalhado + tonsTotaisDiarios);
+
+  // Card e peso total: todos os tipos, inclusive o Volume.
+  const totalDescarregamento = arredonda2(receitaTotal(descarregamentos) + totalTotaisDiarios);
+  const tons = arredonda2(toneladasTotal(descarregamentos) + tonsTotaisDiarios);
+
+  // R$/ton: só os tipos cobrados por tonelada (Volume fora), somando os totais do dia.
+  const porPeso = descarregamentos.filter((r) => r.tipo !== "volume");
+  const receitaPorPeso = arredonda2(receitaTotal(porPeso) + totalTotaisDiarios);
+  const tonsPorPeso = arredonda2(toneladasTotal(porPeso) + tonsTotaisDiarios);
+
+  const totalDiversas = valorTotalDiversas(diversas);
   return {
     totalDescarregamento,
     totalDiversas,
     total: arredonda2(totalDescarregamento + totalDiversas),
     toneladas: tons,
-    medioPorTonelada: tons === 0 ? 0 : arredonda2(totalDescarregamento / tons),
+    medioPorTonelada: tonsPorPeso === 0 ? 0 : arredonda2(receitaPorPeso / tonsPorPeso),
   };
 }

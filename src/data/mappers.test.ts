@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapConfig, mapReceitaDiversa, mapTotalDiario } from "./mappers";
+import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapPreco, mapConfig, mapReceitaDiversa, mapTotalDiario } from "./mappers";
 
 describe("mapFuncionario", () => {
   it("converte snake_case e custo_mensal string em number", () => {
@@ -91,6 +91,8 @@ describe("mapReceita", () => {
       pesoKg: 1234.5,
       tipo: "pal_rem",
       precoPorTonelada: 33.33,
+      quantidade: null,
+      precoPorUnidade: null,
       receita: 41.13,
       minimoAplicado: 25,
       observacao: null,
@@ -99,6 +101,29 @@ describe("mapReceita", () => {
     expect(typeof receita.precoPorTonelada).toBe("number");
     expect(typeof receita.receita).toBe("number");
     expect(typeof receita.minimoAplicado).toBe("number");
+  });
+
+  it("mapeia um descarregamento por peso com quantidade/preço-unidade nulos", () => {
+    const row = {
+      id: "d1", data: "2026-07-10", fornecedor_id: "f1", fornecedores: { nome: "Forn 1" },
+      peso_kg: "1000", tipo: "batido", preco_por_tonelada: "20", receita: "20",
+      minimo_aplicado: "0", observacao: null, quantidade: null, preco_por_unidade: null,
+    };
+    expect(mapReceita(row)).toMatchObject({ tipo: "batido", quantidade: null, precoPorUnidade: null });
+  });
+
+  it("mapeia um Volume com quantidade e preço/caixa", () => {
+    const row = {
+      id: "d2", data: "2026-07-10", fornecedor_id: "f1", fornecedores: { nome: "Forn 1" },
+      peso_kg: "5000", tipo: "volume", preco_por_tonelada: "0", receita: "300",
+      minimo_aplicado: "25", observacao: null, quantidade: "100", preco_por_unidade: "3.00",
+    };
+    expect(mapReceita(row)).toMatchObject({ tipo: "volume", quantidade: 100, precoPorUnidade: 3 });
+  });
+
+  it("mapPreco lê o preço/caixa", () => {
+    expect(mapPreco({ tipo: "volume", preco_por_tonelada: "0", preco_por_unidade: "3.50" }))
+      .toEqual({ tipo: "volume", precoPorTonelada: 0, precoPorUnidade: 3.5 });
   });
 });
 

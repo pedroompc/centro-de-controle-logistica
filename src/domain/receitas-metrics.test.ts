@@ -3,14 +3,14 @@ import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
-  receitaPorDia,
+  receitaPorDia, calcularReceitaVolume,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
   pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20,
-  minimoAplicado: 0, observacao: null, ...over,
+  minimoAplicado: 0, observacao: null, quantidade: null, precoPorUnidade: null, ...over,
 });
 
 const td = (over: Partial<TotalDiarioDescarregamento>): TotalDiarioDescarregamento => ({
@@ -157,6 +157,31 @@ describe("receitas-metrics", () => {
     expect(resumo.toneladas).toBe(20);             // 10 t + 10 t
     expect(resumo.medioPorTonelada).toBe(25);      // 500 / 20 t
     expect(resumo.total).toBe(500);
+  });
+
+  it("Volume: soma no card e no peso total, mas fica fora do R$/ton", () => {
+    const resumo = resumoReceitas(
+      [
+        r({ tipo: "batido", pesoKg: 10000, receita: 200 }),
+        r({ tipo: "volume", pesoKg: 5000, receita: 300, quantidade: 100, precoPorUnidade: 3, precoPorTonelada: 0 }),
+      ],
+      [],
+    );
+    expect(resumo.totalDescarregamento).toBe(500); // 200 + 300 (inclui Volume)
+    expect(resumo.toneladas).toBe(15);             // 10 t + 5 t (inclui Volume)
+    expect(resumo.medioPorTonelada).toBe(20);      // 200 / 10 t — Volume fora
+  });
+});
+
+describe("calcularReceitaVolume", () => {
+  it("receita de volume = caixas × preço/caixa", () => {
+    expect(calcularReceitaVolume(100, 3)).toBe(300);
+  });
+  it("aplica o mínimo quando caixas × preço fica abaixo", () => {
+    expect(calcularReceitaVolume(2, 5, 25)).toBe(25); // 10 < 25
+  });
+  it("sem mínimo informado, mantém o produto puro", () => {
+    expect(calcularReceitaVolume(3, 1.15)).toBe(3.45);
   });
 });
 

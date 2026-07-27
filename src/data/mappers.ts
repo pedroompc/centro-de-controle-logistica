@@ -63,8 +63,14 @@ export function mapFornecedor(row: { id: string; nome: string; ativo: boolean })
   return { id: row.id, nome: row.nome, ativo: row.ativo };
 }
 
-export function mapPreco(row: { tipo: string; preco_por_tonelada: string | number }): PrecoDescarregamento {
-  return { tipo: row.tipo as DescarregamentoTipo, precoPorTonelada: Number(row.preco_por_tonelada) };
+export function mapPreco(row: {
+  tipo: string; preco_por_tonelada: string | number; preco_por_unidade?: string | number | null;
+}): PrecoDescarregamento {
+  return {
+    tipo: row.tipo as DescarregamentoTipo,
+    precoPorTonelada: Number(row.preco_por_tonelada),
+    precoPorUnidade: row.preco_por_unidade == null ? null : Number(row.preco_por_unidade),
+  };
 }
 
 export function mapReceita(row: {
@@ -73,6 +79,7 @@ export function mapReceita(row: {
   peso_kg: string | number; tipo: string;
   preco_por_tonelada: string | number; receita: string | number;
   minimo_aplicado: string | number; observacao: string | null;
+  quantidade?: string | number | null; preco_por_unidade?: string | number | null;
 }): Receita {
   const forn = Array.isArray(row.fornecedores) ? row.fornecedores[0] : row.fornecedores;
   return {
@@ -83,6 +90,8 @@ export function mapReceita(row: {
     pesoKg: Number(row.peso_kg),
     tipo: row.tipo as DescarregamentoTipo,
     precoPorTonelada: Number(row.preco_por_tonelada),
+    quantidade: row.quantidade == null ? null : Number(row.quantidade),
+    precoPorUnidade: row.preco_por_unidade == null ? null : Number(row.preco_por_unidade),
     receita: Number(row.receita),
     minimoAplicado: Number(row.minimo_aplicado),
     observacao: row.observacao,
