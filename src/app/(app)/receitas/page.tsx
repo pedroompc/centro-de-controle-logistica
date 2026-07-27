@@ -209,7 +209,7 @@ export default async function ReceitasPage({
             <SeletorVista mes={mes} filtros={filtros} vista={vista} />
           </div>
         </div>
-        {receitas.length === 0 ? (
+        {(vista === "simples" ? porDia.length === 0 : receitas.length === 0) ? (
           <p className="text-sm text-slate-400">Nenhum descarregamento no período.</p>
         ) : vista === "simples" ? (
           <Card className="overflow-hidden">
