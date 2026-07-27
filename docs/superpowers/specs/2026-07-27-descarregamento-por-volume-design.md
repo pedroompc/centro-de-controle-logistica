@@ -40,13 +40,17 @@ ramificação no cálculo — sem tocar no caminho dos tipos por peso.
   0007, que usou o novo valor do enum no `insert` seguinte sem erro):
 
 ```sql
+-- ALTER TYPE ... ADD VALUE precisa de commit antes de usar o valor novo no insert.
 alter type descarregamento_tipo add value if not exists 'volume';
+commit;
 
 -- Base de cobrança do Volume: caixas × preço/caixa. Nulas nos tipos por peso.
 alter table receitas_descarregamento
   add column if not exists quantidade integer,
   add column if not exists preco_por_unidade numeric(14,2);
 
+-- add constraint não é idempotente sozinho; drop-if-exists antes.
+alter table receitas_descarregamento drop constraint if exists receitas_desc_quantidade_pos;
 alter table receitas_descarregamento
   add constraint receitas_desc_quantidade_pos
   check (quantidade is null or quantidade > 0);

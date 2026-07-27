@@ -48,19 +48,28 @@
 
 - [ ] **Step 1: Escrever a migration**
 
-Espelha a estrutura da `0007_pal_rem_e_minimo.sql` (add value no enum, depois insert usando o valor novo — funciona porque o SQL Editor faz autocommit por statement).
+Espelha a estrutura da `0007_pal_rem_e_minimo.sql`: add value no enum, **`commit;`
+explícito** (o valor novo do enum não pode ser usado na mesma transação que o
+insere — a 0007 tem esse commit por isso), depois o resto. O `add constraint` não
+tem `IF NOT EXISTS`, então um `drop constraint if exists` antes o torna idempotente.
 
 ```sql
 -- 4º tipo de descarregamento: Volume, cobrado por caixas (quantidade ×
 -- preço/caixa), não por peso. Registra peso como os outros, mas o valor vem da
 -- contagem de caixas. Colunas próprias porque a base de cobrança é nova.
 
+-- ALTER TYPE ... ADD VALUE não pode ser usado na mesma transação que insere
+-- usando o valor novo. Daí o commit explícito antes do INSERT abaixo (mesma
+-- forma da 0007).
 alter type descarregamento_tipo add value if not exists 'volume';
+commit;
 
 alter table receitas_descarregamento
   add column if not exists quantidade integer,
   add column if not exists preco_por_unidade numeric(14,2);
 
+-- ADD CONSTRAINT não tem IF NOT EXISTS; o drop-if-exists antes torna idempotente.
+alter table receitas_descarregamento drop constraint if exists receitas_desc_quantidade_pos;
 alter table receitas_descarregamento
   add constraint receitas_desc_quantidade_pos
   check (quantidade is null or quantidade > 0);
