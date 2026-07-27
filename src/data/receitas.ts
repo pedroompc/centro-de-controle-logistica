@@ -4,14 +4,14 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapReceita } from "./mappers";
 import { assertAdmin } from "./auth";
-import { calcularReceita } from "@/domain/receitas-metrics";
+import { calcularReceita, calcularReceitaVolume } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
 import { lerConfig } from "./config-descarregamento";
 import { totalDiversasDoMes, serieDiversasMensais } from "./receitas-diversas";
 import type { Receita, DescarregamentoTipo } from "@/domain/types";
 
 const COLS =
-  "id, data, fornecedor_id, peso_kg, tipo, preco_por_tonelada, receita, minimo_aplicado, observacao, fornecedores(nome)";
+  "id, data, fornecedor_id, peso_kg, tipo, preco_por_tonelada, quantidade, preco_por_unidade, receita, minimo_aplicado, observacao, fornecedores(nome)";
 
 export interface FiltrosReceita {
   fornecedorId?: string;
@@ -98,27 +98,40 @@ function parseForm(formData: FormData) {
   const pesoKg = Number(formData.get("peso_kg") ?? 0);
   const tipo = String(formData.get("tipo") ?? "batido") as DescarregamentoTipo;
   const precoPorTonelada = Number(formData.get("preco_por_tonelada") ?? 0);
+  const quantidade = Number(formData.get("quantidade") ?? 0);
+  const precoPorUnidade = Number(formData.get("preco_por_unidade") ?? 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
-  return { data, fornecedorId, pesoKg, tipo, precoPorTonelada, observacao };
+  return { data, fornecedorId, pesoKg, tipo, precoPorTonelada, quantidade, precoPorUnidade, observacao };
+}
+
+/** Valor e colunas gravadas, ramificando Volume × tipos por peso. */
+function calcularEColunas(f: ReturnType<typeof parseForm>, valorMinimo: number) {
+  const ehVolume = f.tipo === "volume";
+  const receita = ehVolume
+    ? calcularReceitaVolume(f.quantidade, f.precoPorUnidade, valorMinimo)
+    : calcularReceita(f.pesoKg, f.precoPorTonelada, valorMinimo);
+  return {
+    data: f.data,
+    fornecedor_id: f.fornecedorId,
+    peso_kg: f.pesoKg,
+    tipo: f.tipo,
+    preco_por_tonelada: ehVolume ? 0 : f.precoPorTonelada,
+    quantidade: ehVolume ? f.quantidade : null,
+    preco_por_unidade: ehVolume ? f.precoPorUnidade : null,
+    receita,
+    minimo_aplicado: valorMinimo,
+    observacao: f.observacao,
+  };
 }
 
 export async function criarReceita(formData: FormData): Promise<void> {
   await assertAdmin();
   const f = parseForm(formData);
   if (!f.data || !f.fornecedorId || !f.pesoKg) return;
+  if (f.tipo === "volume" && !f.quantidade) return; // Volume exige nº de caixas
   const { valorMinimo } = await lerConfig();
-  const receita = calcularReceita(f.pesoKg, f.precoPorTonelada, valorMinimo); // cálculo no backend
   const supabase = await createClient();
-  const { error } = await supabase.from("receitas_descarregamento").insert({
-    data: f.data,
-    fornecedor_id: f.fornecedorId,
-    peso_kg: f.pesoKg,
-    tipo: f.tipo,
-    preco_por_tonelada: f.precoPorTonelada,
-    receita,
-    minimo_aplicado: valorMinimo,
-    observacao: f.observacao,
-  });
+  const { error } = await supabase.from("receitas_descarregamento").insert(calcularEColunas(f, valorMinimo));
   if (error) throw new Error(error.message);
   revalidatePath("/receitas");
   revalidatePath("/custos");
@@ -130,21 +143,12 @@ export async function editarReceita(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const f = parseForm(formData);
   if (!id || !f.data || !f.fornecedorId || !f.pesoKg) return;
+  if (f.tipo === "volume" && !f.quantidade) return;
   const { valorMinimo } = await lerConfig();
-  const receita = calcularReceita(f.pesoKg, f.precoPorTonelada, valorMinimo);
   const supabase = await createClient();
   const { error } = await supabase
     .from("receitas_descarregamento")
-    .update({
-      data: f.data,
-      fornecedor_id: f.fornecedorId,
-      peso_kg: f.pesoKg,
-      tipo: f.tipo,
-      preco_por_tonelada: f.precoPorTonelada,
-      receita,
-      minimo_aplicado: valorMinimo,
-      observacao: f.observacao,
-    })
+    .update(calcularEColunas(f, valorMinimo))
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/receitas");

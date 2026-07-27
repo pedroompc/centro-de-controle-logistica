@@ -10,7 +10,7 @@ export async function listarPrecos(): Promise<PrecoDescarregamento[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("precos_descarregamento")
-    .select("tipo, preco_por_tonelada")
+    .select("tipo, preco_por_tonelada, preco_por_unidade")
     .order("tipo");
   if (error) throw new Error(error.message);
   return (data ?? []).map(mapPreco);
@@ -23,11 +23,13 @@ export async function editarPreco(formData: FormData): Promise<void> {
   if (!tipo || raw === null || String(raw).trim() === "") return;
   const preco = Number(raw);
   if (Number.isNaN(preco)) return;
+  const atualizado_em = new Date().toISOString();
+  const patch =
+    tipo === "volume"
+      ? { preco_por_unidade: preco, atualizado_em }
+      : { preco_por_tonelada: preco, atualizado_em };
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("precos_descarregamento")
-    .update({ preco_por_tonelada: preco, atualizado_em: new Date().toISOString() })
-    .eq("tipo", tipo);
+  const { error } = await supabase.from("precos_descarregamento").update(patch).eq("tipo", tipo);
   if (error) throw new Error(error.message);
   revalidatePath("/receitas/precos");
   revalidatePath("/receitas");
