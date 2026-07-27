@@ -47,9 +47,11 @@ export async function GET(req: NextRequest) {
       num(r.pesoKg),
       num(toneladas(r.pesoKg)),
       ROTULO_TIPO[r.tipo] ?? r.tipo,
-      num(r.precoPorTonelada),
-      num(r.minimoAplicado),
-      "", "", "",
+      r.tipo === "volume" ? "" : num(r.precoPorTonelada),                        // Preço/ton
+      num(r.minimoAplicado),                                                     // Mínimo aplicado
+      "",                                                                        // Material
+      r.tipo === "volume" && r.quantidade !== null ? String(r.quantidade) : "", // Quantidade (caixas)
+      r.tipo === "volume" && r.precoPorUnidade !== null ? num(r.precoPorUnidade) : "", // Preço unitário (R$/caixa)
       num(r.receita),
     ],
   }));
