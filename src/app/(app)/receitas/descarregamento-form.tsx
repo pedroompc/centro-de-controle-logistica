@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { criarReceita, editarReceita } from "@/data/receitas";
-import { calcularReceita, toneladas } from "@/domain/receitas-metrics";
+import { calcularReceita, calcularReceitaVolume, toneladas } from "@/domain/receitas-metrics";
 import { formatBRL } from "@/domain/format";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo } from "@/domain/types";
@@ -24,11 +24,19 @@ export function DescarregamentoForm({
   receita?: Receita;
 }) {
   const precoDe = (t: DescarregamentoTipo) => precos.find((p) => p.tipo === t)?.precoPorTonelada ?? 0;
+  const precoUnidadeDe = (t: DescarregamentoTipo) => precos.find((p) => p.tipo === t)?.precoPorUnidade ?? 0;
   const [aberto, setAberto] = useState(false);
   const [tipo, setTipo] = useState<DescarregamentoTipo>(receita?.tipo ?? "batido");
   const [peso, setPeso] = useState(receita?.pesoKg ?? 0);
   const [preco, setPreco] = useState(receita?.precoPorTonelada ?? precoDe("batido"));
-  const previa = calcularReceita(peso || 0, preco || 0, valorMinimo);
+  const [quantidade, setQuantidade] = useState(receita?.quantidade ?? 0);
+  const [precoUnidade, setPrecoUnidade] = useState(receita?.precoPorUnidade ?? precoUnidadeDe("volume"));
+
+  const ehVolume = tipo === "volume";
+  const previa = ehVolume
+    ? calcularReceitaVolume(quantidade || 0, precoUnidade || 0, valorMinimo)
+    : calcularReceita(peso || 0, preco || 0, valorMinimo);
+  const temPrevia = ehVolume ? quantidade > 0 : peso > 0;
 
   if (!aberto) {
     return receita ? (
@@ -49,10 +57,7 @@ export function DescarregamentoForm({
   const dataPadrao = receita?.data ?? (hoje.slice(0, 7) === mes.slice(0, 7) ? hoje : mes);
 
   return (
-    <form
-      action={receita ? editarReceita : criarReceita}
-      className="flex flex-wrap items-end gap-2 text-sm"
-    >
+    <form action={receita ? editarReceita : criarReceita} className="flex flex-wrap items-end gap-2 text-sm">
       {receita && <input type="hidden" name="id" value={receita.id} />}
       <input name="data" type="date" required defaultValue={dataPadrao} className={field} />
       <select name="fornecedor_id" required defaultValue={receita?.fornecedorId ?? ""} className={field}>
@@ -82,7 +87,8 @@ export function DescarregamentoForm({
         onChange={(e) => {
           const t = e.target.value as DescarregamentoTipo;
           setTipo(t);
-          setPreco(precoDe(t));
+          if (t === "volume") setPrecoUnidade(precoUnidadeDe(t));
+          else setPreco(precoDe(t));
         }}
         className={field}
       >
@@ -90,20 +96,49 @@ export function DescarregamentoForm({
           <option key={t} value={t}>{ROTULO_TIPO[t]}</option>
         ))}
       </select>
-      <input
-        name="preco_por_tonelada"
-        type="number"
-        step="0.01"
-        min="0"
-        required
-        placeholder="R$/ton"
-        value={preco || ""}
-        onChange={(e) => setPreco(Number(e.target.value))}
-        className={field}
-      />
+      {ehVolume ? (
+        <>
+          <input
+            name="quantidade"
+            type="number"
+            step="1"
+            min="1"
+            required
+            placeholder="Caixas"
+            value={quantidade || ""}
+            onChange={(e) => setQuantidade(Number(e.target.value))}
+            className={field}
+          />
+          <input
+            name="preco_por_unidade"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            placeholder="R$/caixa"
+            value={precoUnidade || ""}
+            onChange={(e) => setPrecoUnidade(Number(e.target.value))}
+            className={field}
+          />
+        </>
+      ) : (
+        <input
+          name="preco_por_tonelada"
+          type="number"
+          step="0.01"
+          min="0"
+          required
+          placeholder="R$/ton"
+          value={preco || ""}
+          onChange={(e) => setPreco(Number(e.target.value))}
+          className={field}
+        />
+      )}
       <input name="observacao" defaultValue={receita?.observacao ?? ""} placeholder="Observação" className={field} />
       <span className="px-2 py-2 text-sm font-semibold text-emerald-700">
-        {toneladas(peso || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t → {peso ? formatBRL(previa) : "—"}
+        {ehVolume
+          ? `${quantidade || 0} cx → ${temPrevia ? formatBRL(previa) : "—"}`
+          : `${toneladas(peso || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t → ${temPrevia ? formatBRL(previa) : "—"}`}
       </span>
       <button className="rounded-xl bg-[#181d55] px-4 py-2 font-semibold text-white transition hover:bg-[#10143f]">
         {receita ? "Salvar" : "Adicionar"}
