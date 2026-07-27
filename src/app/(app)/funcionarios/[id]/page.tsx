@@ -20,6 +20,17 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
   if (!funcionario) notFound();
   const setor = setores.find((s) => s.id === funcionario.setorId);
 
+  // Ordem da folha: salário, benefícios, adicional. null = não importado (mostra "—").
+  const rubricas: { label: string; valor: number | null }[] = [
+    { label: "Salário base", valor: funcionario.salarioBase },
+    { label: "Passagem", valor: funcionario.passagem },
+    { label: "Alimentação", valor: funcionario.alimentacao },
+    { label: "Plano de saúde", valor: funcionario.planoSaude },
+    { label: "Ajuda de custo", valor: funcionario.ajudaCusto },
+    { label: "Premiação", valor: funcionario.premiacao },
+    { label: "Adicional noturno", valor: funcionario.adicionalNoturno },
+  ];
+
   async function excluir() {
     "use server";
     await excluirFuncionario(id);
@@ -49,6 +60,28 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
         <StatCard label="Admissão" value={formatDataBR(funcionario.dataAdmissao)} accent="navy" />
         <StatCard label="Total de faltas" value={`${faltas.length}`} accent={faltas.length > 0 ? "red" : "navy"} />
       </div>
+
+      <section className="mt-6">
+        <SectionTitle>Composição do custo</SectionTitle>
+        <Card className="p-5">
+          {rubricas.some((r) => r.valor !== null) ? (
+            <dl className="divide-y divide-slate-100">
+              {rubricas.map((r) => (
+                <div key={r.label} className="flex items-center justify-between py-2.5">
+                  <dt className="text-sm text-slate-500">{r.label}</dt>
+                  <dd className="text-sm font-medium tabular-nums text-[#141a4d]">
+                    {r.valor === null ? "—" : formatBRL(r.valor)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-sm text-slate-400">
+              Sem detalhamento de custo importado para este funcionário.
+            </p>
+          )}
+        </Card>
+      </section>
 
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">

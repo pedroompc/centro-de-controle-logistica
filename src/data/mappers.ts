@@ -12,7 +12,18 @@ export function mapFuncionario(row: {
   custo_mensal: string | number;
   data_admissao: string;
   status: string;
+  salario_base?: string | number | null;
+  passagem?: string | number | null;
+  alimentacao?: string | number | null;
+  plano_saude?: string | number | null;
+  ajuda_custo?: string | number | null;
+  premiacao?: string | number | null;
+  adicional_noturno?: string | number | null;
 }): Funcionario {
+  // numeric(10,2) vem como string|number; ausente/null vira null (não 0 —
+  // "não informado" e "R$ 0,00" são coisas diferentes na tela).
+  const num = (v: string | number | null | undefined): number | null =>
+    v === null || v === undefined ? null : Number(v);
   return {
     id: row.id,
     nome: row.nome,
@@ -21,6 +32,13 @@ export function mapFuncionario(row: {
     custoMensal: Number(row.custo_mensal),
     dataAdmissao: row.data_admissao,
     status: row.status as StatusFuncionario,
+    salarioBase: num(row.salario_base),
+    passagem: num(row.passagem),
+    alimentacao: num(row.alimentacao),
+    planoSaude: num(row.plano_saude),
+    ajudaCusto: num(row.ajuda_custo),
+    premiacao: num(row.premiacao),
+    adicionalNoturno: num(row.adicional_noturno),
   };
 }
 

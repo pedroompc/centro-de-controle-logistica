@@ -20,7 +20,29 @@ describe("mapFuncionario", () => {
       custoMensal: 2500.5,
       dataAdmissao: "2024-03-01",
       status: "ativo",
+      // rubricas ausentes na linha → null (funcionário sem detalhamento importado)
+      salarioBase: null,
+      passagem: null,
+      alimentacao: null,
+      planoSaude: null,
+      ajudaCusto: null,
+      premiacao: null,
+      adicionalNoturno: null,
     });
+  });
+
+  it("converte as rubricas de custo (string|number) e distingue null de zero", () => {
+    const funcionario = mapFuncionario({
+      id: "u2", nome: "Maria", cargo: "Conferente", setor_id: "s2",
+      custo_mensal: "3000.00", data_admissao: "2024-05-01", status: "ativo",
+      salario_base: "1640.00", passagem: 0, alimentacao: "330.00",
+      plano_saude: null, ajuda_custo: "1300", premiacao: null, adicional_noturno: "200.00",
+    });
+    expect(funcionario.salarioBase).toBe(1640);
+    expect(funcionario.passagem).toBe(0);      // R$ 0,00 informado
+    expect(funcionario.planoSaude).toBeNull();  // não informado
+    expect(funcionario.ajudaCusto).toBe(1300);
+    expect(funcionario.adicionalNoturno).toBe(200);
   });
 });
 

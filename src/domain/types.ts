@@ -22,6 +22,15 @@ export interface Funcionario {
   custoMensal: number;
   dataAdmissao: string; // ISO date "yyyy-mm-dd"
   status: StatusFuncionario;
+  // Composição do custo (rubricas da folha). null = não veio na importação
+  // — só parte do efetivo tem o detalhamento gravado.
+  salarioBase: number | null;
+  passagem: number | null;
+  alimentacao: number | null;
+  planoSaude: number | null;
+  ajudaCusto: number | null;
+  premiacao: number | null;
+  adicionalNoturno: number | null;
 }
 
 export interface Falta {

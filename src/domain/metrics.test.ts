@@ -10,6 +10,13 @@ const f = (over: Partial<Funcionario>): Funcionario => ({
   custoMensal: 1000,
   dataAdmissao: "2024-01-01",
   status: "ativo",
+  salarioBase: null,
+  passagem: null,
+  alimentacao: null,
+  planoSaude: null,
+  ajudaCusto: null,
+  premiacao: null,
+  adicionalNoturno: null,
   ...over,
 });
 
