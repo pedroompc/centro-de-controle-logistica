@@ -47,9 +47,6 @@ alter table receitas_descarregamento
   add column if not exists quantidade integer,
   add column if not exists preco_por_unidade numeric(14,2);
 
--- No Volume não há preço por tonelada; o valor vem da quantidade.
-alter table receitas_descarregamento alter column preco_por_tonelada drop not null;
-
 alter table receitas_descarregamento
   add constraint receitas_desc_quantidade_pos
   check (quantidade is null or quantidade > 0);
@@ -61,15 +58,17 @@ insert into precos_descarregamento (tipo, preco_por_tonelada, preco_por_unidade)
   on conflict (tipo) do nothing;
 ```
 
-`precos_descarregamento.preco_por_tonelada` fica em 0 no Volume (não anulável ali
-— o preço vem de `preco_por_unidade`). Em `receitas_descarregamento`, o snapshot
-`preco_por_tonelada` fica **nulo** no Volume (n/a).
+`preco_por_tonelada` continua **NOT NULL** nas duas tabelas: no Volume fica **0**
+(n/a — o valor vem da quantidade), mesmo padrão do `pal_rem` que já nasce 0. Isso
+evita tornar `precoPorTonelada` anulável em todo o domínio; como a exibição já
+ramifica por tipo, o Volume nunca mostra o preço/ton mesmo.
 
 ### 2. Domínio (`src/domain/`)
 
 - `types.ts`: `Receita` ganha `quantidade: number | null` e
-  `precoPorUnidade: number | null`; `precoPorTonelada` passa a `number | null`
-  (nulo no Volume). `PrecoDescarregamento` ganha `precoPorUnidade: number | null`.
+  `precoPorUnidade: number | null`; `precoPorTonelada` continua `number` (0 no
+  Volume, nunca exibido para ele). `PrecoDescarregamento` ganha
+  `precoPorUnidade: number | null`.
 - `receitas-metrics.ts`:
   - Nova função `calcularReceitaVolume(quantidade, precoPorUnidade, valorMinimo = 0)`
     = `arredonda2(máx(quantidade × precoPorUnidade, valorMinimo))`.
