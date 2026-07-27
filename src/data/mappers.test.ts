@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapConfig, mapReceitaDiversa } from "./mappers";
+import { mapFuncionario, mapSetor, mapFalta, mapCustoFixo, mapCustoMensal, mapReceita, mapConfig, mapReceitaDiversa, mapTotalDiario } from "./mappers";
 
 describe("mapFuncionario", () => {
   it("converte snake_case e custo_mensal string em number", () => {
@@ -134,5 +134,26 @@ describe("mapReceitaDiversa", () => {
     expect(m.quantidade).toBeNull();
     expect(m.precoUnitario).toBeNull();
     expect(m.valor).toBe(80);
+  });
+});
+
+describe("mapTotalDiario", () => {
+  it("converte snake_case e numéricos vindos como string", () => {
+    const row = {
+      id: "t1",
+      data: "2026-07-15",
+      descarregos: "12",
+      peso_kg: "34000.000",
+      receita: "900.00",
+      observacao: null,
+    };
+    expect(mapTotalDiario(row)).toEqual({
+      id: "t1",
+      data: "2026-07-15",
+      descarregos: 12,
+      pesoKg: 34000,
+      receita: 900,
+      observacao: null,
+    });
   });
 });

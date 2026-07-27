@@ -1,4 +1,4 @@
-import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo, ConfigDescarregamento, ReceitaDiversa, ReceitaCategoria } from "@/domain/types";
+import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo, ConfigDescarregamento, ReceitaDiversa, ReceitaCategoria, TotalDiarioDescarregamento } from "@/domain/types";
 
 export function mapSetor(row: { id: string; nome: string }): Setor {
   return { id: row.id, nome: row.nome };
@@ -109,6 +109,20 @@ export function mapReceitaDiversa(row: {
     unidade: row.unidade,
     precoUnitario: row.preco_unitario === null ? null : Number(row.preco_unitario),
     valor: Number(row.valor),
+    observacao: row.observacao,
+  };
+}
+
+export function mapTotalDiario(row: {
+  id: string; data: string; descarregos: string | number;
+  peso_kg: string | number; receita: string | number; observacao: string | null;
+}): TotalDiarioDescarregamento {
+  return {
+    id: row.id,
+    data: row.data,
+    descarregos: Number(row.descarregos),
+    pesoKg: Number(row.peso_kg),
+    receita: Number(row.receita),
     observacao: row.observacao,
   };
 }
