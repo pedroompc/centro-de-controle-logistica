@@ -16,6 +16,8 @@ import type { DescarregamentoTipo } from "@/domain/types";
 import { listarDiversasDoMes, removerDiversa } from "@/data/receitas-diversas";
 import { ROTULO_CATEGORIA } from "@/domain/receitas-diversas";
 import { DiversaForm } from "./diversa-form";
+import { listarTotaisDiariosDoMes, removerTotalDiario } from "@/data/receitas-diario";
+import { TotalDiarioForm } from "./total-diario-form";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -85,7 +87,7 @@ export default async function ReceitasPage({
   };
   const vista = lerVista(sp.vista);
 
-  const [receitas, fornecedores, precos, config, serie, admin, diversas] = await Promise.all([
+  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais] = await Promise.all([
     listarReceitasDoMes(mes, filtros),
     listarFornecedores(),
     listarPrecos(),
@@ -93,6 +95,7 @@ export default async function ReceitasPage({
     serieReceitasMensais(),
     isAdmin(),
     listarDiversasDoMes(mes),
+    listarTotaisDiariosDoMes(mes),
   ]);
 
   // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
@@ -102,15 +105,20 @@ export default async function ReceitasPage({
   // diversas somem do recorte inteiro — lista, totais e export — quando filtrado.
   const filtrandoDescarregamento = Boolean(filtros.fornecedorId || filtros.tipo);
   const diversasVisiveis = filtrandoDescarregamento ? [] : diversas;
+  // Totais do dia não têm fornecedor/tipo, então saem do recorte pela mesma
+  // razão que as diversas.
+  const totaisVisiveis = filtrandoDescarregamento ? [] : totais;
 
-  const resumo = resumoReceitas(receitas, diversasVisiveis);
+  const resumo = resumoReceitas(receitas, diversasVisiveis, totaisVisiveis);
   const porFornecedor = receitaPorFornecedor(receitas);
   const porTipo = receitaPorTipo(receitas);
-  const porDia = receitaPorDia(receitas);
+  const porDia = receitaPorDia(receitas, totaisVisiveis);
   // Somado da própria coluna, não derivado de `resumo.toneladas`: aquele valor é
   // arredondado a 2 casas de tonelada (granularidade de 10 kg) e o rodapé deixaria
   // de fechar com os kg exibidos nas linhas.
   const pesoTotalKg = porDia.reduce((t, d) => t + d.pesoKg, 0);
+  // A contagem antiga `receitas.length` ignora os totais do dia lançados direto.
+  const descarregosTotal = porDia.reduce((t, d) => t + d.descarregos, 0);
 
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
@@ -136,7 +144,7 @@ export default async function ReceitasPage({
         <StatCard
           label="Descarregamento"
           value={formatBRL(resumo.totalDescarregamento)}
-          hint={`${receitas.length} lançamentos · ${fmtTon(resumo.toneladas)}`}
+          hint={`${descarregosTotal} descarregos · ${fmtTon(resumo.toneladas)}`}
           accent="green"
         />
         <StatCard
@@ -196,7 +204,10 @@ export default async function ReceitasPage({
       <section className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionTitle>Descarregamentos do mês</SectionTitle>
-          <SeletorVista mes={mes} filtros={filtros} vista={vista} />
+          <div className="flex flex-wrap items-center gap-3">
+            {admin && vista === "simples" && <TotalDiarioForm mes={mes} />}
+            <SeletorVista mes={mes} filtros={filtros} vista={vista} />
+          </div>
         </div>
         {receitas.length === 0 ? (
           <p className="text-sm text-slate-400">Nenhum descarregamento no período.</p>
@@ -210,17 +221,39 @@ export default async function ReceitasPage({
                     <th className="px-5 py-3 font-semibold">Descarregos</th>
                     <th className="px-5 py-3 font-semibold">Peso</th>
                     <th className="px-5 py-3 font-semibold">Receita</th>
+                    {admin && <th className="px-5 py-3"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {porDia.map((d) => (
-                    <tr key={d.data} className="border-b border-slate-50 last:border-0">
+                    <tr key={d.id ?? d.data} className="border-b border-slate-50 last:border-0">
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(d.data)}</td>
-                      <td className="px-5 py-3 tabular-nums font-medium text-[#141a4d]">{d.descarregos}</td>
+                      <td className="px-5 py-3 tabular-nums font-medium text-[#141a4d]">
+                        {d.descarregos}
+                        {d.origem === "total" && (
+                          <span className="ml-2 align-middle text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+                            total do dia
+                          </span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
                         {formatKg(d.pesoKg)} <span className="text-slate-400">({fmtTon(toneladas(d.pesoKg))})</span>
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap font-semibold tabular-nums text-emerald-700">{formatBRL(d.receita)}</td>
+                      {admin && (
+                        <td className="px-5 py-3">
+                          {d.origem === "total" && d.id ? (
+                            <div className="flex flex-col items-end gap-2">
+                              <TotalDiarioForm mes={mes} total={totaisVisiveis.find((t) => t.id === d.id)} />
+                              <form action={removerTotalDiario.bind(null, d.id)}>
+                                <button className="text-sm font-medium text-rose-600 hover:text-rose-700">remover</button>
+                              </form>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-300">detalhado</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -229,11 +262,12 @@ export default async function ReceitasPage({
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Total do mês
                     </th>
-                    <td className="px-5 py-3 tabular-nums font-semibold text-[#141a4d]">{receitas.length}</td>
+                    <td className="px-5 py-3 tabular-nums font-semibold text-[#141a4d]">{descarregosTotal}</td>
                     <td className="px-5 py-3 whitespace-nowrap tabular-nums font-semibold text-[#141a4d]">
                       {formatKg(pesoTotalKg)} <span className="font-normal text-slate-400">({fmtTon(toneladas(pesoTotalKg))})</span>
                     </td>
                     <td className="px-5 py-3 whitespace-nowrap font-semibold tabular-nums text-emerald-700">{formatBRL(resumo.totalDescarregamento)}</td>
+                    {admin && <td className="px-5 py-3"></td>}
                   </tr>
                 </tfoot>
               </table>
