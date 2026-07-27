@@ -1,4 +1,4 @@
-import type { Receita, DescarregamentoTipo, ReceitaDiversa } from "./types";
+import type { Receita, DescarregamentoTipo, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 import { TIPOS_DESCARREGAMENTO } from "./descarregamento";
 
 /** Arredonda a 2 casas (centavos), estável para somas de dinheiro. */
@@ -60,6 +60,10 @@ export interface DiaDescarregamento {
   descarregos: number;
   pesoKg: number;
   receita: number;
+  /** Como o dia entrou: agregado dos lançamentos por fornecedor, ou digitado direto. */
+  origem: "detalhado" | "total";
+  /** Só presente em origem "total" — é a linha editável/removível na vista Simples. */
+  id?: string;
 }
 
 /**
@@ -79,17 +83,31 @@ export interface DiaDescarregamento {
  * calendário do mês. Ordena do mais recente para o mais antigo, como a tabela
  * detalhada.
  */
-export function receitaPorDia(rs: Receita[]): DiaDescarregamento[] {
+export function receitaPorDia(
+  rs: Receita[],
+  totais: TotalDiarioDescarregamento[] = [],
+): DiaDescarregamento[] {
   const mapa = new Map<string, DiaDescarregamento>();
   for (const r of rs) {
-    const atual = mapa.get(r.data) ?? { data: r.data, descarregos: 0, pesoKg: 0, receita: 0 };
+    const atual =
+      mapa.get(r.data) ?? { data: r.data, descarregos: 0, pesoKg: 0, receita: 0, origem: "detalhado" as const };
     atual.descarregos += 1;
     atual.pesoKg += r.pesoKg;
     atual.receita = arredonda2(atual.receita + r.receita);
     mapa.set(r.data, atual);
   }
+  // Totais diários NÃO se fundem com os derivados nem entre si: cada um é uma
+  // linha própria, editável pelo id. Um dia misto vira duas linhas rotuladas.
+  const lancados: DiaDescarregamento[] = totais.map((t) => ({
+    data: t.data,
+    descarregos: t.descarregos,
+    pesoKg: t.pesoKg,
+    receita: t.receita,
+    origem: "total",
+    id: t.id,
+  }));
   // Datas ISO comparam corretamente como string (yyyy-mm-dd é ordenável lexicalmente).
-  return [...mapa.values()].sort((a, b) => b.data.localeCompare(a.data));
+  return [...mapa.values(), ...lancados].sort((a, b) => b.data.localeCompare(a.data));
 }
 
 /** Custo logístico líquido = custos brutos − receitas (só demonstração; não altera custos). */
@@ -155,10 +173,15 @@ export interface ResumoReceitas {
 export function resumoReceitas(
   descarregamentos: Receita[],
   diversas: ReceitaDiversa[],
+  totaisDiarios: TotalDiarioDescarregamento[] = [],
 ): ResumoReceitas {
-  const totalDescarregamento = receitaTotal(descarregamentos);
+  const totalDetalhado = receitaTotal(descarregamentos);
+  const totalTotaisDiarios = arredonda2(totaisDiarios.reduce((t, x) => t + x.receita, 0));
+  const totalDescarregamento = arredonda2(totalDetalhado + totalTotaisDiarios);
   const totalDiversas = valorTotalDiversas(diversas);
-  const tons = toneladasTotal(descarregamentos);
+  const tonsDetalhado = toneladasTotal(descarregamentos);
+  const tonsTotaisDiarios = arredonda2(totaisDiarios.reduce((t, x) => t + toneladas(x.pesoKg), 0));
+  const tons = arredonda2(tonsDetalhado + tonsTotaisDiarios);
   return {
     totalDescarregamento,
     totalDiversas,

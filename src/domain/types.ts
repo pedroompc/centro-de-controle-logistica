@@ -81,6 +81,20 @@ export interface Receita {
   observacao: string | null;
 }
 
+/**
+ * Resultado agregado de um dia de descarregamento, lançado direto (sem detalhar
+ * fornecedor). `receita` é o valor final digitado — não passa por cálculo de
+ * mínimo, que é regra do lançamento por fornecedor.
+ */
+export interface TotalDiarioDescarregamento {
+  id: string;
+  data: string; // ISO "yyyy-mm-dd"
+  descarregos: number;
+  pesoKg: number;
+  receita: number;
+  observacao: string | null;
+}
+
 export type ReceitaCategoria = "reciclagem";
 
 /**

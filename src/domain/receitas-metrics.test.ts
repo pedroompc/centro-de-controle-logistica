@@ -5,12 +5,17 @@ import {
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
   receitaPorDia,
 } from "./receitas-metrics";
-import type { Receita, ReceitaDiversa } from "./types";
+import type { Receita, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
   pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20,
   minimoAplicado: 0, observacao: null, ...over,
+});
+
+const td = (over: Partial<TotalDiarioDescarregamento>): TotalDiarioDescarregamento => ({
+  id: "t1", data: "2026-07-10", descarregos: 8, pesoKg: 20000, receita: 500,
+  observacao: null, ...over,
 });
 
 describe("receitas-metrics", () => {
@@ -141,6 +146,18 @@ describe("receitas-metrics", () => {
     expect(resumo.total).toBe(50);
     expect(resumo.medioPorTonelada).toBe(0);
   });
+
+  it("soma os totais diários no descarregamento (card, peso e médio/ton)", () => {
+    const resumo = resumoReceitas(
+      [r({ pesoKg: 10000, receita: 200 })],
+      [],
+      [td({ pesoKg: 10000, receita: 300 })],
+    );
+    expect(resumo.totalDescarregamento).toBe(500); // 200 detalhado + 300 total do dia
+    expect(resumo.toneladas).toBe(20);             // 10 t + 10 t
+    expect(resumo.medioPorTonelada).toBe(25);      // 500 / 20 t
+    expect(resumo.total).toBe(500);
+  });
 });
 
 describe("resolverValorDiversa", () => {
@@ -181,8 +198,33 @@ describe("receitaPorDia", () => {
       r({ id: "b", data: "2026-07-10", pesoKg: 2500, receita: 62.5 }),
     ]);
     expect(dias).toEqual([
-      { data: "2026-07-10", descarregos: 2, pesoKg: 3500, receita: 82.5 },
+      { data: "2026-07-10", descarregos: 2, pesoKg: 3500, receita: 82.5, origem: "detalhado" },
     ]);
+  });
+
+  it("inclui os totais diários como linhas de origem 'total', com id", () => {
+    const dias = receitaPorDia([], [td({ id: "t9", data: "2026-07-15", descarregos: 12, pesoKg: 34000, receita: 900 })]);
+    expect(dias).toEqual([
+      { data: "2026-07-15", descarregos: 12, pesoKg: 34000, receita: 900, origem: "total", id: "t9" },
+    ]);
+  });
+
+  it("no dia misto, mantém detalhado e total como linhas separadas", () => {
+    const dias = receitaPorDia(
+      [r({ id: "a", data: "2026-07-10", pesoKg: 1000, receita: 20 })],
+      [td({ id: "t1", data: "2026-07-10", descarregos: 5, pesoKg: 9000, receita: 250 })],
+    );
+    expect(dias).toHaveLength(2);
+    expect(dias.filter((d) => d.origem === "detalhado")).toHaveLength(1);
+    expect(dias.filter((d) => d.origem === "total")).toHaveLength(1);
+  });
+
+  it("ordena detalhado e total juntos por data desc", () => {
+    const dias = receitaPorDia(
+      [r({ id: "a", data: "2026-07-03" })],
+      [td({ id: "t1", data: "2026-07-21" }), td({ id: "t2", data: "2026-07-12" })],
+    );
+    expect(dias.map((d) => d.data)).toEqual(["2026-07-21", "2026-07-12", "2026-07-03"]);
   });
 
   it("ordena do dia mais recente para o mais antigo", () => {
