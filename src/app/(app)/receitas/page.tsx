@@ -188,17 +188,29 @@ export default async function ReceitasPage({
         </div>
       </div>
 
-      {/* Quebras */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <section>
-          <SectionTitle>Receita por fornecedor</SectionTitle>
-          <Card className="p-5"><BarList items={barrasFornecedor} tone="gold" /></Card>
-        </section>
-        <section>
-          <SectionTitle>Receita por tipo</SectionTitle>
-          <Card className="p-5"><BarList items={barrasTipo} tone="navy" /></Card>
-        </section>
-      </div>
+      {/* Quebras empilhadas em largura total. Antes eram duas colunas, mas
+          "por tipo" tem só 3 itens: ao lado da lista longa de fornecedores (ou
+          de uma comparação mensal com poucos meses) sobrava um vão feio ao lado
+          do card curto. Em coluna única cada card ocupa a largura toda e nenhum
+          card curto fica encostado num alto — sem buraco, em qualquer volume de
+          dados. A lista de fornecedores rola dentro de uma altura limitada para
+          não esticar a página. */}
+      <section className="mt-6">
+        <SectionTitle>Receita por fornecedor</SectionTitle>
+        <Card className="p-5">
+          <div className="max-h-[32rem] overflow-y-auto pr-1">
+            <BarList items={barrasFornecedor} tone="gold" />
+          </div>
+        </Card>
+      </section>
+      <section className="mt-6">
+        <SectionTitle>Receita por tipo</SectionTitle>
+        <Card className="p-5"><BarList items={barrasTipo} tone="navy" /></Card>
+      </section>
+      <section className="mt-6">
+        <SectionTitle>Comparação mensal</SectionTitle>
+        <Card className="p-5"><BarList items={barrasMensal} tone="gold" /></Card>
+      </section>
 
       {/* Tabela de lançamentos */}
       <section className="mt-6">
@@ -390,12 +402,6 @@ export default async function ReceitasPage({
             </div>
           </Card>
         )}
-      </section>
-
-      {/* Comparação mensal */}
-      <section className="mt-6">
-        <SectionTitle>Comparação mensal</SectionTitle>
-        <Card className="p-5"><BarList items={barrasMensal} tone="gold" /></Card>
       </section>
     </div>
   );
