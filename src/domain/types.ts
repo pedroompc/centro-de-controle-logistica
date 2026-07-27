@@ -50,7 +50,7 @@ export interface CustoMensal {
   data: string | null; // ISO "yyyy-mm-dd" — dia do lançamento (variáveis); null p/ fixos
 }
 
-export type DescarregamentoTipo = "batido" | "paletizado" | "pal_rem";
+export type DescarregamentoTipo = "batido" | "paletizado" | "pal_rem" | "volume";
 
 export interface Fornecedor {
   id: string;

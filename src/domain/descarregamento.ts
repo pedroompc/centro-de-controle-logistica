@@ -5,6 +5,7 @@ export const TIPOS_DESCARREGAMENTO = [
   "batido",
   "paletizado",
   "pal_rem",
+  "volume",
 ] as const satisfies readonly DescarregamentoTipo[];
 
 /**
@@ -15,4 +16,5 @@ export const ROTULO_TIPO: Record<DescarregamentoTipo, string> = {
   batido: "Batido",
   paletizado: "Paletizado",
   pal_rem: "Pal/Rem",
+  volume: "Volume",
 };

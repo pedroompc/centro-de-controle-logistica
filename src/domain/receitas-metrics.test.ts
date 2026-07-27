@@ -88,11 +88,11 @@ describe("receitas-metrics", () => {
       r({ tipo: "batido", receita: 10 }),
       r({ tipo: "pal_rem", receita: 25 }),
     ];
-    expect(receitaPorTipo(rs)).toEqual({ batido: 110, paletizado: 40, pal_rem: 25 });
+    expect(receitaPorTipo(rs)).toEqual({ batido: 110, paletizado: 40, pal_rem: 25, volume: 0 });
   });
 
   it("zera os tipos sem lançamento em vez de omiti-los", () => {
-    expect(receitaPorTipo([])).toEqual({ batido: 0, paletizado: 0, pal_rem: 0 });
+    expect(receitaPorTipo([])).toEqual({ batido: 0, paletizado: 0, pal_rem: 0, volume: 0 });
   });
 
   it("custo líquido = brutos − receitas", () => {
