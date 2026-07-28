@@ -85,7 +85,7 @@ describe("mapCustoMensal", () => {
   it("mapeia lançamento mensal", () => {
     const row = { id: "cm1", mes: "2026-07-01", nome: "Gasolina", tipo: "variavel", valor: "3500.50" };
     expect(mapCustoMensal(row)).toEqual({
-      id: "cm1", mes: "2026-07-01", nome: "Gasolina", tipo: "variavel", valor: 3500.5,
+      id: "cm1", mes: "2026-07-01", nome: "Gasolina", tipo: "variavel", valor: 3500.5, data: null,
     });
   });
 });
