@@ -143,11 +143,19 @@ export function mapReceitaDiversa(row: {
 export function mapTotalDiario(row: {
   id: string; data: string; descarregos: string | number;
   peso_kg: string | number; receita: string | number; observacao: string | null;
+  qtd_batido?: string | number | null; qtd_paletizado?: string | number | null;
+  qtd_pal_rem?: string | number | null; qtd_volume?: string | number | null;
 }): TotalDiarioDescarregamento {
+  const q = (v: string | number | null | undefined) => (v == null ? null : Number(v));
+  const b = q(row.qtd_batido), p = q(row.qtd_paletizado), pr = q(row.qtd_pal_rem), v = q(row.qtd_volume);
+  // null nos quatro = registro sem detalhamento. Se qualquer um veio, monta o
+  // record completo (o que faltar é 0, não "desconhecido").
+  const temQuebra = b !== null || p !== null || pr !== null || v !== null;
   return {
     id: row.id,
     data: row.data,
     descarregos: Number(row.descarregos),
+    porTipo: temQuebra ? { batido: b ?? 0, paletizado: p ?? 0, pal_rem: pr ?? 0, volume: v ?? 0 } : null,
     pesoKg: Number(row.peso_kg),
     receita: Number(row.receita),
     observacao: row.observacao,

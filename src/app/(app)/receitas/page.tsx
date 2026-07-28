@@ -5,12 +5,13 @@ import { listarPrecos } from "@/data/precos-descarregamento";
 import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin } from "@/data/auth";
 import {
-  resumoReceitas, receitaPorFornecedor, receitaPorTipo, receitaPorDia, toneladas,
+  resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
 import { DescarregamentoForm } from "./descarregamento-form";
+import { ReceitaPorTipo } from "./receita-por-tipo";
 import { FornecedorRanking } from "./fornecedor-ranking";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo } from "@/domain/types";
@@ -124,8 +125,12 @@ export default async function ReceitasPage({
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
   }));
+  const porTipoQtd = quantidadePorTipo(receitas, totaisVisiveis);
   const barrasTipo = TIPOS_DESCARREGAMENTO.map((t) => ({
     label: ROTULO_TIPO[t], value: porTipo[t], display: formatBRL(porTipo[t]),
+  }));
+  const barrasTipoQtd = TIPOS_DESCARREGAMENTO.map((t) => ({
+    label: ROTULO_TIPO[t], value: porTipoQtd[t], display: porTipoQtd[t].toLocaleString("pt-BR"),
   }));
   const barrasMensal = serie.map((p) => ({
     label: formatMesAno(p.mes), value: p.valor, display: formatBRL(p.valor),
@@ -201,8 +206,8 @@ export default async function ReceitasPage({
         <Card className="p-5"><FornecedorRanking items={barrasFornecedor} /></Card>
       </section>
       <section className="mt-6">
-        <SectionTitle>Receita por tipo</SectionTitle>
-        <Card className="p-5"><BarList items={barrasTipo} tone="navy" /></Card>
+        <SectionTitle>Por tipo</SectionTitle>
+        <Card className="p-5"><ReceitaPorTipo porReceita={barrasTipo} porQuantidade={barrasTipoQtd} /></Card>
       </section>
       <section className="mt-6">
         <SectionTitle>Comparação mensal</SectionTitle>

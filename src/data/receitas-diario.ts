@@ -7,7 +7,7 @@ import { assertAdmin } from "./auth";
 import { inicioFimDoMes } from "@/domain/periodo";
 import type { TotalDiarioDescarregamento } from "@/domain/types";
 
-const COLS = "id, data, descarregos, peso_kg, receita, observacao";
+const COLS = "id, data, descarregos, qtd_batido, qtd_paletizado, qtd_pal_rem, qtd_volume, peso_kg, receita, observacao";
 
 export async function listarTotaisDiariosDoMes(mes: string): Promise<TotalDiarioDescarregamento[]> {
   const { inicio, fim } = inicioFimDoMes(mes);
@@ -24,11 +24,16 @@ export async function listarTotaisDiariosDoMes(mes: string): Promise<TotalDiario
 
 function parseForm(formData: FormData) {
   const data = String(formData.get("data") ?? "").trim();
-  const descarregos = Number(formData.get("descarregos") ?? 0);
+  const qtdBatido = Number(formData.get("qtd_batido") ?? 0);
+  const qtdPaletizado = Number(formData.get("qtd_paletizado") ?? 0);
+  const qtdPalRem = Number(formData.get("qtd_pal_rem") ?? 0);
+  const qtdVolume = Number(formData.get("qtd_volume") ?? 0);
+  // descarregos é a soma dos tipos — não vem mais digitado direto.
+  const descarregos = qtdBatido + qtdPaletizado + qtdPalRem + qtdVolume;
   const pesoKg = Number(formData.get("peso_kg") ?? 0);
   const receita = Number(formData.get("receita") ?? 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
-  return { data, descarregos, pesoKg, receita, observacao };
+  return { data, qtdBatido, qtdPaletizado, qtdPalRem, qtdVolume, descarregos, pesoKg, receita, observacao };
 }
 
 /** Campos gravados no banco, compartilhados por criar e editar. */
@@ -36,6 +41,10 @@ function toRow(f: ReturnType<typeof parseForm>) {
   return {
     data: f.data,
     descarregos: f.descarregos,
+    qtd_batido: f.qtdBatido,
+    qtd_paletizado: f.qtdPaletizado,
+    qtd_pal_rem: f.qtdPalRem,
+    qtd_volume: f.qtdVolume,
     peso_kg: f.pesoKg,
     receita: f.receita,
     observacao: f.observacao,

@@ -198,9 +198,28 @@ describe("mapTotalDiario", () => {
       id: "t1",
       data: "2026-07-15",
       descarregos: 12,
+      porTipo: null, // sem colunas de quebra → registro antigo
       pesoKg: 34000,
       receita: 900,
       observacao: null,
     });
+  });
+
+  it("monta porTipo quando as colunas de quebra vêm preenchidas", () => {
+    const row = {
+      id: "t2", data: "2026-07-16", descarregos: 10,
+      qtd_batido: "4", qtd_paletizado: 3, qtd_pal_rem: 0, qtd_volume: "3",
+      peso_kg: 20000, receita: 700, observacao: null,
+    };
+    expect(mapTotalDiario(row).porTipo).toEqual({ batido: 4, paletizado: 3, pal_rem: 0, volume: 3 });
+  });
+
+  it("null em parte da quebra vira 0 (não some do record)", () => {
+    const row = {
+      id: "t3", data: "2026-07-17", descarregos: 5,
+      qtd_batido: "5", qtd_paletizado: null, qtd_pal_rem: null, qtd_volume: null,
+      peso_kg: 10000, receita: 300, observacao: null,
+    };
+    expect(mapTotalDiario(row).porTipo).toEqual({ batido: 5, paletizado: 0, pal_rem: 0, volume: 0 });
   });
 });

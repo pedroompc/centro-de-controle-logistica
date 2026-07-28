@@ -101,7 +101,10 @@ export interface Receita {
 export interface TotalDiarioDescarregamento {
   id: string;
   data: string; // ISO "yyyy-mm-dd"
-  descarregos: number;
+  descarregos: number; // total de carros do dia = soma de porTipo
+  // Quantos carros de cada tipo. null = registro antigo, sem detalhamento.
+  // Quando presente, tem os 4 tipos (0 onde não houve).
+  porTipo: Record<DescarregamentoTipo, number> | null;
   pesoKg: number;
   receita: number;
   observacao: string | null;

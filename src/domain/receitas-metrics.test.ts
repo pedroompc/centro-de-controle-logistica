@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
-  valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, custoLiquido,
+  valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
   receitaPorDia, calcularReceitaVolume,
 } from "./receitas-metrics";
@@ -14,7 +14,7 @@ const r = (over: Partial<Receita>): Receita => ({
 });
 
 const td = (over: Partial<TotalDiarioDescarregamento>): TotalDiarioDescarregamento => ({
-  id: "t1", data: "2026-07-10", descarregos: 8, pesoKg: 20000, receita: 500,
+  id: "t1", data: "2026-07-10", descarregos: 8, porTipo: null, pesoKg: 20000, receita: 500,
   observacao: null, ...over,
 });
 
@@ -93,6 +93,19 @@ describe("receitas-metrics", () => {
 
   it("zera os tipos sem lançamento em vez de omiti-los", () => {
     expect(receitaPorTipo([])).toEqual({ batido: 0, paletizado: 0, pal_rem: 0, volume: 0 });
+  });
+
+  it("quantidadePorTipo: 1 linha detalhada = 1 carro, somado à quebra do total do dia", () => {
+    const rs = [r({ tipo: "batido" }), r({ tipo: "batido" }), r({ tipo: "volume" })];
+    const totais = [
+      td({ porTipo: { batido: 2, paletizado: 3, pal_rem: 1, volume: 0 } }),
+      td({ porTipo: null }), // registro antigo: não entra na quebra
+    ];
+    expect(quantidadePorTipo(rs, totais)).toEqual({ batido: 4, paletizado: 3, pal_rem: 1, volume: 1 });
+  });
+
+  it("quantidadePorTipo sem totais: conta só as linhas detalhadas", () => {
+    expect(quantidadePorTipo([r({ tipo: "pal_rem" })])).toEqual({ batido: 0, paletizado: 0, pal_rem: 1, volume: 0 });
   });
 
   it("custo líquido = brutos − receitas", () => {

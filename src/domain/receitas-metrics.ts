@@ -68,6 +68,27 @@ export function receitaPorTipo(rs: Receita[]): Record<DescarregamentoTipo, numbe
   return acc;
 }
 
+/**
+ * Quantidade de carros por tipo, juntando os dois modos de lançamento:
+ *   • detalhado  → cada linha é 1 carro do seu tipo;
+ *   • total do dia → soma de `porTipo` (registros antigos, sem quebra, ficam de fora).
+ * Diferente de `receitaPorTipo` (R$), que o total do dia não fatia por tipo.
+ */
+export function quantidadePorTipo(
+  rs: Receita[],
+  totais: TotalDiarioDescarregamento[] = [],
+): Record<DescarregamentoTipo, number> {
+  const acc = Object.fromEntries(
+    TIPOS_DESCARREGAMENTO.map((t) => [t, 0]),
+  ) as Record<DescarregamentoTipo, number>;
+  for (const r of rs) acc[r.tipo] += 1;
+  for (const t of totais) {
+    if (!t.porTipo) continue;
+    for (const tipo of TIPOS_DESCARREGAMENTO) acc[tipo] += t.porTipo[tipo];
+  }
+  return acc;
+}
+
 export interface DiaDescarregamento {
   data: string; // ISO "yyyy-mm-dd"
   descarregos: number;
