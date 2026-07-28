@@ -13,7 +13,9 @@ type Modo = "receita" | "quantidade";
  * explica; no modo quantidade ele entra somado.
  */
 export function ReceitaPorTipo({ porReceita, porQuantidade }: { porReceita: Item[]; porQuantidade: Item[] }) {
-  const [modo, setModo] = useState<Modo>("receita");
+  // Abre em Quantidade: no fluxo do Pedro quase tudo é total do dia, e o R$ por
+  // tipo (só detalhado) costuma vir vazio — Quantidade é o que tem dado.
+  const [modo, setModo] = useState<Modo>("quantidade");
   const items = modo === "receita" ? porReceita : porQuantidade;
 
   const botao = (m: Modo, rotulo: string) => (
