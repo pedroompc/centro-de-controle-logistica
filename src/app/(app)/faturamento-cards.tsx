@@ -58,7 +58,8 @@ export async function FaturamentoCards({ custoTotalMes }: { custoTotalMes: numbe
         <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" />
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard label="PDVs atendidos" value={`${r.atendimentos}`} hint="clientes atendidos no mês" accent="navy" />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" />
         <StatCard label="Taxa de devolução" value={formatPercent(taxaDevol)} accent="red" />
@@ -77,8 +78,8 @@ export function FaturamentoSkeleton() {
         <div className="h-[132px] animate-pulse rounded-2xl bg-slate-200/70 lg:col-span-2" />
         <div className="h-[132px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
         ))}
       </div>

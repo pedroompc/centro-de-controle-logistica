@@ -35,7 +35,7 @@ const EH_AVULSA = `NVL(vlink.NUMTRANSVENDA, 0) = 0`;
 //     view não tem número de nota nem peso (kg).
 const SQL = `
 SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
-       h.EMITIDAS, h.POSITIVADOS, s.PESO_VENDA,
+       h.EMITIDAS, h.POSITIVADOS, h.ATENDIMENTOS, s.PESO_VENDA,
        d.DEVOLVIDAS, d.DEVOLVIDAS_AVULSAS, d.PESO_DEVOLUCAO
   FROM
   (SELECT NVL(SUM(v.VENDAS), 0) VENDA_FATURADA,
@@ -43,7 +43,10 @@ SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
           NVL(SUM(v.AVULSA), 0) VALOR_DEVOLUCAO_AVULSA
      FROM VIEW_BI_FATURAMENTO v
     WHERE ${filialIn("v.CODFILIAL")} AND ${faixa("v.DTSAIDA")}) val,
-  (SELECT COUNT(*) EMITIDAS, COUNT(DISTINCT n.CODCLI) POSITIVADOS
+  -- EMITIDAS = nº de NFs; POSITIVADOS = clientes distintos no mês; ATENDIMENTOS =
+  -- clientes distintos POR DIA (mesmo PDV em 2 dias = 2; 3 notas no mesmo dia = 1).
+  (SELECT COUNT(*) EMITIDAS, COUNT(DISTINCT n.CODCLI) POSITIVADOS,
+          COUNT(DISTINCT n.CODCLI || '|' || TO_CHAR(n.DTSAIDA, 'YYYYMMDD')) ATENDIMENTOS
      FROM PCNFSAID n WHERE ${FILTRO_NF}) h,
   (SELECT NVL(SUM(${PESO_ITEM}), 0) PESO_VENDA
      FROM PCMOV m
@@ -60,6 +63,7 @@ SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
 interface LinhaResumo {
   EMITIDAS: number;
   POSITIVADOS: number;
+  ATENDIMENTOS: number;
   VENDA_FATURADA: number;
   PESO_VENDA: number;
   DEVOLVIDAS: number;
@@ -100,6 +104,7 @@ export async function getResumoFaturamento(
     return {
       emitidas: n(r.EMITIDAS),
       positivados: n(r.POSITIVADOS),
+      atendimentos: n(r.ATENDIMENTOS),
       devolvidas: n(r.DEVOLVIDAS),
       devolvidasAvulsas: n(r.DEVOLVIDAS_AVULSAS),
       vendaFaturada,

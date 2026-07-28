@@ -11,7 +11,8 @@
  */
 export interface ResumoFaturamento {
   emitidas: number; // qtd de NFs emitidas (VP/VV, não canceladas)
-  positivados: number; // clientes distintos que compraram
+  positivados: number; // clientes distintos que compraram (dedupe do mês inteiro)
+  atendimentos: number; // PDVs atendidos = clientes distintos POR DIA (mesmo PDV em 2 dias = 2)
   devolvidas: number; // qtd de NFs de devolução vinculada (com venda de origem)
   devolvidasAvulsas: number; // qtd de NFs de devolução avulsa (sem venda de origem)
   vendaFaturada: number; // R$ bruto (após ST/IPI/repasse, antes de devolução)
