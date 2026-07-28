@@ -33,6 +33,10 @@ const IcVenda = (
 const IcPeso = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4 7.5 8 4.5 8-4.5" /><path d="M12 12v9" /></svg>
 );
+// Vitrine de loja — representa o PDV (ponto de venda) atendido.
+const IcPdv = (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9.5 4.5 4h15L21 9.5" /><path d="M4 9.5v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9" /><path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3 0" /></svg>
+);
 
 export default async function TendenciasPage() {
   const serie = await getSerieTendencias(12);
@@ -60,6 +64,7 @@ export default async function TendenciasPage() {
   const vValor = serie.map((p) => p.valorDevolucao);
   const vPeso = serie.map((p) => p.pesoDevolucao);
   const vTaxa = serie.map((p) => taxaDevolucaoMensal(p)); // 0..1
+  const vAtend = serie.map((p) => p.atendimentos);
 
   const taxaAtual = taxaDevolucaoMensal(atual);
   const taxaAnt = taxaDevolucaoMensal(ant);
@@ -69,14 +74,18 @@ export default async function TendenciasPage() {
   const deltaValor = variacaoPercentual(atual.valorDevolucao, ant.valorDevolucao);
   const deltaPeso = variacaoPercentual(atual.pesoDevolucao, ant.pesoDevolucao);
   const deltaTaxaPP = variacaoPP(taxaAtual, taxaAnt);
+  const deltaAtend = variacaoPercentual(atual.atendimentos, ant.atendimentos);
 
   const dTaxa: Delta = { texto: ppComSinal(deltaTaxaPP), subindo: taxaAtual > taxaAnt, positivo: taxaAtual < taxaAnt };
+  // Mais PDVs atendidos é bom: subir fica neutro, cair ganha cor (regra de identidade).
+  const dAtend: Delta = { texto: pctComSinal(deltaAtend), subindo: deltaAtend > 0, positivo: deltaAtend >= 0 };
   const dVenda: Delta = { texto: pctComSinal(deltaVenda), subindo: deltaVenda > 0, positivo: deltaVenda > 0 };
   const dValor: Delta = { texto: pctComSinal(deltaValor), subindo: deltaValor > 0, positivo: deltaValor < 0 };
   const dPeso: Delta = { texto: pctComSinal(deltaPeso), subindo: deltaPeso > 0, positivo: deltaPeso < 0 };
 
   // Um painel por indicador, cada um na sua unidade real (sem índice).
   const series: SeriePainel[] = [
+    { nome: "PDVs atendidos", cor: CORES.pdv, valores: vAtend, abs: vAtend.map((v) => v.toLocaleString("pt-BR")) },
     { nome: "Venda líquida", cor: CORES.venda, valores: vVenda, abs: vVenda.map(formatBRL) },
     { nome: "Valor devolução", cor: CORES.devolucao, valores: vValor, abs: vValor.map(formatBRL) },
     { nome: "Peso devolvido", cor: CORES.peso, valores: vPeso, abs: vPeso.map((p) => formatKg(p)) },
@@ -104,9 +113,10 @@ export default async function TendenciasPage() {
   const cTaxaPP = variacaoPP(taxaAtual, mediaTaxa);
 
   // Exportação CSV.
-  const cabecalho = ["Mês", "Venda líquida", "Valor devolução", "Devolução avulsa", "Peso devolvido (kg)", "NFs devolvidas", "Taxa devolução (%)"];
+  const cabecalho = ["Mês", "PDVs atendidos", "Venda líquida", "Valor devolução", "Devolução avulsa", "Peso devolvido (kg)", "NFs devolvidas", "Taxa devolução (%)"];
   const linhasCsv = serie.map((p) => [
     p.mes.slice(0, 7),
+    String(p.atendimentos),
     numBR(p.vendaLiquida), numBR(p.valorDevolucao), numBR(p.valorDevolucaoAvulsa),
     numBR(p.pesoDevolucao, 0), String(p.devolvidas), numBR(taxaDevolucaoMensal(p) * 100),
   ]);
@@ -129,7 +139,8 @@ export default async function TendenciasPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <KpiCard icone={IcPdv} nome="PDVs atendidos" valor={atual.atendimentos.toLocaleString("pt-BR")} delta={dAtend} valores={vAtend} cor={CORES.pdv} />
         <KpiCard icone={IcTaxa} nome="Taxa de devolução" valor={formatPercent(taxaAtual)} delta={dTaxa} valores={vTaxa} cor={CORES.taxa} />
         <KpiCard icone={IcVenda} nome="Venda líquida" valor={formatBRL(atual.vendaLiquida)} delta={dVenda} valores={vVenda} cor={CORES.venda} />
         <KpiCard icone={IcVenda} nome="Valor devolvido" valor={formatBRL(atual.valorDevolucao)} delta={dValor} valores={vValor} cor={CORES.devolucao} />

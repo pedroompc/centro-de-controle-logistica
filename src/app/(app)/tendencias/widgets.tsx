@@ -13,6 +13,7 @@ import { Card } from "@/components/ui";
  */
 export const CORES = {
   venda: "#3d47a8",
+  pdv: "#5b6fd6", // índigo claro: volume/atendimento, azul (nunca verde — verde é só receita) e distinto do navy da venda
   devolucao: "#c2820a",
   peso: "#c2820a",
   taxa: "#c2820a",

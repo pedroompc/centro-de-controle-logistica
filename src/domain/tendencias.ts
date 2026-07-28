@@ -12,7 +12,8 @@ export interface PontoTendencia {
   pesoFaturado: number;
   pesoDevolucao: number;
   emitidas: number;
-  positivados: number;
+  positivados: number; // clientes distintos no mês inteiro
+  atendimentos: number; // PDVs atendidos = clientes distintos POR DIA
 }
 
 /** Últimos `qtd` meses FECHADOS (exclui o mês corrente), do mais antigo ao mais novo. */

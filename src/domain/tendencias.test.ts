@@ -8,7 +8,7 @@ import {
 const ponto = (over: Partial<PontoTendencia>): PontoTendencia => ({
   mes: "2026-01-01", vendaFaturada: 1000, vendaLiquida: 900, valorDevolucao: 100,
   valorDevolucaoAvulsa: 0, devolvidas: 5, devolvidasAvulsas: 0, pesoFaturado: 500,
-  pesoDevolucao: 50, emitidas: 20, positivados: 10, ...over,
+  pesoDevolucao: 50, emitidas: 20, positivados: 10, atendimentos: 15, ...over,
 });
 
 describe("mesesFechados", () => {

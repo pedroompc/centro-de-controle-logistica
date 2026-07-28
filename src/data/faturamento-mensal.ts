@@ -8,7 +8,7 @@ import { mesesFechados, type PontoTendencia } from "@/domain/tendencias";
 // Literal única (sem concatenação) para preservar o tipo literal que o
 // supabase-js usa para inferir o formato do retorno de `.select(COLUNAS)`.
 const COLUNAS =
-  "mes, venda_faturada, venda_liquida, valor_devolucao, valor_devolucao_avulsa, devolvidas, devolvidas_avulsas, peso_faturado, peso_devolucao, emitidas, positivados";
+  "mes, venda_faturada, venda_liquida, valor_devolucao, valor_devolucao_avulsa, devolvidas, devolvidas_avulsas, peso_faturado, peso_devolucao, emitidas, positivados, atendimentos";
 
 const num = (v: unknown): number => Number(v) || 0;
 
@@ -25,6 +25,7 @@ function rowToPonto(row: Record<string, unknown>): PontoTendencia {
     pesoDevolucao: num(row.peso_devolucao),
     emitidas: num(row.emitidas),
     positivados: num(row.positivados),
+    atendimentos: num(row.atendimentos),
   };
 }
 
@@ -41,6 +42,7 @@ function resumoToPonto(mes: string, r: ResumoFaturamento): PontoTendencia {
     pesoDevolucao: r.pesoDevolucao,
     emitidas: r.emitidas,
     positivados: r.positivados,
+    atendimentos: r.atendimentos,
   };
 }
 
@@ -72,6 +74,7 @@ async function computarMes(supabase: SB, mes: string): Promise<PontoTendencia | 
         peso_devolucao: r.pesoDevolucao,
         emitidas: r.emitidas,
         positivados: r.positivados,
+        atendimentos: r.atendimentos,
       },
       { onConflict: "mes,filial", ignoreDuplicates: true }, // = INSERT ... ON CONFLICT DO NOTHING
     );
