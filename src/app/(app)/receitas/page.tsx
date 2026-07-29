@@ -35,8 +35,10 @@ function fmtTon(t: number): string {
  */
 type Vista = "detalhado" | "simples";
 
+// Padrão é "simples": ao abrir Receitas sem parâmetro, mostra a vista simples.
+// Só "detalhado" explícito na URL sai do padrão.
 function lerVista(bruto: string | undefined): Vista {
-  return bruto === "simples" ? "simples" : "detalhado";
+  return bruto === "detalhado" ? "detalhado" : "simples";
 }
 
 // Monta querystring preservando filtros e vista ao navegar entre meses.
@@ -44,7 +46,7 @@ function qs(mes: string, f: FiltrosReceita, vista: Vista): string {
   const p = new URLSearchParams({ mes });
   if (f.fornecedorId) p.set("fornecedor", f.fornecedorId);
   if (f.tipo) p.set("tipo", f.tipo);
-  if (vista === "simples") p.set("vista", vista);
+  if (vista === "detalhado") p.set("vista", vista); // simples é o padrão; só marca o não-padrão
   return `/receitas?${p.toString()}`;
 }
 
@@ -171,7 +173,7 @@ export default async function ReceitasPage({
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
           <input type="hidden" name="mes" value={mes} />
-          {/* Sem isto, "Filtrar" recarrega sem `vista` e devolve o usuário ao detalhado. */}
+          {/* Sem isto, "Filtrar" recarrega sem `vista` e devolve o usuário ao padrão (simples). */}
           <input type="hidden" name="vista" value={vista} />
           <select name="fornecedor" defaultValue={filtros.fornecedorId ?? ""} className={field}>
             <option value="">Todos os fornecedores</option>
