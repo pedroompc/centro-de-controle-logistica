@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getResumoFaturamento } from "./faturamento";
+import { getResumoFaturamento, getResumoFaturamentoMesAtual } from "./faturamento";
 import { FILIAL_LABEL } from "./filiais";
 import type { ResumoFaturamento } from "@/domain/faturamento";
 import { primeiroDiaDoMes, inicioFimDoMes } from "@/domain/periodo";
@@ -134,4 +134,19 @@ export const getSerieTendencias = cache(
     }
     return serie;
   },
+);
+
+/**
+ * Faturamento para o dashboard num mês qualquer. O mês corrente vem AO VIVO
+ * (1º → hoje, muda ao longo do dia); os meses fechados vêm do snapshot
+ * congelado — a mesma fonte das Tendências, sem recalcular do Winthor a cada
+ * abertura. `PontoTendencia` carrega todos os campos de `ResumoFaturamento`.
+ * Memoizado por `mes` para os cards do topo e o detalhamento do rodapé
+ * compartilharem uma única leitura por request.
+ */
+export const getResumoFaturamentoDashboard = cache(
+  async (mes: string): Promise<ResumoFaturamento | null> =>
+    mes >= primeiroDiaDoMes()
+      ? getResumoFaturamentoMesAtual()
+      : getFaturamentoMensal(mes),
 );

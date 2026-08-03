@@ -3,7 +3,16 @@ import { listarSetores } from "@/data/setores";
 import { listarFaltas } from "@/data/faltas";
 import { custoDoSetor, faltasNoPeriodo } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
-import { inicioFimMesAtual, primeiroDiaDoMes, formatMesAno } from "@/domain/periodo";
+import Link from "next/link";
+import {
+  primeiroDiaDoMes,
+  formatMesAno,
+  inicioFimDoMes,
+  mesAnterior,
+  mesProximo,
+  limitarAoHistorico,
+  INICIO_HISTORICO,
+} from "@/domain/periodo";
 import { listarLancamentosDoMes } from "@/data/custos-mensais";
 import { receitaTotalDoMes } from "@/data/receitas";
 import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
@@ -17,8 +26,45 @@ import {
   FaturamentoDetalheSkeleton,
 } from "./faturamento-cards";
 
-export default async function Dashboard() {
-  const mesAtual = primeiroDiaDoMes();
+const btn =
+  "rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 transition hover:bg-slate-50";
+const btnOff =
+  "rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-slate-300";
+
+/**
+ * Navegador de mês do dashboard, limitado à janela [INICIO_HISTORICO, mês
+ * atual]. As setas viram texto inerte nos extremos, deixando claro que não há
+ * mais histórico para trás nem futuro para frente.
+ */
+function MesNav({ mes }: { mes: string }) {
+  const temAnterior = mes > INICIO_HISTORICO;
+  const temProximo = mes < primeiroDiaDoMes();
+  return (
+    <div className="flex items-center gap-1">
+      {temAnterior ? (
+        <Link href={`/?mes=${mesAnterior(mes).slice(0, 7)}`} aria-label="Mês anterior" className={btn}>◀</Link>
+      ) : (
+        <span aria-hidden className={btnOff}>◀</span>
+      )}
+      <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
+      {temProximo ? (
+        <Link href={`/?mes=${mesProximo(mes).slice(0, 7)}`} aria-label="Próximo mês" className={btn}>▶</Link>
+      ) : (
+        <span aria-hidden className={btnOff}>▶</span>
+      )}
+    </div>
+  );
+}
+
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string }>;
+}) {
+  const sp = await searchParams;
+  // Default = mês atual; qualquer mês pedido é preso à janela navegável.
+  const mesAtual = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
+  const mesFechado = mesAtual < primeiroDiaDoMes();
   const [funcionarios, setores, faltas, lancamentosMes, receitasMes] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
@@ -26,7 +72,7 @@ export default async function Dashboard() {
     listarLancamentosDoMes(mesAtual),
     receitaTotalDoMes(mesAtual),
   ]);
-  const { inicio, fim } = inicioFimMesAtual();
+  const { inicio, fim } = inicioFimDoMes(mesAtual);
 
   const ativos = funcionarios.filter((f) => f.status === "ativo");
   const custoEfetivo = ativos.reduce((t, f) => t + f.custoMensal, 0);
@@ -64,10 +110,15 @@ export default async function Dashboard() {
 
   return (
     <div>
-      <PageHeader title="Visão geral" subtitle={`Operação de logística · ${formatMesAno(mesAtual)}`} />
+      <PageHeader
+        title="Visão geral"
+        subtitle={`Operação de logística · ${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}
+      >
+        <MesNav mes={mesAtual} />
+      </PageHeader>
 
       <Suspense fallback={<FaturamentoSkeleton />}>
-        <FaturamentoCards custoTotalMes={custoTotalMes} />
+        <FaturamentoCards mes={mesAtual} custoTotalMes={custoTotalMes} />
       </Suspense>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -104,7 +155,7 @@ export default async function Dashboard() {
 
       <div className="mt-6">
         <Suspense fallback={<FaturamentoDetalheSkeleton />}>
-          <FaturamentoDetalhe />
+          <FaturamentoDetalhe mes={mesAtual} />
         </Suspense>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
+import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, percentualCustoLogistico } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { StatCard, HeroStat, Card, SectionTitle } from "@/components/ui";
@@ -26,8 +26,8 @@ function Linha({ label, valor }: { label: string; valor: string }) {
  * no topo do dashboard. Componente assíncrono: deve ficar dentro de um
  * <Suspense> para não travar o resto da página enquanto o Oracle responde.
  */
-export async function FaturamentoCards({ custoTotalMes }: { custoTotalMes: number }) {
-  const r = await getResumoFaturamentoMesAtual();
+export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; custoTotalMes: number }) {
+  const r = await getResumoFaturamentoDashboard(mes);
 
   if (!r) {
     return (
@@ -91,8 +91,8 @@ export function FaturamentoSkeleton() {
  * Detalhamento do faturamento — os números crus puxados da rotina 111. Fica no
  * rodapé do dashboard. Reusa a mesma consulta (memoizada) dos cards do topo.
  */
-export async function FaturamentoDetalhe() {
-  const r = await getResumoFaturamentoMesAtual();
+export async function FaturamentoDetalhe({ mes }: { mes: string }) {
+  const r = await getResumoFaturamentoDashboard(mes);
   if (!r) return null;
 
   return (

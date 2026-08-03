@@ -45,3 +45,17 @@ export function inicioFimDoMes(mesISO: string): { inicio: string; fim: string } 
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return { inicio: iso(new Date(ano, mes - 1, 1)), fim: iso(new Date(ano, mes, 0)) };
 }
+
+/**
+ * Primeiro mês com histórico consolidado no dashboard. Antes de julho/2026 os
+ * dados por mês não foram fechados, então a navegação para no piso.
+ */
+export const INICIO_HISTORICO = "2026-07-01";
+
+/** Restringe um mês ISO à janela navegável [INICIO_HISTORICO, mês atual]. */
+export function limitarAoHistorico(mesISO: string, hoje = new Date()): string {
+  const atual = primeiroDiaDoMes(hoje);
+  if (mesISO < INICIO_HISTORICO) return INICIO_HISTORICO;
+  if (mesISO > atual) return atual;
+  return mesISO;
+}
