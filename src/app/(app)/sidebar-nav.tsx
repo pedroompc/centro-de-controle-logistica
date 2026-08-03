@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 type Item = { href: string; label: string; icon: React.ReactNode };
+
+// Telas que entendem `?mes=`. Ao navegar entre elas, o mês selecionado é
+// preservado; as demais (Setores, Funcionários, Tendências) ignoram o parâmetro.
+const COM_MES = new Set(["/", "/custos", "/receitas", "/devolucoes"]);
+
+function comMes(href: string, mes: string | null): string {
+  return mes && COM_MES.has(href) ? `${href}?mes=${mes}` : href;
+}
 
 const items: Item[] = [
   {
@@ -90,6 +98,7 @@ function isActive(pathname: string, href: string) {
 
 export function SidebarNav({ variant = "sidebar" }: { variant?: "sidebar" | "top" }) {
   const pathname = usePathname();
+  const mes = useSearchParams().get("mes");
 
   if (variant === "top") {
     return (
@@ -99,7 +108,7 @@ export function SidebarNav({ variant = "sidebar" }: { variant?: "sidebar" | "top
           return (
             <Link
               key={it.href}
-              href={it.href}
+              href={comMes(it.href, mes)}
               className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${
                 active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"
               }`}
@@ -120,7 +129,7 @@ export function SidebarNav({ variant = "sidebar" }: { variant?: "sidebar" | "top
         return (
           <Link
             key={it.href}
-            href={it.href}
+            href={comMes(it.href, mes)}
             className={`relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
               active ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
             }`}

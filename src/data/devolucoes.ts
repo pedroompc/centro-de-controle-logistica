@@ -1,6 +1,5 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
-import { primeiroDiaDoMes } from "@/domain/periodo";
 import { filialIn } from "./filiais";
 import { agregarPorSetor } from "@/domain/devolucoes";
 import type {
@@ -129,20 +128,14 @@ interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: num
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
 
-function hojeISO(hoje = new Date()): string {
-  const ano = hoje.getFullYear();
-  const mes = String(hoje.getMonth() + 1).padStart(2, "0");
-  const dia = String(hoje.getDate()).padStart(2, "0");
-  return `${ano}-${mes}-${dia}`;
-}
 const n = (v: unknown): number => Number(v) || 0;
 
 /**
- * Motivos que tiveram devolução no mês — popula o `select` do filtro. Sempre SEM
- * filtro (senão, ao filtrar, o dropdown ficaria com uma opção só).
+ * Motivos que tiveram devolução no período — popula o `select` do filtro. Sempre
+ * SEM filtro (senão, ao filtrar, o dropdown ficaria com uma opção só).
  */
-export const listarMotivosDoMes = cache(async (): Promise<string[]> => {
-  const binds = { ini: primeiroDiaDoMes(), fim: hojeISO() };
+export const listarMotivosDoMes = cache(async (ini: string, fim: string): Promise<string[]> => {
+  const binds = { ini, fim };
   try {
     const rows = await queryWinthor<{ MOTIVO: string }>(
       `WITH ${ctes({})}
@@ -157,21 +150,23 @@ export const listarMotivosDoMes = cache(async (): Promise<string[]> => {
 });
 
 /**
- * Devoluções das filiais 1 e 11 no mês corrente (1º dia → hoje): total, por
- * setor, por motivo e top clientes. `motivo`/`setor` estreitam as três quebras
- * de uma vez (via a CTE `edf`). Retorna `null` se o Winthor estiver indisponível.
+ * Devoluções das filiais 1 e 11 no período [ini, fim]: total, por setor, por
+ * motivo e top clientes. `motivo`/`setor` estreitam as três quebras de uma vez
+ * (via a CTE `edf`). Retorna `null` se o Winthor estiver indisponível.
  *
  * Parâmetros primitivos (e não um objeto) de propósito: `cache()` do React
  * compara argumentos por identidade — um objeto literal novo a cada chamada
  * furaria a memoização.
  */
-export const getDevolucoesMesAtual = cache(async (
+export const getDevolucoes = cache(async (
+  ini: string,
+  fim: string,
   motivo?: string,
   setor?: string,
 ): Promise<ResumoDevolucoes | null> => {
   const f: FiltrosDevolucao = { motivo, setor };
   // Bind só do que aparece na query — o Oracle recusa bind não referenciado.
-  const binds: Record<string, string> = { ini: primeiroDiaDoMes(), fim: hojeISO() };
+  const binds: Record<string, string> = { ini, fim };
   if (motivo) binds.motivo = motivo;
   if (setor) binds.setor = setor;
   try {

@@ -5,15 +5,16 @@ import { listarFuncionarios } from "@/data/funcionarios";
 import { custoTotalAtivos } from "@/domain/metrics";
 import { somaLancamentos, totalDoMes } from "@/domain/custos-metrics";
 import { formatBRL, formatDataBR } from "@/domain/format";
-import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
+import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, BarList } from "@/components/ui";
+import { MesNav } from "@/components/mes-nav";
 import { isAdmin } from "@/data/auth";
 import { AbrirMesButton } from "./abrir-mes-button";
 import { LancarVariavelForm } from "./lancar-variavel-form";
 
 export default async function CustosPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
   const { mes: mesParam } = await searchParams;
-  const mes = mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes();
+  const mes = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
 
   const [lancamentos, funcionarios, admin] = await Promise.all([
     listarLancamentosDoMes(mes),
@@ -38,9 +39,7 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
-        <Link href={`/custos?mes=${mesAnterior(mes)}`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">◀</Link>
-        <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
-        <Link href={`/custos?mes=${mesProximo(mes)}`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">▶</Link>
+        <MesNav mes={mes} hrefFor={(m) => `/custos?mes=${m}`} />
       </PageHeader>
 
       <Card className="p-6">

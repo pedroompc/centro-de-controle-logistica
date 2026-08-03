@@ -8,8 +8,9 @@ import {
   resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
-import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
+import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
+import { MesNav } from "@/components/mes-nav";
 import { DescarregamentoForm } from "./descarregamento-form";
 import { ReceitaPorTipo } from "./receita-por-tipo";
 import { FornecedorRanking } from "./fornecedor-ranking";
@@ -84,7 +85,7 @@ export default async function ReceitasPage({
   searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string; vista?: string }>;
 }) {
   const sp = await searchParams;
-  const mes = sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes();
+  const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
   const filtros: FiltrosReceita = {
     fornecedorId: sp.fornecedor || undefined,
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
@@ -141,9 +142,7 @@ export default async function ReceitasPage({
   return (
     <div>
       <PageHeader title="Receitas Logísticas" subtitle="Descarregamentos e outras receitas da operação">
-        <Link href={qs(mesAnterior(mes), filtros, vista)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">◀</Link>
-        <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
-        <Link href={qs(mesProximo(mes), filtros, vista)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50">▶</Link>
+        <MesNav mes={mes} hrefFor={(m) => qs(m, filtros, vista)} />
       </PageHeader>
 
       {/* Indicadores */}

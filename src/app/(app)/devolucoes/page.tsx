@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { getDevolucoesMesAtual, listarMotivosDoMes } from "@/data/devolucoes";
-import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
+import { getDevolucoes, listarMotivosDoMes } from "@/data/devolucoes";
+import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatPercent } from "@/domain/format";
-import { primeiroDiaDoMes, formatMesAno } from "@/domain/periodo";
+import { primeiroDiaDoMes, formatMesAno, inicioFimDoMes, limitarAoHistorico } from "@/domain/periodo";
 import type { SetorDevolucao, DevolucaoPorMotivo } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard, PanelHeader } from "@/components/ui";
+import { MesNav } from "@/components/mes-nav";
 import PainelClientes from "./painel-clientes";
 import TabelaMotoristas from "./tabela-motoristas";
 import { IconeEtiqueta } from "./icons";
@@ -48,49 +49,62 @@ function LinhaMotivo({ m, max }: { m: DevolucaoPorMotivo; max: number }) {
 export default async function DevolucoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ motivo?: string; setor?: string }>;
+  searchParams: Promise<{ mes?: string; motivo?: string; setor?: string }>;
 }) {
   const sp = await searchParams;
+  const mesSel = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
+  const mesFechado = mesSel < primeiroDiaDoMes();
+  // Intervalo do mês inteiro; no mês corrente não há devolução datada no futuro,
+  // então o `fim` no fim do mês equivale a "1º → hoje".
+  const { inicio, fim } = inicioFimDoMes(mesSel);
   const motivo = sp.motivo || undefined;
   const setor = sp.setor || undefined;
   const temFiltro = Boolean(motivo || setor);
 
   const [r, fat, motivosDisponiveis] = await Promise.all([
-    getDevolucoesMesAtual(motivo, setor),
-    getResumoFaturamentoMesAtual(),
-    listarMotivosDoMes(),
+    getDevolucoes(inicio, fim, motivo, setor),
+    getResumoFaturamentoDashboard(mesSel),
+    listarMotivosDoMes(inicio, fim),
   ]);
-  const mes = formatMesAno(primeiroDiaDoMes());
+  const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
 
-  if (!r) {
-    return (
-      <div>
-        <PageHeader title="Devoluções" subtitle={`${mes} · Winthor`} />
-        <Card className="p-6">
-          <p className="text-sm text-slate-500">
-            Devoluções indisponíveis — sem conexão com o Winthor (o banco só responde de dentro
-            da rede da empresa).
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
-  // Monta URL preservando o filtro vigente; `over` sobrescreve/limpa chaves.
-  const url = (over: Record<string, string | undefined>) => {
-    const atual: Record<string, string | undefined> = { motivo, setor, ...over };
+  // Monta URL preservando mês e filtro vigentes; `over` sobrescreve/limpa chaves.
+  const url = (over: Record<string, string | undefined> = {}) => {
+    const atual: Record<string, string | undefined> = {
+      mes: mesFechado ? mesSel : undefined, // mês corrente = URL limpa
+      motivo, setor, ...over,
+    };
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(atual)) if (v) p.set(k, v);
     const qs = p.toString();
     return qs ? `/devolucoes?${qs}` : "/devolucoes";
   };
 
+  if (!r) {
+    return (
+      <div>
+        <PageHeader title="Devoluções" subtitle={`${mesLabel} · Winthor`}>
+          <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
+        </PageHeader>
+        <Card className="p-6">
+          <p className="text-sm text-slate-500">
+            Devoluções indisponíveis para {formatMesAno(mesSel)} — sem conexão com o Winthor (o
+            banco só responde de dentro da rede da empresa; meses passados não têm foto
+            congelada).
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const maxMotivo = Math.max(1, ...r.porMotivo.map((m) => m.valor));
   const totalSetor = Math.max(1, r.porSetor.reduce((t, s) => t + s.valor, 0));
 
   return (
     <div>
-      <PageHeader title="Devoluções" subtitle={`${mes} · filiais 1 e 11`} />
+      <PageHeader title="Devoluções" subtitle={`${mesLabel} · filiais 1 e 11`}>
+        <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
+      </PageHeader>
 
       {/* Números OFICIAIS do mês = rotina 111. NÃO reagem ao filtro (âncora). */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -120,13 +134,15 @@ export default async function DevolucoesPage({
           Análise · de onde vêm
         </h2>
         {temFiltro && (
-          <Link href="/devolucoes" className="text-xs font-medium text-amber-600 hover:text-amber-700">limpar filtros</Link>
+          <Link href={url({ motivo: undefined, setor: undefined })} className="text-xs font-medium text-amber-600 hover:text-amber-700">limpar filtros</Link>
         )}
       </div>
 
       {/* Filtro: motivo/setor vão no SQL e estreitam as três seções. */}
       <Card className="mb-4 p-3">
         <form method="get" className="flex flex-wrap gap-2">
+          {/* Preserva o mês selecionado ao submeter o filtro (GET só envia os campos do form). */}
+          {mesFechado && <input type="hidden" name="mes" value={mesSel} />}
           <select name="motivo" defaultValue={motivo ?? ""} className={`${inputCls} min-w-[12rem] flex-1`}>
             <option value="">Todos os motivos</option>
             {motivosDisponiveis.map((m) => <option key={m} value={m}>{m}</option>)}

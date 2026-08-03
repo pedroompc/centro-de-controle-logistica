@@ -3,16 +3,13 @@ import { listarSetores } from "@/data/setores";
 import { listarFaltas } from "@/data/faltas";
 import { custoDoSetor, faltasNoPeriodo } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
-import Link from "next/link";
 import {
   primeiroDiaDoMes,
   formatMesAno,
   inicioFimDoMes,
-  mesAnterior,
-  mesProximo,
   limitarAoHistorico,
-  INICIO_HISTORICO,
 } from "@/domain/periodo";
+import { MesNav } from "@/components/mes-nav";
 import { listarLancamentosDoMes } from "@/data/custos-mensais";
 import { receitaTotalDoMes } from "@/data/receitas";
 import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
@@ -25,36 +22,6 @@ import {
   FaturamentoDetalhe,
   FaturamentoDetalheSkeleton,
 } from "./faturamento-cards";
-
-const btn =
-  "rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 transition hover:bg-slate-50";
-const btnOff =
-  "rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-slate-300";
-
-/**
- * Navegador de mês do dashboard, limitado à janela [INICIO_HISTORICO, mês
- * atual]. As setas viram texto inerte nos extremos, deixando claro que não há
- * mais histórico para trás nem futuro para frente.
- */
-function MesNav({ mes }: { mes: string }) {
-  const temAnterior = mes > INICIO_HISTORICO;
-  const temProximo = mes < primeiroDiaDoMes();
-  return (
-    <div className="flex items-center gap-1">
-      {temAnterior ? (
-        <Link href={`/?mes=${mesAnterior(mes).slice(0, 7)}`} aria-label="Mês anterior" className={btn}>◀</Link>
-      ) : (
-        <span aria-hidden className={btnOff}>◀</span>
-      )}
-      <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
-      {temProximo ? (
-        <Link href={`/?mes=${mesProximo(mes).slice(0, 7)}`} aria-label="Próximo mês" className={btn}>▶</Link>
-      ) : (
-        <span aria-hidden className={btnOff}>▶</span>
-      )}
-    </div>
-  );
-}
 
 export default async function Dashboard({
   searchParams,
@@ -114,7 +81,7 @@ export default async function Dashboard({
         title="Visão geral"
         subtitle={`Operação de logística · ${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}
       >
-        <MesNav mes={mesAtual} />
+        <MesNav mes={mesAtual} hrefFor={(m) => `/?mes=${m}`} />
       </PageHeader>
 
       <Suspense fallback={<FaturamentoSkeleton />}>
