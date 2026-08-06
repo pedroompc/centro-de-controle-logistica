@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import { PageHeader, Card } from "@/components/ui";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
-import { PedidosAFaturarView } from "./pedidos-a-faturar-view";
+import { getRotas } from "@/data/calendario-rotas";
+import { criarIndiceCalendario } from "@/domain/pedidos-a-faturar/calendario";
+import { PedidosAFaturarView, type PedidoLista } from "./pedidos-a-faturar-view";
 
 export const dynamic = "force-dynamic"; // lista ao vivo do Winthor, nunca cacheada
 
 async function Conteudo() {
-  const pedidos = await getPedidosPendentes();
+  const [pedidos, rotas] = await Promise.all([getPedidosPendentes(), getRotas()]);
 
   if (pedidos === null) {
     return (
@@ -19,15 +21,16 @@ async function Conteudo() {
     );
   }
 
-  // Do mais antigo (mais tempo parado) ao mais recente.
-  const ordenados = [...pedidos].sort((a, b) => b.horasParado - a.horasParado);
-  const resumo = {
-    total: ordenados.length,
-    valorTotal: ordenados.reduce((s, p) => s + p.valorPedido, 0),
-    pesoTotal: ordenados.reduce((s, p) => s + p.pesoPedido, 0),
-  };
+  // O calendário serve só para MARCAR a região de cada pedido (filtro). Sem
+  // classificação de prioridade/prazo — se o calendário não carregou/está vazio,
+  // a região fica nula e o filtro de região aparece indisponível.
+  const indice = criarIndiceCalendario(rotas ?? []);
+  const enriquecidos: PedidoLista[] = pedidos
+    .map((p) => ({ ...p, regiao: indice.buscar(p.cidadeCliente)?.regiaoOperacional ?? null }))
+    // Do mais antigo (mais tempo parado) ao mais recente.
+    .sort((a, b) => b.horasParado - a.horasParado);
 
-  return <PedidosAFaturarView pedidos={ordenados} resumo={resumo} />;
+  return <PedidosAFaturarView pedidos={enriquecidos} />;
 }
 
 function Skeleton() {
