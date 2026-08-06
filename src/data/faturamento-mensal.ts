@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getResumoFaturamento, getResumoFaturamentoMesAtual } from "./faturamento";
+import { getResumoFaturamento } from "./faturamento";
 import { FILIAL_LABEL } from "./filiais";
 import type { ResumoFaturamento } from "@/domain/faturamento";
 import { primeiroDiaDoMes, inicioFimDoMes } from "@/domain/periodo";
@@ -49,6 +49,46 @@ function resumoToPonto(mes: string, r: ResumoFaturamento): PontoTendencia {
 type SB = Awaited<ReturnType<typeof createClient>>;
 
 /**
+ * Grava/atualiza a foto de um mês FECHADO. `onConflict` sem `ignoreDuplicates`
+ * = UPSERT que SOBRESCREVE: a foto se auto-cura quando o valor ao vivo muda
+ * (ex.: devolução lançada com data retroativa entra num mês já fechado).
+ */
+async function congelarMes(supabase: SB, mes: string, r: ResumoFaturamento): Promise<void> {
+  await supabase.from("faturamento_mensal").upsert(
+    {
+      mes, filial: FILIAL_LABEL,
+      venda_faturada: r.vendaFaturada,
+      venda_liquida: r.vendaLiquida,
+      valor_devolucao: r.valorDevolucao,
+      valor_devolucao_avulsa: r.valorDevolucaoAvulsa,
+      devolvidas: r.devolvidas,
+      devolvidas_avulsas: r.devolvidasAvulsas,
+      peso_faturado: r.pesoFaturado,
+      peso_devolucao: r.pesoDevolucao,
+      emitidas: r.emitidas,
+      positivados: r.positivados,
+      atendimentos: r.atendimentos,
+    },
+    { onConflict: "mes,filial" }, // sobrescreve a foto com a verdade mais recente
+  );
+}
+
+/** Lê só a foto do Supabase (sem tocar no Winthor). `null` se não existir. */
+async function lerSnapshot(supabase: SB, mes: string): Promise<PontoTendencia | null> {
+  const { data, error } = await supabase
+    .from("faturamento_mensal")
+    .select(COLUNAS)
+    .eq("mes", mes)
+    .eq("filial", FILIAL_LABEL)
+    .maybeSingle();
+  if (error) {
+    console.error("[faturamento-mensal] Supabase indisponível:", error.message);
+    return null;
+  }
+  return data ? rowToPonto(data as Record<string, unknown>) : null;
+}
+
+/**
  * Calcula um mês do Winthor e o congela (best-effort) se estiver fechado. Tenta
  * 2 vezes — o Oracle às vezes derruba a conexão sob concorrência. `null` se o
  * Winthor seguir indisponível.
@@ -60,25 +100,7 @@ async function computarMes(supabase: SB, mes: string): Promise<PontoTendencia | 
   if (!r) return null;
 
   // Só congela mês FECHADO (o corrente muda ao longo do dia).
-  if (mes < primeiroDiaDoMes()) {
-    await supabase.from("faturamento_mensal").upsert(
-      {
-        mes, filial: FILIAL_LABEL,
-        venda_faturada: r.vendaFaturada,
-        venda_liquida: r.vendaLiquida,
-        valor_devolucao: r.valorDevolucao,
-        valor_devolucao_avulsa: r.valorDevolucaoAvulsa,
-        devolvidas: r.devolvidas,
-        devolvidas_avulsas: r.devolvidasAvulsas,
-        peso_faturado: r.pesoFaturado,
-        peso_devolucao: r.pesoDevolucao,
-        emitidas: r.emitidas,
-        positivados: r.positivados,
-        atendimentos: r.atendimentos,
-      },
-      { onConflict: "mes,filial", ignoreDuplicates: true }, // = INSERT ... ON CONFLICT DO NOTHING
-    );
-  }
+  if (mes < primeiroDiaDoMes()) await congelarMes(supabase, mes, r);
   return resumoToPonto(mes, r);
 }
 
@@ -88,17 +110,8 @@ async function computarMes(supabase: SB, mes: string): Promise<PontoTendencia | 
  */
 export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("faturamento_mensal")
-    .select(COLUNAS)
-    .eq("mes", mes)
-    .eq("filial", FILIAL_LABEL)
-    .maybeSingle();
-  if (error) {
-    console.error("[faturamento-mensal] Supabase indisponível:", error.message);
-    return null;
-  }
-  if (data) return rowToPonto(data as Record<string, unknown>);
+  const snap = await lerSnapshot(supabase, mes);
+  if (snap) return snap;
   return computarMes(supabase, mes);
 }
 
@@ -137,16 +150,31 @@ export const getSerieTendencias = cache(
 );
 
 /**
- * Faturamento para o dashboard num mês qualquer. O mês corrente vem AO VIVO
- * (1º → hoje, muda ao longo do dia); os meses fechados vêm do snapshot
- * congelado — a mesma fonte das Tendências, sem recalcular do Winthor a cada
- * abertura. `PontoTendencia` carrega todos os campos de `ResumoFaturamento`.
- * Memoizado por `mes` para os cards do topo e o detalhamento do rodapé
- * compartilharem uma única leitura por request.
+ * Faturamento para o dashboard num mês qualquer. Vem SEMPRE AO VIVO do Winthor —
+ * o card tem que espelhar a rotina 111, que recalcula na hora. Foto congelada
+ * nunca bate no centavo com o 111 aberto depois, porque devolução entra com data
+ * retroativa e cai num mês já fechado. A foto no Supabase deixa de ser a fonte e
+ * passa a ser só: (1) fallback quando o Oracle está fora da rede; (2) lastro do
+ * gráfico de Tendências (que não pode disparar 12 queries Oracle de uma vez).
+ * Memoizado por `mes` p/ cards do topo e detalhamento do rodapé dividirem uma
+ * única leitura por request.
  */
 export const getResumoFaturamentoDashboard = cache(
-  async (mes: string): Promise<ResumoFaturamento | null> =>
-    mes >= primeiroDiaDoMes()
-      ? getResumoFaturamentoMesAtual()
-      : getFaturamentoMensal(mes),
+  async (mes: string): Promise<ResumoFaturamento | null> => {
+    const supabase = await createClient();
+    const { inicio, fim } = inicioFimDoMes(mes);
+
+    // 1 retry — o Oracle às vezes derruba a conexão sob concorrência.
+    let r = await getResumoFaturamento(inicio, fim);
+    if (!r) r = await getResumoFaturamento(inicio, fim);
+
+    if (r) {
+      // Mês fechado: atualiza a foto (self-heal) p/ Tendências e fallback offline.
+      if (mes < primeiroDiaDoMes()) await congelarMes(supabase, mes, r);
+      return r;
+    }
+
+    // Oracle fora: cai na última foto conhecida (só existe p/ mês fechado).
+    return mes < primeiroDiaDoMes() ? lerSnapshot(supabase, mes) : null;
+  },
 );

@@ -50,15 +50,17 @@ export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; cu
     <div>
       <Heading />
 
-      {/* Herói + o contraponto direto dele (o que voltou). */}
+      {/* Herói = Venda faturada (headline pedido pela gerência) + o contraponto
+          direto dele (o que voltou). A Venda líquida continua visível abaixo. */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <HeroStat label="Venda líquida" value={formatBRL(r.vendaLiquida)} />
+          <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)} />
         </div>
         <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" />
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução − avulsa" accent="navy" />
         <StatCard label="PDVs atendidos" value={`${r.atendimentos}`} hint="clientes atendidos no mês" accent="navy" />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" />
@@ -78,8 +80,8 @@ export function FaturamentoSkeleton() {
         <div className="h-[132px] animate-pulse rounded-2xl bg-slate-200/70 lg:col-span-2" />
         <div className="h-[132px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
         ))}
       </div>
