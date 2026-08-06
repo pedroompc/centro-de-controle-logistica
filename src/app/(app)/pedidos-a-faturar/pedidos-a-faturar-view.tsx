@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Card, StatCard, Pill } from "@/components/ui";
 import { formatBRL, formatKg } from "@/domain/format";
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
@@ -53,7 +54,17 @@ function distintos(valores: (string | null)[]): string[] {
 const selectClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#1b2168] focus:ring-2 focus:ring-[#1b2168]/15";
 
-export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
+export function PedidosAFaturarView({
+  pedidos,
+  atualizadoEm,
+}: {
+  pedidos: PedidoLista[];
+  atualizadoEm?: string;
+}) {
+  const router = useRouter();
+  const [atualizando, startTransition] = useTransition();
+  const atualizar = () => startTransition(() => router.refresh());
+
   const [busca, setBusca] = useState("");
   const [regiao, setRegiao] = useState("");
   const [cidade, setCidade] = useState("");
@@ -124,6 +135,33 @@ export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
 
   return (
     <div className="space-y-6">
+      {/* Barra superior: atualização ao vivo do Winthor */}
+      <div className="flex items-center justify-end gap-3">
+        {atualizadoEm && (
+          <span className="text-xs text-slate-400">Atualizado às {atualizadoEm}</span>
+        )}
+        <button
+          type="button"
+          onClick={atualizar}
+          disabled={atualizando}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#1b2168] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#141a4d] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`h-4 w-4 ${atualizando ? "animate-spin" : ""}`}
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v6h-6" />
+          </svg>
+          {atualizando ? "Atualizando…" : "Atualizar"}
+        </button>
+      </div>
+
       {/* Resumo — reage aos filtros */}
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard

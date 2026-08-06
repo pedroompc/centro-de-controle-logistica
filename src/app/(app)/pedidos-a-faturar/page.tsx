@@ -30,7 +30,10 @@ async function Conteudo() {
     // Do mais antigo (mais tempo parado) ao mais recente.
     .sort((a, b) => b.horasParado - a.horasParado);
 
-  return <PedidosAFaturarView pedidos={enriquecidos} />;
+  // Horário desta leitura (o botão Atualizar dispara router.refresh() → nova leitura).
+  const atualizadoEm = new Date().toLocaleTimeString("pt-BR");
+
+  return <PedidosAFaturarView pedidos={enriquecidos} atualizadoEm={atualizadoEm} />;
 }
 
 function Skeleton() {
