@@ -13,6 +13,21 @@ export interface PedidoLista extends PedidoPendente {
 /** Máximo de linhas renderizadas de uma vez — acima disso, refine com os filtros. */
 const LIMITE_LINHAS = 200;
 
+/** Colunas ordenáveis: chave do pedido, rótulo, tipo (p/ comparador) e alinhamento. */
+const COLUNAS = [
+  { chave: "numeroPedido", label: "Pedido", tipo: "num", align: "left" },
+  { chave: "nomeCliente", label: "Cliente", tipo: "texto", align: "left" },
+  { chave: "cidadeCliente", label: "Cidade", tipo: "texto", align: "left" },
+  { chave: "nomeRca", label: "Vendedor (RCA)", tipo: "texto", align: "left" },
+  { chave: "nomeSupervisor", label: "Supervisor", tipo: "texto", align: "left" },
+  { chave: "valorPedido", label: "Valor", tipo: "num", align: "right" },
+  { chave: "horasParado", label: "Tempo parado", tipo: "num", align: "right" },
+  { chave: "statusWinthor", label: "Status", tipo: "texto", align: "left" },
+] as const;
+
+type ColunaChave = (typeof COLUNAS)[number]["chave"];
+type Direcao = "asc" | "desc";
+
 /** Horas paradas → "3d 1h" (ou "5h" abaixo de um dia). Tempo no sistema. */
 function tempoParado(horas: number): string {
   const h = Math.floor(horas);
@@ -43,6 +58,8 @@ export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
   const [regiao, setRegiao] = useState("");
   const [cidade, setCidade] = useState("");
   const [rca, setRca] = useState("");
+  const [ordenarPor, setOrdenarPor] = useState<ColunaChave>("horasParado");
+  const [direcao, setDirecao] = useState<Direcao>("desc");
 
   const regioes = useMemo(() => distintos(pedidos.map((p) => p.regiao)), [pedidos]);
   const cidades = useMemo(() => distintos(pedidos.map((p) => p.cidadeCliente)), [pedidos]);
@@ -62,6 +79,37 @@ export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
     });
   }, [pedidos, busca, regiao, cidade, rca]);
 
+  const ordenados = useMemo(() => {
+    const tipo = COLUNAS.find((c) => c.chave === ordenarPor)!.tipo;
+    const arr = [...filtrados];
+    arr.sort((a, b) => {
+      const va = a[ordenarPor];
+      const vb = b[ordenarPor];
+      // Vazios sempre por último, independente da direção.
+      const na = va == null || va === "";
+      const nb = vb == null || vb === "";
+      if (na && nb) return 0;
+      if (na) return 1;
+      if (nb) return -1;
+      const cmp =
+        tipo === "num"
+          ? Number(va) - Number(vb)
+          : String(va).localeCompare(String(vb), "pt-BR");
+      return direcao === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [filtrados, ordenarPor, direcao]);
+
+  function ordenar(chave: ColunaChave) {
+    if (chave === ordenarPor) {
+      setDirecao((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setOrdenarPor(chave);
+      // Número começa do maior→menor; texto começa de A→Z.
+      setDirecao(COLUNAS.find((c) => c.chave === chave)!.tipo === "num" ? "desc" : "asc");
+    }
+  }
+
   const resumo = useMemo(
     () => ({
       total: filtrados.length,
@@ -72,7 +120,7 @@ export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
   );
 
   const temFiltro = !!(busca || regiao || cidade || rca);
-  const visiveis = filtrados.slice(0, LIMITE_LINHAS);
+  const visiveis = ordenados.slice(0, LIMITE_LINHAS);
 
   return (
     <div className="space-y-6">
@@ -160,14 +208,25 @@ export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur">
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3">Pedido</th>
-                <th className="px-4 py-3">Cliente</th>
-                <th className="px-4 py-3">Cidade</th>
-                <th className="px-4 py-3">Vendedor (RCA)</th>
-                <th className="px-4 py-3">Supervisor</th>
-                <th className="px-4 py-3 text-right">Valor</th>
-                <th className="px-4 py-3 text-right">Tempo parado</th>
-                <th className="px-4 py-3">Status</th>
+                {COLUNAS.map((c) => {
+                  const ativo = ordenarPor === c.chave;
+                  return (
+                    <th key={c.chave} className={`px-4 py-3 ${c.align === "right" ? "text-right" : ""}`}>
+                      <button
+                        type="button"
+                        onClick={() => ordenar(c.chave)}
+                        className={`inline-flex items-center gap-1 uppercase tracking-wide transition hover:text-[#1b2168] ${
+                          c.align === "right" ? "flex-row-reverse" : ""
+                        } ${ativo ? "text-[#1b2168]" : ""}`}
+                      >
+                        {c.label}
+                        <span className={`text-[10px] leading-none ${ativo ? "text-[#1b2168]" : "text-slate-300"}`}>
+                          {ativo ? (direcao === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -205,7 +264,7 @@ export function PedidosAFaturarView({ pedidos }: { pedidos: PedidoLista[] }) {
         )}
         {filtrados.length > LIMITE_LINHAS && (
           <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
-            Mostrando os {LIMITE_LINHAS} mais antigos de {filtrados.length}. Use os filtros para refinar.
+            Mostrando {LIMITE_LINHAS} de {filtrados.length} (pela ordenação atual). Use os filtros para refinar.
           </p>
         )}
       </Card>
