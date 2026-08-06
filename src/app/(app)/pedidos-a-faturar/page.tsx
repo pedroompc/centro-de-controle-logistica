@@ -1,15 +1,12 @@
 import { Suspense } from "react";
 import { PageHeader, Card } from "@/components/ui";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
-import { getRotas } from "@/data/calendario-rotas";
-import { criarIndiceCalendario } from "@/domain/pedidos-a-faturar/calendario";
-import { montarRelatorio } from "@/domain/pedidos-a-faturar/montar-relatorio";
 import { PedidosAFaturarView } from "./pedidos-a-faturar-view";
 
-export const dynamic = "force-dynamic"; // relatório ao vivo, nunca cacheado
+export const dynamic = "force-dynamic"; // lista ao vivo do Winthor, nunca cacheada
 
 async function Conteudo() {
-  const [pedidos, rotas] = await Promise.all([getPedidosPendentes(), getRotas()]);
+  const pedidos = await getPedidosPendentes();
 
   if (pedidos === null) {
     return (
@@ -22,34 +19,15 @@ async function Conteudo() {
     );
   }
 
-  if (rotas === null) {
-    return (
-      <Card className="p-6">
-        <p className="text-sm text-slate-500">
-          Classificação indisponível — o calendário de rotas não carregou (Supabase). Tente
-          novamente em instantes.
-        </p>
-      </Card>
-    );
-  }
+  // Do mais antigo (mais tempo parado) ao mais recente.
+  const ordenados = [...pedidos].sort((a, b) => b.horasParado - a.horasParado);
+  const resumo = {
+    total: ordenados.length,
+    valorTotal: ordenados.reduce((s, p) => s + p.valorPedido, 0),
+    pesoTotal: ordenados.reduce((s, p) => s + p.pesoPedido, 0),
+  };
 
-  const indice = criarIndiceCalendario(rotas);
-  // "hoje" é o dia calendário LOCAL do servidor (America/Recife no host on-prem); se o TZ do
-  // host mudar, a classificação por dia de rota muda junto.
-  const rel = montarRelatorio(pedidos, indice, new Date());
-  return (
-    <>
-      {rotas.length === 0 && (
-        <div className="mb-4 rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-4">
-          <p className="text-sm text-amber-800">
-            Calendário de rotas vazio — os pedidos estão sem classificação de rota (fallback
-            72h). Cadastre o calendário de rotas.
-          </p>
-        </div>
-      )}
-      <PedidosAFaturarView rel={rel} />
-    </>
-  );
+  return <PedidosAFaturarView pedidos={ordenados} resumo={resumo} />;
 }
 
 function Skeleton() {
