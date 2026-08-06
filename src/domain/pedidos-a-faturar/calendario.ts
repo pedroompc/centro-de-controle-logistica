@@ -4,7 +4,7 @@ import type { IndiceCalendario, Rota } from "./tipos";
 export function normalizarCidade(texto: string): string {
   return texto
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // remove marcas de acento (combining diacriticals)
+    .replace(/[\u0300-\u036f]/g, "") // remove marcas de acento (combining diacriticals)
     .toUpperCase()
     .split(/\s+/)
     .filter(Boolean)
@@ -15,6 +15,8 @@ export function normalizarCidade(texto: string): string {
 export function criarIndiceCalendario(rotas: Rota[]): IndiceCalendario {
   const mapa = new Map<string, Rota>();
   for (const r of rotas) {
+    // Regra de colisão: nome canônico é sobrescrito sem checagem (última rota vence);
+    // alias só entra se a chave ainda estiver livre (primeiro alias vence).
     mapa.set(normalizarCidade(r.cidade), r);
     for (const alias of r.aliases) {
       const chave = normalizarCidade(alias);

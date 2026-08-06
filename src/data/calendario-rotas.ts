@@ -23,12 +23,12 @@ export function mapRowToRota(row: Record<string, unknown>): Rota {
 }
 
 /** Lê o calendário inteiro (tabela pequena). Memoizado por request. */
-export const getRotas = cache(async (): Promise<Rota[]> => {
+export const getRotas = cache(async (): Promise<Rota[] | null> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("calendario_rotas").select(COLUNAS);
   if (error) {
     console.error("[calendario-rotas] Supabase indisponível:", error.message);
-    return [];
+    return null;
   }
   return (data ?? []).map((r) => mapRowToRota(r as Record<string, unknown>));
 });
