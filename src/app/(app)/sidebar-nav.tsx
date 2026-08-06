@@ -81,6 +81,17 @@ const items: Item[] = [
     ),
   },
   {
+    href: "/pedidos-a-faturar",
+    label: "Pedidos a Faturar",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
+        <path d="M14 4v5h5" />
+        <path d="M8 13h6M8 16h4" />
+      </svg>
+    ),
+  },
+  {
     href: "/tendencias",
     label: "Tendências",
     icon: (
