@@ -69,6 +69,7 @@ export function PedidosAFaturarView({
   const [regiao, setRegiao] = useState("");
   const [cidade, setCidade] = useState("");
   const [rca, setRca] = useState("");
+  const [status, setStatus] = useState(""); // "" = todos | "L" | "M"
   const [ordenarPor, setOrdenarPor] = useState<ColunaChave>("horasParado");
   const [direcao, setDirecao] = useState<Direcao>("desc");
 
@@ -82,13 +83,14 @@ export function PedidosAFaturarView({
       if (regiao && p.regiao !== regiao) return false;
       if (cidade && p.cidadeCliente !== cidade) return false;
       if (rca && p.nomeRca !== rca) return false;
+      if (status && p.statusWinthor !== status) return false;
       if (termo) {
         const alvo = `${p.nomeCliente} ${p.numeroPedido}`.toLowerCase();
         if (!alvo.includes(termo)) return false;
       }
       return true;
     });
-  }, [pedidos, busca, regiao, cidade, rca]);
+  }, [pedidos, busca, regiao, cidade, rca, status]);
 
   const ordenados = useMemo(() => {
     const tipo = COLUNAS.find((c) => c.chave === ordenarPor)!.tipo;
@@ -130,7 +132,7 @@ export function PedidosAFaturarView({
     [filtrados],
   );
 
-  const temFiltro = !!(busca || regiao || cidade || rca);
+  const temFiltro = !!(busca || regiao || cidade || rca || status);
   const visiveis = ordenados.slice(0, LIMITE_LINHAS);
 
   return (
@@ -177,7 +179,7 @@ export function PedidosAFaturarView({
       {/* Barra de filtros */}
       <Card className="p-4">
         <div className="grid gap-3 md:grid-cols-12">
-          <div className="md:col-span-4">
+          <div className="md:col-span-3">
             <input
               type="search"
               value={busca}
@@ -198,7 +200,7 @@ export function PedidosAFaturarView({
               ))}
             </select>
           </div>
-          <div className="md:col-span-3">
+          <div className="md:col-span-2">
             <select value={cidade} onChange={(e) => setCidade(e.target.value)} className={selectClass}>
               <option value="">Todas as cidades</option>
               {cidades.map((c) => (
@@ -218,6 +220,13 @@ export function PedidosAFaturarView({
               ))}
             </select>
           </div>
+          <div className="md:col-span-2">
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className={selectClass}>
+              <option value="">Todos os status</option>
+              <option value="L">Liberado</option>
+              <option value="M">Montado</option>
+            </select>
+          </div>
         </div>
         {temFiltro && (
           <div className="mt-3 flex items-center gap-3 text-sm text-slate-500">
@@ -231,6 +240,7 @@ export function PedidosAFaturarView({
                 setRegiao("");
                 setCidade("");
                 setRca("");
+                setStatus("");
               }}
               className="font-medium text-[#1b2168] underline-offset-2 hover:underline"
             >
