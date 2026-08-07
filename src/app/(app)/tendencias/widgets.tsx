@@ -45,7 +45,7 @@ export function MiniBars({ valores, cor }: { valores: number[]; cor: string }) {
   const W = 108, H = 34, gap = 2.5;
   const bw = (W - gap * (n - 1)) / n;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-[34px] w-[108px] shrink-0" aria-hidden="true">
+    <svg viewBox={`0 0 ${W} ${H}`} className="block h-[34px] w-full" preserveAspectRatio="none" aria-hidden="true">
       {valores.map((v, i) => {
         const h = Math.max(2, (v / max) * (H - 2));
         return (
@@ -62,14 +62,17 @@ export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
 }) {
   const deltaCor = delta.positivo ? CORES.positivo : CORES.negativo;
   return (
-    <Card className="@container p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl"
+    <Card className="@container overflow-hidden p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
             style={{ backgroundColor: `${cor}14`, color: cor }}>{icone}</span>
           <span className="text-sm font-medium text-slate-500">{nome}</span>
         </div>
-        <MiniBars valores={valores} cor={cor} />
+        {/* Sparkline encolhe pra caber no card estreito (grid de 5) — nunca vaza. */}
+        <div className="ml-auto w-[108px] min-w-0 shrink">
+          <MiniBars valores={valores} cor={cor} />
+        </div>
       </div>
       {/* Fluido: venda líquida pode ser o maior número do app; escala com o card. */}
       <p className="mt-3 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.625rem)] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
