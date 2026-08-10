@@ -27,6 +27,7 @@ export function SeletorPeriodo({ ini, fim }: { ini: string; fim: string }) {
           onChange={(e) => {
             const v = e.target.value;
             setDini(v);
+            if (!periodo) setDfim(v);
             aplicar(v, periodo ? dfim : v);
           }}
           className={input}
