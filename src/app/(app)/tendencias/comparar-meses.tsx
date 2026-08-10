@@ -39,6 +39,16 @@ export function CompararMeses({ meses }: { meses: MesComparavel[] }) {
     { nome: "Taxa de devolução", cor: CORES.taxa, va: A.taxa, vb: B.taxa, fmt: (v: number) => formatPercent(v), maiorMelhor: false, pp: true },
   ];
 
+  // Deriva uma vez os valores exibidos (usados tanto na tabela quanto nos cards).
+  const linhasCalc = linhas.map((l) => {
+    const subindo = l.vb > l.va;
+    const iguais = l.va === l.vb;
+    const positivo = l.maiorMelhor ? subindo : !subindo;
+    const texto = l.pp ? ppComSinal(variacaoPP(l.vb, l.va)) : pctComSinal(variacaoPercentual(l.vb, l.va));
+    const corDiff = iguais ? "#64748b" : positivo ? CORES.positivo : CORES.negativo;
+    return { ...l, subindo, iguais, texto, corDiff };
+  });
+
   return (
     <Card className="p-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -50,7 +60,8 @@ export function CompararMeses({ meses }: { meses: MesComparavel[] }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Desktop: tabela */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[520px] text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
@@ -61,32 +72,55 @@ export function CompararMeses({ meses }: { meses: MesComparavel[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {linhas.map((l) => {
-              const subindo = l.vb > l.va;
-              const positivo = l.maiorMelhor ? subindo : !subindo;
-              const texto = l.pp ? ppComSinal(variacaoPP(l.vb, l.va)) : pctComSinal(variacaoPercentual(l.vb, l.va));
-              const cor = l.va === l.vb ? "#64748b" : positivo ? CORES.positivo : CORES.negativo;
-              return (
-                <tr key={l.nome}>
-                  <td className="py-3 pr-4">
-                    <span className="flex items-center gap-2 font-medium text-[#141a4d]">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: l.cor }} />
-                      {l.nome}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-500">{l.fmt(l.va)}</td>
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{l.fmt(l.vb)}</td>
-                  <td className="py-3 pl-4 text-right">
-                    <span className="inline-flex items-center justify-end gap-1 font-bold tabular-nums" style={{ color: cor }}>
-                      {l.va !== l.vb && <span aria-hidden="true">{subindo ? "↑" : "↓"}</span>}
-                      {texto}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
+            {linhasCalc.map((l) => (
+              <tr key={l.nome}>
+                <td className="py-3 pr-4">
+                  <span className="flex items-center gap-2 font-medium text-[#141a4d]">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: l.cor }} />
+                    {l.nome}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-slate-500">{l.fmt(l.va)}</td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{l.fmt(l.vb)}</td>
+                <td className="py-3 pl-4 text-right">
+                  <span className="inline-flex items-center justify-end gap-1 font-bold tabular-nums" style={{ color: l.corDiff }}>
+                    {!l.iguais && <span aria-hidden="true">{l.subindo ? "↑" : "↓"}</span>}
+                    {l.texto}
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: cards */}
+      <div className="space-y-2.5 md:hidden">
+        {linhasCalc.map((l) => (
+          <div key={l.nome} className="rounded-xl border border-slate-200 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-sm font-semibold text-[#141a4d]">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: l.cor }} />
+                {l.nome}
+              </span>
+              <span className="inline-flex items-center gap-1 text-sm font-bold tabular-nums" style={{ color: l.corDiff }}>
+                {!l.iguais && <span aria-hidden="true">{l.subindo ? "↑" : "↓"}</span>}
+                {l.texto}
+              </span>
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-2 text-sm">
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-slate-400">{A.rotulo}</p>
+                <p className="tabular-nums text-slate-500">{l.fmt(l.va)}</p>
+              </div>
+              <span className="pb-0.5 text-slate-300">→</span>
+              <div className="text-right">
+                <p className="text-[11px] uppercase tracking-wider text-slate-400">{B.rotulo}</p>
+                <p className="font-semibold tabular-nums text-[#141a4d]">{l.fmt(l.vb)}</p>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </Card>
   );

@@ -3,20 +3,24 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-type Item = { href: string; label: string; icon: React.ReactNode };
+// `short` = rótulo curto para a barra inferior do celular; `primary` marca os
+// itens que ficam sempre à mão nessa barra (os demais vão para a folha "Mais").
+export type Item = { href: string; label: string; short?: string; primary?: boolean; icon: React.ReactNode };
 
 // Telas que entendem `?mes=`. Ao navegar entre elas, o mês selecionado é
 // preservado; as demais (Setores, Funcionários, Tendências) ignoram o parâmetro.
 const COM_MES = new Set(["/", "/custos", "/receitas", "/devolucoes"]);
 
-function comMes(href: string, mes: string | null): string {
+export function comMes(href: string, mes: string | null): string {
   return mes && COM_MES.has(href) ? `${href}?mes=${mes}` : href;
 }
 
-const items: Item[] = [
+export const items: Item[] = [
   {
     href: "/",
     label: "Dashboard",
+    short: "Início",
+    primary: true,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <rect x="3" y="3" width="7" height="9" rx="1.5" />
@@ -63,6 +67,8 @@ const items: Item[] = [
   {
     href: "/receitas",
     label: "Receitas",
+    short: "Receitas",
+    primary: true,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <path d="M12 3v18" />
@@ -73,6 +79,8 @@ const items: Item[] = [
   {
     href: "/devolucoes",
     label: "Devoluções",
+    short: "Devoluções",
+    primary: true,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <path d="M3 7v6h6" />
@@ -83,6 +91,8 @@ const items: Item[] = [
   {
     href: "/pedidos-a-faturar",
     label: "Pedidos a Faturar",
+    short: "Pedidos",
+    primary: true,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
@@ -103,7 +113,7 @@ const items: Item[] = [
   },
 ];
 
-function isActive(pathname: string, href: string) {
+export function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 

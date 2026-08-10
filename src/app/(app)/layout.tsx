@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/data/auth";
 import { SidebarNav } from "./sidebar-nav";
+import { MobileNav } from "./mobile-nav";
 
 function Marca({ compact = false }: { compact?: boolean }) {
   return (
@@ -71,23 +72,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Topbar — mobile */}
-      <header className="sticky top-0 z-30 flex flex-col gap-3 px-4 py-3 md:hidden" style={navy}>
-        <div className="flex items-center justify-between">
+      {/* Cabeçalho compacto — mobile */}
+      <header className="pt-safe sticky top-0 z-30 md:hidden" style={navy}>
+        <div className="flex items-center justify-between px-4 py-2.5">
           <Marca compact />
-          <form action="/auth/signout" method="post">
-            <button className="rounded-lg px-3 py-1.5 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white">
-              Sair
-            </button>
-          </form>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+              admin ? "bg-amber-400/90 text-[#141a4d]" : "bg-white/10 text-white/70"
+            }`}
+          >
+            {admin ? "Admin" : "Leitura"}
+          </span>
         </div>
-        <SidebarNav variant="top" />
       </header>
 
       {/* Conteúdo */}
       <div className="md:pl-64">
-        <main className="mx-auto max-w-6xl px-5 py-8 md:px-10">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 pt-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:px-10 md:py-8">
+          {children}
+        </main>
       </div>
+
+      {/* Navegação inferior — mobile */}
+      <MobileNav userEmail={user.email} admin={admin} />
     </div>
   );
 }

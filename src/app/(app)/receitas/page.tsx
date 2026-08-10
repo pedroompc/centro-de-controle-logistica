@@ -228,7 +228,8 @@ export default async function ReceitasPage({
           <p className="text-sm text-slate-400">Nenhum descarregamento no período.</p>
         ) : vista === "simples" ? (
           <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Desktop: tabela */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
@@ -287,10 +288,48 @@ export default async function ReceitasPage({
                 </tfoot>
               </table>
             </div>
+
+            {/* Mobile: cards */}
+            <ul className="divide-y divide-slate-100 md:hidden">
+              {porDia.map((d) => (
+                <li key={d.id ?? d.data} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="tabular-nums font-medium text-[#141a4d]">{formatDataBR(d.data)}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {d.descarregos} descarregos
+                        {d.origem === "total" ? " · total do dia" : ""} · {formatKg(d.pesoKg)}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{formatBRL(d.receita)}</span>
+                  </div>
+                  {admin && d.origem === "total" && d.id && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <TotalDiarioForm mes={mes} total={totaisVisiveis.find((t) => t.id === d.id)} />
+                      <form action={removerTotalDiario.bind(null, d.id)}>
+                        <button className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 active:bg-rose-50">
+                          Remover
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </li>
+              ))}
+              <li className="flex items-center justify-between gap-3 bg-slate-50/70 px-4 py-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total do mês</span>
+                <div className="text-right">
+                  <p className="font-semibold tabular-nums text-emerald-700">{formatBRL(resumo.totalDescarregamento)}</p>
+                  <p className="text-xs tabular-nums text-slate-500">
+                    {descarregosTotal} descarregos · {formatKg(pesoTotalKg)}
+                  </p>
+                </div>
+              </li>
+            </ul>
           </Card>
         ) : (
           <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Desktop: tabela */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
@@ -339,6 +378,44 @@ export default async function ReceitasPage({
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile: cards */}
+            <ul className="divide-y divide-slate-100 md:hidden">
+              {receitas.map((r) => (
+                <li key={r.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-[#141a4d]">{r.fornecedorNome}</p>
+                      <p className="mt-0.5 text-xs tabular-nums text-slate-500">
+                        {formatDataBR(r.data)} · {formatKg(r.pesoKg)}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{formatBRL(r.receita)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "navy" : "slate"}>
+                      {ROTULO_TIPO[r.tipo] ?? r.tipo}
+                    </Pill>
+                    <span className="tabular-nums">
+                      {r.tipo === "volume"
+                        ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)}`
+                        : formatBRL(r.precoPorTonelada)}
+                    </span>
+                  </div>
+                  {r.observacao && <p className="mt-1.5 text-xs text-slate-500">{r.observacao}</p>}
+                  {admin && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} receita={r} />
+                      <form action={removerReceita.bind(null, r.id)}>
+                        <button className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 active:bg-rose-50">
+                          Remover
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </section>
@@ -360,7 +437,8 @@ export default async function ReceitasPage({
           <p className="text-sm text-slate-400">Nenhuma outra receita no período.</p>
         ) : (
           <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Desktop: tabela */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
@@ -407,6 +485,43 @@ export default async function ReceitasPage({
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile: cards */}
+            <ul className="divide-y divide-slate-100 md:hidden">
+              {diversasVisiveis.map((d) => (
+                <li key={d.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-[#141a4d]">
+                        {d.material ?? (ROTULO_CATEGORIA[d.categoria] ?? d.categoria)}
+                      </p>
+                      <p className="mt-0.5 text-xs tabular-nums text-slate-500">{formatDataBR(d.data)}</p>
+                    </div>
+                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{formatBRL(d.valor)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <Pill tone="navy">{ROTULO_CATEGORIA[d.categoria] ?? d.categoria}</Pill>
+                    {d.quantidade !== null && (
+                      <span className="tabular-nums">
+                        {formatKg(d.quantidade, 3)}
+                        {d.precoUnitario !== null ? ` × ${formatBRL(d.precoUnitario)}` : ""}
+                      </span>
+                    )}
+                  </div>
+                  {d.observacao && <p className="mt-1.5 text-xs text-slate-500">{d.observacao}</p>}
+                  {admin && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <DiversaForm mes={mes} diversa={d} />
+                      <form action={removerDiversa.bind(null, d.id)}>
+                        <button className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 active:bg-rose-50">
+                          Remover
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </section>

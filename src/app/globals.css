@@ -12,15 +12,80 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* O painel tem identidade clara (navy + âmbar sobre #f6f7fb). Fixamos o
+   color-scheme em light para que controles nativos (date picker, selects,
+   scrollbars) não fiquem escuros no celular/desktop em modo escuro do SO. */
+:root {
+  color-scheme: light;
+}
+
+html {
+  /* Impede que o iOS aumente a fonte ao girar o aparelho. */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  /* Sem realce cinza ao tocar; rolagem sem "quicar" na borda. */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Nunca deixa a página rolar na horizontal — mata o "vazamento" lateral que
+   dá aparência de site quebrado no celular. Conteúdo largo (tabelas, gráficos)
+   deve rolar dentro do próprio container com overflow-x. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ————— Camada mobile (≤ md) ————— */
+@media (max-width: 767px) {
+  /* iOS dá zoom automático ao focar qualquer campo com fonte < 16px. Forçamos
+     16px em todos os campos no celular — o visual "text-sm" continua no
+     desktop, mas no toque o campo fica confortável e sem zoom indesejado. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Utilitários de safe-area (notch / barra de gestos do iPhone). Usados no
+   cabeçalho compacto e na barra de navegação inferior. */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.h-safe-bottom {
+  height: env(safe-area-inset-bottom);
+}
+
+/* Animação da folha "Mais" (bottom sheet) subindo. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-sheet-up {
+  animation: sheet-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
 }

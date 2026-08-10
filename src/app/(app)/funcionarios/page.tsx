@@ -36,28 +36,34 @@ export default async function FuncionariosPage({
       </PageHeader>
 
       <Card className="mb-4 p-3">
-        <form method="get" className="flex flex-wrap gap-2">
-          <input name="q" defaultValue={q} placeholder="Buscar por nome" className={`${inputCls} min-w-[12rem] flex-1`} />
-          <select name="setor" defaultValue={setor ?? ""} className={inputCls}>
+        <form method="get" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Buscar por nome"
+            className={`${inputCls} col-span-2 sm:min-w-[12rem] sm:flex-1`}
+          />
+          <select name="setor" defaultValue={setor ?? ""} className={`${inputCls} w-full sm:w-auto`}>
             <option value="">Todos os setores</option>
             {setores.map((s) => (
               <option key={s.id} value={s.id}>{s.nome}</option>
             ))}
           </select>
-          <select name="status" defaultValue={status ?? ""} className={inputCls}>
+          <select name="status" defaultValue={status ?? ""} className={`${inputCls} w-full sm:w-auto`}>
             <option value="">Todos os status</option>
             <option value="ativo">Ativo</option>
             <option value="afastado">Afastado</option>
             <option value="desligado">Desligado</option>
           </select>
-          <button className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]">
+          <button className="col-span-2 rounded-xl bg-[#181d55] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#10143f] sm:col-span-1 sm:py-2">
             Filtrar
           </button>
         </form>
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop: tabela */}
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
               <tr>
@@ -90,6 +96,32 @@ export default async function FuncionariosPage({
             </tbody>
           </table>
         </div>
+
+        {/* Mobile: cards */}
+        <ul className="divide-y divide-slate-100 md:hidden">
+          {filtrados.map((f) => (
+            <li key={f.id}>
+              <Link
+                href={`/funcionarios/${f.id}`}
+                className="flex items-center justify-between gap-3 px-4 py-3.5 transition active:bg-slate-50"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-[#141a4d]">{f.nome}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {f.cargo} · {nomeSetor.get(f.setorId) ?? "—"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <span className="tabular-nums text-sm font-semibold text-slate-700">{formatBRL(f.custoMensal)}</span>
+                  <StatusBadge status={f.status} />
+                </div>
+              </Link>
+            </li>
+          ))}
+          {filtrados.length === 0 && (
+            <li className="px-4 py-8 text-center text-slate-400">Nenhum funcionário encontrado.</li>
+          )}
+        </ul>
       </Card>
     </div>
   );

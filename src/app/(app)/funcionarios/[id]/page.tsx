@@ -89,7 +89,8 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
           {admin && <FaltaForm funcionarioId={funcionario.id} />}
         </div>
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Desktop: tabela */}
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
@@ -127,6 +128,34 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
               </tbody>
             </table>
           </div>
+
+          {/* Mobile: cards */}
+          <ul className="divide-y divide-slate-100 md:hidden">
+            {faltas.map((falta) => (
+              <li key={falta.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums font-medium text-slate-700">{formatDataBR(falta.data)}</span>
+                    <Pill tone="slate">{falta.tipo}</Pill>
+                  </div>
+                  {falta.observacao && <p className="mt-1 truncate text-xs text-slate-500">{falta.observacao}</p>}
+                </div>
+                {admin && (
+                  <form action={excluirFalta.bind(null, falta.id)} className="shrink-0">
+                    <BotaoConfirmar
+                      confirmacao="Remover esta falta?"
+                      className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 active:bg-rose-50"
+                    >
+                      Remover
+                    </BotaoConfirmar>
+                  </form>
+                )}
+              </li>
+            ))}
+            {faltas.length === 0 && (
+              <li className="px-4 py-8 text-center text-slate-400">Sem faltas registradas.</li>
+            )}
+          </ul>
         </Card>
       </section>
     </div>

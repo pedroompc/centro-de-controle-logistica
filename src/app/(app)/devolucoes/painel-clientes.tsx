@@ -38,7 +38,8 @@ export default function PainelClientes({ clientes }: { clientes: DevolucaoPorCli
         context={`${lista.length} clientes · por nº de notas`}
         right={campoBusca}
       />
-      <div className="max-h-[28rem] overflow-y-auto">
+      {/* Desktop: tabela */}
+      <div className="hidden max-h-[28rem] overflow-y-auto md:block">
         <table className="w-full text-sm">
           <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
@@ -78,6 +79,29 @@ export default function PainelClientes({ clientes }: { clientes: DevolucaoPorCli
           </tbody>
         </table>
       </div>
+
+      {/* Mobile: cards */}
+      <ul className="divide-y divide-slate-100 md:hidden">
+        {lista.length === 0 ? (
+          <li className="py-10 text-center text-sm text-slate-400">
+            {busca ? `Nenhum cliente para "${busca}".` : "Sem devoluções no período."}
+          </li>
+        ) : (
+          lista.map((c, i) => (
+            <li key={c.codcli} className="flex items-center gap-2.5 px-4 py-3">
+              <span className="w-5 shrink-0 text-center font-mono text-xs text-slate-400">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[#141a4d]">{c.nome}</p>
+                <p className="text-[10px] text-slate-400">Cód. {c.codcli}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="font-semibold tabular-nums text-[#141a4d]">{formatBRL(c.valor)}</p>
+                <p className="text-[11px] tabular-nums text-slate-500">{c.notas} notas</p>
+              </div>
+            </li>
+          ))
+        )}
+      </ul>
     </Card>
   );
 }

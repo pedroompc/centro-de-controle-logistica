@@ -23,7 +23,8 @@ export default async function CustosFixosPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop: tabela */}
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
               <tr>
@@ -64,6 +65,45 @@ export default async function CustosFixosPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile: cards */}
+        <ul className="divide-y divide-slate-100 md:hidden">
+          {fixos.map((f) => (
+            <li key={f.id} className="px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="min-w-0 truncate font-medium text-[#141a4d]">{f.nome}</p>
+                {!admin && <span className="shrink-0 tabular-nums font-semibold text-slate-700">{formatBRL(f.valor)}</span>}
+              </div>
+              {admin && (
+                <div className="mt-2.5 flex items-center gap-2">
+                  <form action={editarValorCustoFixo} className="flex flex-1 items-center gap-2">
+                    <input type="hidden" name="id" value={f.id} />
+                    <input
+                      name="valor"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      defaultValue={f.valor}
+                      required
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50"
+                    />
+                    <button className="shrink-0 rounded-lg bg-[#181d55] px-3 py-2 text-xs font-semibold text-white active:bg-[#10143f]">
+                      Salvar
+                    </button>
+                  </form>
+                  <form action={encerrarCustoFixo.bind(null, f.id)}>
+                    <button className="shrink-0 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 active:bg-rose-50">
+                      Encerrar
+                    </button>
+                  </form>
+                </div>
+              )}
+            </li>
+          ))}
+          {fixos.length === 0 && (
+            <li className="px-4 py-8 text-center text-slate-400">Nenhum custo fixo cadastrado.</li>
+          )}
+        </ul>
       </Card>
     </div>
   );

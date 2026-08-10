@@ -91,7 +91,23 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
           {formatPercent(pior.taxa / 100)} ({pior.devolvidas} de {pior.expedidas}).
         </p>
       )}
-      <div className="overflow-x-auto">
+      {/* Mobile: ordenação (as colunas clicáveis não existem no card) */}
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 md:hidden">
+        <label className="text-xs font-medium text-slate-400">Ordenar por</label>
+        <select
+          value={sort.col}
+          onChange={(e) => setSort({ col: e.target.value as ColunaMotorista, dir: "desc" })}
+          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50"
+        >
+          <option value="taxa">Taxa de devolução</option>
+          <option value="valorDevolvido">Valor devolvido</option>
+          <option value="expedidas">Entregas</option>
+          <option value="devolvidas">Devolvidas</option>
+        </select>
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
@@ -137,6 +153,47 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
           </tbody>
         </table>
       </div>
+
+      {/* Mobile: cards */}
+      <ul className="divide-y divide-slate-100 md:hidden">
+        {lista.length === 0 ? (
+          <li className="py-12 text-center text-sm text-slate-400">
+            {busca ? `Nenhum motorista para "${busca}".` : "Sem entregas em carga no período."}
+          </li>
+        ) : (
+          lista.map((m, i) => (
+            <li key={m.codMotorista} className="px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-5 shrink-0 text-center font-mono text-xs text-slate-400">{i + 1}</span>
+                <div className="shrink-0 rounded-lg bg-[#eef0fb] p-1.5 text-[#1b2168]">
+                  <IconeUsuario />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium leading-tight text-[#141a4d]">{m.nome}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={`text-lg font-bold leading-none tabular-nums ${corTaxa(m.taxa)}`}>
+                    {formatPercent(m.taxa / 100)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-400">taxa</p>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-4 pl-[3.25rem] text-xs text-slate-500">
+                <span>
+                  Entregas <b className="tabular-nums text-slate-700">{m.expedidas}</b>
+                </span>
+                <span>
+                  Devolvidas <b className="tabular-nums text-slate-700">{m.devolvidas}</b>
+                </span>
+                <span className="ml-auto tabular-nums font-semibold text-[#141a4d]">
+                  {formatBRL(m.valorDevolvido)}
+                </span>
+              </div>
+            </li>
+          ))
+        )}
+      </ul>
     </Card>
   );
 }
