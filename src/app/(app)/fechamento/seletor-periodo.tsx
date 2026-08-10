@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { INICIO_HISTORICO } from "@/domain/periodo";
+import { hojeISO } from "@/domain/fechamento";
 
 const input =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
 
 export function SeletorPeriodo({ ini, fim }: { ini: string; fim: string }) {
   const router = useRouter();
+  const hoje = hojeISO();
   const [periodo, setPeriodo] = useState(ini !== fim);
   const [dini, setDini] = useState(ini);
   const [dfim, setDfim] = useState(fim);
@@ -23,7 +26,8 @@ export function SeletorPeriodo({ ini, fim }: { ini: string; fim: string }) {
         <input
           type="date"
           value={dini}
-          max={dfim}
+          min={INICIO_HISTORICO}
+          max={periodo ? dfim : hoje}
           onChange={(e) => {
             const v = e.target.value;
             setDini(v);
@@ -41,6 +45,7 @@ export function SeletorPeriodo({ ini, fim }: { ini: string; fim: string }) {
             type="date"
             value={dfim}
             min={dini}
+            max={hoje}
             onChange={(e) => {
               const v = e.target.value;
               setDfim(v);
