@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFaltas } from "@/data/faltas";
@@ -81,6 +82,16 @@ export default async function Dashboard({
         title="Visão geral"
         subtitle={`Operação de logística · ${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}
       >
+        <Link
+          href="/fechamento"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" />
+            <path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" />
+          </svg>
+          Compartilhar fechamento
+        </Link>
         <MesNav mes={mesAtual} hrefFor={(m) => `/?mes=${m}`} />
       </PageHeader>
 

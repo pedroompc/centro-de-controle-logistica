@@ -111,6 +111,18 @@ export const items: Item[] = [
       </svg>
     ),
   },
+  {
+    href: "/fechamento",
+    label: "Fechamento",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="18" cy="5" r="2.5" />
+        <circle cx="6" cy="12" r="2.5" />
+        <circle cx="18" cy="19" r="2.5" />
+        <path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" />
+      </svg>
+    ),
+  },
 ];
 
 export function isActive(pathname: string, href: string) {
