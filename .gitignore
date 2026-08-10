@@ -44,3 +44,13 @@ next-env.d.ts
 # project scratch / planning
 /.superpowers/
 .claude
+
+# oracle wallet / TNS (credencial, caso migre pra wallet no futuro)
+wallet/
+*.sso
+cwallet.sso
+tnsnames.ora
+sqlnet.ora
+
+# logs (podem conter query/dado sensível)
+*.log
