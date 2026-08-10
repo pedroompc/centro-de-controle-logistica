@@ -38,7 +38,7 @@ receita**, âmbar como destaque de marca.
 | **Faturamento bruto** (herói, branco, barra âmbar à esquerda) | `getResumoFaturamento(ini,fim).vendaFaturada` |
 | Subtítulo do herói: "N PDVs atendidos · N notas emitidas" | `.atendimentos` e `.emitidas` |
 | **Receitas logísticas** (tile, verde) | receitas do período (descarregamento + outras) |
-| **Peso faturado** (tile) | `.pesoFaturado` (kg → toneladas) |
+| **Peso faturado** (tile, em **kg**) | `.pesoFaturado` (via `formatKg`) |
 | **Devolução · mês** (tile, âmbar, em %) | **taxa do mês acumulada** (ver §4) |
 | **Faltas no dia** (tile) | faltas no período |
 | Rodapé: "Gerado DD/MM · HH:MM" + "Filiais 1 + 11" | timestamp de geração |
