@@ -179,3 +179,74 @@ Implementar o caminho A, B ou C da matriz. Em qualquer caso: **validar contra o
 
 - Rodar a Fase 0 no Winthor (rede interna). Eu não tenho acesso ao Oracle daqui.
 - `CODMOTORISTA` do Eugênio = **10059** (confirmado).
+
+---
+
+# Discovery encerrada + Plano de implementação (2026-08-11)
+
+**Achados:**
+- Hora do faturamento = **`PCNFSAID.DTHORAAUTORIZACAOSEFAZ`** (100% preenchida).
+- `DTSAIDA` = data da autorização SEFAZ, **sem deslocamento** (o Winthor não bucketiza pelo dia operacional → o valor por DTSAIDA é por data de emissão).
+- Faturamento concentrado à **noite (18–23h)** e **madrugada (00–05h)**; manhã fraca.
+- `VIEW_BI_FATURAMENTO` é agregada por cliente×produto×dia — **sem hora/nota/motorista**.
+
+**Decisão do valor: PROPORCIONAL.** Totais exatos da BI redistribuídos entre os dias operacionais pela proporção de valor por hora+motorista das notas. Mês bate no 111 no centavo; dia fica próximo. **Peso: direto** do `PCMOV` pela classificação por nota.
+
+## Data operacional (base de tudo)
+
+Por nota, com `h = TO_CHAR(DTHORAAUTORIZACAOSEFAZ,'HH24')`, `c = TRUNC(DTHORAAUTORIZACAOSEFAZ)`, `mot = PCCARREG.CODMOTORISTA` (via `PCNFSAID.NUMCAR`):
+
+```sql
+op_date =
+  CASE WHEN h < 7  THEN c
+       WHEN h < 13 THEN CASE WHEN mot = 10059 THEN c ELSE c + 1 END
+       ELSE c + 1 END
+-- "fica no dia" (stay) = op_date = c ; "vai p/ o dia seguinte" (move) = op_date = c+1
+```
+
+## Isolamento
+
+**Não** mexer em `getResumoFaturamento` (usado pelo dashboard, calendário). Criar função nova **só p/ o fechamento**: `getFaturamentoOperacional(ini, fim)` em `src/data/faturamento-operacional.ts`. O dashboard continua calendário.
+
+## Fase 1 — Domínio: classificador (`src/domain/fechamento-janela.ts` + test)
+
+```ts
+export const EUGENIO = 10059;
+/** Dia operacional (YYYY-MM-DD) de uma nota. */
+export function diaOperacional(dataISO: string, hora: number, codMotorista: number | null, eugenio = EUGENIO): string {
+  if (hora < 7) return dataISO;
+  if (hora < 13) return codMotorista === eugenio ? dataISO : somaDia(dataISO, 1);
+  return somaDia(dataISO, 1);
+}
+```
+Testes: <7→mesmo; 7–12 Eugênio→mesmo; 7–12 outro→+1; ≥13→+1; virada de mês.
+
+## Fase 2 — `getFaturamentoOperacional(ini, fim)` (SQL)
+
+Retorna `{ vendaFaturada, pesoFaturadoBrutoKg, emitidas, atendimentos }` para a janela operacional. Três blocos:
+
+1. **Valor (proporcional):**
+   - `biPorDia`: `SELECT TRUNC(DTSAIDA) dia, SUM(VENDAS) v FROM VIEW_BI_FATURAMENTO WHERE filial IN (1,11) AND DTSAIDA BETWEEN :ini-1 AND :fim GROUP BY TRUNC(DTSAIDA)`.
+   - `pesosPorDia` (proporção): das notas (PCNFSAID + join carga), por `TRUNC(DTHORAAUTORIZACAOSEFAZ) dia` e `stay/move` (do CASE), somar `VLTOTAL`. `w_move(dia) = move/(stay+move)`, `w_stay = 1 − w_move`.
+   - Em código: `valor(D) = bi(D)·w_stay(D) + bi(D-1)·w_move(D-1)`, somado para D em [ini,fim]. (VLTOTAL é só peso da proporção — não precisa bater com o 111; os totais vêm da BI.)
+2. **Peso bruto (direto):** `SUM(PESO_ITEM)` do `PCMOV` das notas de venda cujo `op_date ∈ [ini,fim]` (join PCMOV→PCNFSAID p/ hora SEFAZ, →PCCARREG p/ motorista). Bruto (sem deduzir devolução — coerente com "faturamento bruto").
+3. **Contagens:** `emitidas` = nº de notas com `op_date ∈ [ini,fim]`; `atendimentos` = `COUNT(DISTINCT CODCLI || op_date)`.
+
+Cuidar do índice/tempo (o join de carga + CASE por linha; ver comentários de performance em `faturamento.ts`).
+
+## Fase 3 — Integração (`src/data/fechamento.ts`)
+
+`montarFechamento` passa a usar `getFaturamentoOperacional(ini, fim)` para **faturamentoBruto, pesoFaturadoKg, pdvsAtendidos, notasEmitidas**. O faturamento do **mês** (base da taxa de devolução) continua em `getResumoFaturamento` (calendário) — a janela desloca < 1 dia nas bordas do mês, irrelevante p/ a taxa. Card não muda visualmente.
+
+## Fase 4 — Validação contra o 111 (rodar na rede)
+
+- Escolher um dia D com faturamento do Eugênio na janela 07–13.
+- Conferir: `vendaFaturada` operacional do dia ≈ o esperado; **soma do mês = 111 no centavo** (invariante do proporcional).
+- Conferir o peso bruto operacional contra uma referência do dia.
+- Só dar como pronto após bater (regra "martelo batido", ver [[devolucao-regra]]).
+
+## Riscos
+
+- Proporcional: dia é aproximado (o mix de dedução ST/IPI varia por produto, não por hora → erro pequeno). Mês é exato.
+- Confirmar `PCNFSAID.VLTOTAL` (peso da proporção) e `NUMCAR`→`PCCARREG.CODMOTORISTA` no schema.
+- Custo da query operacional (join + CASE). Medir.
