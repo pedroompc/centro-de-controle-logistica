@@ -49,7 +49,7 @@ export async function GET(request: Request): Promise<Response> {
       },
     );
   } catch (e) {
-    console.error("[fechamento/arte]", (e as Error).message);
+    console.error("[fechamento/arte]", (e as Error).stack);
     return new Response("Falha ao gerar a arte", { status: 500 });
   }
 }

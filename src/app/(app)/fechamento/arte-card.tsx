@@ -93,7 +93,7 @@ export function ArteFechamento({
 
       {/* Rodapé */}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 44, paddingTop: 28, borderTop: "1px solid rgba(255,255,255,0.12)", fontSize: 20, fontWeight: 600, color: FAINT }}>
-        <div>Gerado {geradoEm}</div>
+        <div>{`Gerado ${geradoEm}`}</div>
         <div>Filiais 1 + 11</div>
       </div>
     </div>
