@@ -52,7 +52,19 @@ Motorista por nota: `PCNFSAID.NUMCAR → PCCARREG.CODMOTORISTA` (padrão já usa
 > Não dá pra planejar o "valor" sem estas respostas. Rodar no Oracle do Winthor
 > (filiais 1 e 11). Colar os resultados de volta.
 
-**Q1 — DTSAIDA tem hora do dia (ou existe coluna de hora)?**
+### ✅ Resolvido (2026-08-11): a hora do faturamento
+
+`DTSAIDA` guarda só a data (tudo 00h). A hora real está em
+**`PCNFSAID.DTHORAAUTORIZACAOSEFAZ`** (DATE com data+hora da autorização SEFAZ) —
+preenchida em 100% das notas (6441/6441), faixa `00-23`. `DTHORASAIDA`,
+`HORAEMISSAO`, `HORASAIDA` e `DATAHORAEMISSAOSAT` vieram vazias.
+
+→ A "data operacional" usa `TRUNC(DTHORAAUTORIZACAOSEFAZ)` (data) e
+`TO_CHAR(DTHORAAUTORIZACAOSEFAZ,'HH24')` (hora). Motorista por
+`NUMCAR → PCCARREG.CODMOTORISTA`. **Peso já é viável.** Falta só resolver o
+**valor** (Q2/Q3 abaixo).
+
+**Q1 (histórico) — DTSAIDA tem hora do dia (ou existe coluna de hora)?**
 
 ```sql
 SELECT TO_CHAR(DTSAIDA,'HH24') HORA, COUNT(*)
