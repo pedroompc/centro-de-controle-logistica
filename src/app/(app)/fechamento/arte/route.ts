@@ -46,6 +46,9 @@ export async function GET(request: Request): Promise<Response> {
           { name: "Sora", data: s700, weight: 700, style: "normal" },
           { name: "Sora", data: s800, weight: 800, style: "normal" },
         ],
+        // Dado ao vivo: nunca cachear a arte (evita a prévia mostrar uma
+        // versão antiga/quebrada).
+        headers: { "cache-control": "no-store, max-age=0, must-revalidate" },
       },
     );
   } catch (e) {

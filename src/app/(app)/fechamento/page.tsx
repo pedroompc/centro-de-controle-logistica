@@ -3,6 +3,10 @@ import { clampDia, intervaloDias, hojeISO } from "@/domain/fechamento";
 import { SeletorPeriodo } from "./seletor-periodo";
 import { CompartilharButton } from "./compartilhar-button";
 
+// "hoje" precisa ser recalculado a cada acesso (senão a página cacheia e o dia
+// fica preso); e o preview reflete dado ao vivo.
+export const dynamic = "force-dynamic";
+
 export default async function FechamentoPage({
   searchParams,
 }: {
