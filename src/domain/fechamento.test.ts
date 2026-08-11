@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   montarResumoFechamento,
+  setoresComFaltas,
   rotuloPeriodo,
   intervaloDias,
   clampDia,
@@ -21,8 +22,8 @@ describe("montarResumoFechamento", () => {
     const r = montarResumoFechamento({
       ini: "2026-08-10", fim: "2026-08-10",
       faturamentoPeriodo: fatur(),
-      faturamentoMes: fatur({ vendaFaturada: 1000000, valorDevolucao: 48000 }),
-      receitasLogisticas: 3210, faltas: 2,
+      faturamentoMes: fatur({ vendaFaturada: 1000000, valorDevolucao: 48000, pesoDevolucao: 12000 }),
+      receitasLogisticas: 3210, faltas: 2, faltasSetores: ["Expedição", "Recebimento"],
     });
     expect(r.isPeriodo).toBe(false);
     expect(r.faturamentoBruto).toBe(487320);
@@ -30,20 +31,49 @@ describe("montarResumoFechamento", () => {
     expect(r.notasEmitidas).toBe(1240);
     expect(r.pesoFaturadoKg).toBe(128400);
     expect(r.taxaDevolucaoMes).toBeCloseTo(0.048, 3);
+    expect(r.devolucaoMesValor).toBe(48000);
+    expect(r.devolucaoMesPesoKg).toBe(12000);
     expect(r.receitasLogisticas).toBe(3210);
     expect(r.faltas).toBe(2);
+    expect(r.faltasSetores).toEqual(["Expedição", "Recebimento"]);
   });
 
   it("Winthor indisponível → campos do faturamento e taxa viram null", () => {
     const r = montarResumoFechamento({
       ini: "2026-08-01", fim: "2026-08-10",
       faturamentoPeriodo: null, faturamentoMes: null,
-      receitasLogisticas: 500, faltas: 0,
+      receitasLogisticas: 500, faltas: 0, faltasSetores: [],
     });
     expect(r.isPeriodo).toBe(true);
     expect(r.faturamentoBruto).toBeNull();
     expect(r.taxaDevolucaoMes).toBeNull();
+    expect(r.devolucaoMesValor).toBeNull();
+    expect(r.devolucaoMesPesoKg).toBeNull();
     expect(r.receitasLogisticas).toBe(500);
+  });
+});
+
+describe("setoresComFaltas", () => {
+  const setorPorFunc = new Map([
+    ["f1", "s1"], ["f2", "s1"], ["f3", "s2"], ["f4", "s3"],
+  ]);
+  const nomeSetor = new Map([["s1", "Expedição"], ["s2", "Recebimento"], ["s3", "Armazenagem"]]);
+
+  it("ordena setores do mais para o menos faltoso e ignora fora do período", () => {
+    const faltas = [
+      { funcionarioId: "f1", data: "2026-08-10" }, // s1
+      { funcionarioId: "f2", data: "2026-08-10" }, // s1
+      { funcionarioId: "f3", data: "2026-08-10" }, // s2
+      { funcionarioId: "f4", data: "2026-08-01" }, // s3 — fora do período
+    ];
+    expect(setoresComFaltas(faltas, setorPorFunc, nomeSetor, "2026-08-10", "2026-08-10")).toEqual([
+      "Expedição",
+      "Recebimento",
+    ]);
+  });
+
+  it("sem faltas → lista vazia", () => {
+    expect(setoresComFaltas([], setorPorFunc, nomeSetor, "2026-08-10", "2026-08-10")).toEqual([]);
   });
 });
 

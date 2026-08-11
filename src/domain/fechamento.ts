@@ -11,9 +11,12 @@ export interface ResumoFechamento {
   notasEmitidas: number | null;
   pesoFaturadoKg: number | null;
   taxaDevolucaoMes: number | null; // 0..1
+  devolucaoMesValor: number | null; // R$ devolvido no mês (mesma base da taxa)
+  devolucaoMesPesoKg: number | null; // kg devolvido no mês
   // Vindos do Supabase — sempre disponíveis.
   receitasLogisticas: number;
   faltas: number;
+  faltasSetores: string[]; // setores com falta no período, do mais para o menos
 }
 
 export function montarResumoFechamento(input: {
@@ -23,18 +26,46 @@ export function montarResumoFechamento(input: {
   faturamentoMes: ResumoFaturamento | null;
   receitasLogisticas: number;
   faltas: number;
+  faltasSetores: string[];
 }): ResumoFechamento {
   const f = input.faturamentoPeriodo;
+  const mes = input.faturamentoMes;
   return {
     isPeriodo: input.ini !== input.fim,
     faturamentoBruto: f ? f.vendaFaturada : null,
     pdvsAtendidos: f ? f.atendimentos : null,
     notasEmitidas: f ? f.emitidas : null,
     pesoFaturadoKg: f ? f.pesoFaturado : null,
-    taxaDevolucaoMes: input.faturamentoMes ? taxaDevolucao(input.faturamentoMes) : null,
+    taxaDevolucaoMes: mes ? taxaDevolucao(mes) : null,
+    devolucaoMesValor: mes ? mes.valorDevolucao : null,
+    devolucaoMesPesoKg: mes ? mes.pesoDevolucao : null,
     receitasLogisticas: input.receitasLogisticas,
     faltas: input.faltas,
+    faltasSetores: input.faltasSetores,
   };
+}
+
+/**
+ * Nomes dos setores que tiveram falta no período [ini, fim], ordenados do maior
+ * número de faltas para o menor. Alimenta a linha "Faltas por setor" da arte.
+ */
+export function setoresComFaltas(
+  faltas: { funcionarioId: string; data: string }[],
+  setorPorFuncionario: Map<string, string>,
+  nomeSetor: Map<string, string>,
+  ini: string,
+  fim: string,
+): string[] {
+  const cont = new Map<string, number>();
+  for (const f of faltas) {
+    if (f.data < ini || f.data > fim) continue;
+    const setorId = setorPorFuncionario.get(f.funcionarioId);
+    if (!setorId) continue;
+    cont.set(setorId, (cont.get(setorId) ?? 0) + 1);
+  }
+  return [...cont.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([setorId]) => nomeSetor.get(setorId) ?? "—");
 }
 
 // Datas em UTC para o texto não "escorregar" um dia por fuso.

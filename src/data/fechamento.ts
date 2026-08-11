@@ -1,10 +1,11 @@
 import { getResumoFaturamento } from "./faturamento";
 import { listarFaltas } from "./faltas";
 import { listarFuncionarios } from "./funcionarios";
+import { listarSetores } from "./setores";
 import { createClient } from "@/lib/supabase/server";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import { faltasNoPeriodo } from "@/domain/metrics";
-import { montarResumoFechamento, type ResumoFechamento } from "@/domain/fechamento";
+import { montarResumoFechamento, setoresComFaltas, type ResumoFechamento } from "@/domain/fechamento";
 
 /** Soma das três origens de receita logística no intervalo [ini, fim]. */
 async function receitaTotalDoPeriodo(ini: string, fim: string): Promise<number> {
@@ -28,14 +29,20 @@ async function receitaTotalDoPeriodo(ini: string, fim: string): Promise<number> 
  * Supabase. Se o Winthor estiver fora, os campos dele vêm null (o card mostra "—").
  */
 export async function montarFechamento(ini: string, fim: string): Promise<ResumoFechamento> {
-  const [faturamentoPeriodo, faturamentoMes, receitasLogisticas, faltasLista, funcionarios] =
+  const [faturamentoPeriodo, faturamentoMes, receitasLogisticas, faltasLista, funcionarios, setores] =
     await Promise.all([
       getResumoFaturamento(ini, fim),
       getResumoFaturamento(primeiroDiaDoMes(fim), fim),
       receitaTotalDoPeriodo(ini, fim),
       listarFaltas(),
       listarFuncionarios(),
+      listarSetores(),
     ]);
   const faltas = faltasNoPeriodo(faltasLista, funcionarios.map((f) => f.id), ini, fim);
-  return montarResumoFechamento({ ini, fim, faturamentoPeriodo, faturamentoMes, receitasLogisticas, faltas });
+  const setorPorFuncionario = new Map(funcionarios.map((f) => [f.id, f.setorId]));
+  const nomeSetor = new Map(setores.map((s) => [s.id, s.nome]));
+  const faltasSetores = setoresComFaltas(faltasLista, setorPorFuncionario, nomeSetor, ini, fim);
+  return montarResumoFechamento({
+    ini, fim, faturamentoPeriodo, faturamentoMes, receitasLogisticas, faltas, faltasSetores,
+  });
 }
