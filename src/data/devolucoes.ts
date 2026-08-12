@@ -9,6 +9,7 @@ import type {
   DevolucaoPorMotorista,
   SetorDevolucao,
 } from "@/domain/devolucoes";
+import type { LinhaCidadeDevolucao } from "@/domain/devolucoes-mapa";
 
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
@@ -207,5 +208,80 @@ export const getDevolucoes = cache(async (
   } catch (erro) {
     console.error("[devolucoes] Winthor indisponível:", (erro as Error).message);
     return null;
+  }
+});
+
+// --- Devolução por cidade (PE) ------------------------------------------------
+// Faturado e devolvido atribuídos à CIDADE DO CLIENTE DA VENDA. O faturado usa os
+// mesmos filtros da query de motorista (condvenda de bonificação/brinde fora); o
+// devolvido reusa a CTE `edf` (líquido, rotina 111, NUMTRANSVENDA > 0), ligado à
+// venda de origem. FULL OUTER JOIN por cidade: pode haver faturamento sem
+// devolução (e, raro, o inverso). Só UF = 'PE'.
+//
+// ⚠️ Nomes de coluna de cidade/IBGE/UF a confirmar na rede da empresa. Hipótese:
+//    PCCLIENT.CODCIDADE → PCCIDADE (CODCIDADE, CIDADE, CODIBGE, ESTADO).
+const sqlCidade = () => `
+WITH ${ctes({})},
+fat AS (
+  SELECT ci.CODIBGE, MAX(ci.CIDADE) CIDADE, SUM(nf.VLTOTAL) FATURADO
+  FROM PCNFSAID nf
+  JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
+  JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+    AND ci.ESTADO = 'PE'
+  GROUP BY ci.CODIBGE
+),
+dev AS (
+  SELECT ci.CODIBGE,
+         SUM(edf.VL) DEVOLVIDO,
+         COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
+  JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
+  WHERE edf.NUMTRANSVENDA > 0 AND ci.ESTADO = 'PE'
+  GROUP BY ci.CODIBGE
+)
+SELECT TO_CHAR(NVL(fat.CODIBGE, dev.CODIBGE)) IBGE,
+       fat.CIDADE,
+       ROUND(NVL(fat.FATURADO, 0), 2) FATURADO,
+       ROUND(NVL(dev.DEVOLVIDO, 0), 2) DEVOLVIDO,
+       NVL(dev.NOTAS, 0) NOTAS
+FROM fat FULL OUTER JOIN dev ON dev.CODIBGE = fat.CODIBGE
+WHERE NVL(fat.CODIBGE, dev.CODIBGE) IS NOT NULL`;
+
+interface LinhaCidadeRaw {
+  IBGE: string | null;
+  CIDADE: string | null;
+  FATURADO: number;
+  DEVOLVIDO: number;
+  NOTAS: number;
+}
+
+/**
+ * Faturado e devolvido por município de PE no período [ini, fim], para o mapa de
+ * calor. Sem taxa aqui — ela é derivada no domínio (`comTaxa`). Winthor
+ * indisponível ⇒ `[]` (a seção do mapa mostra estado vazio).
+ */
+export const getDevolucaoPorCidade = cache(async (
+  ini: string,
+  fim: string,
+): Promise<LinhaCidadeDevolucao[]> => {
+  try {
+    const rows = await queryWinthor<LinhaCidadeRaw>(sqlCidade(), { ini, fim });
+    return rows
+      .filter((r) => r.IBGE)
+      .map((r) => ({
+        ibge: String(r.IBGE),
+        cidade: r.CIDADE ?? `Cidade ${r.IBGE}`,
+        faturado: n(r.FATURADO),
+        devolvido: n(r.DEVOLVIDO),
+        notasDevolvidas: n(r.NOTAS),
+      }));
+  } catch (erro) {
+    console.error("[devolucoes] mapa por cidade indisponível:", (erro as Error).message);
+    return [];
   }
 });
