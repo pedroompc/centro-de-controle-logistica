@@ -61,7 +61,7 @@ function pathOf(geometry, project) {
 const res = await fetch(URL_MALHA);
 if (!res.ok) throw new Error(`IBGE respondeu ${res.status}`);
 const geo = await res.json();
-const features = geo.features;
+let features = geo.features.filter((f) => String(f.properties.codarea) !== "2605459");
 
 const nomesRes = await fetch(URL_NOMES);
 if (!nomesRes.ok) throw new Error(`IBGE localidades respondeu ${nomesRes.status}`);
