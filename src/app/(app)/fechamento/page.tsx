@@ -19,6 +19,11 @@ export default async function FechamentoPage({
   const { ini, fim } = intervaloDias(iniBruto, fimBruto);
 
   const src = `/fechamento/arte?ini=${ini}&fim=${fim}`;
+  // Carimbo por acesso (a página é force-dynamic → renderiza 1x por request):
+  // garante que a PRÉVIA nunca reaproveite uma imagem antiga do cache do
+  // navegador. O botão compartilhar usa `src` limpo (já busca fresco via no-store).
+  // eslint-disable-next-line react-hooks/purity -- server component por request, não é re-render de client
+  const previewSrc = `${src}&t=${Date.now()}`;
 
   return (
     <div>
@@ -32,8 +37,8 @@ export default async function FechamentoPage({
         {/* Preview = a própria arte gerada pela rota (WYSIWYG). key força recarregar ao trocar datas. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          key={src}
-          src={src}
+          key={previewSrc}
+          src={previewSrc}
           alt="Prévia da arte de fechamento"
           className="w-full max-w-sm rounded-3xl shadow-lg"
         />
