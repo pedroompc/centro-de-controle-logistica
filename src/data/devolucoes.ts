@@ -235,6 +235,7 @@ fat AS (
 ),
 dev AS (
   SELECT ci.CODIBGE,
+         MAX(ci.CIDADE) CIDADE,
          SUM(edf.VL) DEVOLVIDO,
          COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
   FROM edf
@@ -245,7 +246,7 @@ dev AS (
   GROUP BY ci.CODIBGE
 )
 SELECT TO_CHAR(NVL(fat.CODIBGE, dev.CODIBGE)) IBGE,
-       fat.CIDADE,
+       NVL(fat.CIDADE, dev.CIDADE) CIDADE,
        ROUND(NVL(fat.FATURADO, 0), 2) FATURADO,
        ROUND(NVL(dev.DEVOLVIDO, 0), 2) DEVOLVIDO,
        NVL(dev.NOTAS, 0) NOTAS
