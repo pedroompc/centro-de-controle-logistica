@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { corDaTaxa, COR_NEUTRA } from "@/domain/devolucoes-mapa";
+import { corDaTaxa, COR_NEUTRA, COR_RAMPA_MIN, COR_RAMPA_MAX } from "@/domain/devolucoes-mapa";
 import type { CidadeDevolucao } from "@/domain/devolucoes-mapa";
 import { formatBRL, formatPercent } from "@/domain/format";
 
@@ -26,7 +26,7 @@ export function MapaDevolucoes({
 }) {
   const [hover, setHover] = useState<MunicipioMapa | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
-  const ativo = hover?.dados ?? ranking.find((c) => c.ibge === selecionado) ?? null;
+  const ativo = hover ? hover.dados : (ranking.find((c) => c.ibge === selecionado) ?? null);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
@@ -45,7 +45,7 @@ export function MapaDevolucoes({
                 strokeWidth={destaque ? 1.6 : 0.4}
                 onMouseEnter={() => setHover(m)}
                 onMouseLeave={() => setHover(null)}
-                onClick={() => setSelecionado((s) => (s === m.ibge ? null : m.ibge))}
+                onClick={() => m.dados && setSelecionado((s) => (s === m.ibge ? null : m.ibge))}
                 className="cursor-pointer transition-[stroke-width]"
               />
             );
@@ -64,7 +64,10 @@ export function MapaDevolucoes({
 
         <div className="mt-3 flex items-center gap-3 text-[11px] text-slate-500">
           <span>menor</span>
-          <div className="h-2 flex-1 rounded-full bg-gradient-to-r from-[#fde68a] to-[#dc2626]" />
+          <div
+            className="h-2 flex-1 rounded-full"
+            style={{ backgroundImage: `linear-gradient(to right, ${COR_RAMPA_MIN}, ${COR_RAMPA_MAX})` }}
+          />
           <span>maior</span>
           <span className="ml-2 inline-flex items-center gap-1">
             <span className="inline-block h-2 w-3 rounded-sm" style={{ background: COR_NEUTRA }} />

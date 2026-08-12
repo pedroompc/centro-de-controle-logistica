@@ -35,6 +35,9 @@ const RAMPA = [
   "#dc2626",
 ];
 
+export const COR_RAMPA_MIN = RAMPA[0];
+export const COR_RAMPA_MAX = RAMPA[RAMPA.length - 1];
+
 /** Enriquece cada linha com taxa e o flag de volume relevante. */
 export function comTaxa(
   linhas: LinhaCidadeDevolucao[],
