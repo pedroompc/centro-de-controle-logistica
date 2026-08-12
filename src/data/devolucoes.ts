@@ -218,31 +218,32 @@ export const getDevolucoes = cache(async (
 // venda de origem. FULL OUTER JOIN por cidade: pode haver faturamento sem
 // devolução (e, raro, o inverso). Só UF = 'PE'.
 //
-// ⚠️ Nomes de coluna de cidade/IBGE/UF a confirmar na rede da empresa. Hipótese:
-//    PCCLIENT.CODCIDADE → PCCIDADE (CODCIDADE, CIDADE, CODIBGE, ESTADO).
+// Colunas confirmadas no Winthor (dicionário de dados): cliente → cidade via
+// PCCLIENT.CODCIDADE → PCCIDADE (CODCIDADE, NOMECIDADE, CODIBGE numérico de 7
+// dígitos, UF de 2 letras). O CODIBGE casa 1:1 com as chaves da geometria de PE.
 const sqlCidade = () => `
 WITH ${ctes({})},
 fat AS (
-  SELECT ci.CODIBGE, MAX(ci.CIDADE) CIDADE, SUM(nf.VLTOTAL) FATURADO
+  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, SUM(nf.VLTOTAL) FATURADO
   FROM PCNFSAID nf
   JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
     AND nf.DTCANCEL IS NULL
-    AND ci.ESTADO = 'PE'
+    AND ci.UF = 'PE'
   GROUP BY ci.CODIBGE
 ),
 dev AS (
   SELECT ci.CODIBGE,
-         MAX(ci.CIDADE) CIDADE,
+         MAX(ci.NOMECIDADE) CIDADE,
          SUM(edf.VL) DEVOLVIDO,
          COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
   FROM edf
   JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
-  WHERE edf.NUMTRANSVENDA > 0 AND ci.ESTADO = 'PE'
+  WHERE edf.NUMTRANSVENDA > 0 AND ci.UF = 'PE'
   GROUP BY ci.CODIBGE
 )
 SELECT TO_CHAR(NVL(fat.CODIBGE, dev.CODIBGE)) IBGE,
