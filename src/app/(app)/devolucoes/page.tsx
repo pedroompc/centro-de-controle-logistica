@@ -5,7 +5,7 @@ import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, inicioFimDoMes, limitarAoHistorico } from "@/domain/periodo";
-import { comTaxa, piorCidade } from "@/domain/devolucoes-mapa";
+import { comTaxa } from "@/domain/devolucoes-mapa";
 import type { SetorDevolucao, DevolucaoPorMotivo } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard, PanelHeader } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
@@ -80,11 +80,6 @@ export default async function DevolucoesPage({
     d: g.d,
     dados: porIbge.get(g.ibge) ?? null,
   }));
-  const pior = piorCidade(cidades);
-  const tetoTaxa = pior?.taxa ?? 0;
-  const ranking = cidades
-    .filter((c) => c.relevante)
-    .sort((a, b) => b.taxa - a.taxa);
 
   // Monta URL preservando mês e filtro vigentes; `over` sobrescreve/limpa chaves.
   const url = (over: Record<string, string | undefined> = {}) => {
@@ -215,21 +210,14 @@ export default async function DevolucoesPage({
       </Card>
 
       <Card className="mb-6 p-5">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h3 className="text-sm font-semibold text-[#141a4d]">Mapa de devolução por cidade · Pernambuco</h3>
-          {pior && (
-            <span className="text-xs text-slate-500">
-              Maior índice: <strong className="text-rose-600">{pior.cidade}</strong> · {formatPercent(pior.taxa)}
-            </span>
-          )}
-        </div>
+        <h3 className="mb-3 text-sm font-semibold text-[#141a4d]">Mapa de devolução por cidade · Pernambuco</h3>
         {cidades.length === 0 ? (
           <p className="text-sm text-slate-400">
             Mapa indisponível para {formatMesAno(mesSel)} — sem dado de cidade (Winthor fora da rede
             ou mês sem movimento).
           </p>
         ) : (
-          <MapaDevolucoes municipios={municipiosMapa} teto={tetoTaxa} ranking={ranking} />
+          <MapaDevolucoes municipios={municipiosMapa} cidades={cidades} />
         )}
       </Card>
 

@@ -51,27 +51,62 @@ export function comTaxa(
 }
 
 /**
- * Cidade com a maior taxa ENTRE as de volume relevante — a resposta da pergunta
- * "qual cidade tem o maior índice". Em empate, mantém a primeira encontrada.
- * `null` se nenhuma atinge o piso.
+ * Métrica que colore o mapa:
+ *  - "valor": R$ devolvido (absoluto) — mostra ONDE está o volume (a metrópole
+ *    acende); cidade grande lidera por porte.
+ *  - "taxa": devolvido / faturado (%) — mostra a INTENSIDADE do problema; usa o
+ *    piso de volume p/ vilarejo não sequestrar a escala.
  */
-export function piorCidade(cidades: CidadeDevolucao[]): CidadeDevolucao | null {
+export type Metrica = "valor" | "taxa";
+
+/** O número que colore a cidade na métrica escolhida. */
+export function valorMetrica(c: CidadeDevolucao, m: Metrica): number {
+  return m === "taxa" ? c.taxa : c.devolvido;
+}
+
+/**
+ * A cidade deve ser colorida (vs. cinza) nesta métrica?
+ *  - taxa: só relevante (faturado >= piso), senão 1 venda vira 100%.
+ *  - valor: qualquer devolução > 0 (R$ é volume real, sem piso de faturamento).
+ */
+export function colorivel(c: CidadeDevolucao, m: Metrica): boolean {
+  return m === "taxa" ? c.relevante : c.devolvido > 0;
+}
+
+/** Maior valor da métrica entre as cidades coloríveis — o teto da escala. 0 se nenhuma. */
+export function tetoMetrica(cidades: CidadeDevolucao[], m: Metrica): number {
   return cidades
-    .filter((c) => c.relevante)
+    .filter((c) => colorivel(c, m))
+    .reduce((teto, c) => Math.max(teto, valorMetrica(c, m)), 0);
+}
+
+/**
+ * Cidade líder na métrica (headline do mapa). Em empate, mantém a primeira.
+ * `null` se nenhuma é colorível.
+ */
+export function topCidade(cidades: CidadeDevolucao[], m: Metrica): CidadeDevolucao | null {
+  return cidades
+    .filter((c) => colorivel(c, m))
     .reduce<CidadeDevolucao | null>(
-      (pior, c) => (pior === null || c.taxa > pior.taxa ? c : pior),
+      (top, c) => (top === null || valorMetrica(c, m) > valorMetrica(top, m) ? c : top),
       null,
     );
 }
 
+/** Cidades coloríveis ordenadas da maior para a menor na métrica (lista ranqueada). */
+export function rankingMetrica(cidades: CidadeDevolucao[], m: Metrica): CidadeDevolucao[] {
+  return cidades
+    .filter((c) => colorivel(c, m))
+    .sort((a, b) => valorMetrica(b, m) - valorMetrica(a, m));
+}
+
 /**
- * Cor do município no mapa. Não relevante (ou teto 0) → neutro. Caso contrário,
- * um passo da rampa proporcional a `taxa / tetoRelevante` (o pior vira o tom mais
- * intenso). `tetoRelevante` = maior taxa entre as cidades relevantes.
+ * Cor do município no mapa. Não colorível (ou teto 0) → neutro. Caso contrário,
+ * um passo da rampa proporcional a `valor / teto` (o líder vira o tom mais intenso).
  */
-export function corDaTaxa(taxa: number, relevante: boolean, tetoRelevante: number): string {
-  if (!relevante || tetoRelevante <= 0) return COR_NEUTRA;
-  const razao = Math.min(1, Math.max(0, taxa / tetoRelevante));
+export function corDaEscala(valor: number, colorir: boolean, teto: number): string {
+  if (!colorir || teto <= 0) return COR_NEUTRA;
+  const razao = Math.min(1, Math.max(0, valor / teto));
   const i = Math.min(RAMPA.length - 1, Math.floor(razao * RAMPA.length));
   return RAMPA[i];
 }

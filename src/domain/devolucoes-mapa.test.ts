@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   comTaxa,
-  piorCidade,
-  corDaTaxa,
+  topCidade,
+  rankingMetrica,
+  tetoMetrica,
+  valorMetrica,
+  colorivel,
+  corDaEscala,
   COR_NEUTRA,
   MIN_FATURADO_CIDADE,
 } from "./devolucoes-mapa";
@@ -23,6 +27,12 @@ const cidade = (over: Partial<CidadeDevolucao>): CidadeDevolucao => ({
   relevante: true,
   ...over,
 });
+
+// Cenário realista: metrópole (muito R$, taxa baixa) vs vilarejo (pouco R$, taxa alta).
+const RECIFE = cidade({ ibge: "R", cidade: "Recife", faturado: 15_000_000, devolvido: 600_000, taxa: 0.04, relevante: true });
+const BETANIA = cidade({ ibge: "B", cidade: "Betânia", faturado: 14_000, devolvido: 13_700, taxa: 0.979, relevante: true });
+const MICRO = cidade({ ibge: "M", cidade: "Micro", faturado: 1_000, devolvido: 500, taxa: 0.5, relevante: false });
+const SEMDEV = cidade({ ibge: "Z", cidade: "SemDev", faturado: 30_000, devolvido: 0, taxa: 0, relevante: true });
 
 describe("comTaxa", () => {
   it("calcula taxa = devolvido / faturado", () => {
@@ -49,38 +59,72 @@ describe("comTaxa", () => {
   });
 });
 
-describe("piorCidade", () => {
-  it("retorna a maior taxa entre as relevantes", () => {
-    const r = piorCidade([
-      cidade({ ibge: "A", taxa: 0.05, relevante: true }),
-      cidade({ ibge: "B", taxa: 0.20, relevante: true }),
-      cidade({ ibge: "C", taxa: 0.90, relevante: false }), // ignorada (não relevante)
-    ]);
-    expect(r?.ibge).toBe("B");
-  });
-
-  it("retorna null quando nenhuma é relevante", () => {
-    const r = piorCidade([cidade({ taxa: 0.9, relevante: false })]);
-    expect(r).toBeNull();
+describe("valorMetrica", () => {
+  it("taxa → a taxa; valor → o R$ devolvido", () => {
+    expect(valorMetrica(RECIFE, "taxa")).toBe(0.04);
+    expect(valorMetrica(RECIFE, "valor")).toBe(600_000);
   });
 });
 
-describe("corDaTaxa", () => {
-  it("não relevante → cor neutra", () => {
-    expect(corDaTaxa(0.5, false, 0.1)).toBe(COR_NEUTRA);
+describe("colorivel", () => {
+  it("taxa: só relevante (faturado >= piso)", () => {
+    expect(colorivel(RECIFE, "taxa")).toBe(true);
+    expect(colorivel(MICRO, "taxa")).toBe(false);
   });
 
-  it("teto 0 → cor neutra (evita divisão por zero)", () => {
-    expect(corDaTaxa(0.05, true, 0)).toBe(COR_NEUTRA);
+  it("valor: qualquer cidade com devolução > 0 (sem piso de faturamento)", () => {
+    expect(colorivel(MICRO, "valor")).toBe(true); // R$500 é volume real, só pequeno
+    expect(colorivel(SEMDEV, "valor")).toBe(false); // R$0 devolvido → sem cor
   });
+});
 
-  it("pior cidade (taxa == teto) recebe o tom mais intenso", () => {
-    expect(corDaTaxa(0.1, true, 0.1)).toBe("#dc2626");
+describe("tetoMetrica", () => {
+  it("valor → maior R$ devolvido (metrópole)", () => {
+    expect(tetoMetrica([RECIFE, BETANIA, MICRO, SEMDEV], "valor")).toBe(600_000);
   });
+  it("taxa → maior taxa entre relevantes (vilarejo)", () => {
+    expect(tetoMetrica([RECIFE, BETANIA, MICRO, SEMDEV], "taxa")).toBeCloseTo(0.979, 6);
+  });
+  it("0 quando ninguém é colorível", () => {
+    expect(tetoMetrica([SEMDEV], "valor")).toBe(0);
+  });
+});
 
-  it("taxa maior (relevante) nunca clareia em relação a uma menor", () => {
-    const menor = corDaTaxa(0.02, true, 0.1);
-    const maior = corDaTaxa(0.08, true, 0.1);
+describe("topCidade", () => {
+  it("valor → a metrópole (maior R$)", () => {
+    expect(topCidade([RECIFE, BETANIA, MICRO], "valor")?.ibge).toBe("R");
+  });
+  it("taxa → o vilarejo relevante (maior %), ignorando não relevante", () => {
+    expect(topCidade([RECIFE, BETANIA, MICRO], "taxa")?.ibge).toBe("B");
+  });
+  it("null quando ninguém é colorível", () => {
+    expect(topCidade([SEMDEV], "valor")).toBeNull();
+    expect(topCidade([MICRO], "taxa")).toBeNull();
+  });
+});
+
+describe("rankingMetrica", () => {
+  it("valor: coloríveis ordenados por R$ desc (inclui micro, exclui sem devolução)", () => {
+    const r = rankingMetrica([BETANIA, RECIFE, MICRO, SEMDEV], "valor");
+    expect(r.map((c) => c.ibge)).toEqual(["R", "B", "M"]);
+  });
+  it("taxa: só relevantes, ordenados por taxa desc", () => {
+    const r = rankingMetrica([RECIFE, BETANIA, MICRO], "taxa");
+    expect(r.map((c) => c.ibge)).toEqual(["B", "R"]);
+  });
+});
+
+describe("corDaEscala", () => {
+  it("não colorível (ou teto 0) → cor neutra", () => {
+    expect(corDaEscala(0.5, false, 0.1)).toBe(COR_NEUTRA);
+    expect(corDaEscala(0.05, true, 0)).toBe(COR_NEUTRA);
+  });
+  it("valor == teto → tom mais intenso", () => {
+    expect(corDaEscala(0.1, true, 0.1)).toBe("#dc2626");
+  });
+  it("valor maior (colorível) nunca clareia em relação a um menor", () => {
+    const menor = corDaEscala(0.02, true, 0.1);
+    const maior = corDaEscala(0.08, true, 0.1);
     expect(menor).not.toBe(COR_NEUTRA);
     expect(maior).not.toBe(COR_NEUTRA);
     expect(menor).not.toBe(maior);
