@@ -81,16 +81,16 @@ export function tetoMetrica(cidades: CidadeDevolucao[], m: Metrica): number {
 }
 
 /**
- * Cidade líder na métrica (headline do mapa). Em empate, mantém a primeira.
- * `null` se nenhuma é colorível.
+ * Total agregado da métrica (headline do mapa):
+ *  - valor: soma de TODO o R$ devolvido de PE no período.
+ *  - taxa: taxa geral = soma devolvido / soma faturado (a devolução do estado como
+ *    um todo). 0 se não houve faturamento.
  */
-export function topCidade(cidades: CidadeDevolucao[], m: Metrica): CidadeDevolucao | null {
-  return cidades
-    .filter((c) => colorivel(c, m))
-    .reduce<CidadeDevolucao | null>(
-      (top, c) => (top === null || valorMetrica(c, m) > valorMetrica(top, m) ? c : top),
-      null,
-    );
+export function totalMetrica(cidades: CidadeDevolucao[], m: Metrica): number {
+  const dev = cidades.reduce((s, c) => s + c.devolvido, 0);
+  if (m === "valor") return dev;
+  const fat = cidades.reduce((s, c) => s + c.faturado, 0);
+  return fat > 0 ? dev / fat : 0;
 }
 
 /** Cidades coloríveis ordenadas da maior para a menor na métrica (lista ranqueada). */

@@ -6,7 +6,7 @@ import {
   valorMetrica,
   colorivel,
   tetoMetrica,
-  topCidade,
+  totalMetrica,
   rankingMetrica,
   COR_NEUTRA,
   COR_RAMPA_MIN,
@@ -42,7 +42,7 @@ export function MapaDevolucoes({
 
   const teto = tetoMetrica(cidades, metrica);
   const ranking = rankingMetrica(cidades, metrica);
-  const top = topCidade(cidades, metrica);
+  const total = totalMetrica(cidades, metrica);
   const ativo = hover ? hover.dados : (cidades.find((c) => c.ibge === selecionado) ?? null);
 
   const legenda =
@@ -66,12 +66,12 @@ export function MapaDevolucoes({
             Taxa %
           </button>
         </div>
-        {top && (
-          <span className="text-xs text-slate-500">
-            {metrica === "taxa" ? "Maior taxa" : "Maior volume"}:{" "}
-            <strong className="text-rose-600">{top.cidade}</strong> · {rotulo(top, metrica)}
-          </span>
-        )}
+        <span className="text-xs text-slate-500">
+          {metrica === "taxa" ? "Taxa geral (PE)" : "Total devolvido (PE)"}:{" "}
+          <strong className="text-rose-600">
+            {metrica === "taxa" ? formatPercent(total) : formatBRL(total)}
+          </strong>
+        </span>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">

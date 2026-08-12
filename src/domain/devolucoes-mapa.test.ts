@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   comTaxa,
-  topCidade,
+  totalMetrica,
   rankingMetrica,
   tetoMetrica,
   valorMetrica,
@@ -90,16 +90,18 @@ describe("tetoMetrica", () => {
   });
 });
 
-describe("topCidade", () => {
-  it("valor → a metrópole (maior R$)", () => {
-    expect(topCidade([RECIFE, BETANIA, MICRO], "valor")?.ibge).toBe("R");
+describe("totalMetrica", () => {
+  it("valor → soma de TODO o R$ devolvido (inclui micro e sem-devolução)", () => {
+    // 600000 + 13700 + 500 + 0
+    expect(totalMetrica([RECIFE, BETANIA, MICRO, SEMDEV], "valor")).toBe(614_200);
   });
-  it("taxa → o vilarejo relevante (maior %), ignorando não relevante", () => {
-    expect(topCidade([RECIFE, BETANIA, MICRO], "taxa")?.ibge).toBe("B");
+  it("taxa → taxa geral = soma devolvido / soma faturado", () => {
+    // 614200 / (15000000 + 14000 + 1000 + 30000)
+    expect(totalMetrica([RECIFE, BETANIA, MICRO, SEMDEV], "taxa")).toBeCloseTo(614_200 / 15_045_000, 6);
   });
-  it("null quando ninguém é colorível", () => {
-    expect(topCidade([SEMDEV], "valor")).toBeNull();
-    expect(topCidade([MICRO], "taxa")).toBeNull();
+  it("0 em lista vazia", () => {
+    expect(totalMetrica([], "valor")).toBe(0);
+    expect(totalMetrica([], "taxa")).toBe(0);
   });
 });
 
