@@ -3,6 +3,11 @@ import { filialIn } from "./filiais";
 import { EUGENIO } from "@/domain/fechamento-janela";
 
 /**
+ * ⛔ PARADO (decisão 12/08): o card usa faturamento por data de emissão (bate
+ * com o 111). Este módulo fica no repo, isolado e não ligado, caso a regra da
+ * janela operacional seja retomada. Ver plano em
+ * docs/superpowers/plans/2026-08-11-fechamento-janela-operacional.md.
+ *
  * Faturamento pela JANELA OPERACIONAL (etapa 2) — isolado de `getResumoFaturamento`
  * (que continua calendário, usado pelo dashboard). Regra do "dia operacional":
  * hora da autorização SEFAZ + motorista da carga (ver `@/domain/fechamento-janela`).
