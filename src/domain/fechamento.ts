@@ -19,10 +19,21 @@ export interface ResumoFechamento {
   faltasSetores: string[]; // setores com falta no período, do mais para o menos
 }
 
+/**
+ * Faturamento do período já pela JANELA OPERACIONAL (etapa 2). É uma visão
+ * enxuta — o operacional não produz um `ResumoFaturamento` completo.
+ */
+export interface FaturamentoPeriodoView {
+  vendaFaturada: number;
+  atendimentos: number;
+  emitidas: number;
+  pesoFaturadoKg: number;
+}
+
 export function montarResumoFechamento(input: {
   ini: string;
   fim: string;
-  faturamentoPeriodo: ResumoFaturamento | null;
+  faturamentoPeriodo: FaturamentoPeriodoView | null;
   faturamentoMes: ResumoFaturamento | null;
   receitasLogisticas: number;
   faltas: number;
@@ -35,7 +46,7 @@ export function montarResumoFechamento(input: {
     faturamentoBruto: f ? f.vendaFaturada : null,
     pdvsAtendidos: f ? f.atendimentos : null,
     notasEmitidas: f ? f.emitidas : null,
-    pesoFaturadoKg: f ? f.pesoFaturado : null,
+    pesoFaturadoKg: f ? f.pesoFaturadoKg : null,
     taxaDevolucaoMes: mes ? taxaDevolucao(mes) : null,
     devolucaoMesValor: mes ? mes.valorDevolucao : null,
     devolucaoMesPesoKg: mes ? mes.pesoDevolucao : null,

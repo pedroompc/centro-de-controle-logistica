@@ -1,4 +1,5 @@
 import { getResumoFaturamento } from "./faturamento";
+import { getFaturamentoOperacional } from "./faturamento-operacional";
 import { listarFaltas } from "./faltas";
 import { listarFuncionarios } from "./funcionarios";
 import { listarSetores } from "./setores";
@@ -29,15 +30,25 @@ async function receitaTotalDoPeriodo(ini: string, fim: string): Promise<number> 
  * Supabase. Se o Winthor estiver fora, os campos dele vêm null (o card mostra "—").
  */
 export async function montarFechamento(ini: string, fim: string): Promise<ResumoFechamento> {
-  const [faturamentoPeriodo, faturamentoMes, receitasLogisticas, faltasLista, funcionarios, setores] =
+  const [operacional, faturamentoMes, receitasLogisticas, faltasLista, funcionarios, setores] =
     await Promise.all([
-      getResumoFaturamento(ini, fim),
+      getFaturamentoOperacional(ini, fim),
       getResumoFaturamento(primeiroDiaDoMes(fim), fim),
       receitaTotalDoPeriodo(ini, fim),
       listarFaltas(),
       listarFuncionarios(),
       listarSetores(),
     ]);
+  // Faturamento/peso/PDVs/notas vêm pela janela operacional (etapa 2); o mês (base
+  // da taxa de devolução) segue calendário — a janela desloca < 1 dia nas bordas.
+  const faturamentoPeriodo = operacional
+    ? {
+        vendaFaturada: operacional.vendaFaturada,
+        atendimentos: operacional.atendimentos,
+        emitidas: operacional.emitidas,
+        pesoFaturadoKg: operacional.pesoFaturadoBrutoKg,
+      }
+    : null;
   const faltas = faltasNoPeriodo(faltasLista, funcionarios.map((f) => f.id), ini, fim);
   const setorPorFuncionario = new Map(funcionarios.map((f) => [f.id, f.setorId]));
   const nomeSetor = new Map(setores.map((s) => [s.id, s.nome]));

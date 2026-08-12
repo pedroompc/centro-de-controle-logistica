@@ -21,7 +21,7 @@ describe("montarResumoFechamento", () => {
   it("mapeia faturamento presente e calcula a taxa do mês", () => {
     const r = montarResumoFechamento({
       ini: "2026-08-10", fim: "2026-08-10",
-      faturamentoPeriodo: fatur(),
+      faturamentoPeriodo: { vendaFaturada: 487320, atendimentos: 318, emitidas: 1240, pesoFaturadoKg: 128400 },
       faturamentoMes: fatur({ vendaFaturada: 1000000, valorDevolucao: 48000, pesoDevolucao: 12000 }),
       receitasLogisticas: 3210, faltas: 2, faltasSetores: ["Expedição", "Recebimento"],
     });
