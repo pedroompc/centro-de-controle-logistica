@@ -15,7 +15,7 @@ import { listarLancamentosDoMes } from "@/data/custos-mensais";
 import { receitaTotalDoMes } from "@/data/receitas";
 import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
 import { custoLiquido } from "@/domain/receitas-metrics";
-import { PageHeader, StatCard, Card, SectionTitle, BarList } from "@/components/ui";
+import { PageHeader, StatCard, Card, SectionTitle, BarList, SetorBarList } from "@/components/ui";
 import { Suspense } from "react";
 import {
   FaturamentoCards,
@@ -50,24 +50,15 @@ export default async function Dashboard({
   const custoTotalMes = totalDoMes(lancamentosMes, custoEfetivo);
   const custoLiquidoMes = custoLiquido(custoTotalMes, receitasMes);
 
-  const custoPorSetor = setores
-    .map((s) => ({
-      label: s.nome,
-      value: custoDoSetor(funcionarios, s.id),
-      display: formatBRL(custoDoSetor(funcionarios, s.id)),
-      href: `/setores/${s.id}`,
-    }))
-    .filter((i) => i.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
-
-  const efetivoPorSetor = setores
+  // Custo + efetivo por setor numa leitura só: barra pelo custo, nº de pessoas ao lado.
+  const setorPorCusto = setores
     .map((s) => {
-      const n = ativos.filter((f) => f.setorId === s.id).length;
-      return { label: s.nome, value: n, display: `${n}`, href: `/setores/${s.id}` };
+      const custo = custoDoSetor(funcionarios, s.id);
+      const efetivo = ativos.filter((f) => f.setorId === s.id).length;
+      return { label: s.nome, custo, custoDisplay: formatBRL(custo), efetivo, href: `/setores/${s.id}` };
     })
-    .filter((i) => i.value > 0)
-    .sort((a, b) => b.value - a.value)
+    .filter((i) => i.custo > 0 || i.efetivo > 0)
+    .sort((a, b) => b.custo - a.custo)
     .slice(0, 8);
 
   const composicao = [
@@ -108,8 +99,8 @@ export default async function Dashboard({
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="p-6 lg:col-span-2">
-          <SectionTitle>Custo por setor</SectionTitle>
-          <BarList items={custoPorSetor} tone="gold" />
+          <SectionTitle>Custo e efetivo por setor</SectionTitle>
+          <SetorBarList items={setorPorCusto} />
         </Card>
 
         <Card className="p-6">
@@ -121,13 +112,6 @@ export default async function Dashboard({
               {formatBRL(custoTotalMes)}
             </span>
           </div>
-        </Card>
-      </div>
-
-      <div className="mt-6">
-        <Card className="p-6">
-          <SectionTitle>Efetivo por setor</SectionTitle>
-          <BarList items={efetivoPorSetor} tone="navy" />
         </Card>
       </div>
 

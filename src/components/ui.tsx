@@ -150,6 +150,63 @@ export function BarList({
 }
 
 /**
+ * Barras de setor com dupla leitura: custo (barra âmbar + R$) e efetivo
+ * (chip navy com nº de pessoas) na mesma linha. Colapsa dois gráficos —
+ * "custo por setor" e "efetivo por setor" — num só, ordenado por custo.
+ */
+export function SetorBarList({
+  items,
+}: {
+  items: { label: string; custo: number; custoDisplay: string; efetivo: number; href?: string }[];
+}) {
+  const max = Math.max(1, ...items.map((i) => i.custo));
+  return (
+    <div className="space-y-3">
+      {/* Cabeçalho de colunas — deixa claro o que cada valor representa. */}
+      <div className="flex items-center gap-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+        <div className="w-24 shrink-0 sm:w-36">Setor</div>
+        <div className="flex-1">Custo</div>
+        <div className="w-24 shrink-0 text-right sm:w-28">R$ / mês</div>
+        <div className="shrink-0 text-right">Pessoas</div>
+      </div>
+      {items.map((it) => {
+        const pct = Math.max(2, Math.round((it.custo / max) * 100));
+        const row = (
+          <div className="flex items-center gap-3">
+            <div className="w-24 shrink-0 truncate text-sm text-slate-600 sm:w-36" title={it.label}>
+              {it.label}
+            </div>
+            <div className="h-6 min-w-0 flex-1 overflow-hidden rounded-md bg-slate-100">
+              <div className="h-full rounded-md bg-amber-400" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="w-24 shrink-0 text-right text-sm font-semibold tabular-nums text-[#141a4d] sm:w-28">
+              {it.custoDisplay}
+            </div>
+            <div className="shrink-0 text-right">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#eef0fb] px-2 py-0.5 text-xs font-semibold tabular-nums text-[#1b2168]">
+                <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="8" r="3.2" />
+                  <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" />
+                </svg>
+                {it.efetivo}
+              </span>
+            </div>
+          </div>
+        );
+        return it.href ? (
+          <Link key={it.label} href={it.href} className="block rounded-md hover:bg-slate-50">
+            {row}
+          </Link>
+        ) : (
+          <div key={it.label}>{row}</div>
+        );
+      })}
+      {items.length === 0 && <p className="text-sm text-slate-400">Sem dados para exibir.</p>}
+    </div>
+  );
+}
+
+/**
  * Selo/etiqueta pequeno (status, contagem).
  *
  * `green` é reservado a RECEITA (dinheiro que entra) — nunca a status nem a
