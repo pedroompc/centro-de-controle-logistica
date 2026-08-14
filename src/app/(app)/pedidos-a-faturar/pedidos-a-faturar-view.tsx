@@ -172,8 +172,8 @@ export function PedidosAFaturarView({
           hint={temFiltro ? `de ${pedidos.length} no total` : undefined}
           accent="navy"
         />
-        <StatCard label="Valor parado" value={formatBRL(resumo.valorTotal)} accent="navy" />
-        <StatCard label="Peso parado" value={formatKg(resumo.pesoTotal)} accent="navy" />
+        <StatCard label="Carteira" value={formatBRL(resumo.valorTotal)} accent="navy" />
+        <StatCard label="Peso em carteira" value={formatKg(resumo.pesoTotal)} accent="navy" />
       </div>
 
       {/* Barra de filtros */}
