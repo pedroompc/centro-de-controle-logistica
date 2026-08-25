@@ -34,8 +34,8 @@ export interface DevolucaoPorVendedor {
   valor: number;
 }
 
-/** Quebra dos motivos de um motorista (drill-down da tabela de motoristas). */
-export interface MotivoMotorista {
+/** Quebra por motivo usada nos drill-downs (motorista, cliente e vendedor). */
+export interface MotivoDetalhe {
   motivo: string;
   setor: SetorDevolucao;
   notas: number;
@@ -62,8 +62,10 @@ export interface ResumoDevolucoes {
   topClientes: DevolucaoPorCliente[];
   porVendedor: DevolucaoPorVendedor[];
   porMotorista: DevolucaoPorMotorista[];
-  /** Motivos por motorista (chave = codMotorista) — alimenta o drill-down. */
-  motivosPorMotorista: Record<number, MotivoMotorista[]>;
+  /** Motivos por entidade (chave = código) — alimentam os drill-downs. */
+  motivosPorMotorista: Record<number, MotivoDetalhe[]>;
+  motivosPorCliente: Record<number, MotivoDetalhe[]>;
+  motivosPorVendedor: Record<number, MotivoDetalhe[]>;
 }
 
 /**

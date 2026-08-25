@@ -8,7 +8,7 @@ import type {
   DevolucaoPorCliente,
   DevolucaoPorVendedor,
   DevolucaoPorMotorista,
-  MotivoMotorista,
+  MotivoDetalhe,
   SetorDevolucao,
 } from "@/domain/devolucoes";
 import type { LinhaCidadeDevolucao } from "@/domain/devolucoes-mapa";
@@ -168,11 +168,34 @@ WHERE edf.NUMTRANSVENDA > 0 AND NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORIS
 GROUP BY car.CODMOTORISTA, edf.MOTIVO, edf.SETOR
 ORDER BY car.CODMOTORISTA, NOTAS DESC, VALOR DESC`;
 
+// Quebra por MOTIVO dentro de cada CLIENTE / VENDEDOR (drill-down dos painéis):
+// lê no nível da devolução (edf) ligada à venda de origem, agrupando por
+// entidade + motivo. `notas` = nº de vendas que voltaram; `valor` = líquido.
+const sqlClienteMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+  SELECT s.CODCLI COD, edf.MOTIVO, edf.SETOR,
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  WHERE edf.NUMTRANSVENDA > 0
+  GROUP BY s.CODCLI, edf.MOTIVO, edf.SETOR
+  ORDER BY s.CODCLI, NOTAS DESC, VALOR DESC`;
+
+const sqlVendedorMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+  SELECT s.CODUSUR COD, edf.MOTIVO, edf.SETOR,
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  WHERE edf.NUMTRANSVENDA > 0 AND NVL(s.CODUSUR, 0) != 0
+  GROUP BY s.CODUSUR, edf.MOTIVO, edf.SETOR
+  ORDER BY s.CODUSUR, NOTAS DESC, VALOR DESC`;
+
 interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaVendedor { CODUSUR: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
 interface LinhaMotoristaMotivo { CODMOTORISTA: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
+// Motivo por entidade genérica (cliente/vendedor): COD é o código da entidade.
+interface LinhaEntidadeMotivo { COD: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 
 const n = (v: unknown): number => Number(v) || 0;
 
@@ -245,12 +268,16 @@ export const getDevolucoes = cache(async (
       queryWinthor<LinhaMotorista>(sqlMotorista(f), binds),
     ]);
 
-    // Seções novas (vendedor + motivos por motorista): OPCIONAIS. Rodadas depois
-    // do núcleo (não aumentam o pico de conexões) e com timeout — se pesarem ou
-    // falharem, a página carrega com essas seções vazias em vez de travar.
+    // Seções novas (vendedor + drill-downs de motivo): OPCIONAIS. Rodadas depois
+    // do núcleo (não aumentam o pico de conexões) e em DOIS lotes de 2 — com
+    // timeout, se pesarem/falharem a página carrega com a seção vazia, sem travar.
     const [vendedoresRaw, motoristaMotivoRaw] = await Promise.all([
       secaoOpcional(queryWinthor<LinhaVendedor>(sqlVendedor(f), binds), 15000, [], "vendedores"),
       secaoOpcional(queryWinthor<LinhaMotoristaMotivo>(sqlMotoristaMotivo(f), binds), 15000, [], "motivos por motorista"),
+    ]);
+    const [clienteMotivoRaw, vendedorMotivoRaw] = await Promise.all([
+      secaoOpcional(queryWinthor<LinhaEntidadeMotivo>(sqlClienteMotivo(f), binds), 15000, [], "motivos por cliente"),
+      secaoOpcional(queryWinthor<LinhaEntidadeMotivo>(sqlVendedorMotivo(f), binds), 15000, [], "motivos por vendedor"),
     ]);
 
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
@@ -281,17 +308,24 @@ export const getDevolucoes = cache(async (
       valorDevolvido: n(r.VALOR_DEVOLVIDO),
     }));
 
-    // Agrupa os motivos por motorista (já vêm ordenados por notas desc na query).
-    const motivosPorMotorista: Record<number, MotivoMotorista[]> = {};
+    // Agrupa os motivos por entidade (já vêm ordenados por notas desc na query).
+    const motivosPorMotorista: Record<number, MotivoDetalhe[]> = {};
     for (const r of motoristaMotivoRaw) {
-      const cod = n(r.CODMOTORISTA);
-      (motivosPorMotorista[cod] ??= []).push({
-        motivo: r.MOTIVO,
-        setor: r.SETOR as SetorDevolucao,
-        notas: n(r.NOTAS),
-        valor: n(r.VALOR),
+      (motivosPorMotorista[n(r.CODMOTORISTA)] ??= []).push({
+        motivo: r.MOTIVO, setor: r.SETOR as SetorDevolucao, notas: n(r.NOTAS), valor: n(r.VALOR),
       });
     }
+    const agruparPorCod = (rows: LinhaEntidadeMotivo[]): Record<number, MotivoDetalhe[]> => {
+      const mapa: Record<number, MotivoDetalhe[]> = {};
+      for (const r of rows) {
+        (mapa[n(r.COD)] ??= []).push({
+          motivo: r.MOTIVO, setor: r.SETOR as SetorDevolucao, notas: n(r.NOTAS), valor: n(r.VALOR),
+        });
+      }
+      return mapa;
+    };
+    const motivosPorCliente = agruparPorCod(clienteMotivoRaw);
+    const motivosPorVendedor = agruparPorCod(vendedorMotivoRaw);
 
     return {
       total: porMotivo.reduce((t, m) => t + m.valor, 0),
@@ -301,6 +335,8 @@ export const getDevolucoes = cache(async (
       porVendedor,
       porMotorista,
       motivosPorMotorista,
+      motivosPorCliente,
+      motivosPorVendedor,
     };
   } catch (erro) {
     console.error("[devolucoes] Winthor indisponível:", (erro as Error).message);
