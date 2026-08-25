@@ -1,18 +1,13 @@
 import Link from "next/link";
-import municipiosGeo from "@/data/geo/pe-municipios.json";
-import { getDevolucoes, listarMotivosDoMes, getDevolucaoPorCidade } from "@/data/devolucoes";
+import { getNucleoDevolucao, listarMotivosDoMes } from "@/data/devolucoes";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, inicioFimDoMes, limitarAoHistorico } from "@/domain/periodo";
-import { comTaxa } from "@/domain/devolucoes-mapa";
-import type { SetorDevolucao, DevolucaoPorMotivo } from "@/domain/devolucoes";
-import { PageHeader, Card, StatCard, PanelHeader } from "@/components/ui";
+import type { SetorDevolucao } from "@/domain/devolucoes";
+import { PageHeader, Card, StatCard } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
-import PainelClientes from "./painel-clientes";
-import TabelaMotoristas from "./tabela-motoristas";
-import { IconeEtiqueta } from "./icons";
-import { MapaDevolucoes, type MunicipioMapa } from "./mapa-devolucoes";
+import SecoesDevolucao from "./secoes-devolucao";
 
 const SETORES: SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
 
@@ -27,27 +22,6 @@ const CORES: Record<SetorDevolucao, { barra: string; pill: string }> = {
   "Não classificado": { barra: "bg-slate-300", pill: "bg-slate-100 text-slate-500" },
 };
 
-function LinhaMotivo({ m, max }: { m: DevolucaoPorMotivo; max: number }) {
-  const pct = Math.max(2, Math.round((m.valor / max) * 100));
-  const cor = CORES[m.setor];
-  return (
-    <div className="px-5 py-2.5">
-      <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-[#141a4d]" title={m.motivo}>{m.motivo}</span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cor.pill}`}>{m.setor}</span>
-        </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-[#141a4d]">{formatBRL(m.valor)}</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-          <div className={`h-full rounded-full ${cor.barra}`} style={{ width: `${pct}%` }} />
-        </div>
-        <span className="w-16 shrink-0 text-right text-xs text-slate-400">{m.notas} notas</span>
-      </div>
-    </div>
-  );
-}
 
 export default async function DevolucoesPage({
   searchParams,
@@ -64,22 +38,14 @@ export default async function DevolucoesPage({
   const setor = sp.setor || undefined;
   const temFiltro = Boolean(motivo || setor);
 
-  const [r, fat, motivosDisponiveis, cidadesRaw] = await Promise.all([
-    getDevolucoes(inicio, fim, motivo, setor),
+  // SSR busca só o NÚCLEO (leve): total, por setor e a lista de motivos. As abas
+  // pesadas (clientes/vendedores/motoristas/mapa) carregam sob demanda no cliente.
+  const [r, fat, motivosDisponiveis] = await Promise.all([
+    getNucleoDevolucao(inicio, fim, motivo, setor),
     getResumoFaturamentoDashboard(mesSel),
     listarMotivosDoMes(inicio, fim),
-    getDevolucaoPorCidade(inicio, fim),
   ]);
   const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
-
-  const cidades = comTaxa(cidadesRaw);
-  const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
-  const municipiosMapa: MunicipioMapa[] = municipiosGeo.map((g) => ({
-    ibge: g.ibge,
-    nome: g.nome,
-    d: g.d,
-    dados: porIbge.get(g.ibge) ?? null,
-  }));
 
   // Monta URL preservando mês e filtro vigentes; `over` sobrescreve/limpa chaves.
   const url = (over: Record<string, string | undefined> = {}) => {
@@ -110,7 +76,6 @@ export default async function DevolucoesPage({
     );
   }
 
-  const maxMotivo = Math.max(1, ...r.porMotivo.map((m) => m.valor));
   const totalSetor = Math.max(1, r.porSetor.reduce((t, s) => t + s.valor, 0));
 
   return (
@@ -209,47 +174,21 @@ export default async function DevolucoesPage({
         </div>
       </Card>
 
-      <Card className="mb-6 p-5">
-        <h3 className="mb-3 text-sm font-semibold text-[#141a4d]">Mapa de devolução por cidade · Pernambuco</h3>
-        {cidades.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            Mapa indisponível para {formatMesAno(mesSel)} — sem dado de cidade (Winthor fora da rede
-            ou mês sem movimento).
-          </p>
-        ) : (
-          <MapaDevolucoes municipios={municipiosMapa} cidades={cidades} />
-        )}
-      </Card>
-
-      {/* Motivo + Clientes lado a lado no desktop. */}
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Card className="overflow-hidden">
-          <PanelHeader
-            icon={<IconeEtiqueta />}
-            tone="gold"
-            title="Por motivo"
-            context={`${r.porMotivo.length} motivos · por valor`}
-          />
-          <div className="max-h-[28rem] divide-y divide-slate-100 overflow-y-auto">
-            {r.porMotivo.length === 0 ? (
-              <p className="px-5 py-10 text-center text-sm text-slate-400">Sem devoluções no período.</p>
-            ) : (
-              r.porMotivo.map((m) => <LinhaMotivo key={`${m.motivo}-${m.setor}`} m={m} max={maxMotivo} />)
-            )}
-          </div>
-        </Card>
-
-        <PainelClientes clientes={r.topClientes} />
-      </div>
-
-      <div className="mt-6">
-        <TabelaMotoristas motoristas={r.porMotorista} />
-      </div>
+      {/* Detalhe em ABAS que carregam SOB DEMANDA (cache por sessão). A `key`
+          zera o cache do cliente quando muda o mês ou o filtro. */}
+      <SecoesDevolucao
+        key={`${mesSel}|${motivo ?? ""}|${setor ?? ""}`}
+        mes={mesSel}
+        motivo={motivo}
+        setor={setor}
+        porMotivo={r.porMotivo}
+      />
 
       <p className="mt-4 text-xs text-slate-400">
         Os indicadores no topo são sempre o total do mês (não reagem ao filtro). Motivo e setor
-        estreitam as três seções abaixo; a busca dentro de cada painel filtra só aquele painel.
-        Valor líquido da devolução (rotina 111), pela data da devolução.
+        estreitam todas as abas; a busca dentro de cada aba filtra só ela. Clique num motorista,
+        cliente ou vendedor para ver a quebra por motivo. Valor líquido da devolução (rotina 111),
+        pela data da devolução.
       </p>
     </div>
   );

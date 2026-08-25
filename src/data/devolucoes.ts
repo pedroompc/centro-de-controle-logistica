@@ -3,10 +3,13 @@ import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
 import { agregarPorSetor } from "@/domain/devolucoes";
 import type {
-  ResumoDevolucoes,
+  NucleoDevolucao,
+  SecaoRanking,
   DevolucaoPorMotivo,
   DevolucaoPorCliente,
+  DevolucaoPorVendedor,
   DevolucaoPorMotorista,
+  MotivoDetalhe,
   SetorDevolucao,
 } from "@/domain/devolucoes";
 import type { LinhaCidadeDevolucao } from "@/domain/devolucoes-mapa";
@@ -82,14 +85,28 @@ const sqlMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
   GROUP BY MOTIVO, SETOR
   ORDER BY VALOR DESC`;
 
+// Ordena por Nº DE NOTAS (quem "mais volta com entregas"), desempatando por valor
+// — casa com o subtítulo do painel e destaca quem reincide, não só quem tem ticket alto.
 const sqlCliente = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
   SELECT s.CODCLI, MAX(cli.CLIENTE) NOME,
-         COUNT(DISTINCT edf.NUMTRANSENT) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
   FROM edf
   JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   WHERE edf.NUMTRANSVENDA > 0
-  GROUP BY s.CODCLI ORDER BY VALOR DESC
+  GROUP BY s.CODCLI ORDER BY NOTAS DESC, VALOR DESC
+) WHERE ROWNUM <= 50`;
+
+// Devolução por VENDEDOR (RCA) da nota de origem: PCNFSAID.CODUSUR → PCUSUARI.NOME.
+// Mesma base do painel de clientes (devolução ligada à venda), agrupada por vendedor.
+const sqlVendedor = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
+  SELECT s.CODUSUR, MAX(usu.NOME) NOME,
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  LEFT JOIN PCUSUARI usu ON usu.CODUSUR = s.CODUSUR
+  WHERE edf.NUMTRANSVENDA > 0 AND NVL(s.CODUSUR, 0) != 0
+  GROUP BY s.CODUSUR ORDER BY NOTAS DESC, VALOR DESC
 ) WHERE ROWNUM <= 50`;
 
 // Devolução por motorista de entrega: expedição via carga (PCNFSAID.NUMCAR →
@@ -126,11 +143,83 @@ WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
 GROUP BY car.CODMOTORISTA
 ORDER BY VALOR_DEVOLVIDO DESC`;
 
+// Quebra por MOTIVO dentro de cada motorista (drill-down): mesma atribuição da
+// query de motorista (venda em carga → PCCARREG.CODMOTORISTA), mas lida no nível
+// da devolução (edf) p/ preservar motivo/setor. `notas` = nº de vendas que
+// voltaram por aquele motivo; `valor` = valor líquido devolvido.
+const sqlMotoristaMotivo = (f: FiltrosDevolucao) => `
+WITH ${ctes(f)},
+vendas AS (
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR
+  FROM PCNFSAID nf
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.NUMCAR, 0) != 0
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+)
+SELECT car.CODMOTORISTA,
+       edf.MOTIVO,
+       edf.SETOR,
+       COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS,
+       ROUND(SUM(edf.VL), 2) VALOR
+FROM vendas v
+JOIN edf ON edf.NUMTRANSVENDA = v.NUMTRANSVENDA
+JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
+WHERE edf.NUMTRANSVENDA > 0 AND NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+GROUP BY car.CODMOTORISTA, edf.MOTIVO, edf.SETOR
+ORDER BY car.CODMOTORISTA, NOTAS DESC, VALOR DESC`;
+
+// Quebra por MOTIVO dentro de cada CLIENTE / VENDEDOR (drill-down dos painéis):
+// lê no nível da devolução (edf) ligada à venda de origem, agrupando por
+// entidade + motivo. `notas` = nº de vendas que voltaram; `valor` = líquido.
+const sqlClienteMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+  SELECT s.CODCLI COD, edf.MOTIVO, edf.SETOR,
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  WHERE edf.NUMTRANSVENDA > 0
+  GROUP BY s.CODCLI, edf.MOTIVO, edf.SETOR
+  ORDER BY s.CODCLI, NOTAS DESC, VALOR DESC`;
+
+const sqlVendedorMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+  SELECT s.CODUSUR COD, edf.MOTIVO, edf.SETOR,
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  WHERE edf.NUMTRANSVENDA > 0 AND NVL(s.CODUSUR, 0) != 0
+  GROUP BY s.CODUSUR, edf.MOTIVO, edf.SETOR
+  ORDER BY s.CODUSUR, NOTAS DESC, VALOR DESC`;
+
 interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
+interface LinhaVendedor { CODUSUR: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
+interface LinhaMotoristaMotivo { CODMOTORISTA: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
+// Motivo por entidade genérica (cliente/vendedor): COD é o código da entidade.
+interface LinhaEntidadeMotivo { COD: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 
 const n = (v: unknown): number => Number(v) || 0;
+
+/**
+ * Protege uma seção OPCIONAL: devolve `fallback` se a query falhar OU passar de
+ * `ms` — assim uma seção nova pesada/lenta nunca trava a página inteira (o resto
+ * já renderizou). A conexão pendente fecha sozinha no `finally` do queryWinthor.
+ */
+function secaoOpcional<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
+  const porTempo = new Promise<T>((resolve) =>
+    setTimeout(() => {
+      console.error(`[devolucoes] seção "${label}" passou de ${ms}ms — omitida desta vez`);
+      resolve(fallback);
+    }, ms),
+  );
+  return Promise.race([
+    p.catch((erro) => {
+      console.error(`[devolucoes] seção "${label}" indisponível:`, (erro as Error).message);
+      return fallback;
+    }),
+    porTempo,
+  ]);
+}
 
 /**
  * Motivos que tiveram devolução no período — popula o `select` do filtro. Sempre
@@ -151,66 +240,103 @@ export const listarMotivosDoMes = cache(async (ini: string, fim: string): Promis
   }
 });
 
-/**
- * Devoluções das filiais 1 e 11 no período [ini, fim]: total, por setor, por
- * motivo e top clientes. `motivo`/`setor` estreitam as três quebras de uma vez
- * (via a CTE `edf`). Retorna `null` se o Winthor estiver indisponível.
- *
- * Parâmetros primitivos (e não um objeto) de propósito: `cache()` do React
- * compara argumentos por identidade — um objeto literal novo a cada chamada
- * furaria a memoização.
- */
-export const getDevolucoes = cache(async (
-  ini: string,
-  fim: string,
-  motivo?: string,
-  setor?: string,
-): Promise<ResumoDevolucoes | null> => {
-  const f: FiltrosDevolucao = { motivo, setor };
-  // Bind só do que aparece na query — o Oracle recusa bind não referenciado.
-  const binds: Record<string, string> = { ini, fim };
-  if (motivo) binds.motivo = motivo;
-  if (setor) binds.setor = setor;
-  try {
-    const [motivosRaw, clientesRaw, motoristasRaw] = await Promise.all([
-      queryWinthor<LinhaMotivo>(sqlMotivo(f), binds),
-      queryWinthor<LinhaCliente>(sqlCliente(f), binds),
-      queryWinthor<LinhaMotorista>(sqlMotorista(f), binds),
-    ]);
+// Bind só do que aparece na query — o Oracle recusa bind não referenciado.
+function bindsDe(ini: string, fim: string, motivo?: string, setor?: string): Record<string, string> {
+  const b: Record<string, string> = { ini, fim };
+  if (motivo) b.motivo = motivo;
+  if (setor) b.setor = setor;
+  return b;
+}
 
+// Agrupa linhas "código → motivo" num Record por código (para os drill-downs).
+function agruparPorCod(rows: LinhaEntidadeMotivo[]): Record<number, MotivoDetalhe[]> {
+  const mapa: Record<number, MotivoDetalhe[]> = {};
+  for (const r of rows) {
+    (mapa[n(r.COD)] ??= []).push({
+      motivo: r.MOTIVO, setor: r.SETOR as SetorDevolucao, notas: n(r.NOTAS), valor: n(r.VALOR),
+    });
+  }
+  return mapa;
+}
+
+/**
+ * NÚCLEO da página (rápido): por motivo → total, por setor e a lista de motivos.
+ * É o único bloco de devolução buscado no SSR; as demais seções (clientes,
+ * vendedores, motoristas, mapa) são carregadas SOB DEMANDA por aba. Retorna
+ * `null` se o Winthor estiver indisponível (a página mostra o aviso).
+ */
+export const getNucleoDevolucao = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string,
+): Promise<NucleoDevolucao | null> => {
+  try {
+    const motivosRaw = await queryWinthor<LinhaMotivo>(sqlMotivo({ motivo, setor }), bindsDe(ini, fim, motivo, setor));
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
-      motivo: r.MOTIVO,
-      setor: r.SETOR as SetorDevolucao,
-      notas: n(r.NOTAS),
-      valor: n(r.VALOR),
+      motivo: r.MOTIVO, setor: r.SETOR as SetorDevolucao, notas: n(r.NOTAS), valor: n(r.VALOR),
     }));
-    const topClientes: DevolucaoPorCliente[] = clientesRaw.map((r) => ({
-      codcli: n(r.CODCLI),
-      nome: r.NOME ?? `Cliente ${r.CODCLI}`,
-      notas: n(r.NOTAS),
-      valor: n(r.VALOR),
-    }));
-    const porMotorista: DevolucaoPorMotorista[] = motoristasRaw.map((r) => ({
+    return { total: porMotivo.reduce((t, m) => t + m.valor, 0), porSetor: agregarPorSetor(porMotivo), porMotivo };
+  } catch (erro) {
+    console.error("[devolucoes] núcleo indisponível:", (erro as Error).message);
+    return null;
+  }
+});
+
+/** Aba CLIENTES (sob demanda): ranking por nº de notas + drill-down por motivo. */
+export const getClientesDevolucao = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string,
+): Promise<SecaoRanking<DevolucaoPorCliente>> => {
+  const f: FiltrosDevolucao = { motivo, setor };
+  const binds = bindsDe(ini, fim, motivo, setor);
+  const [rankingRaw, motivoRaw] = await Promise.all([
+    secaoOpcional(queryWinthor<LinhaCliente>(sqlCliente(f), binds), 15000, [], "clientes"),
+    secaoOpcional(queryWinthor<LinhaEntidadeMotivo>(sqlClienteMotivo(f), binds), 15000, [], "motivos por cliente"),
+  ]);
+  return {
+    itens: rankingRaw.map((r) => ({ codcli: n(r.CODCLI), nome: r.NOME ?? `Cliente ${r.CODCLI}`, notas: n(r.NOTAS), valor: n(r.VALOR) })),
+    motivos: agruparPorCod(motivoRaw),
+  };
+});
+
+/** Aba VENDEDORES (sob demanda): ranking + drill-down por motivo. */
+export const getVendedoresDevolucao = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string,
+): Promise<SecaoRanking<DevolucaoPorVendedor>> => {
+  const f: FiltrosDevolucao = { motivo, setor };
+  const binds = bindsDe(ini, fim, motivo, setor);
+  const [rankingRaw, motivoRaw] = await Promise.all([
+    secaoOpcional(queryWinthor<LinhaVendedor>(sqlVendedor(f), binds), 15000, [], "vendedores"),
+    secaoOpcional(queryWinthor<LinhaEntidadeMotivo>(sqlVendedorMotivo(f), binds), 15000, [], "motivos por vendedor"),
+  ]);
+  return {
+    itens: rankingRaw.map((r) => ({ codVendedor: n(r.CODUSUR), nome: r.NOME ?? `Vendedor ${r.CODUSUR}`, notas: n(r.NOTAS), valor: n(r.VALOR) })),
+    motivos: agruparPorCod(motivoRaw),
+  };
+});
+
+/** Aba MOTORISTAS (sob demanda): taxa por motorista + drill-down por motivo. */
+export const getMotoristasDevolucao = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string,
+): Promise<SecaoRanking<DevolucaoPorMotorista>> => {
+  const f: FiltrosDevolucao = { motivo, setor };
+  const binds = bindsDe(ini, fim, motivo, setor);
+  const [rankingRaw, motivoRaw] = await Promise.all([
+    secaoOpcional(queryWinthor<LinhaMotorista>(sqlMotorista(f), binds), 20000, [], "motoristas"),
+    secaoOpcional(queryWinthor<LinhaMotoristaMotivo>(sqlMotoristaMotivo(f), binds), 20000, [], "motivos por motorista"),
+  ]);
+  const motivos: Record<number, MotivoDetalhe[]> = {};
+  for (const r of motivoRaw) {
+    (motivos[n(r.CODMOTORISTA)] ??= []).push({
+      motivo: r.MOTIVO, setor: r.SETOR as SetorDevolucao, notas: n(r.NOTAS), valor: n(r.VALOR),
+    });
+  }
+  return {
+    itens: rankingRaw.map((r) => ({
       codMotorista: n(r.CODMOTORISTA),
       nome: r.NOME ?? `Motorista ${r.CODMOTORISTA}`,
       tipo: r.TIPO_MOTORISTA === "F" || r.TIPO_MOTORISTA === "T" ? r.TIPO_MOTORISTA : null,
-      expedidas: n(r.EXPEDIDAS),
-      devolvidas: n(r.DEVOLVIDAS),
-      taxa: n(r.TAXA),
-      valorDevolvido: n(r.VALOR_DEVOLVIDO),
-    }));
-
-    return {
-      total: porMotivo.reduce((t, m) => t + m.valor, 0),
-      porSetor: agregarPorSetor(porMotivo),
-      porMotivo,
-      topClientes,
-      porMotorista,
-    };
-  } catch (erro) {
-    console.error("[devolucoes] Winthor indisponível:", (erro as Error).message);
-    return null;
-  }
+      expedidas: n(r.EXPEDIDAS), devolvidas: n(r.DEVOLVIDAS), taxa: n(r.TAXA), valorDevolvido: n(r.VALOR_DEVOLVIDO),
+    })),
+    motivos,
+  };
 });
 
 // --- Devolução por cidade (PE) ------------------------------------------------
