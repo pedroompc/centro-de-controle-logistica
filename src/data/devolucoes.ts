@@ -6,7 +6,9 @@ import type {
   ResumoDevolucoes,
   DevolucaoPorMotivo,
   DevolucaoPorCliente,
+  DevolucaoPorVendedor,
   DevolucaoPorMotorista,
+  MotivoMotorista,
   SetorDevolucao,
 } from "@/domain/devolucoes";
 import type { LinhaCidadeDevolucao } from "@/domain/devolucoes-mapa";
@@ -82,14 +84,28 @@ const sqlMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
   GROUP BY MOTIVO, SETOR
   ORDER BY VALOR DESC`;
 
+// Ordena por Nº DE NOTAS (quem "mais volta com entregas"), desempatando por valor
+// — casa com o subtítulo do painel e destaca quem reincide, não só quem tem ticket alto.
 const sqlCliente = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
   SELECT s.CODCLI, MAX(cli.CLIENTE) NOME,
-         COUNT(DISTINCT edf.NUMTRANSENT) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
   FROM edf
   JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   WHERE edf.NUMTRANSVENDA > 0
-  GROUP BY s.CODCLI ORDER BY VALOR DESC
+  GROUP BY s.CODCLI ORDER BY NOTAS DESC, VALOR DESC
+) WHERE ROWNUM <= 50`;
+
+// Devolução por VENDEDOR (RCA) da nota de origem: PCNFSAID.CODUSUR → PCUSUARI.NOME.
+// Mesma base do painel de clientes (devolução ligada à venda), agrupada por vendedor.
+const sqlVendedor = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
+  SELECT s.CODUSUR, MAX(usu.NOME) NOME,
+         COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  LEFT JOIN PCUSUARI usu ON usu.CODUSUR = s.CODUSUR
+  WHERE edf.NUMTRANSVENDA > 0 AND NVL(s.CODUSUR, 0) != 0
+  GROUP BY s.CODUSUR ORDER BY NOTAS DESC, VALOR DESC
 ) WHERE ROWNUM <= 50`;
 
 // Devolução por motorista de entrega: expedição via carga (PCNFSAID.NUMCAR →
@@ -126,9 +142,37 @@ WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
 GROUP BY car.CODMOTORISTA
 ORDER BY VALOR_DEVOLVIDO DESC`;
 
+// Quebra por MOTIVO dentro de cada motorista (drill-down): mesma atribuição da
+// query de motorista (venda em carga → PCCARREG.CODMOTORISTA), mas lida no nível
+// da devolução (edf) p/ preservar motivo/setor. `notas` = nº de vendas que
+// voltaram por aquele motivo; `valor` = valor líquido devolvido.
+const sqlMotoristaMotivo = (f: FiltrosDevolucao) => `
+WITH ${ctes(f)},
+vendas AS (
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR
+  FROM PCNFSAID nf
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.NUMCAR, 0) != 0
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+)
+SELECT car.CODMOTORISTA,
+       edf.MOTIVO,
+       edf.SETOR,
+       COUNT(DISTINCT edf.NUMTRANSVENDA) NOTAS,
+       ROUND(SUM(edf.VL), 2) VALOR
+FROM vendas v
+JOIN edf ON edf.NUMTRANSVENDA = v.NUMTRANSVENDA
+JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
+WHERE edf.NUMTRANSVENDA > 0 AND NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+GROUP BY car.CODMOTORISTA, edf.MOTIVO, edf.SETOR
+ORDER BY car.CODMOTORISTA, NOTAS DESC, VALOR DESC`;
+
 interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
+interface LinhaVendedor { CODUSUR: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
+interface LinhaMotoristaMotivo { CODMOTORISTA: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 
 const n = (v: unknown): number => Number(v) || 0;
 
@@ -172,10 +216,12 @@ export const getDevolucoes = cache(async (
   if (motivo) binds.motivo = motivo;
   if (setor) binds.setor = setor;
   try {
-    const [motivosRaw, clientesRaw, motoristasRaw] = await Promise.all([
+    const [motivosRaw, clientesRaw, vendedoresRaw, motoristasRaw, motoristaMotivoRaw] = await Promise.all([
       queryWinthor<LinhaMotivo>(sqlMotivo(f), binds),
       queryWinthor<LinhaCliente>(sqlCliente(f), binds),
+      queryWinthor<LinhaVendedor>(sqlVendedor(f), binds),
       queryWinthor<LinhaMotorista>(sqlMotorista(f), binds),
+      queryWinthor<LinhaMotoristaMotivo>(sqlMotoristaMotivo(f), binds),
     ]);
 
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
@@ -190,6 +236,12 @@ export const getDevolucoes = cache(async (
       notas: n(r.NOTAS),
       valor: n(r.VALOR),
     }));
+    const porVendedor: DevolucaoPorVendedor[] = vendedoresRaw.map((r) => ({
+      codVendedor: n(r.CODUSUR),
+      nome: r.NOME ?? `Vendedor ${r.CODUSUR}`,
+      notas: n(r.NOTAS),
+      valor: n(r.VALOR),
+    }));
     const porMotorista: DevolucaoPorMotorista[] = motoristasRaw.map((r) => ({
       codMotorista: n(r.CODMOTORISTA),
       nome: r.NOME ?? `Motorista ${r.CODMOTORISTA}`,
@@ -200,12 +252,26 @@ export const getDevolucoes = cache(async (
       valorDevolvido: n(r.VALOR_DEVOLVIDO),
     }));
 
+    // Agrupa os motivos por motorista (já vêm ordenados por notas desc na query).
+    const motivosPorMotorista: Record<number, MotivoMotorista[]> = {};
+    for (const r of motoristaMotivoRaw) {
+      const cod = n(r.CODMOTORISTA);
+      (motivosPorMotorista[cod] ??= []).push({
+        motivo: r.MOTIVO,
+        setor: r.SETOR as SetorDevolucao,
+        notas: n(r.NOTAS),
+        valor: n(r.VALOR),
+      });
+    }
+
     return {
       total: porMotivo.reduce((t, m) => t + m.valor, 0),
       porSetor: agregarPorSetor(porMotivo),
       porMotivo,
       topClientes,
+      porVendedor,
       porMotorista,
+      motivosPorMotorista,
     };
   } catch (erro) {
     console.error("[devolucoes] Winthor indisponível:", (erro as Error).message);

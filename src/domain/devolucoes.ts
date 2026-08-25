@@ -26,6 +26,22 @@ export interface DevolucaoPorCliente {
   valor: number;
 }
 
+/** Devolução atribuída ao vendedor (RCA) da nota de origem — PCNFSAID.CODUSUR. */
+export interface DevolucaoPorVendedor {
+  codVendedor: number;
+  nome: string;
+  notas: number; // notas de venda que voltaram
+  valor: number;
+}
+
+/** Quebra dos motivos de um motorista (drill-down da tabela de motoristas). */
+export interface MotivoMotorista {
+  motivo: string;
+  setor: SetorDevolucao;
+  notas: number;
+  valor: number;
+}
+
 /** Vínculo do motorista (PCEMPR.TIPOMOTORISTA): F = da casa, T = terceirizado. */
 export type TipoMotorista = "F" | "T" | null;
 
@@ -44,7 +60,10 @@ export interface ResumoDevolucoes {
   porSetor: DevolucaoPorSetor[];
   porMotivo: DevolucaoPorMotivo[];
   topClientes: DevolucaoPorCliente[];
+  porVendedor: DevolucaoPorVendedor[];
   porMotorista: DevolucaoPorMotorista[];
+  /** Motivos por motorista (chave = codMotorista) — alimenta o drill-down. */
+  motivosPorMotorista: Record<number, MotivoMotorista[]>;
 }
 
 /**

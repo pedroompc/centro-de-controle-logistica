@@ -43,6 +43,14 @@ export function tipoMotoristaInfo(tipo: TipoMotorista): { label: string; badge: 
   return { label: "Não informado", badge: "bg-slate-100 text-slate-500 border border-slate-200" };
 }
 
+/** Etiqueta de setor responsável — mesma paleta dos cards de setor da página. */
+export function setorPill(setor: string): string {
+  if (setor === "Logística") return "bg-[#eef0fb] text-[#1b2168]";
+  if (setor === "Comercial") return "bg-amber-50 text-amber-700";
+  if (setor === "Faturamento") return "bg-rose-50 text-rose-700";
+  return "bg-slate-100 text-slate-500";
+}
+
 /** Filtra por vínculo (F/T); `""` devolve a lista inteira. */
 export function filtrarPorTipo(
   lista: DevolucaoPorMotorista[],

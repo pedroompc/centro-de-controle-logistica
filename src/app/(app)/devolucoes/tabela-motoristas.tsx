@@ -1,16 +1,52 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { Card, PanelHeader } from "@/components/ui";
-import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo } from "@/domain/devolucoes-ui";
+import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo, setorPill } from "@/domain/devolucoes-ui";
 import type { ColunaMotorista, Direcao, FiltroTipoMotorista } from "@/domain/devolucoes-ui";
-import type { TipoMotorista } from "@/domain/devolucoes";
+import type { TipoMotorista, MotivoMotorista } from "@/domain/devolucoes";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { piorMotorista } from "@/domain/devolucoes";
 import type { DevolucaoPorMotorista } from "@/domain/devolucoes";
 import { IconeCaminhao, IconeUsuario, IconeBusca, IconeChevronCima, IconeChevronBaixo } from "./icons";
 
 type Sort = { col: ColunaMotorista; dir: Direcao };
+
+/** Lista de motivos (valor + quantidade) de um motorista — corpo do drill-down. */
+function DetalheMotivos({ motivos }: { motivos: MotivoMotorista[] }) {
+  if (motivos.length === 0) {
+    return <p className="px-4 py-4 text-center text-xs text-slate-400">Sem motivos registrados para este motorista.</p>;
+  }
+  const maxNotas = Math.max(1, ...motivos.map((m) => m.notas));
+  return (
+    <div className="space-y-2 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        Motivos da devolução ({motivos.length})
+      </p>
+      {motivos.map((m, i) => (
+        <div key={`${m.motivo}-${i}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[#141a4d]" title={m.motivo}>{m.motivo}</span>
+              <span className={`hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:inline-flex ${setorPill(m.setor)}`}>
+                {m.setor}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-baseline gap-3 tabular-nums">
+              <span className="text-slate-700">
+                <b className="text-slate-800">{m.notas}</b> <span className="text-[10px] text-slate-400">notas</span>
+              </span>
+              <span className="w-24 text-right font-semibold text-[#141a4d]">{formatBRL(m.valor)}</span>
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-amber-400" style={{ width: `${(m.notas / maxNotas) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const FILTROS_TIPO: { v: FiltroTipoMotorista; label: string }[] = [
   { v: "", label: "Todos" },
@@ -64,14 +100,23 @@ function Th({
   );
 }
 
-export default function TabelaMotoristas({ motoristas }: { motoristas: DevolucaoPorMotorista[] }) {
+export default function TabelaMotoristas({
+  motoristas,
+  motivos = {},
+}: {
+  motoristas: DevolucaoPorMotorista[];
+  motivos?: Record<number, MotivoMotorista[]>;
+}) {
   const [busca, setBusca] = useState("");
   const [tipo, setTipo] = useState<FiltroTipoMotorista>("");
   const [sort, setSort] = useState<Sort>({ col: "taxa", dir: "desc" });
+  const [aberto, setAberto] = useState<number | null>(null); // codMotorista com drill-down aberto
 
   function onSort(col: ColunaMotorista) {
     setSort((p) => (p.col === col ? { col, dir: p.dir === "desc" ? "asc" : "desc" } : { col, dir: "desc" }));
   }
+  const toggle = (cod: number) => setAberto((a) => (a === cod ? null : cod));
+  const temMotivos = (cod: number) => (motivos[cod]?.length ?? 0) > 0;
 
   const filtrados = useMemo(
     () => filtrarPorTipo(
@@ -141,7 +186,7 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
       <PanelHeader
         icon={<IconeCaminhao />}
         title="Taxa de devolução por motorista"
-        context={`${lista.length} motoristas · ordene pelas colunas`}
+        context={`${lista.length} motoristas · clique para ver os motivos`}
         right={controles}
       />
       {pior && (
@@ -177,41 +222,66 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
               <Th col="devolvidas" rotulo="Devolvidas" sort={sort} onSort={onSort} />
               <Th col="taxa" rotulo="Taxa" sort={sort} onSort={onSort} />
               <Th col="valorDevolvido" rotulo="Valor devolvido" sort={sort} onSort={onSort} />
+              <th className="w-10 px-3 py-3" aria-label="Motivos" />
             </tr>
           </thead>
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-sm text-slate-400">
+                <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
                   {msgVazio}
                 </td>
               </tr>
             ) : (
-              lista.map((m, i) => (
-                <tr key={m.codMotorista} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
-                  <td className="px-3 py-3 text-center font-mono text-xs text-slate-400">{i + 1}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="shrink-0 rounded-lg bg-[#eef0fb] p-1.5 text-[#1b2168]">
-                        <IconeUsuario />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate font-medium leading-none text-[#141a4d]">{m.nome}</p>
-                          <SeloTipo tipo={m.tipo} />
+              lista.map((m, i) => {
+                const expansivel = temMotivos(m.codMotorista);
+                const estaAberto = aberto === m.codMotorista;
+                return (
+                  <Fragment key={m.codMotorista}>
+                    <tr
+                      onClick={expansivel ? () => toggle(m.codMotorista) : undefined}
+                      aria-expanded={expansivel ? estaAberto : undefined}
+                      className={`border-b border-slate-100 hover:bg-slate-50/50 ${estaAberto ? "bg-amber-50/40" : ""} ${expansivel ? "cursor-pointer" : ""}`}
+                    >
+                      <td className="px-3 py-3 text-center font-mono text-xs text-slate-400">{i + 1}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="shrink-0 rounded-lg bg-[#eef0fb] p-1.5 text-[#1b2168]">
+                            <IconeUsuario />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate font-medium leading-none text-[#141a4d]">{m.nome}</p>
+                              <SeloTipo tipo={m.tipo} />
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
+                          </div>
                         </div>
-                        <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-slate-500">{m.expedidas}</td>
-                  <td className="px-3 py-3 text-right font-medium tabular-nums text-slate-600">{m.devolvidas}</td>
-                  <td className={`px-3 py-3 text-right text-base font-bold tabular-nums ${corTaxa(m.taxa)}`}>
-                    {formatPercent(m.taxa / 100)}
-                  </td>
-                  <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(m.valorDevolvido)}</td>
-                </tr>
-              ))
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-slate-500">{m.expedidas}</td>
+                      <td className="px-3 py-3 text-right font-medium tabular-nums text-slate-600">{m.devolvidas}</td>
+                      <td className={`px-3 py-3 text-right text-base font-bold tabular-nums ${corTaxa(m.taxa)}`}>
+                        {formatPercent(m.taxa / 100)}
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(m.valorDevolvido)}</td>
+                      <td className="px-3 py-3 text-center text-slate-400">
+                        {expansivel ? (
+                          estaAberto ? <IconeChevronCima className="mx-auto h-4 w-4" /> : <IconeChevronBaixo className="mx-auto h-4 w-4" />
+                        ) : (
+                          <span className="text-slate-200">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {estaAberto && (
+                      <tr className="border-b border-slate-100 bg-slate-50/60">
+                        <td colSpan={7} className="p-0">
+                          <DetalheMotivos motivos={motivos[m.codMotorista] ?? []} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -224,40 +294,55 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
             {msgVazio}
           </li>
         ) : (
-          lista.map((m, i) => (
-            <li key={m.codMotorista} className="px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-5 shrink-0 text-center font-mono text-xs text-slate-400">{i + 1}</span>
-                <div className="shrink-0 rounded-lg bg-[#eef0fb] p-1.5 text-[#1b2168]">
-                  <IconeUsuario />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-medium leading-tight text-[#141a4d]">{m.nome}</p>
-                    <SeloTipo tipo={m.tipo} />
+          lista.map((m, i) => {
+            const expansivel = temMotivos(m.codMotorista);
+            const estaAberto = aberto === m.codMotorista;
+            return (
+              <li key={m.codMotorista} className={estaAberto ? "bg-amber-50/40" : ""}>
+                <div
+                  onClick={expansivel ? () => toggle(m.codMotorista) : undefined}
+                  className={`px-4 py-3 ${expansivel ? "cursor-pointer" : ""}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-5 shrink-0 text-center font-mono text-xs text-slate-400">{i + 1}</span>
+                    <div className="shrink-0 rounded-lg bg-[#eef0fb] p-1.5 text-[#1b2168]">
+                      <IconeUsuario />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium leading-tight text-[#141a4d]">{m.nome}</p>
+                        <SeloTipo tipo={m.tipo} />
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={`text-lg font-bold leading-none tabular-nums ${corTaxa(m.taxa)}`}>
+                        {formatPercent(m.taxa / 100)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-400">taxa</p>
+                    </div>
+                    {expansivel && (
+                      estaAberto
+                        ? <IconeChevronCima className="h-4 w-4 shrink-0 text-slate-400" />
+                        : <IconeChevronBaixo className="h-4 w-4 shrink-0 text-slate-400" />
+                    )}
                   </div>
-                  <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
+                  <div className="mt-2 flex items-center gap-4 pl-[3.25rem] text-xs text-slate-500">
+                    <span>
+                      Entregas <b className="tabular-nums text-slate-700">{m.expedidas}</b>
+                    </span>
+                    <span>
+                      Devolvidas <b className="tabular-nums text-slate-700">{m.devolvidas}</b>
+                    </span>
+                    <span className="ml-auto tabular-nums font-semibold text-[#141a4d]">
+                      {formatBRL(m.valorDevolvido)}
+                    </span>
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <p className={`text-lg font-bold leading-none tabular-nums ${corTaxa(m.taxa)}`}>
-                    {formatPercent(m.taxa / 100)}
-                  </p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-400">taxa</p>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-4 pl-[3.25rem] text-xs text-slate-500">
-                <span>
-                  Entregas <b className="tabular-nums text-slate-700">{m.expedidas}</b>
-                </span>
-                <span>
-                  Devolvidas <b className="tabular-nums text-slate-700">{m.devolvidas}</b>
-                </span>
-                <span className="ml-auto tabular-nums font-semibold text-[#141a4d]">
-                  {formatBRL(m.valorDevolvido)}
-                </span>
-              </div>
-            </li>
-          ))
+                {estaAberto && <DetalheMotivos motivos={motivos[m.codMotorista] ?? []} />}
+              </li>
+            );
+          })
         )}
       </ul>
     </Card>

@@ -10,6 +10,7 @@ import type { SetorDevolucao, DevolucaoPorMotivo } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard, PanelHeader } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
 import PainelClientes from "./painel-clientes";
+import PainelVendedores from "./painel-vendedores";
 import TabelaMotoristas from "./tabela-motoristas";
 import { IconeEtiqueta } from "./icons";
 import { MapaDevolucoes, type MunicipioMapa } from "./mapa-devolucoes";
@@ -242,14 +243,19 @@ export default async function DevolucoesPage({
         <PainelClientes clientes={r.topClientes} />
       </div>
 
+      <div className="mt-5">
+        <PainelVendedores vendedores={r.porVendedor} />
+      </div>
+
       <div className="mt-6">
-        <TabelaMotoristas motoristas={r.porMotorista} />
+        <TabelaMotoristas motoristas={r.porMotorista} motivos={r.motivosPorMotorista} />
       </div>
 
       <p className="mt-4 text-xs text-slate-400">
         Os indicadores no topo são sempre o total do mês (não reagem ao filtro). Motivo e setor
-        estreitam as três seções abaixo; a busca dentro de cada painel filtra só aquele painel.
-        Valor líquido da devolução (rotina 111), pela data da devolução.
+        estreitam todas as seções abaixo (motivos, clientes, vendedores e motoristas); a busca
+        dentro de cada painel filtra só aquele painel. Clique num motorista para ver a quebra por
+        motivo. Valor líquido da devolução (rotina 111), pela data da devolução.
       </p>
     </div>
   );
