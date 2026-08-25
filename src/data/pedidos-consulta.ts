@@ -30,6 +30,16 @@ const faixaData = `ped.DATA >= TO_DATE(:ini,'YYYY-MM-DD') AND ped.DATA < TO_DATE
 // Teto de linhas — protege contra intervalos enormes (a 335 pode ter milhares).
 const TETO = 500;
 
+/** Filtros da consulta (todos opcionais menos o intervalo/estados). */
+export interface FiltrosPedidos {
+  ini: string;
+  fim: string;
+  estados: EstadoPedido[];
+  cliente?: number; // CODCLI
+  rca?: number; // CODUSUR
+  numped?: number; // busca direta por nº do pedido (ignora período/estado)
+}
+
 /**
  * Consulta de pedidos (335 turbinada) das filiais 1 e 11, por data de emissão.
  * Uma linha por pedido: cliente, endereço de entrega, estado, motorista da carga,
@@ -39,7 +49,25 @@ const TETO = 500;
  * - Devolução: existe entrada de devolução (PCESTCOM.VLDEVOLUCAO > 0) ligada a
  *   alguma NF de saída daquele pedido.
  */
-const sqlPedidos = (estados: EstadoPedido[]) => `SELECT * FROM (
+// WHERE dinâmico: busca por Nº do pedido curto-circuita período/estado (acha o
+// pedido em qualquer data, como a 335). Senão, aplica período + estados + os
+// filtros opcionais de cliente/RCA. Só entram os binds referenciados.
+function whereClause(f: FiltrosPedidos): string {
+  if (f.numped != null) {
+    return `${filialIn("ped.CODFILIAL")} AND ped.NUMPED = :numped`;
+  }
+  return [
+    filialIn("ped.CODFILIAL"),
+    faixaData,
+    estadosSql(f.estados),
+    f.cliente != null ? "ped.CODCLI = :cliente" : "",
+    f.rca != null ? "ped.CODUSUR = :rca" : "",
+  ]
+    .filter(Boolean)
+    .join("\n    AND ");
+}
+
+const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
   SELECT
     ped.NUMPED                       AS NUMPED,
     ped.DATA                         AS DATA_PEDIDO,
@@ -50,10 +78,13 @@ const sqlPedidos = (estados: EstadoPedido[]) => `SELECT * FROM (
     cli.BAIRROENT                    AS BAIRRO,
     cli.MUNICENT                     AS CIDADE,
     cli.ESTENT                       AS UF,
+    ped.CODUSUR                      AS CODRCA,
+    usu.NOME                         AS RCA,
     ped.POSICAO                      AS POSICAO,
     car.CODMOTORISTA                 AS CODMOTORISTA,
     emp.NOME                         AS MOTORISTA,
     ped.DTFAT                        AS DTFAT,
+    (SELECT MAX(nf.NUMNOTA) FROM PCNFSAID nf WHERE nf.NUMPED = ped.NUMPED) AS NF,
     NVL(ped.VLTOTAL, 0)              AS VALOR,
     NVL(ped.TOTPESO, 0)              AS PESO,
     (SELECT COUNT(*) FROM PCPEDI i WHERE i.NUMPED = ped.NUMPED) AS QTD_ITENS,
@@ -64,19 +95,19 @@ const sqlPedidos = (estados: EstadoPedido[]) => `SELECT * FROM (
     ) THEN 'S' ELSE 'N' END          AS TEM_DEV
   FROM PCPEDC ped
   LEFT JOIN PCCLIENT cli ON cli.CODCLI      = ped.CODCLI
+  LEFT JOIN PCUSUARI usu ON usu.CODUSUR     = ped.CODUSUR
   LEFT JOIN PCCARREG car ON car.NUMCAR      = ped.NUMCAR
   LEFT JOIN PCEMPR   emp ON emp.MATRICULA   = car.CODMOTORISTA
-  WHERE ${filialIn("ped.CODFILIAL")}
-    AND ${faixaData}
-    AND ${estadosSql(estados)}
+  WHERE ${whereClause(f)}
   ORDER BY ped.DATA DESC, ped.NUMPED DESC
 ) WHERE ROWNUM <= ${TETO}`;
 
 interface LinhaPedido {
   NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
+  CODRCA: number | null; RCA: string | null;
   POSICAO: string | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
-  VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
+  NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
 }
 
 /**
@@ -84,13 +115,16 @@ interface LinhaPedido {
  * se o Winthor estiver indisponível (a página mostra o aviso). Limitado a 500
  * linhas — intervalos grandes devem ser estreitados pelo filtro.
  */
-export const getPedidos = cache(async (
-  ini: string,
-  fim: string,
-  estados: EstadoPedido[],
-): Promise<PedidoConsulta[] | null> => {
+export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsulta[] | null> => {
+  // Bind só do que a query referencia (o Oracle recusa bind não usado).
+  const binds: Record<string, string | number> =
+    f.numped != null ? { numped: f.numped } : { ini: f.ini, fim: f.fim };
+  if (f.numped == null) {
+    if (f.cliente != null) binds.cliente = f.cliente;
+    if (f.rca != null) binds.rca = f.rca;
+  }
   try {
-    const rows = await queryWinthor<LinhaPedido>(sqlPedidos(estados), { ini, fim });
+    const rows = await queryWinthor<LinhaPedido>(sqlPedidos(f), binds);
     return rows.map((r) => ({
       numped: num(r.NUMPED),
       data: toISO(r.DATA_PEDIDO) ?? "",
@@ -101,10 +135,13 @@ export const getPedidos = cache(async (
       bairro: str(r.BAIRRO),
       cidade: str(r.CIDADE),
       uf: str(r.UF),
+      codRca: r.CODRCA == null ? null : num(r.CODRCA),
+      rca: str(r.RCA),
       posicao: (r.POSICAO ?? "").trim(),
       codMotorista: r.CODMOTORISTA == null ? null : num(r.CODMOTORISTA),
       motorista: str(r.MOTORISTA),
       dataFaturamento: toISO(r.DTFAT),
+      notaFiscal: r.NF == null ? null : num(r.NF),
       valor: num(r.VALOR),
       peso: num(r.PESO),
       qtdItens: num(r.QTD_ITENS),

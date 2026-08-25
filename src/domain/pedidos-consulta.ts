@@ -15,10 +15,13 @@ export interface PedidoConsulta {
   bairro: string | null;
   cidade: string | null;
   uf: string | null;
+  codRca: number | null;
+  rca: string | null; // vendedor (PCUSUARI.NOME)
   posicao: string; // PCPEDC.POSICAO cru
   codMotorista: number | null;
   motorista: string | null;
   dataFaturamento: string | null; // quando foi faturado (ISO) ou null
+  notaFiscal: number | null; // nº da NF (PCNFSAID.NUMNOTA) quando faturado
   valor: number;
   peso: number;
   qtdItens: number;
