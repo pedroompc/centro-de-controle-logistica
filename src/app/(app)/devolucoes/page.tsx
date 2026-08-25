@@ -1,16 +1,13 @@
 import Link from "next/link";
-import municipiosGeo from "@/data/geo/pe-municipios.json";
-import { getDevolucoes, listarMotivosDoMes, getDevolucaoPorCidade } from "@/data/devolucoes";
+import { getNucleoDevolucao, listarMotivosDoMes } from "@/data/devolucoes";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, inicioFimDoMes, limitarAoHistorico } from "@/domain/periodo";
-import { comTaxa } from "@/domain/devolucoes-mapa";
 import type { SetorDevolucao } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
 import SecoesDevolucao from "./secoes-devolucao";
-import type { MunicipioMapa } from "./mapa-devolucoes";
 
 const SETORES: SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
 
@@ -41,22 +38,14 @@ export default async function DevolucoesPage({
   const setor = sp.setor || undefined;
   const temFiltro = Boolean(motivo || setor);
 
-  const [r, fat, motivosDisponiveis, cidadesRaw] = await Promise.all([
-    getDevolucoes(inicio, fim, motivo, setor),
+  // SSR busca só o NÚCLEO (leve): total, por setor e a lista de motivos. As abas
+  // pesadas (clientes/vendedores/motoristas/mapa) carregam sob demanda no cliente.
+  const [r, fat, motivosDisponiveis] = await Promise.all([
+    getNucleoDevolucao(inicio, fim, motivo, setor),
     getResumoFaturamentoDashboard(mesSel),
     listarMotivosDoMes(inicio, fim),
-    getDevolucaoPorCidade(inicio, fim),
   ]);
   const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
-
-  const cidades = comTaxa(cidadesRaw);
-  const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
-  const municipiosMapa: MunicipioMapa[] = municipiosGeo.map((g) => ({
-    ibge: g.ibge,
-    nome: g.nome,
-    d: g.d,
-    dados: porIbge.get(g.ibge) ?? null,
-  }));
 
   // Monta URL preservando mês e filtro vigentes; `over` sobrescreve/limpa chaves.
   const url = (over: Record<string, string | undefined> = {}) => {
@@ -185,17 +174,14 @@ export default async function DevolucoesPage({
         </div>
       </Card>
 
-      {/* Detalhe em ABAS: uma seção por vez, p/ a página não ficar quilométrica. */}
+      {/* Detalhe em ABAS que carregam SOB DEMANDA (cache por sessão). A `key`
+          zera o cache do cliente quando muda o mês ou o filtro. */}
       <SecoesDevolucao
+        key={`${mesSel}|${motivo ?? ""}|${setor ?? ""}`}
+        mes={mesSel}
+        motivo={motivo}
+        setor={setor}
         porMotivo={r.porMotivo}
-        clientes={r.topClientes}
-        motivosPorCliente={r.motivosPorCliente}
-        vendedores={r.porVendedor}
-        motivosPorVendedor={r.motivosPorVendedor}
-        motoristas={r.porMotorista}
-        motivosPorMotorista={r.motivosPorMotorista}
-        municipios={municipiosMapa}
-        cidades={cidades}
       />
 
       <p className="mt-4 text-xs text-slate-400">

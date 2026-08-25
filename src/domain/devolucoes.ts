@@ -55,17 +55,20 @@ export interface DevolucaoPorMotorista {
   valorDevolvido: number;
 }
 
-export interface ResumoDevolucoes {
+/** Núcleo buscado no SSR: total, por setor e a lista de motivos (leve). */
+export interface NucleoDevolucao {
   total: number;
   porSetor: DevolucaoPorSetor[];
   porMotivo: DevolucaoPorMotivo[];
-  topClientes: DevolucaoPorCliente[];
-  porVendedor: DevolucaoPorVendedor[];
-  porMotorista: DevolucaoPorMotorista[];
-  /** Motivos por entidade (chave = código) — alimentam os drill-downs. */
-  motivosPorMotorista: Record<number, MotivoDetalhe[]>;
-  motivosPorCliente: Record<number, MotivoDetalhe[]>;
-  motivosPorVendedor: Record<number, MotivoDetalhe[]>;
+}
+
+/**
+ * Seção de ranking carregada sob demanda (cliente/vendedor/motorista): a lista
+ * ordenada + o mapa de motivos por código (chave) para o drill-down.
+ */
+export interface SecaoRanking<T> {
+  itens: T[];
+  motivos: Record<number, MotivoDetalhe[]>;
 }
 
 /**
