@@ -33,7 +33,7 @@ describe("agregarPorSetor", () => {
 });
 
 const mot = (over: Partial<DevolucaoPorMotorista>): DevolucaoPorMotorista => ({
-  codMotorista: 1, nome: "X", expedidas: 100, devolvidas: 10, taxa: 10, valorDevolvido: 0, ...over,
+  codMotorista: 1, nome: "X", tipo: null, expedidas: 100, devolvidas: 10, taxa: 10, valorDevolvido: 0, ...over,
 });
 
 describe("piorMotorista", () => {

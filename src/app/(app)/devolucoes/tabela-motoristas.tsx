@@ -2,14 +2,32 @@
 
 import { useState, useMemo } from "react";
 import { Card, PanelHeader } from "@/components/ui";
-import { filtrarPorBusca, ordenarMotoristas, corTaxa } from "@/domain/devolucoes-ui";
-import type { ColunaMotorista, Direcao } from "@/domain/devolucoes-ui";
+import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo } from "@/domain/devolucoes-ui";
+import type { ColunaMotorista, Direcao, FiltroTipoMotorista } from "@/domain/devolucoes-ui";
+import type { TipoMotorista } from "@/domain/devolucoes";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { piorMotorista } from "@/domain/devolucoes";
 import type { DevolucaoPorMotorista } from "@/domain/devolucoes";
 import { IconeCaminhao, IconeUsuario, IconeBusca, IconeChevronCima, IconeChevronBaixo } from "./icons";
 
 type Sort = { col: ColunaMotorista; dir: Direcao };
+
+const FILTROS_TIPO: { v: FiltroTipoMotorista; label: string }[] = [
+  { v: "", label: "Todos" },
+  { v: "F", label: "Da casa" },
+  { v: "T", label: "Terceirizado" },
+];
+
+/** Etiqueta de vínculo (só quando conhecido — motoristas sem tipo ficam sem selo). */
+function SeloTipo({ tipo }: { tipo: TipoMotorista }) {
+  if (!tipo) return null;
+  const info = tipoMotoristaInfo(tipo);
+  return (
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${info.badge}`}>
+      {info.label}
+    </span>
+  );
+}
 
 function Th({
   col, rotulo, sort, onSort,
@@ -48,6 +66,7 @@ function Th({
 
 export default function TabelaMotoristas({ motoristas }: { motoristas: DevolucaoPorMotorista[] }) {
   const [busca, setBusca] = useState("");
+  const [tipo, setTipo] = useState<FiltroTipoMotorista>("");
   const [sort, setSort] = useState<Sort>({ col: "taxa", dir: "desc" });
 
   function onSort(col: ColunaMotorista) {
@@ -55,11 +74,36 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
   }
 
   const filtrados = useMemo(
-    () => filtrarPorBusca(motoristas, busca, (m) => [m.nome, m.codMotorista]),
-    [motoristas, busca],
+    () => filtrarPorTipo(
+      filtrarPorBusca(motoristas, busca, (m) => [m.nome, m.codMotorista]),
+      tipo,
+    ),
+    [motoristas, busca, tipo],
   );
   const lista = useMemo(() => ordenarMotoristas(filtrados, sort.col, sort.dir), [filtrados, sort]);
   const pior = useMemo(() => piorMotorista(filtrados), [filtrados]);
+
+  const segTipo = (
+    <div
+      className="inline-flex items-center rounded-lg bg-slate-100 p-0.5"
+      role="group"
+      aria-label="Filtrar por vínculo do motorista"
+    >
+      {FILTROS_TIPO.map((ft) => (
+        <button
+          key={ft.v}
+          type="button"
+          onClick={() => setTipo(ft.v)}
+          aria-pressed={tipo === ft.v}
+          className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+            tipo === ft.v ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {ft.label}
+        </button>
+      ))}
+    </div>
+  );
 
   const campoBusca = (
     <div className="relative">
@@ -76,13 +120,29 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
     </div>
   );
 
+  const controles = (
+    <div className="flex flex-wrap items-center gap-2">
+      {segTipo}
+      {campoBusca}
+    </div>
+  );
+
+  // Mensagem do estado vazio, sensível a qual filtro esvaziou a lista.
+  const msgVazio = busca
+    ? `Nenhum motorista para "${busca}".`
+    : tipo === "F"
+      ? "Nenhum motorista da casa no período."
+      : tipo === "T"
+        ? "Nenhum motorista terceirizado no período."
+        : "Sem entregas em carga no período.";
+
   return (
     <Card className="overflow-hidden">
       <PanelHeader
         icon={<IconeCaminhao />}
         title="Taxa de devolução por motorista"
         context={`${lista.length} motoristas · ordene pelas colunas`}
-        right={campoBusca}
+        right={controles}
       />
       {pior && (
         <p className="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
@@ -123,7 +183,7 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
             {lista.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-12 text-center text-sm text-slate-400">
-                  {busca ? `Nenhum motorista para "${busca}".` : "Sem entregas em carga no período."}
+                  {msgVazio}
                 </td>
               </tr>
             ) : (
@@ -136,7 +196,10 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
                         <IconeUsuario />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate font-medium leading-none text-[#141a4d]">{m.nome}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-medium leading-none text-[#141a4d]">{m.nome}</p>
+                          <SeloTipo tipo={m.tipo} />
+                        </div>
                         <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
                       </div>
                     </div>
@@ -158,7 +221,7 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
       <ul className="divide-y divide-slate-100 md:hidden">
         {lista.length === 0 ? (
           <li className="py-12 text-center text-sm text-slate-400">
-            {busca ? `Nenhum motorista para "${busca}".` : "Sem entregas em carga no período."}
+            {msgVazio}
           </li>
         ) : (
           lista.map((m, i) => (
@@ -169,7 +232,10 @@ export default function TabelaMotoristas({ motoristas }: { motoristas: Devolucao
                   <IconeUsuario />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium leading-tight text-[#141a4d]">{m.nome}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate font-medium leading-tight text-[#141a4d]">{m.nome}</p>
+                    <SeloTipo tipo={m.tipo} />
+                  </div>
                   <p className="mt-0.5 text-[11px] text-slate-400">Cód. {m.codMotorista}</p>
                 </div>
                 <div className="shrink-0 text-right">
