@@ -102,6 +102,18 @@ export const items: Item[] = [
     ),
   },
   {
+    href: "/pedidos",
+    label: "Consulta de Pedidos",
+    short: "Consultar",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.2-3.2" />
+        <path d="M8.5 11h5M11 8.5v5" />
+      </svg>
+    ),
+  },
+  {
     href: "/tendencias",
     label: "Tendências",
     icon: (
