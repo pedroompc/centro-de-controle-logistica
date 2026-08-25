@@ -38,6 +38,13 @@ export interface FiltrosPedidos {
   cliente?: number; // CODCLI
   rca?: number; // CODUSUR
   numped?: number; // busca direta por nº do pedido (ignora período/estado)
+  notaFiscal?: number; // busca direta por nº da NF (ignora período/estado)
+}
+
+// Identificadores diretos (nº do pedido / nº da NF) fazem a busca ignorar o
+// período e os estados — acham o pedido em qualquer data, como a 335.
+function temIdentificadorDireto(f: FiltrosPedidos): boolean {
+  return f.numped != null || f.notaFiscal != null;
 }
 
 /**
@@ -53,13 +60,14 @@ export interface FiltrosPedidos {
 // pedido em qualquer data, como a 335). Senão, aplica período + estados + os
 // filtros opcionais de cliente/RCA. Só entram os binds referenciados.
 function whereClause(f: FiltrosPedidos): string {
-  if (f.numped != null) {
-    return `${filialIn("ped.CODFILIAL")} AND ped.NUMPED = :numped`;
-  }
+  const direto = temIdentificadorDireto(f);
   return [
     filialIn("ped.CODFILIAL"),
-    faixaData,
-    estadosSql(f.estados),
+    // Modo direto (nº pedido / nº NF): sem período e sem estados.
+    !direto ? faixaData : "",
+    !direto ? estadosSql(f.estados) : "",
+    f.numped != null ? "ped.NUMPED = :numped" : "",
+    f.notaFiscal != null ? "EXISTS (SELECT 1 FROM PCNFSAID nf WHERE nf.NUMPED = ped.NUMPED AND nf.NUMNOTA = :nf)" : "",
     f.cliente != null ? "ped.CODCLI = :cliente" : "",
     f.rca != null ? "ped.CODUSUR = :rca" : "",
   ]
@@ -117,12 +125,15 @@ interface LinhaPedido {
  */
 export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsulta[] | null> => {
   // Bind só do que a query referencia (o Oracle recusa bind não usado).
-  const binds: Record<string, string | number> =
-    f.numped != null ? { numped: f.numped } : { ini: f.ini, fim: f.fim };
-  if (f.numped == null) {
-    if (f.cliente != null) binds.cliente = f.cliente;
-    if (f.rca != null) binds.rca = f.rca;
+  const binds: Record<string, string | number> = {};
+  if (!temIdentificadorDireto(f)) {
+    binds.ini = f.ini;
+    binds.fim = f.fim;
   }
+  if (f.numped != null) binds.numped = f.numped;
+  if (f.notaFiscal != null) binds.nf = f.notaFiscal;
+  if (f.cliente != null) binds.cliente = f.cliente;
+  if (f.rca != null) binds.rca = f.rca;
   try {
     const rows = await queryWinthor<LinhaPedido>(sqlPedidos(f), binds);
     return rows.map((r) => ({
