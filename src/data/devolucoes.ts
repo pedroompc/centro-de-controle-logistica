@@ -112,6 +112,7 @@ devv AS (
 )
 SELECT car.CODMOTORISTA,
        MAX(emp.NOME) NOME,
+       MAX(emp.TIPOMOTORISTA) TIPO_MOTORISTA, -- F = da casa · T = terceirizado (PCEMPR)
        COUNT(DISTINCT v.NUMTRANSVENDA) EXPEDIDAS,
        COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) DEVOLVIDAS,
        ROUND(COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) * 100
@@ -127,7 +128,7 @@ ORDER BY VALOR_DEVOLVIDO DESC`;
 
 interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
-interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
+interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_DEVOLVIDO: number }
 
 const n = (v: unknown): number => Number(v) || 0;
 
@@ -192,6 +193,7 @@ export const getDevolucoes = cache(async (
     const porMotorista: DevolucaoPorMotorista[] = motoristasRaw.map((r) => ({
       codMotorista: n(r.CODMOTORISTA),
       nome: r.NOME ?? `Motorista ${r.CODMOTORISTA}`,
+      tipo: r.TIPO_MOTORISTA === "F" || r.TIPO_MOTORISTA === "T" ? r.TIPO_MOTORISTA : null,
       expedidas: n(r.EXPEDIDAS),
       devolvidas: n(r.DEVOLVIDAS),
       taxa: n(r.TAXA),

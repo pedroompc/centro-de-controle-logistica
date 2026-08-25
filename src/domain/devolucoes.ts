@@ -26,9 +26,13 @@ export interface DevolucaoPorCliente {
   valor: number;
 }
 
+/** Vínculo do motorista (PCEMPR.TIPOMOTORISTA): F = da casa, T = terceirizado. */
+export type TipoMotorista = "F" | "T" | null;
+
 export interface DevolucaoPorMotorista {
   codMotorista: number;
   nome: string;
+  tipo: TipoMotorista; // F = da casa · T = terceirizado · null = não informado
   expedidas: number; // notas entregues via carga
   devolvidas: number;
   taxa: number; // % = devolvidas / expedidas

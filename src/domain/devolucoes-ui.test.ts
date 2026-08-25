@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { filtrarPorBusca, ordenarMotoristas, corTaxa } from "./devolucoes-ui";
+import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo } from "./devolucoes-ui";
 import type { DevolucaoPorMotorista } from "./devolucoes";
 
 const m = (over: Partial<DevolucaoPorMotorista>): DevolucaoPorMotorista => ({
-  codMotorista: 1, nome: "Fulano", expedidas: 100, devolvidas: 5, taxa: 5, valorDevolvido: 1000, ...over,
+  codMotorista: 1, nome: "Fulano", tipo: null, expedidas: 100, devolvidas: 5, taxa: 5, valorDevolvido: 1000, ...over,
 });
 
 describe("filtrarPorBusca", () => {
@@ -59,4 +59,30 @@ describe("corTaxa (semáforo)", () => {
   it("neutro abaixo de 8%", () => expect(corTaxa(5)).toBe("text-slate-500"));
   it("âmbar de 8% a 15%", () => expect(corTaxa(10)).toBe("text-amber-600"));
   it("vermelho em 15% ou mais", () => expect(corTaxa(15)).toBe("text-rose-600"));
+});
+
+describe("filtrarPorTipo (vínculo do motorista)", () => {
+  const lista = [
+    m({ codMotorista: 1, tipo: "F" }),
+    m({ codMotorista: 2, tipo: "T" }),
+    m({ codMotorista: 3, tipo: null }),
+  ];
+
+  it("sem filtro (''), devolve a lista inteira", () => {
+    expect(filtrarPorTipo(lista, "")).toHaveLength(3);
+  });
+  it("filtra só os da casa (F)", () => {
+    const r = filtrarPorTipo(lista, "F");
+    expect(r.map((x) => x.codMotorista)).toEqual([1]);
+  });
+  it("filtra só os terceirizados (T)", () => {
+    const r = filtrarPorTipo(lista, "T");
+    expect(r.map((x) => x.codMotorista)).toEqual([2]);
+  });
+});
+
+describe("tipoMotoristaInfo (rótulo do vínculo)", () => {
+  it("F → Da casa", () => expect(tipoMotoristaInfo("F").label).toBe("Da casa"));
+  it("T → Terceirizado", () => expect(tipoMotoristaInfo("T").label).toBe("Terceirizado"));
+  it("null → Não informado", () => expect(tipoMotoristaInfo(null).label).toBe("Não informado"));
 });
