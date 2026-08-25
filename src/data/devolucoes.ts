@@ -177,6 +177,27 @@ interface LinhaMotoristaMotivo { CODMOTORISTA: number; MOTIVO: string; SETOR: st
 const n = (v: unknown): number => Number(v) || 0;
 
 /**
+ * Protege uma seção OPCIONAL: devolve `fallback` se a query falhar OU passar de
+ * `ms` — assim uma seção nova pesada/lenta nunca trava a página inteira (o resto
+ * já renderizou). A conexão pendente fecha sozinha no `finally` do queryWinthor.
+ */
+function secaoOpcional<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
+  const porTempo = new Promise<T>((resolve) =>
+    setTimeout(() => {
+      console.error(`[devolucoes] seção "${label}" passou de ${ms}ms — omitida desta vez`);
+      resolve(fallback);
+    }, ms),
+  );
+  return Promise.race([
+    p.catch((erro) => {
+      console.error(`[devolucoes] seção "${label}" indisponível:`, (erro as Error).message);
+      return fallback;
+    }),
+    porTempo,
+  ]);
+}
+
+/**
  * Motivos que tiveram devolução no período — popula o `select` do filtro. Sempre
  * SEM filtro (senão, ao filtrar, o dropdown ficaria com uma opção só).
  */
@@ -216,12 +237,20 @@ export const getDevolucoes = cache(async (
   if (motivo) binds.motivo = motivo;
   if (setor) binds.setor = setor;
   try {
-    const [motivosRaw, clientesRaw, vendedoresRaw, motoristasRaw, motoristaMotivoRaw] = await Promise.all([
+    // Núcleo da página (motivo/cliente/motorista): mesmas 3 queries de sempre.
+    // Se qualquer uma falhar, a página inteira cai p/ "indisponível" (catch).
+    const [motivosRaw, clientesRaw, motoristasRaw] = await Promise.all([
       queryWinthor<LinhaMotivo>(sqlMotivo(f), binds),
       queryWinthor<LinhaCliente>(sqlCliente(f), binds),
-      queryWinthor<LinhaVendedor>(sqlVendedor(f), binds),
       queryWinthor<LinhaMotorista>(sqlMotorista(f), binds),
-      queryWinthor<LinhaMotoristaMotivo>(sqlMotoristaMotivo(f), binds),
+    ]);
+
+    // Seções novas (vendedor + motivos por motorista): OPCIONAIS. Rodadas depois
+    // do núcleo (não aumentam o pico de conexões) e com timeout — se pesarem ou
+    // falharem, a página carrega com essas seções vazias em vez de travar.
+    const [vendedoresRaw, motoristaMotivoRaw] = await Promise.all([
+      secaoOpcional(queryWinthor<LinhaVendedor>(sqlVendedor(f), binds), 15000, [], "vendedores"),
+      secaoOpcional(queryWinthor<LinhaMotoristaMotivo>(sqlMotoristaMotivo(f), binds), 15000, [], "motivos por motorista"),
     ]);
 
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
