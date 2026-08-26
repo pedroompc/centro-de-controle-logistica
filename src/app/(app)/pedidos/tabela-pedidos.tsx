@@ -6,7 +6,7 @@ import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import { formatBRL } from "@/domain/format";
 import { estadoPedidoInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
-import { carregarItensPedido } from "./actions";
+import { carregarDetalhePedido } from "./actions";
 
 function fmtData(iso: string | null): string {
   if (!iso) return "—";
@@ -44,7 +44,7 @@ function Selo({ posicao }: { posicao: string }) {
   return <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${info.badge}`}>{info.label}</span>;
 }
 
-function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens: ItemPedido[] | undefined; carregando: boolean }) {
+function Detalhe({ pedido, itens, telefone, carregando }: { pedido: PedidoConsulta; itens: ItemPedido[] | undefined; telefone: string | null; carregando: boolean }) {
   const endereco = [pedido.endereco, pedido.bairro].filter(Boolean).join(", ");
   const local = [pedido.cidade, pedido.uf].filter(Boolean).join(" · ");
   return (
@@ -59,7 +59,7 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Situação</p>
           <p className="mt-0.5 text-slate-600">
             RCA: <b className="text-[#141a4d]">{pedido.rca ?? "—"}</b>
-            {pedido.telefoneRca && <> {" · "}Tel.: <b className="text-[#141a4d]">{pedido.telefoneRca}</b></>}
+            {telefone && <> {" · "}Tel.: <b className="text-[#141a4d]">{telefone}</b></>}
           </p>
           <p className="text-slate-600">
             DT Pedido: <b className="text-[#141a4d]">{fmtData(pedido.data)}</b>
@@ -118,6 +118,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<number | null>(null);
   const [itens, setItens] = useState<Record<number, ItemPedido[]>>({});
+  const [telefones, setTelefones] = useState<Record<number, string | null>>({});
   const [carregando, setCarregando] = useState<number | null>(null);
 
   const lista = useMemo(
@@ -130,13 +131,14 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
   const totalValor = useMemo(() => lista.reduce((t, p) => t + p.valor, 0), [lista]);
   const comDev = useMemo(() => lista.filter((p) => p.temDevolucao).length, [lista]);
 
-  const abrir = useCallback(async (numped: number) => {
+  const abrir = useCallback(async (numped: number, codRca: number | null) => {
     setAberto((a) => (a === numped ? null : numped));
     if (itens[numped] !== undefined) return; // já em cache
     setCarregando(numped);
     try {
-      const dados = await carregarItensPedido(numped);
-      setItens((m) => ({ ...m, [numped]: dados }));
+      const d = await carregarDetalhePedido(numped, codRca);
+      setItens((m) => ({ ...m, [numped]: d.itens }));
+      setTelefones((t) => ({ ...t, [numped]: d.telefoneRca }));
     } finally {
       setCarregando((c) => (c === numped ? null : c));
     }
@@ -195,7 +197,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                 return (
                   <Fragment key={p.numped}>
                     <tr
-                      onClick={() => abrir(p.numped)}
+                      onClick={() => abrir(p.numped, p.codRca)}
                       aria-expanded={estaAberto}
                       className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/50 ${estaAberto ? "bg-amber-50/40" : ""}`}
                     >
@@ -230,7 +232,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
                         <td colSpan={11} className="p-0">
-                          <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />
+                          <Detalhe pedido={p} itens={itens[p.numped]} telefone={telefones[p.numped] ?? null} carregando={carregando === p.numped} />
                         </td>
                       </tr>
                     )}
@@ -253,7 +255,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
             const estaAberto = aberto === p.numped;
             return (
               <li key={p.numped} className={estaAberto ? "bg-amber-50/40" : ""}>
-                <div onClick={() => abrir(p.numped)} className="cursor-pointer px-4 py-3">
+                <div onClick={() => abrir(p.numped, p.codRca)} className="cursor-pointer px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold tabular-nums text-[#141a4d]">#{p.numped}</span>
                     <Selo posicao={p.posicao} />
@@ -272,7 +274,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {p.notaFiscal != null && <span>NF {p.notaFiscal}</span>}
                   </div>
                 </div>
-                {estaAberto && <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />}
+                {estaAberto && <Detalhe pedido={p} itens={itens[p.numped]} telefone={telefones[p.numped] ?? null} carregando={carregando === p.numped} />}
               </li>
             );
           })

@@ -90,7 +90,6 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
     cli.ESTENT                       AS UF,
     ped.CODUSUR                      AS CODRCA,
     usu.NOME                         AS RCA,
-    usu.TELCELULAR                   AS TEL_RCA,
     ped.POSICAO                      AS POSICAO,
     car.CODMOTORISTA                 AS CODMOTORISTA,
     emp.NOME                         AS MOTORISTA,
@@ -116,7 +115,7 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
 interface LinhaPedido {
   NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
-  CODRCA: number | null; RCA: string | null; TEL_RCA: string | null;
+  CODRCA: number | null; RCA: string | null;
   POSICAO: string | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
 }
@@ -152,7 +151,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsult
       uf: str(r.UF),
       codRca: r.CODRCA == null ? null : num(r.CODRCA),
       rca: str(r.RCA),
-      telefoneRca: str(r.TEL_RCA),
+      telefoneRca: null, // buscado sob demanda no detalhe (não quebra a lista se a coluna variar)
       posicao: (r.POSICAO ?? "").trim(),
       codMotorista: r.CODMOTORISTA == null ? null : num(r.CODMOTORISTA),
       motorista: str(r.MOTORISTA),
@@ -180,6 +179,21 @@ GROUP BY i.CODPROD
 ORDER BY VALOR DESC`;
 
 interface LinhaItem { CODPROD: number; DESCRICAO: string | null; QT: number; VALOR: number }
+
+// Telefone do RCA — buscado só no detalhe e tolerante a falha: se a coluna de
+// celular tiver outro nome nesta base, retorna null em vez de quebrar a lista.
+export const getTelefoneRca = cache(async (codRca: number): Promise<string | null> => {
+  try {
+    const rows = await queryWinthor<{ TEL: string | null }>(
+      `SELECT TELCELULAR AS TEL FROM PCUSUARI WHERE CODUSUR = :cod`,
+      { cod: codRca },
+    );
+    return str(rows[0]?.TEL);
+  } catch (erro) {
+    console.error("[pedidos-consulta] telefone do RCA indisponível:", (erro as Error).message);
+    return null;
+  }
+});
 
 /** Itens de um pedido (drill-down). `[]` se indisponível ou sem itens. */
 export const getItensPedido = cache(async (numped: number): Promise<ItemPedido[]> => {
