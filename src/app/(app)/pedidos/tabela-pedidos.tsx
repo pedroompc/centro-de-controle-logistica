@@ -59,7 +59,11 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Situação</p>
           <p className="mt-0.5 text-slate-600">
             RCA: <b className="text-[#141a4d]">{pedido.rca ?? "—"}</b>
-            {" · "}Faturado: <b className="text-[#141a4d]">{fmtData(pedido.dataFaturamento)}</b>
+            {pedido.telefoneRca && <> {" · "}Tel.: <b className="text-[#141a4d]">{pedido.telefoneRca}</b></>}
+          </p>
+          <p className="text-slate-600">
+            DT Pedido: <b className="text-[#141a4d]">{fmtData(pedido.data)}</b>
+            {" · "}DT Faturada: <b className="text-[#141a4d]">{fmtData(pedido.dataFaturamento)}</b>
             {pedido.notaFiscal != null && <> {" · "}NF <b className="text-[#141a4d]">{pedido.notaFiscal}</b></>}
           </p>
           <p className="text-slate-600">
@@ -172,7 +176,8 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
               <th className="px-3 py-3 text-left font-semibold">Estado</th>
               <th className="px-3 py-3 text-right font-semibold">Dias</th>
               <th className="px-3 py-3 text-left font-semibold">Motorista</th>
-              <th className="px-3 py-3 text-left font-semibold">Faturado / NF</th>
+              <th className="px-3 py-3 text-left font-semibold">DT Pedido</th>
+              <th className="px-3 py-3 text-left font-semibold">DT Faturada</th>
               <th className="px-3 py-3 text-right font-semibold">Valor</th>
               <th className="w-10 px-3 py-3" aria-label="Detalhes" />
             </tr>
@@ -180,7 +185,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-12 text-center text-sm text-slate-400">
+                <td colSpan={11} className="py-12 text-center text-sm text-slate-400">
                   {busca ? `Nenhum pedido para "${busca}".` : "Nenhum pedido para os filtros selecionados."}
                 </td>
               </tr>
@@ -196,7 +201,6 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     >
                       <td className="px-3 py-3">
                         <div className="font-semibold tabular-nums text-[#141a4d]">{p.numped}</div>
-                        <div className="text-[10px] text-slate-400">{fmtData(p.data)}</div>
                         {p.temDevolucao && <span className="mt-0.5 inline-flex rounded bg-rose-50 px-1.5 text-[9px] font-semibold text-rose-600">devolução</span>}
                       </td>
                       <td className="px-3 py-3">
@@ -213,6 +217,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       <td className="px-3 py-3"><Selo posicao={p.posicao} /></td>
                       <td className={`px-3 py-3 text-right tabular-nums ${corDias(p)}`}>{p.diasNoSistema}</td>
                       <td className="px-3 py-3 text-slate-600">{p.motorista ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-3 py-3 tabular-nums text-slate-600">{fmtData(p.data)}</td>
                       <td className="px-3 py-3 text-slate-600">
                         <div className="tabular-nums">{fmtData(p.dataFaturamento)}</div>
                         {p.notaFiscal != null && <div className="text-[10px] tabular-nums text-slate-400">NF {p.notaFiscal}</div>}
@@ -224,7 +229,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     </tr>
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
-                        <td colSpan={10} className="p-0">
+                        <td colSpan={11} className="p-0">
                           <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />
                         </td>
                       </tr>
@@ -262,6 +267,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     <span className={corDias(p)}>{p.diasNoSistema} dias</span>
                     {p.rca && <span>RCA: {p.rca}</span>}
                     {p.motorista && <span>Mot.: {p.motorista}</span>}
+                    <span>Ped.: {fmtData(p.data)}</span>
                     <span>Fat.: {fmtData(p.dataFaturamento)}</span>
                     {p.notaFiscal != null && <span>NF {p.notaFiscal}</span>}
                   </div>
