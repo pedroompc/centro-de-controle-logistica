@@ -120,12 +120,15 @@ interface LinhaPedido {
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
 }
 
+/** Resultado da consulta: a lista, ou o erro técnico (p/ diagnosticar na tela). */
+export type ResultadoPedidos = { pedidos: PedidoConsulta[] } | { erro: string };
+
 /**
- * Pedidos no intervalo [ini, fim] (ISO) com os estados pedidos. Retorna `null`
- * se o Winthor estiver indisponível (a página mostra o aviso). Limitado a 500
- * linhas — intervalos grandes devem ser estreitados pelo filtro.
+ * Pedidos no intervalo [ini, fim] (ISO) com os estados pedidos. Em falha devolve
+ * `{ erro }` com a mensagem do Oracle — a página mostra o detalhe técnico, o que
+ * evita ficar adivinhando qual coluna varia nesta base. Limite de 500 linhas.
  */
-export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsulta[] | null> => {
+export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedidos> => {
   // Bind só do que a query referencia (o Oracle recusa bind não usado).
   const binds: Record<string, string | number> = {};
   if (!temIdentificadorDireto(f)) {
@@ -139,7 +142,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsult
   if (f.rca != null) binds.rca = f.rca;
   try {
     const rows = await queryWinthor<LinhaPedido>(sqlPedidos(f), binds);
-    return rows.map((r) => ({
+    return { pedidos: rows.map((r) => ({
       numped: num(r.NUMPED),
       data: toISO(r.DATA_PEDIDO) ?? "",
       diasNoSistema: num(r.DIAS),
@@ -161,10 +164,11 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsult
       peso: num(r.PESO),
       qtdItens: num(r.QTD_ITENS),
       temDevolucao: r.TEM_DEV === "S",
-    }));
+    })) };
   } catch (erro) {
-    console.error("[pedidos-consulta] Winthor indisponível:", (erro as Error).message);
-    return null;
+    const msg = (erro as Error).message;
+    console.error("[pedidos-consulta] falha na consulta:", msg);
+    return { erro: msg };
   }
 });
 

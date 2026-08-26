@@ -49,7 +49,9 @@ export default async function PedidosPage({
   // Só consulta o Winthor DEPOIS de o usuário clicar em Consultar (igual à 335).
   const buscou = sp.buscar === "1";
   const filtros: FiltrosPedidos = { ini, fim, estados, cliente, rca, numped, notaFiscal, numcar };
-  const pedidos = buscou ? await getPedidos(filtros) : undefined;
+  const resultado = buscou ? await getPedidos(filtros) : undefined;
+  const pedidos = resultado && "pedidos" in resultado ? resultado.pedidos : null;
+  const erro = resultado && "erro" in resultado ? resultado.erro : null;
 
   const filtro = (
     <Card className="mb-5 p-4">
@@ -128,12 +130,14 @@ export default async function PedidosPage({
             listar os pedidos.
           </p>
         </Card>
-      ) : pedidos === null ? (
+      ) : erro !== null ? (
         <Card className="p-6">
           <p className="text-sm text-slate-500">
-            Pedidos indisponíveis — sem conexão com o Winthor (o banco só responde de dentro da rede
-            da empresa).
+            Pedidos indisponíveis. Se você está fora da rede da empresa, o Winthor não responde. Se
+            está dentro e mesmo assim deu erro, o detalhe técnico abaixo aponta a causa (ex.: uma
+            coluna com nome diferente nesta base).
           </p>
+          <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-50 p-3 text-[11px] text-rose-700">{erro}</pre>
         </Card>
       ) : (
         <>
