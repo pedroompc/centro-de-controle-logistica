@@ -88,6 +88,7 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
     cli.ESTENT                       AS UF,
     ped.CODUSUR                      AS CODRCA,
     usu.NOME                         AS RCA,
+    usu.TELCELULAR                   AS TEL_RCA,
     ped.POSICAO                      AS POSICAO,
     car.CODMOTORISTA                 AS CODMOTORISTA,
     emp.NOME                         AS MOTORISTA,
@@ -113,7 +114,7 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
 interface LinhaPedido {
   NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
-  CODRCA: number | null; RCA: string | null;
+  CODRCA: number | null; RCA: string | null; TEL_RCA: string | null;
   POSICAO: string | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
 }
@@ -148,6 +149,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsult
       uf: str(r.UF),
       codRca: r.CODRCA == null ? null : num(r.CODRCA),
       rca: str(r.RCA),
+      telefoneRca: str(r.TEL_RCA),
       posicao: (r.POSICAO ?? "").trim(),
       codMotorista: r.CODMOTORISTA == null ? null : num(r.CODMOTORISTA),
       motorista: str(r.MOTORISTA),
