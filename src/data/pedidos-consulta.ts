@@ -39,12 +39,13 @@ export interface FiltrosPedidos {
   rca?: number; // CODUSUR
   numped?: number; // busca direta por nº do pedido (ignora período/estado)
   notaFiscal?: number; // busca direta por nº da NF (ignora período/estado)
+  numcar?: number; // busca direta por nº do carregamento (ignora período/estado)
 }
 
-// Identificadores diretos (nº do pedido / nº da NF) fazem a busca ignorar o
-// período e os estados — acham o pedido em qualquer data, como a 335.
+// Identificadores diretos (nº do pedido / NF / carregamento) fazem a busca
+// ignorar o período e os estados — acham em qualquer data, como a 335.
 function temIdentificadorDireto(f: FiltrosPedidos): boolean {
-  return f.numped != null || f.notaFiscal != null;
+  return f.numped != null || f.notaFiscal != null || f.numcar != null;
 }
 
 /**
@@ -68,6 +69,7 @@ function whereClause(f: FiltrosPedidos): string {
     !direto ? estadosSql(f.estados) : "",
     f.numped != null ? "ped.NUMPED = :numped" : "",
     f.notaFiscal != null ? "EXISTS (SELECT 1 FROM PCNFSAID nf WHERE nf.NUMPED = ped.NUMPED AND nf.NUMNOTA = :nf)" : "",
+    f.numcar != null ? "ped.NUMCAR = :numcar" : "",
     f.cliente != null ? "ped.CODCLI = :cliente" : "",
     f.rca != null ? "ped.CODUSUR = :rca" : "",
   ]
@@ -133,6 +135,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<PedidoConsult
   }
   if (f.numped != null) binds.numped = f.numped;
   if (f.notaFiscal != null) binds.nf = f.notaFiscal;
+  if (f.numcar != null) binds.numcar = f.numcar;
   if (f.cliente != null) binds.cliente = f.cliente;
   if (f.rca != null) binds.rca = f.rca;
   try {

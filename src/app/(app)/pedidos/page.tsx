@@ -26,7 +26,7 @@ export default async function PedidosPage({
 }: {
   searchParams: Promise<{
     buscar?: string; ini?: string; fim?: string; status?: string | string[];
-    cliente?: string; rca?: string; numped?: string; nf?: string;
+    cliente?: string; rca?: string; numped?: string; nf?: string; numcar?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -44,10 +44,11 @@ export default async function PedidosPage({
   const rca = codigo(sp.rca);
   const numped = codigo(sp.numped);
   const notaFiscal = codigo(sp.nf);
+  const numcar = codigo(sp.numcar);
 
   // Só consulta o Winthor DEPOIS de o usuário clicar em Consultar (igual à 335).
   const buscou = sp.buscar === "1";
-  const filtros: FiltrosPedidos = { ini, fim, estados, cliente, rca, numped, notaFiscal };
+  const filtros: FiltrosPedidos = { ini, fim, estados, cliente, rca, numped, notaFiscal, numcar };
   const pedidos = buscou ? await getPedidos(filtros) : undefined;
 
   const filtro = (
@@ -59,35 +60,39 @@ export default async function PedidosPage({
       <form method="get" className="space-y-3">
         <input type="hidden" name="buscar" value="1" />
         {/* Identificadores diretos — acham o pedido em qualquer data (ignoram período/estado). */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
             Nº Pedido
-            <input name="numped" defaultValue={sp.numped ?? ""} inputMode="numeric" placeholder="ex.: 2651000795" className={inputCls} />
+            <input name="numped" defaultValue={sp.numped ?? ""} inputMode="numeric" className={inputCls} />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
             Nº Nota Fiscal
-            <input name="nf" defaultValue={sp.nf ?? ""} inputMode="numeric" placeholder="ex.: 448827" className={inputCls} />
+            <input name="nf" defaultValue={sp.nf ?? ""} inputMode="numeric" className={inputCls} />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
+            Nº Carregamento
+            <input name="numcar" defaultValue={sp.numcar ?? ""} inputMode="numeric" className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
             Cód. Cliente
-            <input name="cliente" defaultValue={sp.cliente ?? ""} inputMode="numeric" placeholder="ex.: 25387" className={inputCls} />
+            <input name="cliente" defaultValue={sp.cliente ?? ""} inputMode="numeric" className={inputCls} />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
             Cód. RCA (vendedor)
-            <input name="rca" defaultValue={sp.rca ?? ""} inputMode="numeric" placeholder="ex.: 12" className={inputCls} />
+            <input name="rca" defaultValue={sp.rca ?? ""} inputMode="numeric" className={inputCls} />
           </label>
         </div>
         {/* Período + estados */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
             Período de
             <input type="date" name="ini" defaultValue={ini} className={inputCls} />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+          <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
             até
             <input type="date" name="fim" defaultValue={fim} className={inputCls} />
           </label>
-          <div className="col-span-2 flex flex-col gap-1 text-xs font-medium text-slate-500">
+          <div className="col-span-2 flex flex-col gap-1 text-xs font-bold text-slate-600">
             Estados
             <div className="flex flex-wrap gap-1.5">
               {ESTADOS_PEDIDO.map((e) => (
@@ -104,7 +109,7 @@ export default async function PedidosPage({
             Consultar
           </button>
           <Link href="/pedidos" className="text-xs font-medium text-amber-600 hover:text-amber-700">limpar campos</Link>
-          <span className="hidden text-xs text-slate-400 sm:inline">Nº do pedido / nota acham em qualquer data; os demais usam o período.</span>
+          <span className="hidden text-xs text-slate-400 sm:inline">Nº do pedido / nota / carregamento acham em qualquer data; os demais usam o período.</span>
         </div>
       </form>
     </Card>
