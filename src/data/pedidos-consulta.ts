@@ -154,7 +154,6 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       uf: str(r.UF),
       codRca: r.CODRCA == null ? null : num(r.CODRCA),
       rca: str(r.RCA),
-      telefoneRca: null, // buscado sob demanda no detalhe (não quebra a lista se a coluna variar)
       posicao: (r.POSICAO ?? "").trim(),
       codMotorista: r.CODMOTORISTA == null ? null : num(r.CODMOTORISTA),
       motorista: str(r.MOTORISTA),
@@ -183,21 +182,6 @@ GROUP BY i.CODPROD
 ORDER BY VALOR DESC`;
 
 interface LinhaItem { CODPROD: number; DESCRICAO: string | null; QT: number; VALOR: number }
-
-// Telefone do RCA — buscado só no detalhe e tolerante a falha: se a coluna de
-// celular tiver outro nome nesta base, retorna null em vez de quebrar a lista.
-export const getTelefoneRca = cache(async (codRca: number): Promise<string | null> => {
-  try {
-    const rows = await queryWinthor<{ TEL: string | null }>(
-      `SELECT TELCELULAR AS TEL FROM PCUSUARI WHERE CODUSUR = :cod`,
-      { cod: codRca },
-    );
-    return str(rows[0]?.TEL);
-  } catch (erro) {
-    console.error("[pedidos-consulta] telefone do RCA indisponível:", (erro as Error).message);
-    return null;
-  }
-});
 
 /** Itens de um pedido (drill-down). `[]` se indisponível ou sem itens. */
 export const getItensPedido = cache(async (numped: number): Promise<ItemPedido[]> => {

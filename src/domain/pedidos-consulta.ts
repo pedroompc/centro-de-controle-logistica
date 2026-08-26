@@ -17,7 +17,6 @@ export interface PedidoConsulta {
   uf: string | null;
   codRca: number | null;
   rca: string | null; // vendedor (PCUSUARI.NOME)
-  telefoneRca: string | null; // celular do RCA (PCUSUARI.TELCELULAR)
   posicao: string; // PCPEDC.POSICAO cru
   codMotorista: number | null;
   motorista: string | null;
