@@ -1,8 +1,15 @@
 # Snapshot histórico + aba Tendências — Design
 
-**Data:** 2026-07-13
+**Data:** 2026-07-13 (revisado 2026-09-01)
 **Autor:** Pedro + Claude
-**Status:** Aprovado (design) — pendente plano de implementação
+**Status:** Implementado — revisado para refletir o comportamento real (self-heal)
+
+> **Nota de revisão (2026-09-01):** a decisão original "congelado é congelado"
+> foi substituída por **self-heal**. Motivo: correções retroativas (ex.: devolução
+> lançada com data anterior) caem num mês já fechado e a rotina 111 do Winthor as
+> recalcula; a foto congelada divergia da verdade. Hoje o dashboard lê sempre ao vivo
+> e **sobrescreve** a foto quando o valor muda. Ver "Correção de mês anterior (self-heal)"
+> abaixo. Migrations: `0005` (tabela) + `0019` (libera UPDATE ao autenticado).
 
 ## Problema
 
@@ -16,7 +23,8 @@ comparar de forma auditável.
 
 Congelar ("tirar foto") os números de fechamento de cada mês numa tabela do Supabase e
 expor uma aba **Tendências** com a evolução mês a mês dos principais indicadores
-logísticos. Mês fechado nunca mais muda; o gráfico lê as fotos, não o Winthor.
+logísticos. A foto estabiliza o número (o gráfico lê as fotos, não bate no Winthor 12×),
+mas **acompanha correções retroativas** via self-heal — não é imutável.
 
 ## Escopo (MVP)
 
@@ -28,16 +36,20 @@ botão manual de "refazer foto".
 ## Decisões de design (ratificadas no brainstorming)
 
 1. **O que congelar:** só Winthor (faturamento + devolução) — os números voláteis.
-2. **Gatilho:** *lazy backfill*. Ao pedir um mês **fechado** sem foto, calcula do Winthor
-   uma vez, grava e devolve. Mês corrente = sempre ao vivo (nunca congela). Sem agendador.
+2. **Gatilho:** *lazy backfill + self-heal*. Ao pedir um mês **fechado** sem foto, calcula
+   do Winthor uma vez, grava e devolve. Ao reabrir um mês fechado que **já tem foto**, o
+   dashboard recalcula ao vivo e **sobrescreve** a foto se o valor mudou (auto-cura de
+   correções retroativas). Mês corrente = sempre ao vivo (nunca congela). Sem agendador.
 3. **Granularidade:** só os **totais do mês** (sem quebra por setor). A devolução é tratada
    no histórico como indicador único de saúde da operação; a quebra por setor permanece na
    aba Devoluções do mês corrente (ao vivo).
 4. **Onde exibir:** nova aba **Tendências** (`/tendencias`), item novo no menu.
 5. **Indicadores plotados:** taxa de devolução %, venda líquida (R$), valor devolução (R$),
    NFs + peso devolvido.
-6. **Congelado é congelado:** foto tirada não é recalculada (coerente com a regra de
-   devolução — valor congelado, ver [[devolucao-regra]]).
+6. **Self-heal (revisado):** a foto é *cache derivado*, não prova imutável. Quando o
+   Winthor recalcula um mês fechado (correção retroativa), a foto é sobrescrita com a
+   verdade mais recente. A fonte da verdade é sempre o Winthor; a foto é lastro do gráfico
+   e fallback offline. (Substitui o "congelado é congelado" original.)
 7. **Gráficos:** SVG feitos à mão (mesmo estilo das barras da aba Devoluções). Zero
    dependência nova.
 
@@ -67,12 +79,16 @@ Tabela `faturamento_mensal`, uma linha por mês/filial (espelha `ResumoFaturamen
 | `criado_em` | `timestamptz` | default `now()` — quando a foto foi tirada |
 
 - **PK:** `(mes, filial)`.
-- **RLS:** `SELECT` e `INSERT` para `authenticated`; `UPDATE`/`DELETE` restritos a `admin`.
-  O INSERT é liberado ao autenticado **de propósito**: o lazy backfill grava a foto no
-  momento em que *qualquer* usuário (inclusive viewer) abre a aba. A foto é cache derivado
-  gerado pelo sistema — não dado de usuário — e é idempotente por `(mes, filial)`, então
-  liberar o INSERT é seguro e evita depender de service-role (que o projeto não tem
-  configurada; hoje só existe a anon key + JWT do usuário, ver `src/lib/supabase/server.ts`).
+- **RLS:** `SELECT`, `INSERT` e `UPDATE` para `authenticated`; `DELETE` restrito a `admin`.
+  `INSERT` e `UPDATE` são liberados ao autenticado **de propósito**: o lazy backfill grava a
+  foto e o self-heal a **sobrescreve** no momento em que *qualquer* usuário (inclusive viewer)
+  abre o mês. A foto é cache derivado gerado pelo sistema — não dado de usuário — idempotente
+  por `(mes, filial)` e reprodutível a partir do Winthor, então liberar a escrita é seguro e
+  evita depender de service-role (que o projeto não tem configurada; hoje só existe a anon key
+  + JWT do usuário, ver `src/lib/supabase/server.ts`). O `UPDATE` só foi restrito a admin no
+  desenho original ("congelado é congelado"); com o self-heal isso barrava a auto-cura para
+  viewers, corrigido na migration `0019`. `DELETE` segue admin (apagar foto é operação rara,
+  manual).
 - `taxa_devolucao` **não** é coluna — é derivada na leitura (`valor_devolucao /
   venda_faturada`), evitando dado redundante que pode divergir.
 
@@ -83,19 +99,24 @@ Reaproveita a query já validada de `src/data/faturamento.ts`.
 - **Refactor:** extrair de `faturamento.ts` uma função `getResumoFaturamento(ini, fim,
   filial)` que aceita período arbitrário. `getResumoFaturamentoMesAtual()` passa a chamá-la
   com `(primeiroDiaDoMes(), hojeISO(), '1')`. Sem mudança de comportamento no mês corrente.
-- `getFaturamentoMensal(mes: string)`:
-  1. Lê a linha do Supabase (`mes`, `filial='1'`). Se existe → devolve (foto congelada).
+- `getFaturamentoMensal(mes: string)` (leitura barata p/ o gráfico):
+  1. Lê a linha do Supabase (`mes`, `filial='1'`). Se existe → devolve a foto.
   2. Se não existe **e o mês está fechado** (`mes` < primeiro dia do mês corrente) →
-     chama `getResumoFaturamento(primeiroDia(mes), ultimoDia(mes), '1')`, faz
-     `INSERT ... ON CONFLICT (mes, filial) DO NOTHING` e devolve. Se o Winthor estiver
-     indisponível → devolve `null`, **não grava**.
+     chama `getResumoFaturamento(primeiroDia(mes), ultimoDia(mes), '1')`, grava e devolve.
+     Se o Winthor estiver indisponível → devolve `null`, **não grava**.
   3. Se `mes` é o mês corrente → chama o cálculo ao vivo, **não grava**.
-- `getSerieTendencias(qtdMeses = 12)`: gera a lista dos últimos `qtdMeses` meses fechados,
-  chama `getFaturamentoMensal` para cada (backfill dos faltantes), devolve a série ordenada.
-  Meses com Winthor offline entram como buraco (`null`), o gráfico os pula.
-- O `INSERT ... ON CONFLICT DO NOTHING` por `(mes, filial)` garante idempotência e nunca
-  reescreve uma foto já congelada (coerente com "congelado é congelado" e com a RLS
-  insert-only do autenticado).
+- `getResumoFaturamentoDashboard(mes)` (caminho do card do dashboard): recalcula **sempre ao
+  vivo** do Winthor e, se o mês está fechado, **sobrescreve** a foto (self-heal). É esse
+  caminho que propaga uma correção retroativa para a foto. Se o Winthor estiver fora, cai na
+  última foto conhecida.
+- `getSerieTendencias(qtdMeses = 12)`: gera a lista dos últimos `qtdMeses` meses fechados, faz
+  UMA leitura no Supabase e só calcula do Winthor (sequencialmente) os meses sem foto; devolve
+  a série ordenada. Meses com Winthor offline entram como buraco (`null`), o gráfico os pula.
+  **Limitação conhecida:** meses que já têm foto não são recalculados aqui — uma correção só
+  aparece no gráfico depois que o dashboard daquele mês for reaberto (self-heal) por alguém.
+- A gravação usa `upsert` com `onConflict (mes, filial)` **sobrescrevendo** (não `DO NOTHING`):
+  idempotente pela PK e coerente com o self-heal. A RLS libera `INSERT` e `UPDATE` ao
+  autenticado (ver migration `0019`); `DELETE` segue admin.
 
 ### 3. Domínio — `src/domain/tendencias.ts` (lógica pura, testável)
 
@@ -127,6 +148,12 @@ Reaproveita a query já validada de `src/data/faturamento.ts`.
                  getResumoFaturamento(ini,fim)  [data/faturamento.ts → Winthor]
                  └─ UPSERT faturamento_mensal    [Supabase]
   → série → <LineChart> x4 (SVG)
+
+dashboard/[mes] (card)
+  └─ getResumoFaturamentoDashboard(mes)          [data/faturamento-mensal.ts]
+       ├─ getResumoFaturamento(ini,fim)          [Winthor — sempre ao vivo]
+       │    └─ mês fechado: UPSERT (sobrescreve)  [Supabase — self-heal]
+       └─ Winthor offline: SELECT última foto     [Supabase — fallback]
 ```
 
 ## Tratamento de erro
@@ -138,6 +165,28 @@ Reaproveita a query já validada de `src/data/faturamento.ts`.
 - **Mês corrente:** nunca é gravado; se aparecer no gráfico no futuro, será marcado como
   parcial — fora de escopo do MVP (só meses fechados).
 
+## Correção de mês anterior (self-heal)
+
+Cenário: uma devolução (ou nota) é lançada com **data retroativa** e cai num mês já fechado.
+A rotina 111 do Winthor recalcula o mês na hora; a foto no Supabase, não. Como a divergência
+se resolve:
+
+1. **Fonte da verdade é sempre o Winthor.** A correção é feita lá (lançamento normal), nunca
+   editando a foto à mão.
+2. **O dashboard do mês reflete na hora.** `getResumoFaturamentoDashboard(mes)` lê ao vivo,
+   então ao abrir o card daquele mês o número já vem corrigido.
+3. **A foto se auto-cura.** No mesmo caminho, se o mês está fechado, a foto é **sobrescrita**
+   com o valor recalculado (`congelarMes` = upsert que sobrescreve). Assim o gráfico de
+   Tendências e o fallback offline passam a refletir a correção.
+4. **RLS:** o self-heal exige `UPDATE` na tabela. Por isso `INSERT` e `UPDATE` são liberados
+   ao autenticado (migration `0019`) — antes o `UPDATE` era só admin e a auto-cura falhava
+   silenciosamente para viewers.
+
+**Ponto de atenção:** `getSerieTendencias` não recalcula meses que já têm foto (só lê). Então
+uma correção só chega ao gráfico depois que **alguém abre o dashboard daquele mês** e dispara
+o self-heal. Se no futuro for preciso forçar sem depender disso, as saídas são um botão manual
+"refazer foto" ou um recompute pontual no caminho de Tendências (fora do escopo atual).
+
 ## Testes
 
 - `domain/tendencias.test.ts` (vitest, puro): `mesesFechados` (bordas de ano, qtd),
@@ -148,6 +197,7 @@ Reaproveita a query já validada de `src/data/faturamento.ts`.
 ## Arquivos afetados
 
 - **Novo:** `supabase/migrations/0005_faturamento_mensal.sql`
+- **Novo:** `supabase/migrations/0019_faturamento_mensal_self_heal.sql` (libera UPDATE ao autenticado)
 - **Novo:** `src/data/faturamento-mensal.ts`
 - **Novo:** `src/domain/tendencias.ts` + `src/domain/tendencias.test.ts`
 - **Novo:** `src/app/(app)/tendencias/page.tsx` + `loading.tsx`
@@ -160,5 +210,6 @@ Reaproveita a query já validada de `src/data/faturamento.ts`.
 1. Abrir `/tendencias` mostra 4 gráficos com os últimos meses fechados.
 2. Primeira abertura popula o Supabase; segunda abertura lê do Supabase (sem bater no
    Winthor para meses já fotografados).
-3. Um mês fotografado exibe sempre o mesmo valor (congelado), mesmo que o Winthor mude.
+3. Um mês fotografado é estável entre acessos, **mas** uma correção retroativa no Winthor,
+   ao reabrir o dashboard daquele mês, sobrescreve a foto (self-heal) — inclusive para viewer.
 4. Winthor offline não quebra a tela nem grava dado inválido.
