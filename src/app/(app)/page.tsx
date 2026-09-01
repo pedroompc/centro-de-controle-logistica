@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
-import { listarFaltas } from "@/data/faltas";
-import { custoDoSetor, faltasNoPeriodo } from "@/domain/metrics";
+import { custoDoSetor } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
 import {
   primeiroDiaDoMes,
   formatMesAno,
-  inicioFimDoMes,
   limitarAoHistorico,
 } from "@/domain/periodo";
 import { MesNav } from "@/components/mes-nav";
-import { listarLancamentosDoMes } from "@/data/custos-mensais";
-import { receitaTotalDoMes } from "@/data/receitas";
-import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
+import { getFechamentoMensal } from "@/data/fechamento-mensal";
 import { custoLiquido } from "@/domain/receitas-metrics";
 import { PageHeader, StatCard, Card, SectionTitle, BarList, SetorBarList } from "@/components/ui";
 import { Suspense } from "react";
@@ -33,21 +29,21 @@ export default async function Dashboard({
   // Default = mês atual; qualquer mês pedido é preso à janela navegável.
   const mesAtual = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
   const mesFechado = mesAtual < primeiroDiaDoMes();
-  const [funcionarios, setores, faltas, lancamentosMes, receitasMes] = await Promise.all([
+  // Efetivo/setores ao vivo (estrutura atual, barato). Custos/receitas/faltas do
+  // mês vêm do snapshot: foto para mês fechado, cálculo ao vivo para o corrente.
+  const [funcionarios, setores, fechamento] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
-    listarFaltas(),
-    listarLancamentosDoMes(mesAtual),
-    receitaTotalDoMes(mesAtual),
+    getFechamentoMensal(mesAtual),
   ]);
-  const { inicio, fim } = inicioFimDoMes(mesAtual);
 
   const ativos = funcionarios.filter((f) => f.status === "ativo");
   const custoEfetivo = ativos.reduce((t, f) => t + f.custoMensal, 0);
-  const faltasMes = faltasNoPeriodo(faltas, funcionarios.map((f) => f.id), inicio, fim);
-  const fixos = somaLancamentos(lancamentosMes, "fixo");
-  const variaveis = somaLancamentos(lancamentosMes, "variavel");
-  const custoTotalMes = totalDoMes(lancamentosMes, custoEfetivo);
+  const faltasMes = fechamento.faltas;
+  const fixos = fechamento.custoFixo;
+  const variaveis = fechamento.custoVariavel;
+  const receitasMes = fechamento.receitaTotal;
+  const custoTotalMes = custoEfetivo + fixos + variaveis;
   const custoLiquidoMes = custoLiquido(custoTotalMes, receitasMes);
 
   // Custo + efetivo por setor numa leitura só: barra pelo custo, nº de pessoas ao lado.

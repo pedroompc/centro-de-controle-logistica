@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapReceitaDiversa } from "./mappers";
 import { assertAdmin } from "./auth";
+import { invalidarFechamentoDoMesDe } from "./fechamento-cache";
 import { resolverValorDiversa } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
 import type { ReceitaDiversa, ReceitaCategoria } from "@/domain/types";
@@ -91,6 +92,7 @@ export async function criarDiversa(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_diversas").insert(toRow(f));
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(f.data);
   revalidar();
 }
 
@@ -100,15 +102,20 @@ export async function editarDiversa(formData: FormData): Promise<void> {
   const f = parseForm(formData);
   if (!id || !f.data || !f.valor) return;
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("receitas_diversas").select("data").eq("id", id).maybeSingle();
   const { error } = await supabase.from("receitas_diversas").update(toRow(f)).eq("id", id);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(antigo?.data ? String(antigo.data) : null);
+  await invalidarFechamentoDoMesDe(f.data);
   revalidar();
 }
 
 export async function removerDiversa(id: string): Promise<void> {
   await assertAdmin();
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("receitas_diversas").select("data").eq("id", id).maybeSingle();
   const { error } = await supabase.from("receitas_diversas").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(antigo?.data ? String(antigo.data) : null);
   revalidar();
 }

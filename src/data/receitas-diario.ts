@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapTotalDiario } from "./mappers";
 import { assertAdmin } from "./auth";
+import { invalidarFechamentoDoMesDe } from "./fechamento-cache";
 import { inicioFimDoMes } from "@/domain/periodo";
 import type { TotalDiarioDescarregamento } from "@/domain/types";
 
@@ -65,6 +66,7 @@ export async function criarTotalDiario(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_descarregamento_diario").insert(toRow(f));
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(f.data);
   revalidar();
 }
 
@@ -74,15 +76,20 @@ export async function editarTotalDiario(formData: FormData): Promise<void> {
   const f = parseForm(formData);
   if (!id || !f.data || !f.descarregos || !f.receita) return;
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("receitas_descarregamento_diario").select("data").eq("id", id).maybeSingle();
   const { error } = await supabase.from("receitas_descarregamento_diario").update(toRow(f)).eq("id", id);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(antigo?.data ? String(antigo.data) : null);
+  await invalidarFechamentoDoMesDe(f.data);
   revalidar();
 }
 
 export async function removerTotalDiario(id: string): Promise<void> {
   await assertAdmin();
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("receitas_descarregamento_diario").select("data").eq("id", id).maybeSingle();
   const { error } = await supabase.from("receitas_descarregamento_diario").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(antigo?.data ? String(antigo.data) : null);
   revalidar();
 }

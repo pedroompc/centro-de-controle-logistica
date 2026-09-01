@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapReceita } from "./mappers";
 import { assertAdmin } from "./auth";
+import { invalidarFechamentoDoMesDe } from "./fechamento-cache";
 import { calcularReceita, calcularReceitaVolume } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
 import { lerConfig } from "./config-descarregamento";
@@ -133,6 +134,7 @@ export async function criarReceita(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_descarregamento").insert(calcularEColunas(f, valorMinimo));
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(f.data);
   revalidatePath("/receitas");
   revalidatePath("/custos");
   revalidatePath("/");
@@ -146,11 +148,14 @@ export async function editarReceita(formData: FormData): Promise<void> {
   if (f.tipo === "volume" && !f.quantidade) return;
   const { valorMinimo } = await lerConfig();
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("receitas_descarregamento").select("data").eq("id", id).maybeSingle();
   const { error } = await supabase
     .from("receitas_descarregamento")
     .update(calcularEColunas(f, valorMinimo))
     .eq("id", id);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(antigo?.data ? String(antigo.data) : null); // mês de origem
+  await invalidarFechamentoDoMesDe(f.data); // mês de destino (pode ter mudado)
   revalidatePath("/receitas");
   revalidatePath("/custos");
   revalidatePath("/");
@@ -159,8 +164,10 @@ export async function editarReceita(formData: FormData): Promise<void> {
 export async function removerReceita(id: string): Promise<void> {
   await assertAdmin();
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("receitas_descarregamento").select("data").eq("id", id).maybeSingle();
   const { error } = await supabase.from("receitas_descarregamento").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMesDe(antigo?.data ? String(antigo.data) : null);
   revalidatePath("/receitas");
   revalidatePath("/custos");
   revalidatePath("/");

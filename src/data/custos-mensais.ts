@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
+import { invalidarFechamentoDoMes } from "./fechamento-cache";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import type { CustoMensal } from "@/domain/types";
 
@@ -47,6 +48,7 @@ export async function materializarMes(mes: string): Promise<void> {
   }));
   const { error: e3 } = await supabase.from("custos_mensais").insert(rows);
   if (e3) throw new Error(e3.message);
+  await invalidarFechamentoDoMes(mes);
   revalidatePath("/custos");
   revalidatePath("/");
 }
@@ -67,6 +69,7 @@ export async function adicionarLancamento(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("custos_mensais").insert(registro);
   if (error) throw new Error(error.message);
+  await invalidarFechamentoDoMes(registro.mes);
   revalidatePath("/custos");
   revalidatePath("/");
 }
@@ -79,8 +82,10 @@ export async function editarLancamento(formData: FormData): Promise<void> {
   const valor = Number(raw);
   if (Number.isNaN(valor)) return;
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("custos_mensais").select("mes").eq("id", id).maybeSingle();
   const { error } = await supabase.from("custos_mensais").update({ valor }).eq("id", id);
   if (error) throw new Error(error.message);
+  if (antigo?.mes) await invalidarFechamentoDoMes(String(antigo.mes));
   revalidatePath("/custos");
   revalidatePath("/");
 }
@@ -88,8 +93,10 @@ export async function editarLancamento(formData: FormData): Promise<void> {
 export async function removerLancamento(id: string): Promise<void> {
   await assertAdmin();
   const supabase = await createClient();
+  const { data: antigo } = await supabase.from("custos_mensais").select("mes").eq("id", id).maybeSingle();
   const { error } = await supabase.from("custos_mensais").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  if (antigo?.mes) await invalidarFechamentoDoMes(String(antigo.mes));
   revalidatePath("/custos");
   revalidatePath("/");
 }
