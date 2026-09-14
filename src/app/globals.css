@@ -39,7 +39,10 @@ body {
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  /* `clip` (não `hidden`): corta o vazamento horizontal SEM transformar o
+     <html> em container de rolagem — que quebrava a roda do mouse no
+     Chrome/Edge no Windows (o trackpad do Mac mascarava o problema). */
+  overflow-x: clip;
 }
 
 /* ————— Camada mobile (≤ md) ————— */
