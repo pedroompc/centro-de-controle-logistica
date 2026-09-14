@@ -2,6 +2,9 @@ import oracledb from "oracledb";
 
 // Retorna cada linha como objeto { COLUNA: valor }.
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
+// CLOB (ex.: XML da NF-e em PCDOCELETRONICO.XMLNFE) vem como string, não Lob.
+// As notas têm ~15 KB — muito abaixo do teto de string do driver.
+oracledb.fetchAsString = [oracledb.CLOB];
 
 /**
  * Executa uma query de leitura no banco Oracle do Winthor.

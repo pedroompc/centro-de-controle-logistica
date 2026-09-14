@@ -81,6 +81,23 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
         </div>
       </div>
 
+      {pedido.notaFiscal != null && (
+        <div>
+          <a
+            href={`/pedidos/${pedido.numped}/danfe`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#181d55] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#10143f]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+            </svg>
+            Baixar DANFE (PDF)
+          </a>
+        </div>
+      )}
+
       <div>
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
           Produtos {pedido.qtdItens > 0 && `(${pedido.qtdItens})`}
