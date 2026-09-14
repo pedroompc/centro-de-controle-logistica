@@ -94,7 +94,7 @@ export default async function Dashboard({
         <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
         <StatCard label="Custo bruto do mês" value={formatBRL(custoTotalMes)} accent="gold" href="/custos" />
         <StatCard label="Custo líquido do mês" value={formatBRL(custoLiquidoMes)} hint={`Receitas: ${formatBRL(receitasMes)}`} accent="green" href="/receitas" />
-        <StatCard label="Faltas no mês" value={`${faltasMes}`} accent="red" />
+        <StatCard label="Faltas no mês" value={`${faltasMes}`} accent="red" href={`/faltas?mes=${mesAtual}`} />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">

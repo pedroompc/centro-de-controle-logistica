@@ -32,6 +32,17 @@ export default async function FuncionariosPage({
   return (
     <div>
       <PageHeader title="Funcionários" subtitle={`${filtrados.length} de ${funcionarios.length} no efetivo`}>
+        <Link
+          href="/faltas"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8">
+            <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
+            <path d="M3 9h18M8 3v3M16 3v3" />
+            <path d="m10 13 4 4M14 13l-4 4" />
+          </svg>
+          Faltas
+        </Link>
         {admin && <FuncionarioForm setores={setores} />}
       </PageHeader>
 

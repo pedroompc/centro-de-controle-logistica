@@ -26,6 +26,9 @@ export interface PedidoConsulta {
   peso: number;
   qtdItens: number;
   temDevolucao: boolean;
+  // Motivo(s) da devolução (PCTABDEV.MOTIVO), já concatenados quando há mais de
+  // um. `null` quando o pedido não teve devolução.
+  motivoDevolucao: string | null;
 }
 
 export interface ItemPedido {
