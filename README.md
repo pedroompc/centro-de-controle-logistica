@@ -18,6 +18,10 @@
 
 ## ✨ Sobre o projeto
 
+> Projeto desenvolvido sob medida para uma **empresa de distribuição/logística**.
+> Esta versão pública teve a identidade visual e os dados do cliente
+> **anonimizados** — nenhuma informação real da empresa é exposta.
+
 Sistema web que consolida os indicadores de uma operação logística em tempo real,
 cruzando duas fontes de dados: um **ERP Oracle (WinThor)** — de onde saem pedidos,
 notas fiscais e devoluções — e um banco **Supabase (Postgres)** para os dados
