@@ -102,7 +102,18 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
       SELECT 1 FROM PCNFSAID nf
       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
-    ) THEN 'S' ELSE 'N' END          AS TEM_DEV
+    ) THEN 'S' ELSE 'N' END          AS TEM_DEV,
+    -- Motivo(s) da devolução: mesma cadeia do TEM_DEV, resolvendo o CODDEVOL da
+    -- nota de entrada em PCTABDEV.MOTIVO. DISTINCT no subselect antes do LISTAGG
+    -- (não depende do LISTAGG DISTINCT, que só existe no Oracle 19c+); vazio ⇒ NULL.
+    (SELECT LISTAGG(mt, ', ') WITHIN GROUP (ORDER BY mt) FROM (
+       SELECT DISTINCT NVL(td.MOTIVO, 'Não informado') AS mt
+       FROM PCNFSAID nf
+       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
+       JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
+       LEFT JOIN PCTABDEV td ON td.CODDEVOL  = ne.CODDEVOL
+       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
+    ))                               AS MOTIVO_DEV
   FROM PCPEDC ped
   LEFT JOIN PCCLIENT cli ON cli.CODCLI      = ped.CODCLI
   LEFT JOIN PCUSUARI usu ON usu.CODUSUR     = ped.CODUSUR
@@ -118,6 +129,7 @@ interface LinhaPedido {
   CODRCA: number | null; RCA: string | null;
   POSICAO: string | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
+  MOTIVO_DEV: string | null;
 }
 
 /** Resultado da consulta: a lista, ou o erro técnico (p/ diagnosticar na tela). */
@@ -163,6 +175,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       peso: num(r.PESO),
       qtdItens: num(r.QTD_ITENS),
       temDevolucao: r.TEM_DEV === "S",
+      motivoDevolucao: str(r.MOTIVO_DEV),
     })) };
   } catch (erro) {
     const msg = (erro as Error).message;

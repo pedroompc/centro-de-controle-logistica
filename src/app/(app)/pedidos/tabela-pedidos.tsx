@@ -72,6 +72,12 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
             </b>
             {" · "}Motorista: <b className="text-[#141a4d]">{pedido.motorista ?? "—"}</b>
           </p>
+          {pedido.temDevolucao && (
+            <p className="text-slate-600">
+              Motivo:{" "}
+              <b className="text-rose-600">{pedido.motivoDevolucao ?? "Não informado"}</b>
+            </p>
+          )}
         </div>
       </div>
 
