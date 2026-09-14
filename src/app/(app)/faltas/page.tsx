@@ -64,7 +64,7 @@ export default async function FaltasPage({
 
   return (
     <div>
-      <BackLink href={`/?mes=${mesAtual}`}>Visão geral</BackLink>
+      <BackLink href="/funcionarios">Funcionários</BackLink>
       <PageHeader
         title="Faltas"
         subtitle={`${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}

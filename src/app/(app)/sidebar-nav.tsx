@@ -9,7 +9,7 @@ export type Item = { href: string; label: string; short?: string; primary?: bool
 
 // Telas que entendem `?mes=`. Ao navegar entre elas, o mês selecionado é
 // preservado; as demais (Setores, Funcionários, Tendências) ignoram o parâmetro.
-const COM_MES = new Set(["/", "/custos", "/receitas", "/devolucoes", "/faltas"]);
+const COM_MES = new Set(["/", "/custos", "/receitas", "/devolucoes"]);
 
 export function comMes(href: string, mes: string | null): string {
   return mes && COM_MES.has(href) ? `${href}?mes=${mes}` : href;
@@ -50,17 +50,6 @@ export const items: Item[] = [
         <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
         <path d="M16 5.2a3 3 0 0 1 0 5.6" />
         <path d="M17.5 20a5.2 5.2 0 0 0-3-4.7" />
-      </svg>
-    ),
-  },
-  {
-    href: "/faltas",
-    label: "Faltas",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-        <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
-        <path d="M3 9h18M8 3v3M16 3v3" />
-        <path d="m10 13 4 4M14 13l-4 4" />
       </svg>
     ),
   },
