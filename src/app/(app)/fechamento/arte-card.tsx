@@ -71,9 +71,9 @@ export function ArteFechamento({
     >
       {/* Marca */}
       <div style={{ display: "flex", alignItems: "baseline" }}>
-        <div style={{ fontSize: 60, fontWeight: 800, letterSpacing: -1, color: WHITE }}>DIA</div>
+        <div style={{ fontSize: 44, fontWeight: 800, letterSpacing: -1, color: WHITE }}>Centro de Controle</div>
         <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: 10, color: MUTED, marginLeft: 18, textTransform: "uppercase" }}>
-          Distribuição
+          Logística
         </div>
       </div>
 

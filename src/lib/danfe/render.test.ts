@@ -14,10 +14,10 @@ function xmlComItens(n: number): string {
     </det>`).join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <nfeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe"><NFe xmlns="http://www.portalfiscal.inf.br/nfe">
-<infNFe Id="NFe26260969944973000185550030024958121136106610" versao="4.00">
+<infNFe Id="NFe26260912345678000199550030024958121136106610" versao="4.00">
 <ide><cUF>26</cUF><natOp>VENDA DE MERCADORIA A VAREJO</natOp><serie>3</serie><nNF>2495812</nNF>
   <dhEmi>2026-09-14T08:30:00-03:00</dhEmi><dhSaiEnt>2026-09-14T09:00:00-03:00</dhSaiEnt><tpNF>1</tpNF><tpImp>1</tpImp></ide>
-<emit><CNPJ>69944973000185</CNPJ><xNome>DIA DISTRIBUICAO DE ALIMENTOS LTDA</xNome><xFant>DIA</xFant>
+<emit><CNPJ>12345678000199</CNPJ><xNome>DISTRIBUIDORA EXEMPLO LTDA</xNome><xFant>EXEMPLO</xFant>
   <enderEmit><xLgr>RODOVIA BR 101 SUL</xLgr><nro>1000</nro><xBairro>DISTRITO INDUSTRIAL</xBairro>
     <xMun>JABOATAO DOS GUARARAPES</xMun><UF>PE</UF><CEP>54250610</CEP><fone>8130000000</fone></enderEmit><IE>1234567890</IE><CRT>3</CRT></emit>
 <dest><CNPJ>11222333000199</CNPJ><xNome>MERCADINHO DO JOAO LTDA ME</xNome>
@@ -31,7 +31,7 @@ ${dets}
 <cobr><dup><nDup>001</nDup><dVenc>2026-10-14</dVenc><vDup>1000.00</vDup></dup></cobr>
 <infAdic><infCpl>Pedido 987654 - entregar no periodo da manha. Documento auxiliar sem valor fiscal - foto do DANFE para o vendedor em rota.</infCpl></infAdic>
 </infNFe></NFe>
-<protNFe versao="4.00"><infProt><chNFe>26260969944973000185550030024958121136106610</chNFe><nProt>126260000123456</nProt><dhRecbto>2026-09-14T08:31:00-03:00</dhRecbto></infProt></protNFe>
+<protNFe versao="4.00"><infProt><chNFe>26260912345678000199550030024958121136106610</chNFe><nProt>126260000123456</nProt><dhRecbto>2026-09-14T08:31:00-03:00</dhRecbto></infProt></protNFe>
 </nfeProc>`;
 }
 

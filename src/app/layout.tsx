@@ -20,10 +20,10 @@ const sora = Sora({
 
 export const metadata: Metadata = {
   title: "Centro de Controle Logística",
-  description: "Efetivo, custos e faturamento da logística DIA em um só painel.",
-  applicationName: "Centro DIA",
+  description: "Efetivo, custos e faturamento da operação logística em um só painel.",
+  applicationName: "Centro de Controle",
   // Abre em tela cheia quando adicionado à tela inicial do iPhone.
-  appleWebApp: { capable: true, title: "Centro DIA", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "Centro de Controle", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
