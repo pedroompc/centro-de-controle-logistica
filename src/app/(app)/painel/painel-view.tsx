@@ -61,14 +61,11 @@ interface Slide {
   node: ReactNode;
 }
 
-/** Placeholder da marca — a logo real da empresa ainda não existe no projeto. */
+/** Marca da empresa — mesma logo (sol) usada no menu e no login. */
 function Marca() {
   return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-400" aria-hidden>
-      <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" stroke="#0a1650" strokeWidth="2.4" strokeLinecap="round">
-        <path d="M5 19V11M12 19V5M19 19v-6" />
-      </svg>
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/sol-dia.gif" alt="DIA" className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/10" />
   );
 }
 

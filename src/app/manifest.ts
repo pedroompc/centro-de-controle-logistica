@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Centro de Controle Logística",
-    short_name: "Centro de Controle",
-    description: "Efetivo, custos e faturamento da operação logística em um só painel.",
+    name: "Centro de Controle Logística — DIA",
+    short_name: "Centro DIA",
+    description: "Efetivo, custos e faturamento da logística DIA em um só painel.",
     start_url: "/",
     display: "standalone",
     background_color: "#0a1650",

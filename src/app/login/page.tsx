@@ -69,17 +69,15 @@ export default function LoginPage() {
 
         {/* topo: logo */}
         <div className="surge relative z-10 flex items-center gap-4">
-          <div
-            className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-400 shadow-lg shadow-black/30 ring-1 ring-white/10"
-            aria-hidden
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="h-8 w-8" stroke="#0a1650" strokeWidth="2.4" strokeLinecap="round">
-              <path d="M5 19V11M12 19V5M19 19v-6" />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/sol-dia.gif"
+            alt="Sol DIA"
+            className="h-16 w-16 rounded-2xl object-cover shadow-lg shadow-black/30 ring-1 ring-white/10"
+          />
           <div className="leading-none">
-            <div className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight text-white">Centro de Controle</div>
-            <div className="mt-1 text-[10px] font-medium tracking-[0.38em] text-white/60">LOGÍSTICA</div>
+            <div className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight text-white">DIA</div>
+            <div className="mt-1 text-[10px] font-medium tracking-[0.38em] text-white/60">DISTRIBUIÇÃO</div>
           </div>
         </div>
 
@@ -89,7 +87,7 @@ export default function LoginPage() {
             Centro de Controle
           </p>
           <h1 className="surge surge-3 mt-3 font-[family-name:var(--font-sora)] text-4xl font-extrabold leading-[1.05] tracking-tight text-white md:text-6xl">
-A operação logística,<br />sob controle.
+            A logística da<br />DIA, sob controle.
           </h1>
           <p className="surge surge-4 mt-5 max-w-md text-base leading-relaxed text-white/70">
             Efetivo, custos e resultados da operação reunidos num só painel — do galpão à entrega.
@@ -98,7 +96,7 @@ A operação logística,<br />sob controle.
 
         {/* rodapé */}
         <div className="relative z-10 text-xs text-white/45">
-          © 2026 · Centro de Controle Logística
+          © 2026 Dia Distribuição · Centro de Controle Logística
         </div>
       </section>
 
@@ -127,7 +125,7 @@ A operação logística,<br />sob controle.
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="voce@empresa.com"
+                placeholder="voce@diadistribuicao.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-300/60"

@@ -7,19 +7,17 @@ import { MobileNav } from "./mobile-nav";
 function Marca({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div
-        className={`${compact ? "h-9 w-9" : "h-10 w-10"} flex items-center justify-center rounded-xl bg-amber-400 ring-1 ring-white/10`}
-        aria-hidden
-      >
-        <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="#0a1650" strokeWidth="2.4" strokeLinecap="round">
-          <path d="M5 19V11M12 19V5M19 19v-6" />
-        </svg>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/sol-dia.gif"
+        alt="DIA"
+        className={`${compact ? "h-9 w-9" : "h-10 w-10"} rounded-xl object-cover ring-1 ring-white/10`}
+      />
       <div className="leading-tight">
         <div className="font-[family-name:var(--font-sora)] text-sm font-extrabold tracking-tight text-white">
           Centro de Controle
         </div>
-        <div className="text-[10px] font-medium uppercase tracking-[0.28em] text-white/50">Logística</div>
+        <div className="text-[10px] font-medium uppercase tracking-[0.28em] text-white/50">DIA Distribuição</div>
       </div>
     </div>
   );
