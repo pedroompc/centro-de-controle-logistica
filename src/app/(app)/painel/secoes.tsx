@@ -139,23 +139,31 @@ export function MiniBarras({
   itens,
   cor = "#f5b301",
   formatarValor = (v: number) => inteiro.format(v),
+  destaque = false,
 }: {
   itens: { rotulo: string; valor: number }[];
   cor?: string;
   formatarValor?: (v: number) => string;
+  destaque?: boolean; // rótulos maiores e mais claros (poucas barras, ex.: meses)
 }) {
   const max = Math.max(1, ...itens.map((i) => i.valor));
   if (itens.length === 0) return <p className="py-10 text-center text-white/40">Sem lançamentos no período.</p>;
+  const clsValor = destaque
+    ? "text-base font-extrabold tabular-nums text-white xl:text-xl"
+    : "text-xs font-semibold tabular-nums text-white/70";
+  const clsRotulo = destaque
+    ? "text-sm font-bold uppercase tracking-wide text-white xl:text-base"
+    : "text-[0.65rem] text-white/40";
   return (
     <div className="flex h-full items-stretch gap-2">
       {itens.map((it, i) => (
         <div key={`${it.rotulo}-${i}`} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1.5">
-          <span className="shrink-0 text-xs font-semibold tabular-nums text-white/70">{formatarValor(it.valor)}</span>
+          <span className={`shrink-0 whitespace-nowrap ${clsValor}`}>{formatarValor(it.valor)}</span>
           {/* área da barra: flex-1 dá altura definida, então o height % funciona */}
           <div className="flex w-full flex-1 items-end">
             <div className="w-full rounded-t-md transition-[height]" style={{ height: `${Math.max(2, (it.valor / max) * 100)}%`, background: cor }} />
           </div>
-          <span className="w-full shrink-0 truncate text-center text-[0.65rem] text-white/40" title={it.rotulo}>
+          <span className={`w-full shrink-0 truncate text-center font-[family-name:var(--font-sora)] ${clsRotulo}`} title={it.rotulo}>
             {it.rotulo}
           </span>
         </div>
@@ -314,7 +322,7 @@ export function SecaoReceitas({ dados }: { dados: ResumoReceitas }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Receita mensal (últimos meses)</div>
         <div className="min-h-0 flex-1">
-          <MiniBarras itens={serie} cor="#34d399" formatarValor={(v) => formatBRL(v)} />
+          <MiniBarras itens={serie} cor="#34d399" formatarValor={(v) => formatBRL(v)} destaque />
         </div>
       </div>
     </div>
@@ -323,7 +331,8 @@ export function SecaoReceitas({ dados }: { dados: ResumoReceitas }) {
 
 /** Descarregamento · por dia (mês), por semana e total do mês. */
 export function SecaoDescarregos({ dados, mesLabel }: { dados: ResumoDescarregos; mesLabel: string }) {
-  const porDia = dados.porDia.map((d) => ({ rotulo: d.data.slice(8, 10), valor: d.descarregos }));
+  // Rótulo = dia/mês (dd/mm) para ficar claro que o eixo é a data.
+  const porDia = dados.porDia.map((d) => ({ rotulo: `${d.data.slice(8, 10)}/${d.data.slice(5, 7)}`, valor: d.descarregos }));
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -333,9 +342,10 @@ export function SecaoDescarregos({ dados, mesLabel }: { dados: ResumoDescarregos
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 lg:grid-cols-[2fr_1fr]">
         <div className="flex min-h-0 flex-col">
-          <div className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Descarregos por dia</div>
+          <div className="mb-1 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Descarregos por dia</div>
+          <div className="mb-3 text-xs text-white/45">quantidade em cima · data (dia/mês) embaixo</div>
           <div className="min-h-0 flex-1">
-            <MiniBarras itens={porDia} cor="#f5b301" />
+            <MiniBarras itens={porDia} cor="#f5b301" destaque />
           </div>
         </div>
         <div className="flex min-h-0 flex-col">
