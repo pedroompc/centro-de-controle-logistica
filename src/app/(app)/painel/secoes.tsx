@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { formatBRL, formatPercent } from "@/domain/format";
+import { formatBRL, formatPercent, formatKg } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import type {
   DevolucaoPorMotorista,
@@ -80,7 +80,7 @@ export interface LinhaRanking {
   selo?: ReactNode;
 }
 
-export function BigRanking({ linhas, denso = false }: { linhas: LinhaRanking[]; denso?: boolean }) {
+export function BigRanking({ linhas, denso = false, inicio = 0 }: { linhas: LinhaRanking[]; denso?: boolean; inicio?: number }) {
   return (
     <ul className="divide-y divide-white/10">
       {linhas.map((l, i) => (
@@ -88,9 +88,9 @@ export function BigRanking({ linhas, denso = false }: { linhas: LinhaRanking[]; 
           <span
             className={`flex shrink-0 items-center justify-center rounded-full font-[family-name:var(--font-sora)] font-bold tabular-nums ${
               denso ? "h-8 w-8 text-sm" : "h-9 w-9 text-base xl:h-10 xl:w-10"
-            } ${i === 0 ? "bg-amber-400 text-[#0a1650]" : "bg-white/10 text-white/55"}`}
+            } ${inicio + i === 0 ? "bg-amber-400 text-[#0a1650]" : "bg-white/10 text-white/55"}`}
           >
-            {i + 1}
+            {inicio + i + 1}
           </span>
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <span className={`truncate font-semibold text-white ${denso ? "text-lg" : "text-xl xl:text-2xl"}`} title={l.nome}>
@@ -111,6 +111,25 @@ export function BigRanking({ linhas, denso = false }: { linhas: LinhaRanking[]; 
   );
 }
 
+/** Top 10 em duas colunas: 1–5 à esquerda, 6–10 à direita, com divisória. */
+export function RankingDuasColunas({ linhas }: { linhas: LinhaRanking[] }) {
+  const top = linhas.slice(0, 10);
+  const esq = top.slice(0, 5);
+  const dir = top.slice(5, 10);
+  return (
+    <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
+      <div className="min-h-0 lg:pr-8">
+        <BigRanking denso linhas={esq} />
+      </div>
+      {dir.length > 0 && (
+        <div className="min-h-0 border-t border-white/15 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+          <BigRanking denso linhas={dir} inicio={5} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SeloSetor({ setor }: { setor: SetorDevolucao }) {
   return <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${SETOR_COR[setor].chip}`}>{setor}</span>;
 }
@@ -126,18 +145,21 @@ export function MiniBarras({
   formatarValor?: (v: number) => string;
 }) {
   const max = Math.max(1, ...itens.map((i) => i.valor));
+  if (itens.length === 0) return <p className="py-10 text-center text-white/40">Sem lançamentos no período.</p>;
   return (
-    <div className="flex h-full items-end gap-1.5">
+    <div className="flex h-full items-stretch gap-2">
       {itens.map((it, i) => (
-        <div key={`${it.rotulo}-${i}`} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
-          <span className="text-xs font-semibold tabular-nums text-white/70">{formatarValor(it.valor)}</span>
-          <div className="w-full rounded-t-md" style={{ height: `${Math.max(4, (it.valor / max) * 100)}%`, minHeight: 4, background: cor }} />
-          <span className="w-full truncate text-center text-[0.65rem] text-white/40" title={it.rotulo}>
+        <div key={`${it.rotulo}-${i}`} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1.5">
+          <span className="shrink-0 text-xs font-semibold tabular-nums text-white/70">{formatarValor(it.valor)}</span>
+          {/* área da barra: flex-1 dá altura definida, então o height % funciona */}
+          <div className="flex w-full flex-1 items-end">
+            <div className="w-full rounded-t-md transition-[height]" style={{ height: `${Math.max(2, (it.valor / max) * 100)}%`, background: cor }} />
+          </div>
+          <span className="w-full shrink-0 truncate text-center text-[0.65rem] text-white/40" title={it.rotulo}>
             {it.rotulo}
           </span>
         </div>
       ))}
-      {itens.length === 0 && <p className="w-full py-10 text-center text-white/40">Sem lançamentos no período.</p>}
     </div>
   );
 }
@@ -154,9 +176,13 @@ export function SecaoClientesVendedores({
   vendedores: DevolucaoPorVendedor[];
 }) {
   return (
-    <div className="grid h-full grid-cols-1 gap-8 lg:grid-cols-2">
-      <div className="flex min-h-0 flex-col">
-        <div className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Clientes que mais devolvem</div>
+    <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
+      {/* Coluna clientes — separada da de vendedores por uma divisória. */}
+      <div className="flex min-h-0 flex-col lg:pr-8">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">
+          <span className="h-4 w-1 rounded-full bg-amber-400" />
+          Clientes que mais devolvem
+        </div>
         <div className="min-h-0 flex-1 overflow-hidden">
           <BigRanking
             denso
@@ -169,8 +195,11 @@ export function SecaoClientesVendedores({
           />
         </div>
       </div>
-      <div className="flex min-h-0 flex-col">
-        <div className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Vendedores com mais devolução</div>
+      <div className="flex min-h-0 flex-col border-t border-white/15 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">
+          <span className="h-4 w-1 rounded-full bg-amber-400" />
+          Vendedores com mais devolução
+        </div>
         <div className="min-h-0 flex-1 overflow-hidden">
           <BigRanking
             denso
@@ -189,9 +218,9 @@ export function SecaoClientesVendedores({
 
 /** Devoluções · motoristas que mais voltam (por R$ devolvido). */
 export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotorista[] }) {
-  const top = [...motoristas].sort((a, b) => b.valorDevolvido - a.valorDevolvido).slice(0, 9);
+  const top = [...motoristas].sort((a, b) => b.valorDevolvido - a.valorDevolvido).slice(0, 10);
   return (
-    <BigRanking
+    <RankingDuasColunas
       linhas={top.map((m) => ({
         chave: m.codMotorista,
         nome: m.nome,
@@ -210,9 +239,9 @@ export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotori
 
 /** Devoluções · motivos (por valor). */
 export function SecaoMotivos({ porMotivo }: { porMotivo: DevolucaoPorMotivo[] }) {
-  const top = [...porMotivo].sort((a, b) => b.valor - a.valor).slice(0, 9);
+  const top = [...porMotivo].sort((a, b) => b.valor - a.valor).slice(0, 10);
   return (
-    <BigRanking
+    <RankingDuasColunas
       linhas={top.map((m) => ({
         chave: `${m.motivo}-${m.setor}`,
         nome: m.motivo,
@@ -232,13 +261,16 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="grid grid-cols-3 gap-3">
-        <Kpi label="Pedidos parados" value={inteiro.format(dados.totalPedidos)} />
-        <Kpi label="Valor a faturar" value={formatBRL(dados.valorTotal)} tone="amber" />
-        <Kpi label="Parados +72h" value={inteiro.format(dados.parados72h)} tone="rose" hint="liberados/montados sem NF" />
+        <Kpi label="Pedidos a faturar" value={inteiro.format(dados.totalPedidos)} hint="liberados/montados sem NF" />
+        <Kpi label="Carteira" value={formatBRL(dados.valorTotal)} tone="amber" />
+        <Kpi label="Peso em carteira" value={formatKg(dados.pesoTotal)} />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 lg:grid-cols-2">
-        <div className="flex min-h-0 flex-col">
-          <div className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Por cidade</div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
+        <div className="flex min-h-0 flex-col lg:pr-8">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">
+            <span className="h-4 w-1 rounded-full bg-amber-400" />
+            Por cidade
+          </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <BigRanking
               denso
@@ -246,12 +278,15 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
             />
           </div>
         </div>
-        <div className="flex min-h-0 flex-col">
-          <div className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Por vendedor (RCA)</div>
+        <div className="flex min-h-0 flex-col border-t border-white/15 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">
+            <span className="h-4 w-1 rounded-full bg-amber-400" />
+            Por região
+          </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <BigRanking
               denso
-              linhas={dados.topRca.map((r) => ({ chave: r.chave, nome: r.nome, principal: formatBRL(r.valor), secundario: `${r.qtd} pedidos` }))}
+              linhas={dados.porRegiao.map((r) => ({ chave: r.chave, nome: r.nome, principal: formatBRL(r.valor), secundario: `${r.qtd} pedidos` }))}
             />
           </div>
         </div>
@@ -263,7 +298,7 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
 /** Receitas · total por origem + série mensal. */
 export function SecaoReceitas({ dados }: { dados: ResumoReceitas }) {
   const origens = [
-    { rotulo: "Descarregamento", valor: dados.descarregamento },
+    { rotulo: "Descarrego", valor: dados.descarregamento },
     { rotulo: "Totais diários", valor: dados.diarios },
     { rotulo: "Diversas", valor: dados.diversas },
   ];

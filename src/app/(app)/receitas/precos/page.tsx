@@ -14,7 +14,7 @@ export default async function PrecosPage() {
   return (
     <div>
       <BackLink href="/receitas">Receitas</BackLink>
-      <PageHeader title="Preços" subtitle="Valores globais por tipo de descarregamento (por tonelada; o Volume é por caixa)" />
+      <PageHeader title="Preços" subtitle="Valores globais por tipo de descarrego (por tonelada; o Volume é por caixa)" />
 
       <Card className="max-w-lg overflow-hidden">
         <table className="w-full text-left text-sm">
@@ -62,9 +62,9 @@ export default async function PrecosPage() {
       </Card>
 
       <Card className="mt-4 max-w-lg p-5">
-        <h2 className="text-sm font-semibold text-[#141a4d]">Valor mínimo por descarregamento</h2>
+        <h2 className="text-sm font-semibold text-[#141a4d]">Valor mínimo por descarrego</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Descarregamento cujo cálculo fique abaixo deste valor é cobrado pelo mínimo.
+          Descarrego cujo cálculo fique abaixo deste valor é cobrado pelo mínimo.
         </p>
         {admin ? (
           <form action={editarValorMinimo} className="mt-3 flex items-center gap-2">

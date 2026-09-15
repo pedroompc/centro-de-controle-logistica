@@ -141,7 +141,7 @@ export default async function ReceitasPage({
 
   return (
     <div>
-      <PageHeader title="Receitas Logísticas" subtitle="Descarregamentos e outras receitas da operação">
+      <PageHeader title="Receitas Logísticas" subtitle="Descarregos e outras receitas da operação">
         <MesNav mes={mes} hrefFor={(m) => qs(m, filtros, vista)} />
       </PageHeader>
 
@@ -149,7 +149,7 @@ export default async function ReceitasPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="lg:col-span-1"><HeroStat label="Receita total" value={formatBRL(resumo.total)} /></div>
         <StatCard
-          label="Descarregamento"
+          label="Descarrego"
           value={formatBRL(resumo.totalDescarregamento)}
           hint={`${descarregosTotal} descarregos · ${fmtTon(resumo.toneladas)}`}
           accent="green"
@@ -163,7 +163,7 @@ export default async function ReceitasPage({
         <StatCard
           label="Valor médio / tonelada"
           value={formatBRL(resumo.medioPorTonelada)}
-          hint="só descarregamento"
+          hint="só descarrego"
           accent="gold"
         />
       </div>
@@ -218,14 +218,14 @@ export default async function ReceitasPage({
       {/* Tabela de lançamentos */}
       <section className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <SectionTitle>Descarregamentos do mês</SectionTitle>
+          <SectionTitle>Descarregos do mês</SectionTitle>
           <div className="flex flex-wrap items-center gap-3">
             {admin && vista === "simples" && <TotalDiarioForm mes={mes} />}
             <SeletorVista mes={mes} filtros={filtros} vista={vista} />
           </div>
         </div>
         {(vista === "simples" ? porDia.length === 0 : receitas.length === 0) ? (
-          <p className="text-sm text-slate-400">Nenhum descarregamento no período.</p>
+          <p className="text-sm text-slate-400">Nenhum descarrego no período.</p>
         ) : vista === "simples" ? (
           <Card className="overflow-hidden">
             {/* Desktop: tabela */}
@@ -429,7 +429,7 @@ export default async function ReceitasPage({
         {filtrandoDescarregamento ? (
           <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-4">
             <p className="text-sm text-amber-800">
-              Filtro por fornecedor ou tipo ativo — esses conceitos só existem em descarregamento.
+              Filtro por fornecedor ou tipo ativo — esses conceitos só existem em descarrego.
               As outras receitas (reciclagem) ficam fora deste recorte. Limpe o filtro para vê-las.
             </p>
           </div>

@@ -12,7 +12,7 @@ export default async function FornecedoresPage() {
   return (
     <div>
       <BackLink href="/receitas">Receitas</BackLink>
-      <PageHeader title="Fornecedores" subtitle="Cadastro usado nos lançamentos de descarregamento">
+      <PageHeader title="Fornecedores" subtitle="Cadastro usado nos lançamentos de descarrego">
         {admin && <FornecedorForm />}
       </PageHeader>
 

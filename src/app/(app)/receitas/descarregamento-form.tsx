@@ -48,7 +48,7 @@ export function DescarregamentoForm({
         onClick={() => setAberto(true)}
         className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]"
       >
-        Lançar descarregamento
+        Lançar descarrego
       </button>
     );
   }

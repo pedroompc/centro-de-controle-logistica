@@ -85,9 +85,9 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slid
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.receitas)
-    s.push({ id: "receitas", titulo: "Receitas", contexto: "descarregamento, diários e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoReceitas dados={d.receitas} /> });
+    s.push({ id: "receitas", titulo: "Receitas", contexto: "descarrego, diários e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoReceitas dados={d.receitas} /> });
   if (d.descarregos)
-    s.push({ id: "descarregos", titulo: "Descarregamento", contexto: "por dia, semana e mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} mesLabel={mesLabel} /> });
+    s.push({ id: "descarregos", titulo: "Descarrego", contexto: "por dia, semana e mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} mesLabel={mesLabel} /> });
   return s;
 }
 
@@ -237,8 +237,8 @@ export default function PainelView({
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Kpi label="Faturamento líquido" value={dev.disponivel ? formatBRL(dev.vendaLiquida) : "—"} hint="faturado − devoluções" tone="emerald" />
           <Kpi label="Valor devolução" value={dev.disponivel ? formatBRL(dev.total) : "—"} hint={dev.disponivel ? `taxa ${formatPercent(dev.taxaValor)}` : undefined} tone="rose" />
-          <Kpi label="A faturar" value={dados.aFaturar?.disponivel ? formatBRL(dados.aFaturar.valorTotal) : "—"} hint={dados.aFaturar?.disponivel ? `${dados.aFaturar.totalPedidos} pedidos parados` : undefined} tone="amber" />
-          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarregamento + diversas" tone="emerald" />
+          <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? formatBRL(dados.aFaturar.valorTotal) : "—"} hint={dados.aFaturar?.disponivel ? `${dados.aFaturar.totalPedidos} pedidos` : undefined} tone="amber" />
+          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" tone="emerald" />
         </div>
 
         {dev.porSetor.length > 0 && (

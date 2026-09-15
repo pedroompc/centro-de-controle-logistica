@@ -8,6 +8,7 @@ import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
 import { totalDiversasDoMes } from "@/data/receitas-diversas";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
+import { classificarRegiao, ORDEM_REGIAO, type RegiaoPE } from "@/domain/pe-regioes";
 import type { DevolucaoPorSetor, DevolucaoPorMotivo } from "@/domain/devolucoes";
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
 
@@ -77,24 +78,34 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
 
 // --- A faturar (pedidos parados) ---------------------------------------------
 
-export interface ResumoAFaturar {
-  disponivel: boolean; // false = Winthor fora da rede
-  totalPedidos: number;
-  valorTotal: number;
-  parados72h: number; // pedidos parados há 72h ou mais
-  topCidades: { chave: string; nome: string; qtd: number; valor: number }[];
-  topRca: { chave: string; nome: string; qtd: number; valor: number }[];
+export interface GrupoAFaturar {
+  chave: string;
+  nome: string;
+  qtd: number;
+  valor: number;
 }
 
-/** Resumo do que ainda falta faturar (pedidos liberados/montados sem NF). */
+export interface ResumoAFaturar {
+  disponivel: boolean; // false = Winthor fora da rede
+  totalPedidos: number; // pedidos a faturar (carteira)
+  valorTotal: number; // R$ da carteira
+  pesoTotal: number; // kg da carteira
+  topCidades: GrupoAFaturar[];
+  porRegiao: GrupoAFaturar[]; // RMR / Agreste / Sertão / Zona da Mata / Outras
+}
+
+/** Resumo do que ainda falta faturar — a "carteira" (liberados/montados sem NF). */
 export async function carregarAFaturar(): Promise<ResumoAFaturar> {
   const pedidos = await getPedidosPendentes();
   if (pedidos === null) {
-    return { disponivel: false, totalPedidos: 0, valorTotal: 0, parados72h: 0, topCidades: [], topRca: [] };
+    return { disponivel: false, totalPedidos: 0, valorTotal: 0, pesoTotal: 0, topCidades: [], porRegiao: [] };
   }
 
-  const agrupa = (chave: (p: PedidoPendente) => { id: string; nome: string }) => {
-    const mapa = new Map<string, { chave: string; nome: string; qtd: number; valor: number }>();
+  const agrupar = (
+    chave: (p: PedidoPendente) => { id: string; nome: string },
+    ordenar: (itens: GrupoAFaturar[]) => GrupoAFaturar[],
+  ) => {
+    const mapa = new Map<string, GrupoAFaturar>();
     for (const p of pedidos) {
       const { id, nome } = chave(p);
       const atual = mapa.get(id) ?? { chave: id, nome, qtd: 0, valor: 0 };
@@ -102,19 +113,32 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
       atual.valor += p.valorPedido;
       mapa.set(id, atual);
     }
-    return [...mapa.values()].sort((a, b) => b.valor - a.valor).slice(0, 8);
+    return ordenar([...mapa.values()]);
   };
+
+  const topCidades = agrupar(
+    (p) => ({
+      id: p.cidadeCliente ?? "—",
+      nome: p.cidadeCliente ? `${p.cidadeCliente}${p.ufCliente ? `/${p.ufCliente}` : ""}` : "Sem cidade",
+    }),
+    (itens) => itens.sort((a, b) => b.valor - a.valor).slice(0, 8),
+  );
+
+  const porRegiao = agrupar(
+    (p) => {
+      const r = classificarRegiao(p.cidadeCliente, p.ufCliente);
+      return { id: r, nome: r };
+    },
+    (itens) => itens.sort((a, b) => ORDEM_REGIAO.indexOf(a.chave as RegiaoPE) - ORDEM_REGIAO.indexOf(b.chave as RegiaoPE)),
+  );
 
   return {
     disponivel: true,
     totalPedidos: pedidos.length,
     valorTotal: pedidos.reduce((t, p) => t + p.valorPedido, 0),
-    parados72h: pedidos.filter((p) => p.horasParado >= 72).length,
-    topCidades: agrupa((p) => ({
-      id: p.cidadeCliente ?? "—",
-      nome: p.cidadeCliente ? `${p.cidadeCliente}${p.ufCliente ? `/${p.ufCliente}` : ""}` : "Sem cidade",
-    })),
-    topRca: agrupa((p) => ({ id: String(p.codigoRca), nome: p.nomeRca || `RCA ${p.codigoRca}` })),
+    pesoTotal: pedidos.reduce((t, p) => t + p.pesoPedido, 0),
+    topCidades,
+    porRegiao,
   };
 }
 
