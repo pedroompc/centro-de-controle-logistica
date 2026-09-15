@@ -31,6 +31,16 @@ export const items: Item[] = [
     ),
   },
   {
+    href: "/painel",
+    label: "Painel (TV)",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <rect x="2.5" y="4" width="19" height="13" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+      </svg>
+    ),
+  },
+  {
     href: "/setores",
     label: "Setores",
     icon: (
