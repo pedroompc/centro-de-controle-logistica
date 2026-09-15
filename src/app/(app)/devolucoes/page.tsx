@@ -81,6 +81,17 @@ export default async function DevolucoesPage({
   return (
     <div>
       <PageHeader title="Devoluções" subtitle={`${mesLabel} · filiais 1 e 11`}>
+        <Link
+          href={mesFechado ? `/devolucoes/tv?mes=${mesSel}` : "/devolucoes/tv"}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+          title="Painel em tela cheia — roda o mapa e os rankings"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2.5" y="4" width="19" height="13" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+          </svg>
+          Modo TV
+        </Link>
         <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
       </PageHeader>
 
