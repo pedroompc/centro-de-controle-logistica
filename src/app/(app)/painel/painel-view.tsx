@@ -37,7 +37,7 @@ import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "../devo
 // RARO de propósito — cada busca abre conexão Oracle (sem pool), então o painel
 // atualiza a cada 20 min, nunca a cada giro de slide.
 const DWELL_PADRAO = 11_000;
-const DWELL_MAPA = 15_000;
+const DWELL_MAPA = 42_000; // fica mais tempo: o card passa por várias cidades
 const REFRESH_MS = 20 * 60_000; // 20 minutos
 
 const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";

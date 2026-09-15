@@ -15,6 +15,9 @@ import { formatBRL, formatPercent } from "@/domain/format";
 // Mesmo viewBox impresso por scripts/gen-geo-pe.mjs usado no mapa interativo.
 const VIEWBOX = "0 0 1000 341";
 
+// Tempo que cada card de cidade fica no ar antes de passar para a próxima.
+const CARD_MS = 4200;
+
 interface Geo {
   ibge: string;
   nome: string;
@@ -45,6 +48,17 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
   const totalDevolvido = cidades.reduce((s, c) => s + c.devolvido, 0);
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
 
+  // Card rotativo: passa por cada cidade (maior volume → menor), uma a cada
+  // CARD_MS, em loop. A cidade em foco também acende no mapa.
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (ranking.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => i + 1), CARD_MS);
+    return () => clearInterval(t);
+  }, [ranking.length]);
+
+  const cidadeAtual = ranking.length > 0 ? ranking[idx % ranking.length] : null;
+
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-[1.5fr_1fr]">
       <div className="flex flex-col justify-center">
@@ -58,7 +72,18 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
             {geo.map((g) => {
               const d = porIbge.get(g.ibge);
               const fill = d ? corDaEscala(d.devolvido, d.devolvido > 0, teto) : COR_NEUTRA;
-              return <path key={g.ibge} d={g.d} fill={fill} stroke="#0a1650" strokeWidth={0.4} />;
+              const foco = cidadeAtual?.ibge === g.ibge;
+              return (
+                <path
+                  key={g.ibge}
+                  d={g.d}
+                  fill={fill}
+                  stroke={foco ? "#ffffff" : "#0a1650"}
+                  strokeWidth={foco ? 2 : 0.4}
+                  className="transition-[stroke-width]"
+                  style={foco ? { filter: "drop-shadow(0 0 6px rgba(255,255,255,0.7))" } : undefined}
+                />
+              );
             })}
           </svg>
         ) : (
@@ -78,8 +103,8 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
         </div>
       </div>
 
-      <div className="flex flex-col justify-center">
-        <div className="mb-4">
+      <div className="flex min-h-0 flex-col justify-center">
+        <div className="mb-4 shrink-0">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-white/45">
             Total devolvido · PE
           </div>
@@ -87,29 +112,44 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
             {formatBRL(totalDevolvido)}
           </div>
         </div>
-        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-white/45">
-          Maiores volumes (R$)
-        </div>
-        <ul className="mt-2 divide-y divide-white/10">
-          {ranking.slice(0, 8).map((c, i) => (
-            <li key={c.ibge} className="flex items-center gap-3 py-2.5">
-              <span className="w-6 shrink-0 text-center font-mono text-sm text-white/35">{i + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-lg font-medium text-white xl:text-xl" title={c.cidade}>
-                {c.cidade}
-              </span>
-              <span className="shrink-0 text-right">
-                <span className="block font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums text-rose-300 xl:text-xl">
-                  {formatBRL(c.devolvido)}
-                </span>
-                <span className="block text-xs tabular-nums text-white/40">taxa {formatPercent(c.taxa)}</span>
-              </span>
-            </li>
-          ))}
-          {ranking.length === 0 && (
-            <li className="py-8 text-center text-white/40">Sem devolução por cidade no período.</li>
-          )}
-        </ul>
+
+        {cidadeAtual ? (
+          // Card que passa por cada cidade (a mesma que acende no mapa).
+          <div key={cidadeAtual.ibge} className="card-fade rounded-2xl bg-white/[0.06] p-6 ring-1 ring-white/10 xl:p-7">
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
+                Cidade {(idx % ranking.length) + 1} de {ranking.length}
+              </div>
+              <div className="text-xs tabular-nums text-white/35">por volume</div>
+            </div>
+            <div className="mt-1 truncate font-[family-name:var(--font-sora)] text-3xl font-extrabold text-white xl:text-4xl" title={cidadeAtual.cidade}>
+              {cidadeAtual.cidade}
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Faturado</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{formatBRL(cidadeAtual.faturado)}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Devolvido</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(cidadeAtual.devolvido)}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Taxa de devolução</span>
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-amber-300 xl:text-4xl">{formatPercent(cidadeAtual.taxa)}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-white/40">Sem devolução por cidade no período.</p>
+        )}
       </div>
+
+      <style>{`
+        @keyframes cardFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        .card-fade { animation: cardFade 0.45s ease-out both; }
+      `}</style>
     </div>
   );
 }
