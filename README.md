@@ -18,9 +18,11 @@
 
 ## ✨ Sobre o projeto
 
-> Projeto desenvolvido sob medida para uma **empresa de distribuição/logística**.
-> Esta versão pública teve a identidade visual e os dados do cliente
-> **anonimizados** — nenhuma informação real da empresa é exposta.
+> Projeto desenvolvido sob medida para a **DIA Distribuição**.
+> A identidade visual da empresa é pública. O que **nunca** é versionado são as
+> credenciais e os dados: acessos ao Supabase e ao ERP Oracle (WinThor) ficam
+> apenas em variáveis de ambiente (`.env.local`, no `.gitignore`) — o
+> repositório não guarda chaves, senhas nem dados reais das duas fontes.
 
 Sistema web que consolida os indicadores de uma operação logística em tempo real,
 cruzando duas fontes de dados: um **ERP Oracle (WinThor)** — de onde saem pedidos,
