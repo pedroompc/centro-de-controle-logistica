@@ -233,7 +233,7 @@ export default function PainelView({
         {/* KPIs sempre visíveis — inclui o FATURAMENTO LÍQUIDO. */}
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Kpi label="Faturamento líquido" value={dev.disponivel ? formatBRL(dev.vendaLiquida) : "—"} hint="faturado − devoluções" tone="emerald" />
-          <Kpi label="Valor devolução" value={dev.disponivel ? formatBRL(dev.total) : "—"} hint={dev.disponivel ? `taxa ${formatPercent(dev.taxaValor)}` : undefined} tone="rose" />
+          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} hint={dev.disponivel ? formatBRL(dev.total) : undefined} tone="rose" />
           <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? formatBRL(dados.aFaturar.valorTotal) : "—"} hint={dados.aFaturar?.disponivel ? `${dados.aFaturar.totalPedidos} pedidos` : undefined} tone="amber" />
           <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" tone="emerald" />
         </div>
