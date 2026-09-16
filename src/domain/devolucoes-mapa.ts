@@ -20,22 +20,18 @@ export interface CidadeDevolucao extends LinhaCidadeDevolucao {
 /** Piso de faturamento para uma cidade colorir o mapa (senão a escala é sequestrada). */
 export const MIN_FATURADO_CIDADE = 5000;
 
-/** Devolução por bairro (dentro de uma cidade) — detalhe da RMR. */
-export interface LinhaBairroDevolucao {
+/**
+ * Devolução por bairro (dentro de uma cidade) — detalhe da RMR. Pela data da
+ * devolução (bate com o 111). Sem taxa: no bairro ela não é confiável; no lugar
+ * dela vem o motivo predominante (o de maior R$) e o valor dele.
+ */
+export interface BairroDevolucao {
   cidade: string;
   bairro: string;
-  faturado: number;
   devolvido: number;
-  notasDevolvidas: number;
-}
-
-export interface BairroDevolucao extends LinhaBairroDevolucao {
-  taxa: number; // devolvido / faturado (0..1); 0 se faturado <= 0
-}
-
-/** Enriquece cada bairro com a taxa (mesma regra da cidade). */
-export function comTaxaBairro(linhas: LinhaBairroDevolucao[]): BairroDevolucao[] {
-  return linhas.map((l) => ({ ...l, taxa: l.faturado > 0 ? l.devolvido / l.faturado : 0 }));
+  notas: number;
+  motivo: string; // motivo de devolução predominante
+  motivoValor: number; // R$ devolvido desse motivo
 }
 
 /** Cinza para cidade sem volume relevante ou sem dado. slate-200. */

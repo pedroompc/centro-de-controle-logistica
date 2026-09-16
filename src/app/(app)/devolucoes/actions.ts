@@ -7,7 +7,7 @@ import {
   getDevolucaoPorCidade,
   getDevolucaoPorBairroRMR,
 } from "@/data/devolucoes";
-import { comTaxa, comTaxaBairro } from "@/domain/devolucoes-mapa";
+import { comTaxa } from "@/domain/devolucoes-mapa";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
 import type {
   SecaoRanking,
@@ -52,5 +52,5 @@ export async function carregarMapa(mes: string): Promise<CidadeDevolucao[]> {
 /** Devolução por bairro na RMR (cidade + bairro), ordenada por R$ devolvido. */
 export async function carregarBairrosRMR(mes: string): Promise<BairroDevolucao[]> {
   const { inicio, fim } = periodo(mes);
-  return comTaxaBairro(await getDevolucaoPorBairroRMR(inicio, fim)).sort((a, b) => b.devolvido - a.devolvido);
+  return getDevolucaoPorBairroRMR(inicio, fim);
 }

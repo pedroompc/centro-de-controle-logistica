@@ -2,19 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { Card, PanelHeader } from "@/components/ui";
-import { formatBRL, formatPercent } from "@/domain/format";
-import { filtrarPorBusca, corTaxa } from "@/domain/devolucoes-ui";
+import { formatBRL } from "@/domain/format";
+import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { IconePredio, IconeBusca } from "./icons";
 
 /**
- * Devolução por bairro na Região Metropolitana do Recife (cidade + bairro).
- * Mesma regra do mapa por cidade, um nível abaixo. Busca por bairro/cidade.
+ * Devolução por bairro na Região Metropolitana do Recife (cidade + bairro),
+ * pela data da devolução (bate com o 111). Mostra o R$ devolvido, nº de notas
+ * e o motivo predominante (o de maior R$) — sem taxa, que no bairro engana.
  */
 export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao[] }) {
   const [busca, setBusca] = useState("");
   const lista = useMemo(
-    () => filtrarPorBusca(bairros, busca, (b) => [b.bairro, b.cidade]),
+    () => filtrarPorBusca(bairros, busca, (b) => [b.bairro, b.cidade, b.motivo]),
     [bairros, busca],
   );
   const lider = bairros[0] ?? null; // já ordenado por R$ devolvido desc
@@ -27,9 +28,9 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
       <input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar bairro ou cidade…"
-        aria-label="Buscar bairro ou cidade"
-        className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50 sm:w-64"
+        placeholder="Buscar bairro, cidade ou motivo…"
+        aria-label="Buscar bairro, cidade ou motivo"
+        className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50 sm:w-72"
       />
     </div>
   );
@@ -47,7 +48,8 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
           Maior volume:{" "}
           <span className="font-semibold text-[#141a4d]">{lider.bairro}</span>{" "}
           <span className="text-slate-400">({lider.cidade})</span> —{" "}
-          {formatBRL(lider.devolvido)} · taxa {formatPercent(lider.taxa)}.
+          {formatBRL(lider.devolvido)} · motivo{" "}
+          <span className="font-medium text-slate-600">{lider.motivo}</span>.
         </p>
       )}
 
@@ -58,9 +60,9 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
             <tr>
               <th className="px-3 py-2.5 text-center font-semibold">#</th>
               <th className="px-3 py-2.5 text-left font-semibold">Bairro</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Faturado</th>
+              <th className="px-3 py-2.5 text-left font-semibold">Motivo predominante</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Notas</th>
               <th className="px-3 py-2.5 text-right font-semibold">Devolvido</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Taxa</th>
             </tr>
           </thead>
           <tbody>
@@ -75,12 +77,15 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
                 <tr key={`${b.cidade}|${b.bairro}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
                   <td className="px-3 py-2.5 text-center font-mono text-xs text-slate-400">{i + 1}</td>
                   <td className="px-3 py-2.5">
-                    <div className="max-w-[280px] truncate text-[#141a4d]">{b.bairro}</div>
+                    <div className="max-w-[240px] truncate text-[#141a4d]">{b.bairro}</div>
                     <div className="text-[10px] text-slate-400">{b.cidade}</div>
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{formatBRL(b.faturado)}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="max-w-[260px] truncate text-slate-600" title={b.motivo}>{b.motivo}</div>
+                    <div className="text-[10px] tabular-nums text-slate-400">{formatBRL(b.motivoValor)}</div>
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{b.notas}</td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(b.devolvido)}</td>
-                  <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${corTaxa(b.taxa * 100)}`}>{formatPercent(b.taxa)}</td>
                 </tr>
               ))
             )}
@@ -96,16 +101,22 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
           </li>
         ) : (
           lista.map((b, i) => (
-            <li key={`${b.cidade}|${b.bairro}`} className="flex items-center gap-2.5 px-4 py-3">
-              <span className="w-5 shrink-0 text-center font-mono text-xs text-slate-400">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[#141a4d]">{b.bairro}</p>
-                <p className="text-[10px] text-slate-400">{b.cidade}</p>
+            <li key={`${b.cidade}|${b.bairro}`} className="px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-5 shrink-0 text-center font-mono text-xs text-slate-400">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[#141a4d]">{b.bairro}</p>
+                  <p className="text-[10px] text-slate-400">{b.cidade}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-semibold tabular-nums text-[#141a4d]">{formatBRL(b.devolvido)}</p>
+                  <p className="text-[11px] tabular-nums text-slate-500">{b.notas} notas</p>
+                </div>
               </div>
-              <div className="shrink-0 text-right">
-                <p className="font-semibold tabular-nums text-[#141a4d]">{formatBRL(b.devolvido)}</p>
-                <p className={`text-[11px] font-semibold tabular-nums ${corTaxa(b.taxa * 100)}`}>taxa {formatPercent(b.taxa)}</p>
-              </div>
+              <p className="mt-1.5 pl-[1.9rem] text-xs text-slate-500">
+                <span className="text-slate-400">motivo:</span> {b.motivo}{" "}
+                <span className="tabular-nums text-slate-400">({formatBRL(b.motivoValor)})</span>
+              </p>
             </li>
           ))
         )}

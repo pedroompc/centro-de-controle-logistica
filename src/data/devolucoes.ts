@@ -14,7 +14,7 @@ import type {
   MotivoDetalhe,
   SetorDevolucao,
 } from "@/domain/devolucoes";
-import type { LinhaCidadeDevolucao, LinhaBairroDevolucao } from "@/domain/devolucoes-mapa";
+import type { LinhaCidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 
 // Códigos IBGE dos municípios da RMR, derivados da MESMA classificação do painel
 // (a geometria de PE + o classificador de região) — evita hardcode de código e
@@ -426,71 +426,70 @@ export const getDevolucaoPorCidade = cache(async (
 });
 
 // --- Devolução por BAIRRO na RMR ---------------------------------------------
-// Mesma estrutura da query por cidade (CTEs fat/dev via PCCLIENT → PCCIDADE),
-// mas restrita aos municípios da RMR e agrupada por CIDADE + BAIRRO
-// (PCCLIENT.BAIRROENT). O bairro é normalizado (UPPER/TRIM) para juntar grafias
-// triviais; a chave do FULL OUTER JOIN é CODIBGE + BAIRRO (separa homônimos de
-// cidades diferentes, ex.: Centro de Recife ≠ Centro de Olinda).
+// Devolvido por CIDADE + BAIRRO (PCCLIENT.BAIRROENT), restrito à RMR, PELA DATA
+// DA DEVOLUÇÃO (mesma regra do 111 — não muda o número oficial). Também traz o
+// MOTIVO PREDOMINANTE do bairro (o de maior R$ devolvido) e o valor dele. Sem
+// faturado/taxa: no bairro a taxa não é confiável (numerador e denominador de
+// safras diferentes), então mostramos o volume + o motivo que puxa. O bairro é
+// normalizado (UPPER/TRIM); a chave separa homônimos por cidade (CODIBGE).
 const BAIRRO_EXPR = "UPPER(TRIM(NVL(cli.BAIRROENT,'SEM BAIRRO')))";
 
 const sqlBairroRMR = () => `
 WITH ${ctes({})},
-fat AS (
-  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO, SUM(nf.VLTOTAL) FATURADO
-  FROM PCNFSAID nf
-  JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
-  JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
-  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
-    AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
-  GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
-),
-dev AS (
-  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO,
-         SUM(edf.VL) DEVOLVIDO, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
+base AS (
+  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO, edf.MOTIVO,
+         SUM(edf.VL) VL, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
   FROM edf
   JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
   WHERE edf.NUMTRANSVENDA > 0 AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
-  GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
+  GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}, edf.MOTIVO
+),
+ranked AS (
+  SELECT CIDADE, BAIRRO, MOTIVO, VL,
+         SUM(VL) OVER (PARTITION BY CODIBGE, BAIRRO) DEVOLVIDO,
+         SUM(NOTAS) OVER (PARTITION BY CODIBGE, BAIRRO) NOTAS,
+         ROW_NUMBER() OVER (PARTITION BY CODIBGE, BAIRRO ORDER BY VL DESC) RN
+  FROM base
 )
-SELECT NVL(fat.CIDADE, dev.CIDADE) CIDADE,
-       NVL(fat.BAIRRO, dev.BAIRRO) BAIRRO,
-       ROUND(NVL(fat.FATURADO, 0), 2) FATURADO,
-       ROUND(NVL(dev.DEVOLVIDO, 0), 2) DEVOLVIDO,
-       NVL(dev.NOTAS, 0) NOTAS
-FROM fat FULL OUTER JOIN dev ON dev.CODIBGE = fat.CODIBGE AND dev.BAIRRO = fat.BAIRRO
-WHERE NVL(dev.DEVOLVIDO, 0) > 0
+SELECT CIDADE, BAIRRO,
+       ROUND(DEVOLVIDO, 2) DEVOLVIDO,
+       NOTAS,
+       MOTIVO MOTIVO_TOP,
+       ROUND(VL, 2) MOTIVO_VALOR
+FROM ranked
+WHERE RN = 1 AND DEVOLVIDO > 0
 ORDER BY DEVOLVIDO DESC`;
 
 interface LinhaBairroRaw {
   CIDADE: string | null;
   BAIRRO: string | null;
-  FATURADO: number;
   DEVOLVIDO: number;
   NOTAS: number;
+  MOTIVO_TOP: string | null;
+  MOTIVO_VALOR: number;
 }
 
 /**
- * Faturado e devolvido por bairro (cidade + bairro) da RMR no período. Só
- * bairros com devolução > 0. Sem taxa aqui — derivada no domínio (`comTaxaBairro`).
- * Winthor indisponível ⇒ `[]`.
+ * Devolução por bairro (cidade + bairro) da RMR no período, pela data da
+ * devolução (bate com o 111), com o motivo predominante e o valor dele. Só
+ * bairros com devolução > 0. Winthor indisponível ⇒ `[]`.
  */
 export const getDevolucaoPorBairroRMR = cache(async (
   ini: string,
   fim: string,
-): Promise<LinhaBairroDevolucao[]> => {
+): Promise<BairroDevolucao[]> => {
   if (RMR_IBGE.length === 0) return [];
   try {
     const rows = await queryWinthor<LinhaBairroRaw>(sqlBairroRMR(), { ini, fim });
     return rows.map((r) => ({
       cidade: r.CIDADE ?? "—",
       bairro: r.BAIRRO ?? "SEM BAIRRO",
-      faturado: n(r.FATURADO),
       devolvido: n(r.DEVOLVIDO),
-      notasDevolvidas: n(r.NOTAS),
+      notas: n(r.NOTAS),
+      motivo: r.MOTIVO_TOP ?? "Não informado",
+      motivoValor: n(r.MOTIVO_VALOR),
     }));
   } catch (erro) {
     console.error("[devolucoes] bairros RMR indisponível:", (erro as Error).message);

@@ -1,7 +1,7 @@
 "use server";
 
 import { getNucleoDevolucao, getDevolucaoPorBairroRMR } from "@/data/devolucoes";
-import { comTaxaBairro, type BairroDevolucao } from "@/domain/devolucoes-mapa";
+import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
 import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
@@ -80,12 +80,10 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
   };
 }
 
-/** Devolução por bairro na RMR (cidade + bairro) — top 10 por R$ devolvido. */
+/** Devolução por bairro na RMR (cidade + bairro), já ordenada por R$ devolvido. */
 export async function carregarDevBairrosRMR(mes: string): Promise<BairroDevolucao[]> {
   const { inicio, fim } = periodo(mes);
-  return comTaxaBairro(await getDevolucaoPorBairroRMR(inicio, fim))
-    .sort((a, b) => b.devolvido - a.devolvido)
-    .slice(0, 10);
+  return (await getDevolucaoPorBairroRMR(inicio, fim)).slice(0, 20);
 }
 
 // --- A faturar (pedidos parados) ---------------------------------------------

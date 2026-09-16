@@ -11,7 +11,6 @@ import type {
   DevolucaoPorMotivo,
   SetorDevolucao,
 } from "@/domain/devolucoes";
-import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos } from "./painel-actions";
 
 // Chips de setor na paleta escura (o setorPill claro não contrasta no navy).
@@ -242,20 +241,6 @@ export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotori
           ) : m.tipo === "T" ? (
             <span className="shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">Terceirizado</span>
           ) : null,
-      }))}
-    />
-  );
-}
-
-/** Devoluções · RMR por bairro (cidade + bairro), top 10 em duas colunas. */
-export function SecaoDevBairrosRMR({ bairros }: { bairros: BairroDevolucao[] }) {
-  return (
-    <RankingDuasColunas
-      linhas={bairros.map((b) => ({
-        chave: `${b.cidade}|${b.bairro}`,
-        nome: b.bairro,
-        principal: formatBRL(b.devolvido),
-        secundario: `${b.cidade} · taxa ${formatPercent(b.taxa)}`,
       }))}
     />
   );
