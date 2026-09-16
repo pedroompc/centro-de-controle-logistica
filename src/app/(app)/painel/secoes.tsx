@@ -11,7 +11,7 @@ import type {
   DevolucaoPorMotivo,
   SetorDevolucao,
 } from "@/domain/devolucoes";
-import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos } from "./painel-actions";
+import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos, BairroAFaturar } from "./painel-actions";
 
 // Chips de setor na paleta escura (o setorPill claro não contrasta no navy).
 export const SETOR_COR: Record<SetorDevolucao, { barra: string; chip: string }> = {
@@ -301,6 +301,20 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A faturar · detalhe da RMR por bairro (top 10, 5+5). */
+export function SecaoRmrBairros({ itens }: { itens: BairroAFaturar[] }) {
+  return (
+    <RankingDuasColunas
+      linhas={itens.map((b) => ({
+        chave: b.chave,
+        nome: b.bairro,
+        principal: formatBRL(b.valor),
+        secundario: `${b.cidade} · ${b.qtd} pedidos`,
+      }))}
+    />
   );
 }
 

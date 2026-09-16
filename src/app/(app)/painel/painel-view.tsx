@@ -28,6 +28,7 @@ import {
   SecaoClientesVendedores,
   SecaoMotivos,
   SecaoAFaturar,
+  SecaoRmrBairros,
   SecaoReceitas,
   SecaoDescarregos,
 } from "./secoes";
@@ -81,6 +82,8 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slid
     s.push({ id: "motivos", titulo: "Motivos de devolução", contexto: "por valor devolvido", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoMotivos porMotivo={dev.porMotivo} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
+  if (d.aFaturar && d.aFaturar.disponivel && d.aFaturar.rmrPorBairro.length > 0)
+    s.push({ id: "rmr-bairros", titulo: "Carteira · RMR por bairro", contexto: "pedidos a faturar na Região Metropolitana", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoRmrBairros itens={d.aFaturar.rmrPorBairro} /> });
   if (d.receitas)
     s.push({ id: "receitas", titulo: "Receitas", contexto: "descarrego, diários e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoReceitas dados={d.receitas} /> });
   if (d.descarregos)
