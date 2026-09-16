@@ -40,7 +40,7 @@ import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "../devo
 // atualiza a cada 20 min, nunca a cada giro de slide.
 const DWELL_PADRAO = 11_000;
 const DWELL_MAPA = 42_000; // fica mais tempo: o card passa por várias cidades
-const REFRESH_MS = 20 * 60_000; // 20 minutos
+const REFRESH_MS = 10 * 60_000; // 10 minutos (ou no botão de atualizar)
 
 const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";
 
@@ -106,6 +106,11 @@ const IcoPause = () => (
 const IcoPlay = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M8 5v14l11-7z" /></svg>
 );
+const IcoRefresh = ({ spin = false }: { spin?: boolean }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={`h-5 w-5 ${spin ? "animate-spin" : ""}`} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 4v5h-5" />
+  </svg>
+);
 
 function BotaoCtrl({ onClick, title, children, ativo = false }: { onClick: () => void; title: string; children: ReactNode; ativo?: boolean }) {
   return (
@@ -138,6 +143,7 @@ export default function PainelView({
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [relogio, setRelogio] = useState("");
+  const [atualizando, setAtualizando] = useState(false);
   const primeira = useRef(true);
 
   // Aquece os dados SEQUENCIALMENTE (um await por vez) — nunca uma rajada de
@@ -185,6 +191,17 @@ export default function PainelView({
     else document.exitFullscreen?.().catch(() => {});
   }, []);
 
+  // Atualização manual (o botão) — reusa o mesmo aquecimento sequencial.
+  const atualizar = useCallback(async () => {
+    if (atualizando) return;
+    setAtualizando(true);
+    try {
+      await aquecer();
+    } finally {
+      setAtualizando(false);
+    }
+  }, [aquecer, atualizando]);
+
   // Auto-avanço — pausa quando travado.
   useEffect(() => {
     if (pausado || nSlides === 0) return;
@@ -227,6 +244,7 @@ export default function PainelView({
               {pausado ? <IcoPlay /> : <IcoPause />}
             </BotaoCtrl>
             <BotaoCtrl onClick={proximo} title="Próxima página (→)"><IcoNext /></BotaoCtrl>
+            <BotaoCtrl onClick={atualizar} title="Atualizar agora"><IcoRefresh spin={atualizando} /></BotaoCtrl>
             <button onClick={telaCheia} className="ml-1 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/15">
               Tela cheia
             </button>
