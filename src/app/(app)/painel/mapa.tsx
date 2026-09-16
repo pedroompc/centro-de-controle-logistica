@@ -49,15 +49,20 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
 
   // Card rotativo: passa por cada cidade (maior volume → menor), uma a cada
-  // CARD_MS, em loop. A cidade em foco também acende no mapa.
+  // CARD_MS, em loop. A cidade em foco também acende no mapa. Passar o mouse
+  // numa cidade PAUSA a rotação e mostra essa cidade no card do lado.
   const [idx, setIdx] = useState(0);
+  const [hoverIbge, setHoverIbge] = useState<string | null>(null);
   useEffect(() => {
-    if (ranking.length <= 1) return;
+    if (ranking.length <= 1 || hoverIbge) return;
     const t = setInterval(() => setIdx((i) => i + 1), CARD_MS);
     return () => clearInterval(t);
-  }, [ranking.length]);
+  }, [ranking.length, hoverIbge]);
 
   const cidadeAtual = ranking.length > 0 ? ranking[idx % ranking.length] : null;
+  const hovered = hoverIbge ? porIbge.get(hoverIbge) ?? null : null;
+  const exibida = hovered ?? cidadeAtual; // hover manda; senão a da rotação
+  const focoIbge = hovered ? hovered.ibge : cidadeAtual?.ibge ?? null;
 
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-[1.5fr_1fr]">
@@ -72,7 +77,7 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
             {geo.map((g) => {
               const d = porIbge.get(g.ibge);
               const fill = d ? corDaEscala(d.devolvido, d.devolvido > 0, teto) : COR_NEUTRA;
-              const foco = cidadeAtual?.ibge === g.ibge;
+              const foco = focoIbge === g.ibge;
               return (
                 <path
                   key={g.ibge}
@@ -80,7 +85,9 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
                   fill={fill}
                   stroke={foco ? "#ffffff" : "#0a1650"}
                   strokeWidth={foco ? 2 : 0.4}
-                  className="transition-[stroke-width]"
+                  onMouseEnter={() => setHoverIbge(g.ibge)}
+                  onMouseLeave={() => setHoverIbge((h) => (h === g.ibge ? null : h))}
+                  className="cursor-pointer transition-[stroke-width]"
                   style={foco ? { filter: "drop-shadow(0 0 6px rgba(255,255,255,0.7))" } : undefined}
                 />
               );
@@ -113,31 +120,31 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
           </div>
         </div>
 
-        {cidadeAtual ? (
-          // Card que passa por cada cidade (a mesma que acende no mapa).
-          <div key={cidadeAtual.ibge} className="card-fade rounded-2xl bg-white/[0.06] p-6 ring-1 ring-white/10 xl:p-7">
+        {exibida ? (
+          // Card da cidade em foco (sob o cursor, ou a da rotação automática).
+          <div key={exibida.ibge} className="card-fade rounded-2xl bg-white/[0.06] p-6 ring-1 ring-white/10 xl:p-7">
             <div className="flex items-baseline justify-between gap-3">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
-                Cidade {(idx % ranking.length) + 1} de {ranking.length}
+                {hovered ? "sob o cursor" : `Cidade ${(idx % ranking.length) + 1} de ${ranking.length}`}
               </div>
               <div className="text-xs tabular-nums text-white/35">por volume</div>
             </div>
-            <div className="mt-1 truncate font-[family-name:var(--font-sora)] text-3xl font-extrabold text-white xl:text-4xl" title={cidadeAtual.cidade}>
-              {cidadeAtual.cidade}
+            <div className="mt-1 truncate font-[family-name:var(--font-sora)] text-3xl font-extrabold text-white xl:text-4xl" title={exibida.cidade}>
+              {exibida.cidade}
             </div>
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Faturado</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{formatBRL(cidadeAtual.faturado)}</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{formatBRL(exibida.faturado)}</span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Devolvido</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(cidadeAtual.devolvido)}</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(exibida.devolvido)}</span>
               </div>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Taxa de devolução</span>
-                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-amber-300 xl:text-4xl">{formatPercent(cidadeAtual.taxa)}</span>
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-amber-300 xl:text-4xl">{formatPercent(exibida.taxa)}</span>
               </div>
             </div>
           </div>
