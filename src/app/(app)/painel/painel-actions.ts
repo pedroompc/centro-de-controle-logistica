@@ -88,14 +88,6 @@ export interface GrupoAFaturar {
   valor: number;
 }
 
-export interface BairroAFaturar {
-  chave: string;
-  bairro: string;
-  cidade: string;
-  qtd: number;
-  valor: number;
-}
-
 export interface ResumoAFaturar {
   disponivel: boolean; // false = Winthor fora da rede
   totalPedidos: number; // pedidos a faturar (carteira)
@@ -103,14 +95,13 @@ export interface ResumoAFaturar {
   pesoTotal: number; // kg da carteira
   topCidades: GrupoAFaturar[];
   porRegiao: GrupoAFaturar[]; // RMR / Agreste / Sertão / Zona da Mata / Outras
-  rmrPorBairro: BairroAFaturar[]; // detalhe da RMR por bairro (bairro + cidade)
 }
 
 /** Resumo do que ainda falta faturar — a "carteira" (liberados/montados sem NF). */
 export async function carregarAFaturar(): Promise<ResumoAFaturar> {
   const pedidos = await getPedidosPendentes();
   if (pedidos === null) {
-    return { disponivel: false, totalPedidos: 0, valorTotal: 0, pesoTotal: 0, topCidades: [], porRegiao: [], rmrPorBairro: [] };
+    return { disponivel: false, totalPedidos: 0, valorTotal: 0, pesoTotal: 0, topCidades: [], porRegiao: [] };
   }
 
   const agrupar = (
@@ -144,21 +135,6 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
     (itens) => itens.sort((a, b) => ORDEM_REGIAO.indexOf(a.chave as RegiaoPE) - ORDEM_REGIAO.indexOf(b.chave as RegiaoPE)),
   );
 
-  // Detalhe da RMR por bairro. Chave = cidade + bairro (senão "Centro" de Recife
-  // e de Olinda se fundiriam). Bairro em branco vira "Sem bairro".
-  const bairros = new Map<string, BairroAFaturar>();
-  for (const p of pedidos) {
-    if (classificarRegiao(p.cidadeCliente, p.ufCliente) !== "RMR") continue;
-    const bairro = (p.bairroCliente ?? "").trim() || "Sem bairro";
-    const cidade = p.cidadeCliente ?? "—";
-    const id = `${cidade}||${bairro}`.toUpperCase();
-    const atual = bairros.get(id) ?? { chave: id, bairro, cidade, qtd: 0, valor: 0 };
-    atual.qtd += 1;
-    atual.valor += p.valorPedido;
-    bairros.set(id, atual);
-  }
-  const rmrPorBairro = [...bairros.values()].sort((a, b) => b.valor - a.valor).slice(0, 10);
-
   return {
     disponivel: true,
     totalPedidos: pedidos.length,
@@ -166,7 +142,6 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
     pesoTotal: pedidos.reduce((t, p) => t + p.pesoPedido, 0),
     topCidades,
     porRegiao,
-    rmrPorBairro,
   };
 }
 
