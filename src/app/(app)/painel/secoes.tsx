@@ -39,9 +39,10 @@ export function Kpi({
 }) {
   const cor = { white: "text-white", rose: "text-rose-300", amber: "text-amber-300", emerald: "text-emerald-300" }[tone];
   return (
-    <div className="rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">
+    <div className="@container rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">
       <div className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">{label}</div>
-      <div className={`mt-1 font-[family-name:var(--font-sora)] text-3xl font-extrabold leading-none tabular-nums xl:text-4xl ${cor}`}>
+      {/* Fonte fluida (cqi): encolhe em coluna estreita e nunca estoura a borda. */}
+      <div className={`mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.25rem,9cqi,2.25rem)] font-extrabold leading-none tabular-nums whitespace-nowrap ${cor}`}>
         {value}
       </div>
       {hint && <div className="mt-1.5 text-xs text-white/40">{hint}</div>}

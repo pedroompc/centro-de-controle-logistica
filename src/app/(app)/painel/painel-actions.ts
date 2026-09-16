@@ -27,6 +27,7 @@ export interface ResumoDevolucao {
   total: number; // valor devolvido oficial (rotina 111)
   vendaFaturada: number;
   vendaLiquida: number; // faturamento LÍQUIDO
+  pesoFaturado: number; // kg líquido (venda − devolução)
   valorDevolucaoAvulsa: number;
   devolvidasAvulsas: number;
   taxaValor: number;
@@ -42,6 +43,7 @@ const DEV_VAZIO: ResumoDevolucao = {
   total: 0,
   vendaFaturada: 0,
   vendaLiquida: 0,
+  pesoFaturado: 0,
   valorDevolucaoAvulsa: 0,
   devolvidasAvulsas: 0,
   taxaValor: 0,
@@ -65,6 +67,7 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
     total: nucleo?.total ?? fat?.valorDevolucao ?? 0,
     vendaFaturada: fat?.vendaFaturada ?? 0,
     vendaLiquida: fat?.vendaLiquida ?? 0,
+    pesoFaturado: fat?.pesoFaturado ?? 0,
     valorDevolucaoAvulsa: fat?.valorDevolucaoAvulsa ?? 0,
     devolvidasAvulsas: fat?.devolvidasAvulsas ?? 0,
     taxaValor: fat ? taxaDevolucao(fat) : 0,
