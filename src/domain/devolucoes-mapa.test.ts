@@ -18,6 +18,8 @@ const linha = (over: Partial<LinhaCidadeDevolucao>): LinhaCidadeDevolucao => ({
   faturado: 10000,
   devolvido: 500,
   notasDevolvidas: 3,
+  motivo: "—",
+  motivoValor: 0,
   ...over,
 });
 

@@ -373,23 +373,33 @@ fat AS (
     AND ci.UF = 'PE'
   GROUP BY ci.CODIBGE
 ),
-dev AS (
-  SELECT ci.CODIBGE,
-         MAX(ci.NOMECIDADE) CIDADE,
-         SUM(edf.VL) DEVOLVIDO,
-         COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
+devbase AS (
+  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, edf.MOTIVO,
+         SUM(edf.VL) VL, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
   FROM edf
   JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
   WHERE edf.NUMTRANSVENDA > 0 AND ci.UF = 'PE'
-  GROUP BY ci.CODIBGE
+  GROUP BY ci.CODIBGE, edf.MOTIVO
+),
+dev AS (
+  SELECT CODIBGE, CIDADE, DEVOLVIDO, NOTAS, MOTIVO_TOP, MOTIVO_VALOR FROM (
+    SELECT CODIBGE, CIDADE,
+           SUM(VL) OVER (PARTITION BY CODIBGE) DEVOLVIDO,
+           SUM(NOTAS) OVER (PARTITION BY CODIBGE) NOTAS,
+           MOTIVO MOTIVO_TOP, VL MOTIVO_VALOR,
+           ROW_NUMBER() OVER (PARTITION BY CODIBGE ORDER BY VL DESC) RN
+    FROM devbase
+  ) WHERE RN = 1
 )
 SELECT TO_CHAR(NVL(fat.CODIBGE, dev.CODIBGE)) IBGE,
        NVL(fat.CIDADE, dev.CIDADE) CIDADE,
        ROUND(NVL(fat.FATURADO, 0), 2) FATURADO,
        ROUND(NVL(dev.DEVOLVIDO, 0), 2) DEVOLVIDO,
-       NVL(dev.NOTAS, 0) NOTAS
+       NVL(dev.NOTAS, 0) NOTAS,
+       dev.MOTIVO_TOP,
+       ROUND(NVL(dev.MOTIVO_VALOR, 0), 2) MOTIVO_VALOR
 FROM fat FULL OUTER JOIN dev ON dev.CODIBGE = fat.CODIBGE
 WHERE NVL(fat.CODIBGE, dev.CODIBGE) IS NOT NULL`;
 
@@ -399,6 +409,8 @@ interface LinhaCidadeRaw {
   FATURADO: number;
   DEVOLVIDO: number;
   NOTAS: number;
+  MOTIVO_TOP: string | null;
+  MOTIVO_VALOR: number;
 }
 
 /**
@@ -420,6 +432,8 @@ export const getDevolucaoPorCidade = cache(async (
         faturado: n(r.FATURADO),
         devolvido: n(r.DEVOLVIDO),
         notasDevolvidas: n(r.NOTAS),
+        motivo: r.MOTIVO_TOP ?? "—",
+        motivoValor: n(r.MOTIVO_VALOR),
       }));
   } catch (erro) {
     console.error("[devolucoes] mapa por cidade indisponível:", (erro as Error).message);

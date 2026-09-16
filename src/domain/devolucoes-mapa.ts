@@ -10,6 +10,8 @@ export interface LinhaCidadeDevolucao {
   faturado: number; // R$ faturado atribuído à cidade no período
   devolvido: number; // R$ devolvido (líquido, rotina 111)
   notasDevolvidas: number;
+  motivo: string; // motivo de devolução predominante (maior R$); "—" se sem devolução
+  motivoValor: number; // R$ devolvido desse motivo
 }
 
 export interface CidadeDevolucao extends LinhaCidadeDevolucao {

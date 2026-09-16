@@ -142,9 +142,16 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
                 <span className="text-sm uppercase tracking-wide text-white/50">Devolvido</span>
                 <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(exibida.devolvido)}</span>
               </div>
-              <div className="flex items-baseline justify-between gap-3">
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Taxa de devolução</span>
                 <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-amber-300 xl:text-4xl">{formatPercent(exibida.taxa)}</span>
+              </div>
+              <div>
+                <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
+                <div className="mt-1 flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 flex-1 truncate text-lg font-semibold text-amber-200 xl:text-xl" title={exibida.motivo}>{exibida.motivo}</span>
+                  <span className="shrink-0 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums text-amber-300 xl:text-xl">{formatBRL(exibida.motivoValor)}</span>
+                </div>
               </div>
             </div>
           </div>
