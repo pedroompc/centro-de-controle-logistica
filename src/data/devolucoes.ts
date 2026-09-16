@@ -2,6 +2,8 @@ import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
 import { agregarPorSetor } from "@/domain/devolucoes";
+import { classificarRegiao } from "@/domain/pe-regioes";
+import geoRaw from "@/data/geo/pe-municipios.json";
 import type {
   NucleoDevolucao,
   SecaoRanking,
@@ -12,7 +14,14 @@ import type {
   MotivoDetalhe,
   SetorDevolucao,
 } from "@/domain/devolucoes";
-import type { LinhaCidadeDevolucao } from "@/domain/devolucoes-mapa";
+import type { LinhaCidadeDevolucao, LinhaBairroDevolucao } from "@/domain/devolucoes-mapa";
+
+// Códigos IBGE dos municípios da RMR, derivados da MESMA classificação do painel
+// (a geometria de PE + o classificador de região) — evita hardcode de código e
+// mantém a RMR do bairro igual à da carteira/mapa.
+const RMR_IBGE = (geoRaw as { ibge: string; nome: string }[])
+  .filter((g) => classificarRegiao(g.nome, "PE") === "RMR")
+  .map((g) => g.ibge);
 
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
@@ -412,6 +421,79 @@ export const getDevolucaoPorCidade = cache(async (
       }));
   } catch (erro) {
     console.error("[devolucoes] mapa por cidade indisponível:", (erro as Error).message);
+    return [];
+  }
+});
+
+// --- Devolução por BAIRRO na RMR ---------------------------------------------
+// Mesma estrutura da query por cidade (CTEs fat/dev via PCCLIENT → PCCIDADE),
+// mas restrita aos municípios da RMR e agrupada por CIDADE + BAIRRO
+// (PCCLIENT.BAIRROENT). O bairro é normalizado (UPPER/TRIM) para juntar grafias
+// triviais; a chave do FULL OUTER JOIN é CODIBGE + BAIRRO (separa homônimos de
+// cidades diferentes, ex.: Centro de Recife ≠ Centro de Olinda).
+const BAIRRO_EXPR = "UPPER(TRIM(NVL(cli.BAIRROENT,'SEM BAIRRO')))";
+
+const sqlBairroRMR = () => `
+WITH ${ctes({})},
+fat AS (
+  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO, SUM(nf.VLTOTAL) FATURADO
+  FROM PCNFSAID nf
+  JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
+  JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+    AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
+  GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
+),
+dev AS (
+  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO,
+         SUM(edf.VL) DEVOLVIDO, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
+  JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
+  WHERE edf.NUMTRANSVENDA > 0 AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
+  GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
+)
+SELECT NVL(fat.CIDADE, dev.CIDADE) CIDADE,
+       NVL(fat.BAIRRO, dev.BAIRRO) BAIRRO,
+       ROUND(NVL(fat.FATURADO, 0), 2) FATURADO,
+       ROUND(NVL(dev.DEVOLVIDO, 0), 2) DEVOLVIDO,
+       NVL(dev.NOTAS, 0) NOTAS
+FROM fat FULL OUTER JOIN dev ON dev.CODIBGE = fat.CODIBGE AND dev.BAIRRO = fat.BAIRRO
+WHERE NVL(dev.DEVOLVIDO, 0) > 0
+ORDER BY DEVOLVIDO DESC`;
+
+interface LinhaBairroRaw {
+  CIDADE: string | null;
+  BAIRRO: string | null;
+  FATURADO: number;
+  DEVOLVIDO: number;
+  NOTAS: number;
+}
+
+/**
+ * Faturado e devolvido por bairro (cidade + bairro) da RMR no período. Só
+ * bairros com devolução > 0. Sem taxa aqui — derivada no domínio (`comTaxaBairro`).
+ * Winthor indisponível ⇒ `[]`.
+ */
+export const getDevolucaoPorBairroRMR = cache(async (
+  ini: string,
+  fim: string,
+): Promise<LinhaBairroDevolucao[]> => {
+  if (RMR_IBGE.length === 0) return [];
+  try {
+    const rows = await queryWinthor<LinhaBairroRaw>(sqlBairroRMR(), { ini, fim });
+    return rows.map((r) => ({
+      cidade: r.CIDADE ?? "—",
+      bairro: r.BAIRRO ?? "SEM BAIRRO",
+      faturado: n(r.FATURADO),
+      devolvido: n(r.DEVOLVIDO),
+      notasDevolvidas: n(r.NOTAS),
+    }));
+  } catch (erro) {
+    console.error("[devolucoes] bairros RMR indisponível:", (erro as Error).message);
     return [];
   }
 });

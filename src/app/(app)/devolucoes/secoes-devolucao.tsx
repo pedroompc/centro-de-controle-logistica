@@ -10,15 +10,16 @@ import type {
   DevolucaoPorMotorista,
   SecaoRanking,
 } from "@/domain/devolucoes";
-import type { CidadeDevolucao } from "@/domain/devolucoes-mapa";
+import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { setorPill } from "@/domain/devolucoes-ui";
-import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa } from "./actions";
+import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa, carregarBairrosRMR } from "./actions";
 import TabelaMotoristas from "./tabela-motoristas";
 import PainelRanking, { type ItemRanking } from "./painel-ranking";
+import TabelaBairrosRMR from "./tabela-bairros-rmr";
 import MapaLazy from "./mapa-lazy";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "./icons";
 
-type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "mapa";
+type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "mapa" | "bairros";
 
 /** Cache client-side das abas já carregadas (some ao trocar mês/filtro via `key`). */
 interface Cache {
@@ -26,6 +27,7 @@ interface Cache {
   vendedores?: SecaoRanking<DevolucaoPorVendedor>;
   motoristas?: SecaoRanking<DevolucaoPorMotorista>;
   mapa?: CidadeDevolucao[];
+  bairros?: BairroDevolucao[];
 }
 
 function Carregando({ texto = "Carregando…" }: { texto?: string }) {
@@ -106,6 +108,9 @@ export default function SecoesDevolucao({
       } else if (alvo === "mapa") {
         const d = await carregarMapa(mes);
         setCache((c) => ({ ...c, mapa: d }));
+      } else if (alvo === "bairros") {
+        const d = await carregarBairrosRMR(mes);
+        setCache((c) => ({ ...c, bairros: d }));
       }
     } catch {
       setErro((e) => ({ ...e, [alvo]: true }));
@@ -131,6 +136,7 @@ export default function SecoesDevolucao({
     { id: "vendedores", label: "Vendedores", icon: <IconeUsuario className="h-4 w-4" /> },
     { id: "motivos", label: "Motivos", icon: <IconeEtiqueta className="h-4 w-4" /> },
     { id: "mapa", label: "Mapa PE", icon: <IconePredio className="h-4 w-4" /> },
+    { id: "bairros", label: "RMR/Bairros", icon: <IconePredio className="h-4 w-4" /> },
   ];
 
   const estaCarregando = carregando === aba && cache[aba as keyof Cache] === undefined;
@@ -224,6 +230,8 @@ export default function SecoesDevolucao({
               )}
             </Card>
           )}
+
+          {aba === "bairros" && <TabelaBairrosRMR bairros={cache.bairros ?? []} />}
         </>
       )}
     </div>

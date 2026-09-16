@@ -8,10 +8,11 @@ import type {
   DevolucaoPorCliente,
   DevolucaoPorVendedor,
 } from "@/domain/devolucoes";
-import type { CidadeDevolucao } from "@/domain/devolucoes-mapa";
+import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa } from "../devolucoes/actions";
 import {
   carregarResumoDevolucao,
+  carregarDevBairrosRMR,
   carregarAFaturar,
   carregarReceitas,
   carregarDescarregos,
@@ -27,6 +28,7 @@ import {
   SecaoMotoristas,
   SecaoClientesVendedores,
   SecaoMotivos,
+  SecaoDevBairrosRMR,
   SecaoAFaturar,
   SecaoReceitas,
   SecaoDescarregos,
@@ -47,6 +49,7 @@ interface Dados {
   clientes: DevolucaoPorCliente[];
   vendedores: DevolucaoPorVendedor[];
   cidades: CidadeDevolucao[];
+  bairrosRMR: BairroDevolucao[];
   aFaturar: ResumoAFaturar | null;
   receitas: ResumoReceitas | null;
   descarregos: ResumoDescarregos | null;
@@ -79,6 +82,8 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slid
     s.push({ id: "cli-ven", titulo: "Clientes e vendedores", contexto: "quem mais devolve", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoClientesVendedores clientes={d.clientes} vendedores={d.vendedores} /> });
   if (dev.porMotivo.length > 0)
     s.push({ id: "motivos", titulo: "Motivos de devolução", contexto: "por valor devolvido", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoMotivos porMotivo={dev.porMotivo} /> });
+  if (d.bairrosRMR.length > 0)
+    s.push({ id: "bairros-rmr", titulo: "Devolução · RMR por bairro", contexto: "por R$ devolvido · bairro (cidade)", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDevBairrosRMR bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.receitas)
@@ -128,7 +133,7 @@ export default function PainelView({
 }) {
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], cidades: [], aFaturar: null, receitas: null, descarregos: null,
+    motoristas: [], clientes: [], vendedores: [], cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, descarregos: null,
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
@@ -149,6 +154,7 @@ export default function PainelView({
     await passo(async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
     await passo(async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens })); });
     await passo(async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens })); });
+    await passo(async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
     await passo(async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
     await passo(async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
     await passo(async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
