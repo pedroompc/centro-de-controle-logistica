@@ -51,7 +51,8 @@ export interface DevolucaoPorMotorista {
   tipo: TipoMotorista; // F = da casa · T = terceirizado · null = não informado
   expedidas: number; // notas entregues via carga
   devolvidas: number;
-  taxa: number; // % = devolvidas / expedidas
+  taxa: number; // % = devolvidas / expedidas (por NOTA)
+  valorExpedido: number; // R$ das vendas em carga (expedidas) no período
   valorDevolvido: number;
 }
 

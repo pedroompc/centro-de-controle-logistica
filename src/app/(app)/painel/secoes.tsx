@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatBRL, formatPercent, formatKg } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import type {
@@ -225,24 +225,85 @@ export function SecaoClientesVendedores({
   );
 }
 
-/** Devoluções · motoristas que mais voltam (por R$ devolvido). */
+const STAGE_MS = 7500; // tempo de cada etapa (por nota / por valor)
+const MIN_ENTREGAS = 20; // piso p/ ranking em % (senão 1 entrega vira 100%)
+
+function seloTipoMotorista(tipo: DevolucaoPorMotorista["tipo"]): ReactNode {
+  if (tipo === "F") return <span className="shrink-0 rounded-full bg-[#2a327f] px-2 py-0.5 text-xs font-semibold text-indigo-100">Da casa</span>;
+  if (tipo === "T") return <span className="shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">Terceirizado</span>;
+  return null;
+}
+
+/**
+ * Devoluções · motoristas que mais voltam. Duas etapas que se alternam sozinhas
+ * (mesmo efeito do mapa): etapa 1 = taxa por NOTA (devolvidas/expedidas), etapa
+ * 2 = taxa por VALOR (R$ devolvido/R$ expedido). Só motoristas com volume
+ * mínimo (senão 1 entrega vira 100%).
+ */
 export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotorista[] }) {
-  const top = [...motoristas].sort((a, b) => b.valorDevolvido - a.valorDevolvido).slice(0, 10);
-  return (
-    <RankingDuasColunas
-      linhas={top.map((m) => ({
+  const [etapa, setEtapa] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setEtapa((e) => (e === 0 ? 1 : 0)), STAGE_MS);
+    return () => clearInterval(t);
+  }, []);
+
+  const elegiveis = motoristas.filter((m) => m.expedidas >= MIN_ENTREGAS);
+
+  const porNota = [...elegiveis].sort((a, b) => b.taxa - a.taxa).slice(0, 10);
+  const porValor = elegiveis
+    .filter((m) => m.valorExpedido > 0)
+    .map((m) => ({ m, tx: m.valorDevolvido / m.valorExpedido }))
+    .sort((a, b) => b.tx - a.tx)
+    .slice(0, 10);
+
+  const etapas = [
+    {
+      id: "nota",
+      titulo: "Por nota",
+      sub: "entregas voltadas ÷ entregas (%)",
+      linhas: porNota.map((m) => ({
         chave: m.codMotorista,
         nome: m.nome,
-        principal: formatBRL(m.valorDevolvido),
-        secundario: `${m.devolvidas} de ${m.expedidas} entregas · taxa ${formatPercent(m.taxa / 100)}`,
-        selo:
-          m.tipo === "F" ? (
-            <span className="shrink-0 rounded-full bg-[#2a327f] px-2 py-0.5 text-xs font-semibold text-indigo-100">Da casa</span>
-          ) : m.tipo === "T" ? (
-            <span className="shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">Terceirizado</span>
-          ) : null,
-      }))}
-    />
+        principal: formatPercent(m.taxa / 100),
+        secundario: `${m.devolvidas} de ${m.expedidas} entregas`,
+        selo: seloTipoMotorista(m.tipo),
+      })),
+    },
+    {
+      id: "valor",
+      titulo: "Por valor",
+      sub: "R$ devolvido ÷ R$ expedido (%)",
+      linhas: porValor.map(({ m, tx }) => ({
+        chave: m.codMotorista,
+        nome: m.nome,
+        principal: formatPercent(tx),
+        secundario: `${formatBRL(m.valorDevolvido)} de ${formatBRL(m.valorExpedido)}`,
+        selo: seloTipoMotorista(m.tipo),
+      })),
+    },
+  ];
+  const atual = etapas[etapa];
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex gap-1.5">
+          {etapas.map((e, i) => (
+            <span key={e.id} className={`h-1.5 rounded-full transition-all ${i === etapa ? "w-8 bg-amber-400" : "w-3 bg-white/20"}`} />
+          ))}
+        </div>
+        <span className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">{atual.titulo}</span>
+        <span className="text-xs text-white/45">{atual.sub}</span>
+        <span className="ml-auto text-xs text-white/35">com {MIN_ENTREGAS}+ entregas</span>
+      </div>
+      <div key={atual.id} className="etapa-fade min-h-0 flex-1">
+        <RankingDuasColunas linhas={atual.linhas} />
+      </div>
+      <style>{`
+        @keyframes etapaFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        .etapa-fade { animation: etapaFade 0.45s ease-out both; }
+      `}</style>
+    </div>
   );
 }
 

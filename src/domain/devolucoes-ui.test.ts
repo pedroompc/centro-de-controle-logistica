@@ -3,7 +3,7 @@ import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotori
 import type { DevolucaoPorMotorista } from "./devolucoes";
 
 const m = (over: Partial<DevolucaoPorMotorista>): DevolucaoPorMotorista => ({
-  codMotorista: 1, nome: "Fulano", tipo: null, expedidas: 100, devolvidas: 5, taxa: 5, valorDevolvido: 1000, ...over,
+  codMotorista: 1, nome: "Fulano", tipo: null, expedidas: 100, devolvidas: 5, taxa: 5, valorExpedido: 20000, valorDevolvido: 1000, ...over,
 });
 
 describe("filtrarPorBusca", () => {
