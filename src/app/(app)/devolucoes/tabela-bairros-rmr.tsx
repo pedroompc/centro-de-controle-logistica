@@ -61,6 +61,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
               <th className="px-3 py-2.5 text-center font-semibold">#</th>
               <th className="px-3 py-2.5 text-left font-semibold">Bairro</th>
               <th className="px-3 py-2.5 text-left font-semibold">Motivo predominante</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Faturado</th>
               <th className="px-3 py-2.5 text-right font-semibold">Notas</th>
               <th className="px-3 py-2.5 text-right font-semibold">Devolvido</th>
             </tr>
@@ -68,7 +69,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-slate-400">
+                <td colSpan={6} className="py-10 text-center text-sm text-slate-400">
                   {busca ? `Nenhum bairro para "${busca}".` : "Sem devolução por bairro na RMR no período."}
                 </td>
               </tr>
@@ -84,6 +85,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
                     <div className="max-w-[260px] truncate text-slate-600" title={b.motivo}>{b.motivo}</div>
                     <div className="text-[10px] tabular-nums text-slate-400">{formatBRL(b.motivoValor)}</div>
                   </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{formatBRL(b.faturado)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{b.notas}</td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(b.devolvido)}</td>
                 </tr>
@@ -114,7 +116,8 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
                 </div>
               </div>
               <p className="mt-1.5 pl-[1.9rem] text-xs text-slate-500">
-                <span className="text-slate-400">motivo:</span> {b.motivo}{" "}
+                <span className="text-slate-400">faturado:</span> <span className="tabular-nums">{formatBRL(b.faturado)}</span>{" "}
+                · <span className="text-slate-400">motivo:</span> {b.motivo}{" "}
                 <span className="tabular-nums text-slate-400">({formatBRL(b.motivoValor)})</span>
               </p>
             </li>

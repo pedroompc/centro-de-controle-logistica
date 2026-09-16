@@ -28,6 +28,7 @@ export const MIN_FATURADO_CIDADE = 5000;
 export interface BairroDevolucao {
   cidade: string;
   bairro: string;
+  faturado: number; // R$ faturado no bairro no período (contexto; NÃO vira taxa)
   devolvido: number;
   notas: number;
   motivo: string; // motivo de devolução predominante

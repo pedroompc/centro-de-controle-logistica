@@ -119,6 +119,10 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Faturado</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-emerald-300 xl:text-3xl">{formatBRL(bairro.faturado)}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Devolvido</span>
                 <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(bairro.devolvido)}</span>
               </div>

@@ -436,6 +436,17 @@ const BAIRRO_EXPR = "UPPER(TRIM(NVL(cli.BAIRROENT,'SEM BAIRRO')))";
 
 const sqlBairroRMR = () => `
 WITH ${ctes({})},
+fat AS (
+  SELECT ci.CODIBGE, ${BAIRRO_EXPR} BAIRRO, SUM(nf.VLTOTAL) FATURADO
+  FROM PCNFSAID nf
+  JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
+  JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+    AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
+  GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
+),
 base AS (
   SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO, edf.MOTIVO,
          SUM(edf.VL) VL, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
@@ -447,24 +458,27 @@ base AS (
   GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}, edf.MOTIVO
 ),
 ranked AS (
-  SELECT CIDADE, BAIRRO, MOTIVO, VL,
+  SELECT CODIBGE, CIDADE, BAIRRO, MOTIVO, VL,
          SUM(VL) OVER (PARTITION BY CODIBGE, BAIRRO) DEVOLVIDO,
          SUM(NOTAS) OVER (PARTITION BY CODIBGE, BAIRRO) NOTAS,
          ROW_NUMBER() OVER (PARTITION BY CODIBGE, BAIRRO ORDER BY VL DESC) RN
   FROM base
 )
-SELECT CIDADE, BAIRRO,
-       ROUND(DEVOLVIDO, 2) DEVOLVIDO,
-       NOTAS,
-       MOTIVO MOTIVO_TOP,
-       ROUND(VL, 2) MOTIVO_VALOR
-FROM ranked
-WHERE RN = 1 AND DEVOLVIDO > 0
+SELECT r.CIDADE, r.BAIRRO,
+       ROUND(NVL(f.FATURADO, 0), 2) FATURADO,
+       ROUND(r.DEVOLVIDO, 2) DEVOLVIDO,
+       r.NOTAS,
+       r.MOTIVO MOTIVO_TOP,
+       ROUND(r.VL, 2) MOTIVO_VALOR
+FROM ranked r
+LEFT JOIN fat f ON f.CODIBGE = r.CODIBGE AND f.BAIRRO = r.BAIRRO
+WHERE r.RN = 1 AND r.DEVOLVIDO > 0
 ORDER BY DEVOLVIDO DESC`;
 
 interface LinhaBairroRaw {
   CIDADE: string | null;
   BAIRRO: string | null;
+  FATURADO: number;
   DEVOLVIDO: number;
   NOTAS: number;
   MOTIVO_TOP: string | null;
@@ -486,6 +500,7 @@ export const getDevolucaoPorBairroRMR = cache(async (
     return rows.map((r) => ({
       cidade: r.CIDADE ?? "—",
       bairro: r.BAIRRO ?? "SEM BAIRRO",
+      faturado: n(r.FATURADO),
       devolvido: n(r.DEVOLVIDO),
       notas: n(r.NOTAS),
       motivo: r.MOTIVO_TOP ?? "Não informado",
