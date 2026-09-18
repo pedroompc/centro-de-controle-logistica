@@ -40,7 +40,10 @@ export interface FiltrosDevolucao {
 const NET = `(m.PUNIT - NVL(m.ST,0)) * m.QT`;
 
 // Motivo (CODDEVOL) → setor responsável, conforme o cadastro de motivos do Winthor.
+// Override por NOME: o motivo de "coleta" conta como Comercial (decisão do
+// cliente), independente do código — por isso vem antes das faixas de CODDEVOL.
 const SETOR = `CASE
+    WHEN UPPER(NVL(td.MOTIVO, '')) LIKE '%COLETA%' THEN 'Comercial'
     WHEN ed.CODDEVOL IN (85,86,87,88,89,90,91,97,98,99,100,101,102,103,104,111,112) THEN 'Logística'
     WHEN ed.CODDEVOL IN (93,94,95,96,106,107,108,109,110) THEN 'Comercial'
     WHEN ed.CODDEVOL IN (92,105) THEN 'Faturamento'
