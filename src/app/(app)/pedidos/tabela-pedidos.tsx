@@ -195,7 +195,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
               <th className="min-w-[200px] px-3 py-3 text-left font-semibold">Cliente</th>
               <th className="px-3 py-3 text-left font-semibold">RCA</th>
               <th className="px-3 py-3 text-left font-semibold">Cidade</th>
-              <th className="px-3 py-3 text-left font-semibold">Estado</th>
+              <th className="px-3 py-3 text-left font-semibold">Status</th>
               <th className="px-3 py-3 text-right font-semibold">Dias</th>
               <th className="px-3 py-3 text-left font-semibold">Motorista</th>
               <th className="px-3 py-3 text-left font-semibold">DT Pedido</th>
