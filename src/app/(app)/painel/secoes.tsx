@@ -13,7 +13,17 @@ import type {
   MotivoDetalhe,
 } from "@/domain/devolucoes";
 import { setorPredominante } from "@/domain/devolucoes-ui";
-import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos } from "./painel-actions";
+import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
+import type { DescarregamentoTipo } from "@/domain/types";
+import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos, MesReceitaDetalhe } from "./painel-actions";
+
+// Cores dos tipos de descarrego no painel escuro (mesma família do mapa de mix).
+const TIPO_COR_TV: Record<DescarregamentoTipo, string> = {
+  batido: "#5b6fd6",
+  paletizado: "#8b93e0",
+  pal_rem: "#f5b301",
+  volume: "#a78bfa",
+};
 
 // Chips de setor na paleta escura (o setorPill claro não contrasta no navy).
 export const SETOR_COR: Record<SetorDevolucao, { barra: string; chip: string }> = {
@@ -392,27 +402,106 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
   );
 }
 
-/** Receitas · total por origem + série mensal. */
-export function SecaoReceitas({ dados }: { dados: ResumoReceitas }) {
+/**
+ * Receitas · KPIs por origem + comparação mês a mês com os DRIVERS (carros por
+ * tipo, peso e diversas por material) — para explicar POR QUE um mês rendeu mais
+ * que o outro. R$ da receita é mantido (exceção acordada do painel).
+ */
+export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detalhe: MesReceitaDetalhe[] }) {
   const origens = [
     { rotulo: "Descarrego", valor: dados.descarregamento },
     { rotulo: "Totais diários", valor: dados.diarios },
     { rotulo: "Diversas", valor: dados.diversas },
   ];
-  const serie = dados.serie.map((p) => ({ rotulo: formatMesAno(p.mes).slice(0, 3), valor: p.valor }));
+  const meses = detalhe.slice(-4); // últimos meses, lado a lado
+  const maxReceita = Math.max(1, ...meses.map((m) => m.receita));
+
   return (
-    <div className="flex h-full flex-col gap-6">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+    <div className="flex h-full flex-col gap-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="Receita do mês" value={formatBRL(dados.totalMes)} tone="emerald" />
         {origens.map((o) => (
           <Kpi key={o.rotulo} label={o.rotulo} value={formatBRL(o.valor)} />
         ))}
       </div>
+
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Receita mensal (últimos meses)</div>
-        <div className="min-h-0 flex-1">
-          <MiniBarras itens={serie} cor="#34d399" formatarValor={(v) => formatBRL(v)} destaque />
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Por que cada mês rendeu isso</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {TIPOS_DESCARREGAMENTO.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5 text-xs text-white/50">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: TIPO_COR_TV[t] }} />
+                {ROTULO_TIPO[t]}
+              </span>
+            ))}
+          </div>
         </div>
+
+        {meses.length === 0 ? (
+          <p className="py-10 text-center text-white/40">Sem meses para comparar.</p>
+        ) : (
+          <div className="grid min-h-0 flex-1 gap-4" style={{ gridTemplateColumns: `repeat(${meses.length}, minmax(0, 1fr))` }}>
+            {meses.map((m) => {
+              const detalhados = TIPOS_DESCARREGAMENTO.reduce((s, t) => s + m.porTipo[t], 0);
+              return (
+                <div key={m.mes} className="flex min-h-0 flex-col rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/50">{formatMesAno(m.mes)}</div>
+                  <div className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-emerald-300 xl:text-3xl">{formatBRL(m.receita)}</div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-emerald-400" style={{ width: `${(m.receita / maxReceita) * 100}%` }} />
+                  </div>
+
+                  <div className="mt-4 flex items-baseline justify-between text-sm">
+                    <span className="uppercase tracking-wide text-white/45">Descarrego</span>
+                    <span className="tabular-nums text-white/80">{inteiro.format(m.carros)} carros · {formatKg(m.pesoKg)}</span>
+                  </div>
+                  {detalhados > 0 ? (
+                    <>
+                      <div className="mt-2 flex h-5 overflow-hidden rounded-md bg-white/10">
+                        {TIPOS_DESCARREGAMENTO.map((t) =>
+                          m.porTipo[t] > 0 ? (
+                            <div key={t} title={`${ROTULO_TIPO[t]}: ${inteiro.format(m.porTipo[t])} carros`} style={{ width: `${(m.porTipo[t] / detalhados) * 100}%`, background: TIPO_COR_TV[t] }} />
+                          ) : null,
+                        )}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {TIPOS_DESCARREGAMENTO.map((t) =>
+                          m.porTipo[t] > 0 ? (
+                            <span key={t} className="text-xs tabular-nums text-white/55">
+                              <span className="text-white/40">{ROTULO_TIPO[t]}</span> {inteiro.format(m.porTipo[t])}
+                            </span>
+                          ) : null,
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-2 text-xs text-white/35">sem quebra por tipo</div>
+                  )}
+
+                  <div className="mt-auto pt-4">
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="uppercase tracking-wide text-white/45">Diversas</span>
+                      <span className="tabular-nums text-white/80">{formatBRL(m.diversas)}</span>
+                    </div>
+                    {m.materiais.length > 0 ? (
+                      <div className="mt-1 space-y-0.5">
+                        {m.materiais.map((mat) => (
+                          <div key={mat.material} className="flex items-baseline justify-between gap-2 text-xs">
+                            <span className="min-w-0 truncate text-white/55" title={mat.material}>{mat.material}</span>
+                            <span className="shrink-0 tabular-nums text-white/40">{mat.kg > 0 ? formatKg(mat.kg) : "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-xs text-white/35">sem diversas</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

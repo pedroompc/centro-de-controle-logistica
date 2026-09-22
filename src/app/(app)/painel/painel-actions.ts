@@ -6,7 +6,9 @@ import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
 import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
-import { totalDiversasDoMes } from "@/data/receitas-diversas";
+import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
+import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
+import type { DescarregamentoTipo } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
 import { classificarRegiao, ORDEM_REGIAO, type RegiaoPE } from "@/domain/pe-regioes";
@@ -186,6 +188,52 @@ export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
     diversas,
     serie,
   };
+}
+
+// --- Receitas · drivers por mês (o "porquê" do mês) --------------------------
+
+export interface MesReceitaDetalhe {
+  mes: string; // "yyyy-mm-01"
+  receita: number; // receita total do mês (3 origens)
+  carros: number; // carros descarregados no mês
+  porTipo: Record<DescarregamentoTipo, number>; // carros por tipo
+  pesoKg: number; // peso descarregado
+  diversas: number; // total de receitas diversas
+  materiais: { material: string; kg: number; valor: number }[]; // top materiais de diversas
+}
+
+/**
+ * Detalhe por mês para explicar POR QUE um mês rendeu mais que o outro: junta a
+ * receita total com os drivers do descarrego (carros por tipo + peso) e a quebra
+ * de diversas por material. Alinhado aos meses da série de receita.
+ */
+export async function carregarReceitasDrivers(qtdMeses = 6): Promise<MesReceitaDetalhe[]> {
+  const [receita, desc, diversas] = await Promise.all([
+    serieReceitasMensais(qtdMeses),
+    serieDescarregoMensal(qtdMeses),
+    serieDiversasPorMaterialMensal(),
+  ]);
+  const descPorMes = new Map(desc.map((d) => [d.mes, d]));
+  const divPorMes = new Map<string, { material: string; kg: number; valor: number }[]>();
+  const divTotalPorMes = new Map<string, number>();
+  for (const d of diversas) {
+    const arr = divPorMes.get(d.mes) ?? [];
+    arr.push({ material: d.material, kg: d.kg, valor: d.valor });
+    divPorMes.set(d.mes, arr);
+    divTotalPorMes.set(d.mes, (divTotalPorMes.get(d.mes) ?? 0) + d.valor);
+  }
+  return receita.map((r) => {
+    const d = descPorMes.get(r.mes);
+    return {
+      mes: r.mes,
+      receita: r.valor,
+      carros: d?.carros ?? 0,
+      porTipo: d?.porTipo ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 },
+      pesoKg: d?.pesoKg ?? 0,
+      diversas: divTotalPorMes.get(r.mes) ?? 0,
+      materiais: (divPorMes.get(r.mes) ?? []).sort((a, b) => b.valor - a.valor).slice(0, 3),
+    };
+  });
 }
 
 // --- Descarregamento (por dia / semana / mês) --------------------------------

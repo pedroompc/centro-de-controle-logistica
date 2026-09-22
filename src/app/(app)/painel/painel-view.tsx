@@ -16,11 +16,13 @@ import {
   carregarDevBairrosRMR,
   carregarAFaturar,
   carregarReceitas,
+  carregarReceitasDrivers,
   carregarDescarregos,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
   type ResumoDescarregos,
+  type MesReceitaDetalhe,
 } from "./painel-actions";
 import Mapa from "./mapa";
 import MapaRMR from "./mapa-rmr";
@@ -58,6 +60,7 @@ interface Dados {
   bairrosRMR: BairroDevolucao[];
   aFaturar: ResumoAFaturar | null;
   receitas: ResumoReceitas | null;
+  receitasDrivers: MesReceitaDetalhe[];
   descarregos: ResumoDescarregos | null;
 }
 
@@ -93,7 +96,7 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slid
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.receitas)
-    s.push({ id: "receitas", titulo: "Receitas", contexto: "descarrego, diários e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoReceitas dados={d.receitas} /> });
+    s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} /> });
   if (d.descarregos)
     s.push({ id: "descarregos", titulo: "Descarrego", contexto: "por dia, semana e mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} mesLabel={mesLabel} /> });
   return s;
@@ -144,7 +147,7 @@ export default function PainelView({
 }) {
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, descarregos: null,
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null,
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
@@ -169,6 +172,7 @@ export default function PainelView({
     await passo(async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
     await passo(async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
     await passo(async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
+    await passo(async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
     await passo(async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
     if (primeira.current) primeira.current = false;
