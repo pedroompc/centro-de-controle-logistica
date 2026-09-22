@@ -61,3 +61,59 @@ export function composicaoFolha(funcionarios: Funcionario[]): ItemComposicao[] {
     valor: ativos.reduce((total, f) => total + (f[chave] ?? 0), 0),
   })).filter((item) => item.valor > 0);
 }
+
+// --- Foto por setor (headcount + folha) --------------------------------------
+
+export interface LinhaEfetivoSetor {
+  setor: string; // NOME do setor (chave da foto mensal — bate com _baseline/_snapshot)
+  ativos: number;
+  afastados: number;
+  desligados: number;
+  custoAtivos: number; // folha dos ativos do setor
+}
+
+/**
+ * Foto do efetivo por setor no AGORA, a partir do cadastro vivo. Guarda o nome
+ * do setor (não o id) para a foto mensal casar com as fotos históricas
+ * (_baseline_efetivo/_snapshot_efetivo), que só têm o nome.
+ */
+export function fotoSetorAtual(
+  funcionarios: Funcionario[],
+  setores: { id: string; nome: string }[],
+): LinhaEfetivoSetor[] {
+  return setores
+    .map((s) => {
+      const doSetor = funcionarios.filter((f) => f.setorId === s.id);
+      const ativos = doSetor.filter((f) => f.status === "ativo");
+      return {
+        setor: s.nome,
+        ativos: ativos.length,
+        afastados: doSetor.filter((f) => f.status === "afastado").length,
+        desligados: doSetor.filter((f) => f.status === "desligado").length,
+        custoAtivos: ativos.reduce((total, f) => total + f.custoMensal, 0),
+      };
+    })
+    .filter((l) => l.ativos > 0 || l.afastados > 0 || l.custoAtivos > 0);
+}
+
+export interface TotalEfetivoMes {
+  mes: string;
+  ativos: number;
+  afastados: number;
+  folhaTotal: number;
+}
+
+/** Agrega linhas por setor em totais por mês (ordena mais antigo → mais novo). */
+export function totaisEfetivoPorMes(
+  linhas: { mes: string; ativos: number; afastados: number; custoAtivos: number }[],
+): TotalEfetivoMes[] {
+  const porMes = new Map<string, TotalEfetivoMes>();
+  for (const l of linhas) {
+    const t = porMes.get(l.mes) ?? { mes: l.mes, ativos: 0, afastados: 0, folhaTotal: 0 };
+    t.ativos += l.ativos;
+    t.afastados += l.afastados;
+    t.folhaTotal += l.custoAtivos;
+    porMes.set(l.mes, t);
+  }
+  return [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes));
+}

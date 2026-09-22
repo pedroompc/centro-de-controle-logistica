@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
-import { primeiroDiaDoMes } from "@/domain/periodo";
+import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
 import type { CustoMensal } from "@/domain/types";
 
 const COLUNAS = "id, mes, nome, tipo, valor, data";
@@ -19,6 +19,42 @@ export async function listarLancamentosDoMes(mes: string): Promise<CustoMensal[]
     .order("nome");
   if (error) throw new Error(error.message);
   return (data ?? []).map(mapCustoMensal);
+}
+
+export interface CustoMesTotais {
+  mes: string; // "yyyy-mm-01"
+  fixos: number;
+  variaveis: number;
+}
+
+/**
+ * Totais de custo fixo/variável por mês, dos últimos `qtdMeses` meses (mais antigo
+ * → mais novo). Só entram meses com lançamento — é o histórico real de
+ * `custos_mensais`, base do comparativo mês a mês no Dashboard.
+ */
+export async function serieCustosMensais(qtdMeses = 12): Promise<CustoMesTotais[]> {
+  let inicio = primeiroDiaDoMes();
+  for (let i = 1; i < qtdMeses; i++) inicio = mesAnterior(inicio);
+  if (inicio < INICIO_HISTORICO) inicio = INICIO_HISTORICO;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("custos_mensais")
+    .select("mes, tipo, valor")
+    .gte("mes", inicio)
+    .order("mes", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const porMes = new Map<string, CustoMesTotais>();
+  for (const row of data ?? []) {
+    const mes = primeiroDiaDoMes(String(row.mes));
+    const t = porMes.get(mes) ?? { mes, fixos: 0, variaveis: 0 };
+    const valor = Number(row.valor) || 0;
+    if (row.tipo === "fixo") t.fixos += valor;
+    else t.variaveis += valor;
+    porMes.set(mes, t);
+  }
+  return [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes));
 }
 
 export async function materializarMes(mes: string): Promise<void> {

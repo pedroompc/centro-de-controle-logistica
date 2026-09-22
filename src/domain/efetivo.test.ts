@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fotoAtual, composicaoFolha } from "./efetivo";
+import { fotoAtual, composicaoFolha, fotoSetorAtual, totaisEfetivoPorMes } from "./efetivo";
 import { absenteismoPorMes } from "./absenteismo-mensal";
 import type { Funcionario, Falta } from "./types";
 
@@ -38,6 +38,40 @@ describe("composicaoFolha", () => {
     expect(porChave.alimentacao).toBe(300);
     // plano/ajuda/premiação/adicional zerados não aparecem
     expect(itens.some((i) => i.chave === "planoSaude")).toBe(false);
+  });
+});
+
+describe("fotoSetorAtual", () => {
+  const setores = [
+    { id: "s1", nome: "Motoristas" },
+    { id: "s2", nome: "Adega" },
+    { id: "s3", nome: "Vazio" },
+  ];
+  it("agrega por setor, folha só dos ativos, e omite setor sem ninguém", () => {
+    const linhas = fotoSetorAtual(
+      [
+        func({ id: "1", setorId: "s1", custoMensal: 2000, status: "ativo" }),
+        func({ id: "2", setorId: "s1", custoMensal: 3000, status: "afastado" }),
+        func({ id: "3", setorId: "s2", custoMensal: 1500, status: "ativo" }),
+      ],
+      setores,
+    );
+    const porSetor = Object.fromEntries(linhas.map((l) => [l.setor, l]));
+    expect(porSetor.Motoristas).toEqual({ setor: "Motoristas", ativos: 1, afastados: 1, desligados: 0, custoAtivos: 2000 });
+    expect(porSetor.Adega.custoAtivos).toBe(1500);
+    expect(porSetor.Vazio).toBeUndefined(); // sem ninguém → fora
+  });
+});
+
+describe("totaisEfetivoPorMes", () => {
+  it("soma setores por mês e ordena por mês", () => {
+    const totais = totaisEfetivoPorMes([
+      { mes: "2026-08-01", ativos: 5, afastados: 1, custoAtivos: 10000 },
+      { mes: "2026-07-01", ativos: 4, afastados: 0, custoAtivos: 8000 },
+      { mes: "2026-08-01", ativos: 3, afastados: 0, custoAtivos: 6000 },
+    ]);
+    expect(totais.map((t) => t.mes)).toEqual(["2026-07-01", "2026-08-01"]);
+    expect(totais[1]).toEqual({ mes: "2026-08-01", ativos: 8, afastados: 1, folhaTotal: 16000 });
   });
 });
 
