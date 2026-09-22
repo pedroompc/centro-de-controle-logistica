@@ -61,7 +61,7 @@ export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; cu
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução − avulsa" accent="navy" />
-        <StatCard label="PDVs atendidos" value={`${r.atendimentos}`} hint="clientes atendidos no mês" accent="navy" />
+        <StatCard label="Entregas realizadas" value={`${r.atendimentos}`} hint="clientes atendidos no mês" accent="navy" />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" />
         <StatCard label="Taxa de devolução" value={formatPercent(taxaDevol)} accent="red" />
