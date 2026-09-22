@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, Fragment } from "react";
 import { Card, PanelHeader } from "@/components/ui";
 import { filtrarPorBusca } from "@/domain/devolucoes-ui";
-import { formatBRL } from "@/domain/format";
+import { formatBRL, formatKg } from "@/domain/format";
 import { estadoPedidoInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
 import { carregarItensPedido } from "./actions";
@@ -200,6 +200,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
               <th className="px-3 py-3 text-left font-semibold">Motorista</th>
               <th className="px-3 py-3 text-left font-semibold">DT Pedido</th>
               <th className="px-3 py-3 text-left font-semibold">DT Faturada</th>
+              <th className="px-3 py-3 text-right font-semibold">Peso</th>
               <th className="px-3 py-3 text-right font-semibold">Valor</th>
               <th className="w-10 px-3 py-3" aria-label="Detalhes" />
             </tr>
@@ -207,7 +208,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={11} className="py-12 text-center text-sm text-slate-400">
+                <td colSpan={12} className="py-12 text-center text-sm text-slate-400">
                   {busca ? `Nenhum pedido para "${busca}".` : "Nenhum pedido para os filtros selecionados."}
                 </td>
               </tr>
@@ -244,6 +245,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                         <div className="tabular-nums">{fmtData(p.dataFaturamento)}</div>
                         {p.notaFiscal != null && <div className="text-[10px] tabular-nums text-slate-400">NF {p.notaFiscal}</div>}
                       </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatKg(p.peso)}</td>
                       <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</td>
                       <td className="px-3 py-3 text-center text-slate-400">
                         {estaAberto ? <IconeCima className="mx-auto h-4 w-4" /> : <IconeBaixo className="mx-auto h-4 w-4" />}
@@ -251,7 +253,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     </tr>
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
-                        <td colSpan={11} className="p-0">
+                        <td colSpan={12} className="p-0">
                           <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />
                         </td>
                       </tr>
@@ -291,6 +293,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {p.motorista && <span>Mot.: {p.motorista}</span>}
                     <span>Ped.: {fmtData(p.data)}</span>
                     <span>Fat.: {fmtData(p.dataFaturamento)}</span>
+                    <span>{formatKg(p.peso)}</span>
                     {p.notaFiscal != null && <span>NF {p.notaFiscal}</span>}
                   </div>
                 </div>
