@@ -8,6 +8,7 @@ import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
+import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import type { DescarregamentoTipo } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
@@ -249,6 +250,11 @@ export interface ResumoDescarregos {
 function semanaDoMes(iso: string): number {
   const dia = Number(iso.slice(8, 10));
   return Math.floor((dia - 1) / 7) + 1;
+}
+
+/** Série mensal de descarrego (carros, tipo, peso) — comparação no slide da TV. */
+export async function carregarSerieDescarrego(qtdMeses = 6): Promise<PontoDescarregoMensal[]> {
+  return serieDescarregoMensal(qtdMeses);
 }
 
 /** Descarregos por dia/semana/mês a partir dos totais diários. */

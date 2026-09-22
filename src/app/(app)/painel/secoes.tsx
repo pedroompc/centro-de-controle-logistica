@@ -14,6 +14,8 @@ import type {
 } from "@/domain/devolucoes";
 import { setorPredominante } from "@/domain/devolucoes-ui";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
+import { pesoMedioPorCarro, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
+import { variacaoPercentual } from "@/domain/tendencias";
 import type { DescarregamentoTipo } from "@/domain/types";
 import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos, MesReceitaDetalhe } from "./painel-actions";
 
@@ -521,20 +523,55 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
   );
 }
 
-/** Descarregamento · por dia (mês), por semana e total do mês. */
-export function SecaoDescarregos({ dados, mesLabel }: { dados: ResumoDescarregos; mesLabel: string }) {
+/**
+ * KPI comparativo do painel escuro: valor grande + variação vs o mês anterior.
+ * "Mais é melhor" (descarrego): subir fica neutro (branco), cair ganha rose.
+ */
+function KpiComp({ label, value, frac, temAnt, prevLabel }: { label: string; value: string; frac: number; temAnt: boolean; prevLabel: string }) {
+  const subindo = frac >= 0;
+  return (
+    <div className="@container rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">
+      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">{label}</div>
+      <div className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.25rem,9cqi,2.25rem)] font-extrabold leading-none tabular-nums whitespace-nowrap text-amber-300">{value}</div>
+      {temAnt ? (
+        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${subindo ? "text-white/75" : "text-rose-300"}`}>
+          <span>{subindo ? "▲" : "▼"}</span>
+          <span>{`${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`}</span>
+          <span className="font-normal text-white/35">vs {prevLabel}</span>
+        </div>
+      ) : (
+        <div className="mt-2 text-xs text-white/35">sem mês anterior</div>
+      )}
+    </div>
+  );
+}
+
+/** Descarregamento · comparação vs mês anterior + dia a dia do mês corrente. */
+export function SecaoDescarregos({ dados, serie, mesLabel }: { dados: ResumoDescarregos; serie: PontoDescarregoMensal[]; mesLabel: string }) {
   // Rótulo = dia/mês (dd/mm) para ficar claro que o eixo é a data.
   const porDia = dados.porDia.map((d) => ({ rotulo: `${d.data.slice(8, 10)}/${d.data.slice(5, 7)}`, valor: d.descarregos }));
+
+  const atual = serie.length > 0 ? serie[serie.length - 1] : null;
+  const ant = serie.length > 1 ? serie[serie.length - 2] : null;
+  const temAnt = Boolean(atual && ant);
+  const prevLabel = ant ? formatMesAno(ant.mes).slice(0, 3) : "";
+  const carros = atual?.carros ?? dados.totalMes;
+  const peso = atual?.pesoKg ?? 0;
+  const pesoCarro = atual ? pesoMedioPorCarro(atual) : 0;
+  const dCarros = temAnt ? variacaoPercentual(atual!.carros, ant!.carros) : 0;
+  const dPeso = temAnt ? variacaoPercentual(atual!.pesoKg, ant!.pesoKg) : 0;
+  const dPesoCarro = temAnt ? variacaoPercentual(pesoMedioPorCarro(atual!), pesoMedioPorCarro(ant!)) : 0;
+
   return (
     <div className="flex h-full flex-col gap-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Kpi label="Descarregos no mês" value={inteiro.format(dados.totalMes)} tone="amber" hint={mesLabel} />
-        <Kpi label="Receita (diários)" value={formatBRL(dados.receitaMes)} tone="emerald" />
-        <Kpi label="Dias com descarga" value={inteiro.format(dados.porDia.length)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <KpiComp label="Carros no mês" value={inteiro.format(carros)} frac={dCarros} temAnt={temAnt} prevLabel={prevLabel} />
+        <KpiComp label="Peso total" value={formatKg(peso)} frac={dPeso} temAnt={temAnt} prevLabel={prevLabel} />
+        <KpiComp label="Peso por carro" value={`${formatKg(pesoCarro)}/carro`} frac={dPesoCarro} temAnt={temAnt} prevLabel={prevLabel} />
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 lg:grid-cols-[2fr_1fr]">
         <div className="flex min-h-0 flex-col">
-          <div className="mb-1 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Descarregos por dia</div>
+          <div className="mb-1 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Descarregos por dia · {mesLabel}</div>
           <div className="mb-3 text-xs text-white/45">quantidade em cima · data (dia/mês) embaixo</div>
           <div className="min-h-0 flex-1">
             <MiniBarras itens={porDia} cor="#f5b301" destaque />
