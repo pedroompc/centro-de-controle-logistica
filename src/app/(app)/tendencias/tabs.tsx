@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation";
  */
 const ABAS = [
   { href: "/tendencias", label: "Faturamento" },
+  { href: "/tendencias/custos", label: "Custos" },
   { href: "/tendencias/descarrego", label: "Descarrego" },
   { href: "/tendencias/efetivos", label: "Efetivos" },
 ] as const;
