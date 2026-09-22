@@ -35,6 +35,8 @@ export interface ResumoDevolucao {
   taxaNotas: number;
   devolvidas: number;
   emitidas: number;
+  positivados: number; // clientes positivados no mês
+  atendimentos: number; // entregas realizadas (clientes atendidos)
   porSetor: DevolucaoPorSetor[];
   porMotivo: DevolucaoPorMotivo[];
 }
@@ -51,6 +53,8 @@ const DEV_VAZIO: ResumoDevolucao = {
   taxaNotas: 0,
   devolvidas: 0,
   emitidas: 0,
+  positivados: 0,
+  atendimentos: 0,
   porSetor: [],
   porMotivo: [],
 };
@@ -75,6 +79,8 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
     taxaNotas: fat ? taxaDevolucaoNotas(fat) : 0,
     devolvidas: fat?.devolvidas ?? 0,
     emitidas: fat?.emitidas ?? 0,
+    positivados: fat?.positivados ?? 0,
+    atendimentos: fat?.atendimentos ?? 0,
     porSetor: nucleo?.porSetor ?? [],
     porMotivo: nucleo?.porMotivo ?? [],
   };

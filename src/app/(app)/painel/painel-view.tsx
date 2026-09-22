@@ -44,6 +44,9 @@ const REFRESH_MS = 10 * 60_000; // 10 minutos (ou no botão de atualizar)
 
 const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";
 
+// Contagens (positivados, entregas, pedidos) com separador de milhar pt-BR.
+const inteiro = new Intl.NumberFormat("pt-BR");
+
 interface Dados {
   motoristas: DevolucaoPorMotorista[];
   clientes: DevolucaoPorCliente[];
@@ -75,7 +78,7 @@ function Marca() {
 function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
-    s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "R$ devolvido por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} /> });
+    s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} /> });
   if (d.motoristas.length > 0)
     s.push({ id: "motoristas", titulo: "Motoristas que mais voltam", contexto: "top 10 por taxa de nota e por valor", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoMotoristas motoristas={d.motoristas} /> });
   if (d.clientes.length > 0 || d.vendedores.length > 0)
@@ -254,12 +257,14 @@ export default function PainelView({
           </div>
         </div>
 
-        {/* KPIs sempre visíveis — inclui o FATURAMENTO LÍQUIDO. */}
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Kpi label="Faturamento líquido" value={dev.disponivel ? formatBRL(dev.vendaLiquida) : "—"} hint="faturado − devoluções" tone="emerald" />
+        {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
+            em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} hint="clientes com venda no mês" />
+          <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} hint="clientes atendidos no mês" />
           <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} hint="líquido (venda − devolução)" />
-          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} hint={dev.disponivel ? formatBRL(dev.total) : undefined} tone="rose" />
-          <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? formatBRL(dados.aFaturar.valorTotal) : "—"} hint={dados.aFaturar?.disponivel ? `${dados.aFaturar.totalPedidos} pedidos` : undefined} tone="amber" />
+          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} tone="rose" />
+          <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
           <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" tone="emerald" />
         </div>
 
