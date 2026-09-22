@@ -176,14 +176,23 @@ export function MiniBarras({
 // ---------------------------------------------------------------------------
 // Seções de conteúdo (um "slide" cada)
 
-/** Devoluções · clientes e vendedores lado a lado, numa página só. */
+/**
+ * Devoluções · clientes e vendedores lado a lado, numa página só.
+ *
+ * Sem R$ exposto (decisão da diretoria): cada linha mostra a PARTICIPAÇÃO no
+ * total devolvido (valor da linha ÷ total devolvido geral), não o valor. O nº de
+ * notas continua — é contagem, não dinheiro.
+ */
 export function SecaoClientesVendedores({
   clientes,
   vendedores,
+  totalDevolvido,
 }: {
   clientes: DevolucaoPorCliente[];
   vendedores: DevolucaoPorVendedor[];
+  totalDevolvido: number;
 }) {
+  const parte = (valor: number) => (totalDevolvido > 0 ? formatPercent(valor / totalDevolvido) : "—");
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
       {/* Coluna clientes — separada da de vendedores por uma divisória. */}
@@ -198,7 +207,7 @@ export function SecaoClientesVendedores({
             linhas={clientes.slice(0, 8).map((c) => ({
               chave: c.codcli,
               nome: c.nome,
-              principal: formatBRL(c.valor),
+              principal: parte(c.valor),
               secundario: `${c.notas} notas`,
             }))}
           />
@@ -215,7 +224,7 @@ export function SecaoClientesVendedores({
             linhas={vendedores.slice(0, 8).map((v) => ({
               chave: v.codVendedor,
               nome: v.nome,
-              principal: formatBRL(v.valor),
+              principal: parte(v.valor),
               secundario: `${v.notas} notas`,
             }))}
           />
