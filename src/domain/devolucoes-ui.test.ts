@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo, setorPredominante } from "./devolucoes-ui";
+import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo, setorPredominante, motivoPredominante } from "./devolucoes-ui";
 import type { DevolucaoPorMotorista, MotivoDetalhe } from "./devolucoes";
 
 describe("setorPredominante", () => {
@@ -20,6 +20,20 @@ describe("setorPredominante", () => {
     expect(setorPredominante([])).toBeNull();
     expect(setorPredominante(undefined)).toBeNull();
     expect(setorPredominante([md("Comercial", 0)])).toBeNull();
+  });
+});
+
+describe("motivoPredominante", () => {
+  const md = (motivo: string, setor: MotivoDetalhe["setor"], valor: number): MotivoDetalhe => ({ motivo, setor, notas: 1, valor });
+
+  it("devolve o motivo isolado de maior R$", () => {
+    expect(motivoPredominante([md("Avaria", "Logística", 300), md("Coleta", "Comercial", 900)])).toBe("Coleta");
+  });
+
+  it("null quando vazio, indefinido ou sem valor", () => {
+    expect(motivoPredominante([])).toBeNull();
+    expect(motivoPredominante(undefined)).toBeNull();
+    expect(motivoPredominante([md("Avaria", "Logística", 0)])).toBeNull();
   });
 });
 

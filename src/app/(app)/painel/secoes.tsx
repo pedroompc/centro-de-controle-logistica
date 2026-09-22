@@ -12,7 +12,7 @@ import type {
   SetorDevolucao,
   MotivoDetalhe,
 } from "@/domain/devolucoes";
-import { setorPredominante } from "@/domain/devolucoes-ui";
+import { setorPredominante, motivoPredominante } from "@/domain/devolucoes-ui";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import { pesoMedioPorCarro, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -235,6 +235,12 @@ export function SecaoClientesVendedores({
     const sp = setorPredominante(motivos);
     return sp ? <SeloSetor setor={sp.setor} /> : undefined;
   };
+  // Linha de detalhe: "N notas · <motivo predominante>" (motivo truncado p/ não poluir).
+  const detalheDe = (notas: number, motivos: MotivoDetalhe[] | undefined) => {
+    const mt = motivoPredominante(motivos);
+    const curto = mt ? (mt.length > 26 ? `${mt.slice(0, 25)}…` : mt) : null;
+    return curto ? `${notas} notas · ${curto}` : `${notas} notas`;
+  };
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
       {/* Coluna clientes — separada da de vendedores por uma divisória. */}
@@ -250,7 +256,7 @@ export function SecaoClientesVendedores({
               chave: c.codcli,
               nome: c.nome,
               principal: parte(c.valor),
-              secundario: `${c.notas} notas`,
+              secundario: detalheDe(c.notas, clientesMotivos[c.codcli]),
               seloDireita: seloDe(clientesMotivos[c.codcli]),
             }))}
           />
@@ -268,7 +274,7 @@ export function SecaoClientesVendedores({
               chave: v.codVendedor,
               nome: v.nome,
               principal: parte(v.valor),
-              secundario: `${v.notas} notas`,
+              secundario: detalheDe(v.notas, vendedoresMotivos[v.codVendedor]),
               seloDireita: seloDe(vendedoresMotivos[v.codVendedor]),
             }))}
           />

@@ -36,6 +36,20 @@ export function setorPredominante(motivos: MotivoDetalhe[] | undefined): SetorPr
   return { setor: melhor, fracao: melhorV / total };
 }
 
+/** Motivo isolado de maior R$ devolvido da entidade — o "porquê" específico. */
+export function motivoPredominante(motivos: MotivoDetalhe[] | undefined): string | null {
+  if (!motivos || motivos.length === 0) return null;
+  let melhor: string | null = null;
+  let melhorV = -1;
+  for (const m of motivos) {
+    if (m.valor > melhorV) {
+      melhorV = m.valor;
+      melhor = m.motivo;
+    }
+  }
+  return melhorV > 0 ? melhor : null;
+}
+
 /** Filtro em memória por texto: casa a busca contra qualquer um dos `campos`. */
 export function filtrarPorBusca<T>(
   lista: T[],
