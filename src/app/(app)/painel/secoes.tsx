@@ -65,7 +65,6 @@ export function SetorBar({ porSetor }: { porSetor: DevolucaoPorSetor[] }) {
           <span key={s.setor} className="inline-flex items-center gap-2 text-sm text-white/70">
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${SETOR_COR[s.setor].chip}`}>{s.setor}</span>
             <span className="font-semibold tabular-nums text-white">{((s.valor / total) * 100).toFixed(1)}%</span>
-            <span className="tabular-nums text-white/40">{formatBRL(s.valor)}</span>
           </span>
         ))}
       </div>
@@ -204,7 +203,7 @@ export function SecaoClientesVendedores({
         <div className="min-h-0 flex-1 overflow-hidden">
           <BigRanking
             denso
-            linhas={clientes.slice(0, 8).map((c) => ({
+            linhas={[...clientes].sort((a, b) => b.valor - a.valor).slice(0, 8).map((c) => ({
               chave: c.codcli,
               nome: c.nome,
               principal: parte(c.valor),
@@ -221,7 +220,7 @@ export function SecaoClientesVendedores({
         <div className="min-h-0 flex-1 overflow-hidden">
           <BigRanking
             denso
-            linhas={vendedores.slice(0, 8).map((v) => ({
+            linhas={[...vendedores].sort((a, b) => b.valor - a.valor).slice(0, 8).map((v) => ({
               chave: v.codVendedor,
               nome: v.nome,
               principal: parte(v.valor),
@@ -281,12 +280,12 @@ export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotori
     {
       id: "valor",
       titulo: "Por valor",
-      sub: "R$ devolvido ÷ R$ expedido (%)",
+      sub: "valor devolvido ÷ valor expedido (%)",
       linhas: porValor.map(({ m, tx }) => ({
         chave: m.codMotorista,
         nome: m.nome,
         principal: formatPercent(tx),
-        secundario: `${formatBRL(m.valorDevolvido)} de ${formatBRL(m.valorExpedido)}`,
+        secundario: `${m.devolvidas} de ${m.expedidas} entregas`,
         selo: seloTipoMotorista(m.tipo),
       })),
     },
@@ -316,15 +315,17 @@ export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotori
   );
 }
 
-/** Devoluções · motivos (por valor). */
+/** Devoluções · motivos (participação no total devolvido, sem R$). */
 export function SecaoMotivos({ porMotivo }: { porMotivo: DevolucaoPorMotivo[] }) {
+  const totalDevolvido = porMotivo.reduce((s, m) => s + m.valor, 0);
+  const parte = (valor: number) => (totalDevolvido > 0 ? formatPercent(valor / totalDevolvido) : "—");
   const top = [...porMotivo].sort((a, b) => b.valor - a.valor).slice(0, 10);
   return (
     <RankingDuasColunas
       linhas={top.map((m) => ({
         chave: `${m.motivo}-${m.setor}`,
         nome: m.motivo,
-        principal: formatBRL(m.valor),
+        principal: parte(m.valor),
         secundario: `${m.notas} notas`,
         selo: <SeloSetor setor={m.setor} />,
       }))}
@@ -339,9 +340,8 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
   }
   return (
     <div className="flex h-full flex-col gap-6">
-      <div className="grid grid-cols-3 gap-3">
-        <Kpi label="Pedidos a faturar" value={inteiro.format(dados.totalPedidos)} hint="liberados/montados sem NF" />
-        <Kpi label="Carteira" value={formatBRL(dados.valorTotal)} tone="amber" />
+      <div className="grid grid-cols-2 gap-3">
+        <Kpi label="Pedidos a faturar" value={inteiro.format(dados.totalPedidos)} tone="amber" hint="liberados/montados sem NF" />
         <Kpi label="Peso em carteira" value={formatKg(dados.pesoTotal)} />
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
@@ -353,7 +353,7 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
           <div className="min-h-0 flex-1 overflow-hidden">
             <BigRanking
               denso
-              linhas={dados.topCidades.map((c) => ({ chave: c.chave, nome: c.nome, principal: formatBRL(c.valor), secundario: `${c.qtd} pedidos` }))}
+              linhas={[...dados.topCidades].sort((a, b) => b.qtd - a.qtd).map((c) => ({ chave: c.chave, nome: c.nome, principal: inteiro.format(c.qtd), secundario: "pedidos" }))}
             />
           </div>
         </div>
@@ -365,7 +365,7 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
           <div className="min-h-0 flex-1 overflow-hidden">
             <BigRanking
               denso
-              linhas={dados.porRegiao.map((r) => ({ chave: r.chave, nome: r.nome, principal: formatBRL(r.valor), secundario: `${r.qtd} pedidos` }))}
+              linhas={dados.porRegiao.map((r) => ({ chave: r.chave, nome: r.nome, principal: inteiro.format(r.qtd), secundario: "pedidos" }))}
             />
           </div>
         </div>
