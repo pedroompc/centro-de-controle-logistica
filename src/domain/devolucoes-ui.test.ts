@@ -1,6 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo } from "./devolucoes-ui";
-import type { DevolucaoPorMotorista } from "./devolucoes";
+import { filtrarPorBusca, filtrarPorTipo, ordenarMotoristas, corTaxa, tipoMotoristaInfo, setorPredominante } from "./devolucoes-ui";
+import type { DevolucaoPorMotorista, MotivoDetalhe } from "./devolucoes";
+
+describe("setorPredominante", () => {
+  const md = (setor: MotivoDetalhe["setor"], valor: number): MotivoDetalhe => ({ motivo: "x", setor, notas: 1, valor });
+
+  it("devolve o setor de maior R$ e sua fração", () => {
+    const r = setorPredominante([md("Comercial", 800), md("Logística", 200)]);
+    expect(r).toEqual({ setor: "Comercial", fracao: 0.8 });
+  });
+
+  it("soma vários motivos do mesmo setor", () => {
+    const r = setorPredominante([md("Logística", 300), md("Logística", 300), md("Comercial", 100)]);
+    expect(r?.setor).toBe("Logística");
+    expect(r?.fracao).toBeCloseTo(600 / 700);
+  });
+
+  it("null quando vazio ou sem valor", () => {
+    expect(setorPredominante([])).toBeNull();
+    expect(setorPredominante(undefined)).toBeNull();
+    expect(setorPredominante([md("Comercial", 0)])).toBeNull();
+  });
+});
 
 const m = (over: Partial<DevolucaoPorMotorista>): DevolucaoPorMotorista => ({
   codMotorista: 1, nome: "Fulano", tipo: null, expedidas: 100, devolvidas: 5, taxa: 5, valorExpedido: 20000, valorDevolvido: 1000, ...over,

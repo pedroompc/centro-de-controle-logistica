@@ -10,7 +10,9 @@ import type {
   DevolucaoPorSetor,
   DevolucaoPorMotivo,
   SetorDevolucao,
+  MotivoDetalhe,
 } from "@/domain/devolucoes";
+import { setorPredominante } from "@/domain/devolucoes-ui";
 import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos } from "./painel-actions";
 
 // Chips de setor na paleta escura (o setorPill claro não contrasta no navy).
@@ -77,7 +79,8 @@ export interface LinhaRanking {
   nome: string;
   principal: string;
   secundario?: string;
-  selo?: ReactNode;
+  selo?: ReactNode; // etiqueta ao lado do nome (esquerda)
+  seloDireita?: ReactNode; // etiqueta ao lado do valor (direita)
 }
 
 export function BigRanking({ linhas, denso = false, inicio = 0 }: { linhas: LinhaRanking[]; denso?: boolean; inicio?: number }) {
@@ -98,11 +101,14 @@ export function BigRanking({ linhas, denso = false, inicio = 0 }: { linhas: Linh
             </span>
             {l.selo}
           </div>
-          <div className="shrink-0 text-right">
-            <div className={`font-[family-name:var(--font-sora)] font-bold tabular-nums text-rose-300 ${denso ? "text-lg" : "text-xl xl:text-2xl"}`}>
-              {l.principal}
+          <div className="flex shrink-0 items-center gap-2.5">
+            {l.seloDireita}
+            <div className="text-right">
+              <div className={`font-[family-name:var(--font-sora)] font-bold tabular-nums text-rose-300 ${denso ? "text-lg" : "text-xl xl:text-2xl"}`}>
+                {l.principal}
+              </div>
+              {l.secundario && <div className="text-sm tabular-nums text-white/40">{l.secundario}</div>}
             </div>
-            {l.secundario && <div className="text-sm tabular-nums text-white/40">{l.secundario}</div>}
           </div>
         </li>
       ))}
@@ -186,12 +192,22 @@ export function SecaoClientesVendedores({
   clientes,
   vendedores,
   totalDevolvido,
+  clientesMotivos,
+  vendedoresMotivos,
 }: {
   clientes: DevolucaoPorCliente[];
   vendedores: DevolucaoPorVendedor[];
   totalDevolvido: number;
+  clientesMotivos: Record<number, MotivoDetalhe[]>;
+  vendedoresMotivos: Record<number, MotivoDetalhe[]>;
 }) {
   const parte = (valor: number) => (totalDevolvido > 0 ? formatPercent(valor / totalDevolvido) : "—");
+  // Chip do setor predominante (Comercial/Logística/...) — responde "é comercial
+  // ou logístico?" para cada cliente/vendedor.
+  const seloDe = (motivos: MotivoDetalhe[] | undefined) => {
+    const sp = setorPredominante(motivos);
+    return sp ? <SeloSetor setor={sp.setor} /> : undefined;
+  };
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
       {/* Coluna clientes — separada da de vendedores por uma divisória. */}
@@ -208,6 +224,7 @@ export function SecaoClientesVendedores({
               nome: c.nome,
               principal: parte(c.valor),
               secundario: `${c.notas} notas`,
+              seloDireita: seloDe(clientesMotivos[c.codcli]),
             }))}
           />
         </div>
@@ -225,6 +242,7 @@ export function SecaoClientesVendedores({
               nome: v.nome,
               principal: parte(v.valor),
               secundario: `${v.notas} notas`,
+              seloDireita: seloDe(vendedoresMotivos[v.codVendedor]),
             }))}
           />
         </div>
