@@ -11,6 +11,7 @@ import { usePathname } from "next/navigation";
 const ABAS = [
   { href: "/tendencias", label: "Faturamento" },
   { href: "/tendencias/descarrego", label: "Descarrego" },
+  { href: "/tendencias/efetivos", label: "Efetivos" },
 ] as const;
 
 export function TendenciasTabs() {
