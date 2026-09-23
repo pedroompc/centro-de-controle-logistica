@@ -124,14 +124,18 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Participação na cidade</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Da devolução da cidade</span>
                 <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-rose-300 xl:text-4xl">
                   {parteNaCidade !== null ? formatPercent(parteNaCidade) : "—"}
                 </span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Notas faturadas</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{inteiro.format(bairro.notasFaturadas)}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Notas devolvidas</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{inteiro.format(bairro.notas)}</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{inteiro.format(bairro.notas)}</span>
               </div>
               <div>
                 <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
