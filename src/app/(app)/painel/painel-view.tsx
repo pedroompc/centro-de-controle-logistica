@@ -53,6 +53,27 @@ const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";
 // Contagens (positivados, entregas, pedidos) com separador de milhar pt-BR.
 const inteiro = new Intl.NumberFormat("pt-BR");
 
+// Variação vs mês anterior para o rodapé dos KPIs do cabeçalho. `maiorEhBom`
+// decide a cor (regra do site: bom = neutro, ruim = rose).
+function deltaPct(atual: number, ant: number | undefined, maiorEhBom: boolean, prevLabel: string) {
+  if (ant === undefined || ant <= 0) return undefined;
+  const frac = (atual - ant) / ant;
+  return {
+    texto: `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))} vs ${prevLabel}`,
+    subindo: frac >= 0,
+    positivo: maiorEhBom ? frac >= 0 : frac <= 0,
+  };
+}
+function deltaPP(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string) {
+  if (antFrac === undefined) return undefined;
+  const pp = (atualFrac - antFrac) * 100;
+  return {
+    texto: `${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} p.p. vs ${prevLabel}`,
+    subindo: pp >= 0,
+    positivo: maiorEhBom ? pp >= 0 : pp <= 0,
+  };
+}
+
 interface Dados {
   motoristas: DevolucaoPorMotorista[];
   clientes: DevolucaoPorCliente[];
@@ -201,9 +222,11 @@ export default function PainelView({
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
 
-  // Placar do mês passado no cabeçalho: "Ago: 8.612" embaixo do valor do mês.
-  const prevLabel = formatMesAno(mesAnterior(mes || primeiroDiaDoMes())).slice(0, 3);
-  const hintAnt = (texto: string) => (devAnt?.disponivel ? `${prevLabel}: ${texto}` : undefined);
+  // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
+  const mesRef = mes || primeiroDiaDoMes();
+  const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
+  const antOk = devAnt?.disponivel ? devAnt : undefined;
+  const receitaAnt = dados.receitas?.serie.find((p) => p.mes === mesAnterior(mesRef))?.valor;
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
   const proximo = useCallback(() => setIdx((i) => i + 1), []);
@@ -279,12 +302,12 @@ export default function PainelView({
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-          <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} hint={devAnt ? hintAnt(inteiro.format(devAnt.positivados)) : undefined} />
-          <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} hint={devAnt ? hintAnt(inteiro.format(devAnt.atendimentos)) : undefined} />
-          <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} hint={devAnt ? hintAnt(formatKg(devAnt.pesoFaturado)) : undefined} />
-          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} hint={devAnt ? hintAnt(formatPercent(devAnt.taxaValor)) : undefined} tone="rose" />
+          <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />
+          <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} delta={dev.disponivel ? deltaPct(dev.atendimentos, antOk?.atendimentos, true, prevLabel) : undefined} />
+          <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} delta={dev.disponivel ? deltaPct(dev.pesoFaturado, antOk?.pesoFaturado, true, prevLabel) : undefined} />
+          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} delta={dev.disponivel ? deltaPP(dev.taxaValor, antOk?.taxaValor, false, prevLabel) : undefined} tone="rose" />
           <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
-          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" tone="emerald" />
+          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />
         </div>
 
         {dev.porSetor.length > 0 && (

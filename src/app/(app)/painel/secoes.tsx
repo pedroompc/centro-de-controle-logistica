@@ -55,16 +55,25 @@ const inteiro = new Intl.NumberFormat("pt-BR");
 // ---------------------------------------------------------------------------
 // Blocos genéricos
 
+/** Variação vs mês anterior, já formatada, para o rodapé do KPI. */
+export interface KpiDelta {
+  texto: string; // ex.: "+8,2% vs Ago"
+  subindo: boolean; // direção da seta
+  positivo: boolean; // essa direção é boa? (cor: neutro se sim, rose se não)
+}
+
 export function Kpi({
   label,
   value,
   hint,
   tone = "white",
+  delta,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: "white" | "rose" | "amber" | "emerald";
+  delta?: KpiDelta;
 }) {
   const cor = { white: "text-white", rose: "text-rose-300", amber: "text-amber-300", emerald: "text-emerald-300" }[tone];
   return (
@@ -74,7 +83,14 @@ export function Kpi({
       <div className={`mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.25rem,9cqi,2.25rem)] font-extrabold leading-none tabular-nums whitespace-nowrap ${cor}`}>
         {value}
       </div>
-      {hint && <div className="mt-1.5 text-xs text-white/40">{hint}</div>}
+      {delta ? (
+        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${delta.positivo ? "text-white/70" : "text-rose-300"}`}>
+          <span>{delta.subindo ? "▲" : "▼"}</span>
+          <span>{delta.texto}</span>
+        </div>
+      ) : hint ? (
+        <div className="mt-1.5 text-xs text-white/40">{hint}</div>
+      ) : null}
     </div>
   );
 }
