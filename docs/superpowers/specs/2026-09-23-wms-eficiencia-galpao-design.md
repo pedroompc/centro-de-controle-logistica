@@ -93,3 +93,18 @@ descartada é exibida para que o descarte nunca fique escondido.
 - `src/domain/wms.ts` — matemática pura e testada (estatísticas de duração, janela de meses, indicadores normalizados).
 - `src/data/wms.ts` — 4 queries no `HARPIAW2` via `queryWinthor`, cada uma isolada: se uma falha, a página avisa qual.
 - `src/app/(app)/galpao/page.tsx` — 6 meses fechados + mês corrente (parcial). KPIs comparam o último mês fechado com o anterior.
+
+## Aba "Operação" (`/galpao?aba=operacao&mes=`)
+
+Mesma base de movimentos (`CTE_MOVIMENTOS` em `src/data/wms.ts`: `MOVIMENT_END_502` efetivados).
+
+- **Operador** = `NVL(USU_EFETIV_FK_502, USU_FK_502)`, nome em `USUARIO_754` (`DESCR_COMPLETO_754` ou login).
+  Ranking por **movimentos por dia trabalhado** (dias distintos com movimento); < 3 dias vai para o fim.
+  Régua = mediana da equipe. Comparação com o mesmo operador no mês anterior.
+- **Hora** = hora de `DT_FIN_502` (efetivação). Movimento sem hora real (`DT_FIN_502` nulo ou 00:00:00) fica
+  fora dos gráficos por hora e a quantidade aparece na tela.
+- **Turnos** (BACKLOG): Manhã 07–17, Tarde 13–22, Noite 22–07. Manhã e Tarde se sobrepõem das 13h às 17h;
+  pelo horário não dá para atribuir o movimento a um dos dois, então a janela é uma faixa própria.
+  `mov/h` = movimentos ÷ (horas da faixa × dias), para faixas de tamanhos diferentes serem comparáveis.
+- **Dia da semana × hora**: média por dia daquele dia da semana (dia ISO via `TRUNC(d) - TRUNC(d,'IW')`, sem NLS).
+- ⚠️ Usuário de sistema/login compartilhado aparece como um operador — confirmar quais usuários são pessoas.

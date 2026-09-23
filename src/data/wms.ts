@@ -13,14 +13,14 @@ import {
  */
 
 /** Empresa do WMS (EMPRESA_PF_* = 1 em todas as amostras — CD de Moreno). */
-const EMPRESA = 1;
+export const EMPRESA = 1;
 
 /** Tetos para descartar tarefa esquecida em aberto (minutos). */
 export const TETO_CARGA_MIN = 12 * 60; // uma carga grande pode levar um turno inteiro
 export const TETO_COLETOR_MIN = 4 * 60; // uma tarefa de coletor é curta
 
 // Datas vêm como 'YYYY-MM-DD'; `fim` é exclusivo (1º dia do mês seguinte).
-const faixa = (col: string) =>
+export const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD')`;
 
 const n = (v: unknown): number => Number(v) || 0;
@@ -35,13 +35,20 @@ const nivel = (col: string, virt: string) =>
   `CASE WHEN REGEXP_LIKE(${col}, '^[0-9]{9}$') AND ${virt}.RUA IS NULL THEN SUBSTR(${col}, 5, 2) END`;
 
 // Só movimentos EFETIVADOS (STATUS_502 = 2). Pré-contagem (C) fica fora: quantidade sempre zero.
-const SQL_MOVIMENTOS = `
+// CTE compartilhada pelas queries de movimentação (mês, operador e hora do dia).
+//   DTHR     = quando o movimento foi efetivado (DT_FIN_502; sem ele, a data do movimento)
+//   COM_HORA = 1 se DT_FIN_502 traz hora de verdade (DT_MOVIMENT_502 às vezes é só data)
+//   USU      = quem efetivou (USU_EFETIV_FK_502; sem ele, quem registrou)
+//   VERT/HORIZ = 1/0 conforme o nível de origem/destino
+export const CTE_MOVIMENTOS = `
 WITH virt AS (
   SELECT PRIM_GRAU_END_PK_611 RUA FROM HARPIAW2.PRIM_GRAU_END_611
    WHERE EMPRESA_PF_611 = :emp AND SN_VIRTUAL_611 = 'S'
 ),
-base AS (
-  SELECT TRUNC(NVL(m.DT_FIN_502, m.DT_MOVIMENT_502), 'MM') MES,
+niv AS (
+  SELECT NVL(m.DT_FIN_502, m.DT_MOVIMENT_502) DTHR,
+         CASE WHEN m.DT_FIN_502 IS NOT NULL AND m.DT_FIN_502 <> TRUNC(m.DT_FIN_502) THEN 1 ELSE 0 END COM_HORA,
+         NVL(m.USU_EFETIV_FK_502, m.USU_FK_502) USU,
          m.TIPO_MOVIMENT_502 TIPO,
          m.MERC_PF_502 MERC,
          NVL(m.PESO_502, 0) PESO,
@@ -54,11 +61,21 @@ base AS (
      AND m.STATUS_502 = '2'
      AND m.TIPO_MOVIMENT_502 IN ('S', 'E', 'I', 'D')
      AND ${faixa("NVL(m.DT_FIN_502, m.DT_MOVIMENT_502)")}
+),
+base AS (
+  SELECT niv.*,
+         TRUNC(DTHR, 'MM') MES,
+         CASE WHEN NIV_O > '01' OR NIV_D > '01' THEN 1 ELSE 0 END VERT,
+         CASE WHEN NOT (NVL(NIV_O, '00') > '01' OR NVL(NIV_D, '00') > '01')
+               AND (NIV_O IS NOT NULL OR NIV_D IS NOT NULL) THEN 1 ELSE 0 END HORIZ
+    FROM niv
 )
+`;
+
+const SQL_MOVIMENTOS = `${CTE_MOVIMENTOS}
 SELECT TO_CHAR(MES, 'YYYY-MM-DD') MES,
-       SUM(CASE WHEN NIV_O > '01' OR NIV_D > '01' THEN 1 ELSE 0 END) VERTICAIS,
-       SUM(CASE WHEN NOT (NVL(NIV_O, '00') > '01' OR NVL(NIV_D, '00') > '01')
-                 AND (NIV_O IS NOT NULL OR NIV_D IS NOT NULL) THEN 1 ELSE 0 END) HORIZONTAIS,
+       SUM(VERT) VERTICAIS,
+       SUM(HORIZ) HORIZONTAIS,
        SUM(CASE WHEN TIPO = 'S' THEN 1 ELSE 0 END) ABASTECIMENTOS,
        SUM(CASE WHEN TIPO = 'E' THEN 1 ELSE 0 END) ARMAZENAGENS,
        SUM(CASE WHEN TIPO = 'I' THEN 1 ELSE 0 END) INTERNAS,
@@ -145,7 +162,7 @@ export interface PainelWms {
   indisponivel: string[];
 }
 
-async function tentar<T>(rotulo: string, falhas: string[], fn: () => Promise<T>): Promise<T | null> {
+export async function tentar<T>(rotulo: string, falhas: string[], fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
   } catch (erro) {
