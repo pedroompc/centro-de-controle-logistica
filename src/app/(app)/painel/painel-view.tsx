@@ -64,13 +64,15 @@ function deltaPct(atual: number, ant: number | undefined, maiorEhBom: boolean, p
     positivo: maiorEhBom ? frac >= 0 : frac <= 0,
   };
 }
-function deltaPP(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string) {
+// Para uma TAXA, "p.p." confunde na TV. Mostramos o valor do mês passado direto
+// ("vs Ago 3,9%"); a seta e a cor dão a direção. `maiorEhBom=false` na devolução.
+function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string) {
   if (antFrac === undefined) return undefined;
-  const pp = (atualFrac - antFrac) * 100;
+  const subiu = atualFrac > antFrac;
   return {
-    texto: `${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} p.p. vs ${prevLabel}`,
-    subindo: pp >= 0,
-    positivo: maiorEhBom ? pp >= 0 : pp <= 0,
+    texto: `vs ${prevLabel} ${formatPercent(antFrac)}`,
+    subindo: subiu,
+    positivo: maiorEhBom ? subiu : !subiu,
   };
 }
 
@@ -305,7 +307,7 @@ export default function PainelView({
           <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />
           <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} delta={dev.disponivel ? deltaPct(dev.atendimentos, antOk?.atendimentos, true, prevLabel) : undefined} />
           <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} delta={dev.disponivel ? deltaPct(dev.pesoFaturado, antOk?.pesoFaturado, true, prevLabel) : undefined} />
-          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} delta={dev.disponivel ? deltaPP(dev.taxaValor, antOk?.taxaValor, false, prevLabel) : undefined} tone="rose" />
+          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} delta={dev.disponivel ? deltaTaxa(dev.taxaValor, antOk?.taxaValor, false, prevLabel) : undefined} tone="rose" />
           <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
           <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />
         </div>
