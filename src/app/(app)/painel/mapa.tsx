@@ -52,6 +52,9 @@ export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeD
   const teto = tetoMetrica(cidades, "valor");
   const ranking = rankingMetrica(cidades, "valor");
   const taxaGeralPE = totalMetrica(cidades, "taxa"); // devolvido / faturado de PE
+  // Faturado total de PE = soma das cidades. Numerador e denominador vêm da MESMA
+  // fonte, então o "peso em PE" de todas as cidades soma exatamente 100%.
+  const totalFaturadoPE = cidades.reduce((s, c) => s + c.faturado, 0);
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
 
   // Card rotativo: passa por cada cidade (maior volume → menor), uma a cada
@@ -141,8 +144,14 @@ export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeD
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Do faturamento geral</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Peso em Pernambuco</span>
                 <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-white xl:text-4xl">
+                  {formatPercent(totalFaturadoPE > 0 ? exibida.faturado / totalFaturadoPE : 0)}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Do faturamento geral</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white/80 xl:text-3xl">
                   {formatPercent(faturamentoGeral > 0 ? exibida.faturado / faturamentoGeral : 0)}
                 </span>
               </div>
