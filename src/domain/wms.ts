@@ -75,7 +75,8 @@ export interface MovimentoMes {
 
 /** Cargas expedidas no mês (HARPIAW2.CARREG_VEIC_38). */
 export interface CargasMes {
-  cargas: number;
+  cargas: number; // uma carga = unidade de separação; um caminhão pode levar várias
+  viagens: number; // saídas de caminhão = placas distintas por dia (0 se a placa não vier preenchida)
   pesoKg: number;
   separacao: EstatisticaDuracao; // início da separação → início da conferência
   ciclo: EstatisticaDuracao; // início da separação → fechamento da carga
@@ -113,6 +114,11 @@ export function movimentosPorTonelada(p: PontoWms): number {
 /** Abastecimentos (pulmão → picking) por carga expedida. */
 export function abastecimentosPorCarga(p: PontoWms): number {
   return porUnidade(p.mov.abastecimentos, p.cargas.cargas);
+}
+
+/** Cargas por viagem: quanto cada saída de caminhão consolida. */
+export function cargasPorViagem(c: CargasMes): number {
+  return porUnidade(c.cargas, c.viagens);
 }
 
 /** Linhas separadas por hora de coletor (tempo em tarefa, não hora paga). */

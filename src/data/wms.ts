@@ -68,10 +68,13 @@ SELECT TO_CHAR(MES, 'YYYY-MM-DD') MES,
   FROM base
  GROUP BY MES`;
 
-// Uma linha por carga FECHADA (fechada = expedida). Durações em minutos.
+// Uma linha por carga FECHADA (fechada = expedida). Um caminhão sai com várias
+// cargas, então a viagem é contada à parte: placa distinta por dia. Durações em minutos.
 const SQL_CARGAS = `
 SELECT TO_CHAR(TRUNC(c.DT_CARREG_PK_38, 'MM'), 'YYYY-MM-DD') MES,
        NVL(c.PESO_CARREG_38, 0) PESO,
+       TO_CHAR(c.DT_CARREG_PK_38, 'YYYY-MM-DD') DIA,
+       c.PLACA_VEIC_FK_38 PLACA,
        (c.DT_HR_INICIO_CONFERENCIA_38 - c.DT_HR_INICIO_SEPARACAO_38) * 1440 MIN_SEP,
        (c.DT_HR_FECHAMENTO_CARGA_38 - c.DT_HR_INICIO_SEPARACAO_38) * 1440 MIN_CICLO
   FROM HARPIAW2.CARREG_VEIC_38 c
@@ -187,11 +190,13 @@ export const getPainelWms = cache(async (meses: string[]): Promise<PainelWms> =>
   const nulo = (v: unknown) => (v === null || v === undefined ? null : Number(v));
   const sep = estatisticaPorMes(cargas.map((r) => ({ mes: String(r.MES), minutos: nulo(r.MIN_SEP) })), TETO_CARGA_MIN);
   const ciclo = estatisticaPorMes(cargas.map((r) => ({ mes: String(r.MES), minutos: nulo(r.MIN_CICLO) })), TETO_CARGA_MIN);
-  const volume = new Map<string, { cargas: number; pesoKg: number }>();
+  const volume = new Map<string, { cargas: number; pesoKg: number; saidas: Set<string> }>();
   for (const r of cargas) {
-    const v = volume.get(String(r.MES)) ?? { cargas: 0, pesoKg: 0 };
+    const v = volume.get(String(r.MES)) ?? { cargas: 0, pesoKg: 0, saidas: new Set<string>() };
     v.cargas += 1;
     v.pesoKg += n(r.PESO);
+    const placa = String(r.PLACA ?? "").trim();
+    if (placa) v.saidas.add(`${placa}|${r.DIA}`);
     volume.set(String(r.MES), v);
   }
 
@@ -211,7 +216,9 @@ export const getPainelWms = cache(async (meses: string[]): Promise<PainelWms> =>
     pesoFaturadoKg: null, // preenchido pela página com o WinThor (fonte do dashboard)
     mov: mov.get(mes) ?? MOV_VAZIO,
     cargas: {
-      ...(volume.get(mes) ?? { cargas: 0, pesoKg: 0 }),
+      cargas: volume.get(mes)?.cargas ?? 0,
+      pesoKg: volume.get(mes)?.pesoKg ?? 0,
+      viagens: volume.get(mes)?.saidas.size ?? 0,
       separacao: sep.get(mes) ?? vazio,
       ciclo: ciclo.get(mes) ?? vazio,
     },

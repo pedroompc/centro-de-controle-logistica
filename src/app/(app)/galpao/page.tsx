@@ -2,7 +2,7 @@ import { getPainelWms, TETO_CARGA_MIN, TETO_COLETOR_MIN } from "@/data/wms";
 import { getSerieTendencias } from "@/data/faturamento-mensal";
 import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
 import {
-  janelaMeses, movimentosPorTonelada, abastecimentosPorCarga, linhasPorHora, porUnidade,
+  janelaMeses, movimentosPorTonelada, abastecimentosPorCarga, linhasPorHora, cargasPorViagem, porUnidade,
   type PontoWms,
 } from "@/domain/wms";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -195,6 +195,7 @@ export default async function GalpaoPage() {
         <SectionTitle>Como ler</SectionTitle>
         <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-600">
           <li><b>Vertical</b>: origem ou destino acima do nível 01 (precisa de empilhadeira). <b>Horizontal</b>: tudo no chão. Só movimentos efetivados.</li>
+          <li><b>Carga × viagem</b>: um caminhão sai com várias cargas. Carga é a unidade de separação; viagem é cada placa distinta num dia.</li>
           <li><b>Peso</b>: o peso faturado líquido do WinThor, o mesmo do dashboard. O peso das cargas no WMS vem vazio e fica só na tabela até ser validado.</li>
           <li><b>Movimentos por tonelada</b> e <b>abastecimentos por carga</b> separam eficiência de volume: se sobem com o volume estável, o manuseio piorou (slotting ou picking subdimensionado).</li>
           <li><b>Separação por carga</b>: do início da separação ao início da conferência. Mediana, não média: uma carga esquecida aberta não distorce o número. Acima de {TETO_CARGA_MIN / 60} h é descartada (contagem na tabela).</li>
@@ -216,6 +217,8 @@ const LINHAS: [string, (p: PontoWms) => string][] = [
   ["Peso movimentado (endereços)", (p) => formatKg(p.mov.pesoKg)],
   ["SKUs movimentados", (p) => inteiro(p.mov.skusMovimentados)],
   ["Cargas expedidas (WMS)", (p) => inteiro(p.cargas.cargas)],
+  ["Viagens (placas distintas por dia)", (p) => inteiro(p.cargas.viagens)],
+  ["Cargas por viagem", (p) => decimal(cargasPorViagem(p.cargas))],
   ["Peso faturado (WinThor)", (p) => toneladas(p.pesoFaturadoKg ?? 0)],
   ["Peso das cargas (WMS, a validar)", (p) => toneladas(p.cargas.pesoKg)],
   ["Movimentos por tonelada", (p) => decimal(movimentosPorTonelada(p), 2)],

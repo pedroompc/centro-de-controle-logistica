@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   percentil, estatisticaSeparacao, porUnidade, TETO_SEPARACAO_MIN, janelaMeses,
-  movimentosPorTonelada, abastecimentosPorCarga, linhasPorHora, estatisticaPorMes,
+  movimentosPorTonelada, abastecimentosPorCarga, linhasPorHora, cargasPorViagem, estatisticaPorMes,
   MOV_VAZIO, COLETOR_VAZIO, type PontoWms,
 } from "./wms";
 
@@ -69,7 +69,7 @@ const ponto = (over: Partial<PontoWms> = {}): PontoWms => ({
   pesoFaturadoKg: 200_000,
   mov: { ...MOV_VAZIO, verticais: 300, horizontais: 100, abastecimentos: 120 },
   cargas: {
-    cargas: 40, pesoKg: 200_000,
+    cargas: 40, viagens: 16, pesoKg: 200_000,
     separacao: estatisticaSeparacao([]), ciclo: estatisticaSeparacao([]),
   },
   coletor: { ...COLETOR_VAZIO },
@@ -82,6 +82,10 @@ describe("indicadores normalizados", () => {
   });
   it("abastecimentos por carga", () => {
     expect(abastecimentosPorCarga(ponto())).toBe(3); // 120 ÷ 40
+  });
+  it("cargas por viagem (um caminhão leva várias cargas)", () => {
+    expect(cargasPorViagem(ponto().cargas)).toBe(2.5); // 40 ÷ 16
+    expect(cargasPorViagem({ ...ponto().cargas, viagens: 0 })).toBe(0);
   });
   it("linhas por hora de coletor", () => {
     expect(linhasPorHora({ tarefas: 10, separadores: 2, minutos: 90, linhas: 300 })).toBe(200);

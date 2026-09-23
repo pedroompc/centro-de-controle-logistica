@@ -5,7 +5,8 @@
 --   L1) Separação por carga: nenhuma carga com início de separação/conferência
 --   L2) Abastecimentos: ~zero movimentos TIPO 'S' efetivados
 --   L3) Linhas por hora: nenhuma tarefa de coletor
---   L4) Cargas expedidas: 4.195 em ago/26 (~140/dia) — alto demais p/ caminhões
+--   L4) Cargas: 4.195 em ago/26 — confirmado que um caminhão leva várias cargas;
+--       o bloco L1 (coluna "placas") mostra se a placa vem preenchida p/ contar viagens
 -- Rode cada bloco e mande o resultado.
 -- =====================================================================
 
