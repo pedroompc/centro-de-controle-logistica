@@ -114,6 +114,17 @@ export const items: Item[] = [
     ),
   },
   {
+    href: "/galpao",
+    label: "Galpão (WMS)",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <path d="M3 21V9l9-5 9 5v12" />
+        <path d="M7 21v-8h10v8" />
+        <path d="M7 17h10" />
+      </svg>
+    ),
+  },
+  {
     href: "/tendencias",
     label: "Tendências",
     icon: (

@@ -2,8 +2,8 @@
 
 **Data:** 2026-09-23
 **Página:** nova `/galpao` (a criar depois da descoberta do schema)
-**Status:** ⛔ bloqueado na descoberta do schema `HARPIAW` — ver
-`docs/wms/descoberta-harpiaw.sql`
+**Status:** ✅ página `/galpao` implementada · ⚠️ premissas a validar em
+`docs/wms/validacao-kpis-galpao.sql`
 
 ## Objetivo
 
@@ -29,7 +29,32 @@ vem acompanhado de um KPI **normalizado**.
   `ALL_TABLES` — ou seja, o acesso vem por role. Confirmar que o login usado
   foi o `DB_USER` do app.
 
-## KPIs
+## Descoberta — rodada 2 (resultado) e decisões
+
+Os comentários de coluna do Harpia documentam o modelo. O que a página usa:
+
+| KPI | Fonte | Regra |
+|---|---|---|
+| Vertical × horizontal | `MOVIMENT_END_502` | Nível = 5º–6º dígito do endereço (RR PP **NN** AAA). Vertical se origem OU destino > nível 01; horizontal se ambos no 01. Ruas virtuais (`PRIM_GRAU_END_611.SN_VIRTUAL_611='S'`) sem nível. Só `STATUS_502='2'` (efetivado) e tipos S/E/I/D (C = pré-contagem, qtd 0). Mês por `NVL(DT_FIN_502, DT_MOVIMENT_502)`. |
+| Tipo de movimento | `TIPO_MOVIMENT_502` | S = abastecimento (pulmão→picking), E = entrada/armazenagem, I = interna, D = devolução. |
+| Peso movimentado | `PESO_502` | ⚠️ unidade não confirmada (V3). |
+| Cargas / peso expedido | `CARREG_VEIC_38` | Só cargas com `DT_HR_FECHAMENTO_CARGA_38`; mês por `DT_CARREG_PK_38`; peso `PESO_CARREG_38` (V4). |
+| Tempo de separação | `CARREG_VEIC_38` | Início da separação → início da conferência; ciclo = → fechamento. Mediana/P90, teto 12 h. |
+| Produtividade | `PLAN_SEP_COLETOR_1275/1276` | Linhas com qtd separada > 0 ÷ horas em tarefa (teto 4 h). Só coletor (V6 mede cobertura). |
+| SKUs / sem saída | `MERC_EMPRESA_468` + `1196→1195→38` | Saldo > 0; sem saída = fora de qualquer carga em 90 d. Foto de hoje (sem histórico). |
+| Ocupação do pulmão | `DEPOSIT_EMPRESA_END_179` | `TIPO_END_179='M'`, ocupado `STATUS_179='O'` ÷ não bloqueado. |
+
+**`MIRROR_502` não é usada**: é log de auditoria (`TIPO_MIRROR`, `DTHR_MIRROR`) — várias
+linhas por movimento; contar nela duplicaria. A própria `MOVIMENT_END_502` guarda
+histórico desde pelo menos ago/2025 (amostra).
+
+**Horas-homem**: o KPI usa tempo em tarefa do coletor, não hora paga. Cruzar com o
+efetivo do Depósito (Supabase) fica para quando o turno for separado do setor (BACKLOG item 1).
+
+**SKU mês a mês**: o WMS não guarda saldo histórico por SKU. Para comparar meses,
+seria preciso gravar uma foto mensal no Supabase (mesmo padrão de `faturamento_mensal`).
+
+## KPIs (desenho original)
 
 | # | KPI | Fórmula | Por que importa |
 |---|-----|---------|-----------------|

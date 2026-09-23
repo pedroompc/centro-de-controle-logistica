@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { percentil, estatisticaSeparacao, porUnidade, TETO_SEPARACAO_MIN } from "./wms";
+import {
+  percentil, estatisticaSeparacao, porUnidade, TETO_SEPARACAO_MIN, janelaMeses,
+  movimentosPorTonelada, abastecimentosPorCarga, linhasPorHora, estatisticaPorMes,
+  MOV_VAZIO, COLETOR_VAZIO, type PontoWms,
+} from "./wms";
 
 describe("percentil", () => {
   it("interpola entre os vizinhos", () => {
@@ -51,5 +55,53 @@ describe("porUnidade", () => {
   it("é 0 quando o denominador não é positivo", () => {
     expect(porUnidade(10, 0)).toBe(0);
     expect(porUnidade(10, -1)).toBe(0);
+  });
+});
+
+describe("janelaMeses", () => {
+  it("termina no mês corrente e cruza a virada de ano", () => {
+    expect(janelaMeses(new Date(2026, 1, 10), 3)).toEqual(["2025-12-01", "2026-01-01", "2026-02-01"]);
+  });
+});
+
+const ponto = (over: Partial<PontoWms> = {}): PontoWms => ({
+  mes: "2026-08-01",
+  mov: { ...MOV_VAZIO, verticais: 300, horizontais: 100, abastecimentos: 120 },
+  cargas: {
+    cargas: 40, pesoKg: 200_000,
+    separacao: estatisticaSeparacao([]), ciclo: estatisticaSeparacao([]),
+  },
+  coletor: { ...COLETOR_VAZIO },
+  ...over,
+});
+
+describe("indicadores normalizados", () => {
+  it("movimentos por tonelada = (verticais + horizontais) ÷ t expedidas", () => {
+    expect(movimentosPorTonelada(ponto())).toBe(2); // 400 ÷ 200 t
+  });
+  it("abastecimentos por carga", () => {
+    expect(abastecimentosPorCarga(ponto())).toBe(3); // 120 ÷ 40
+  });
+  it("linhas por hora de coletor", () => {
+    expect(linhasPorHora({ tarefas: 10, separadores: 2, minutos: 90, linhas: 300 })).toBe(200);
+  });
+  it("sem expedição/sem tempo dá 0 em vez de infinito", () => {
+    const p = ponto({ cargas: { ...ponto().cargas, cargas: 0, pesoKg: 0 } });
+    expect(movimentosPorTonelada(p)).toBe(0);
+    expect(abastecimentosPorCarga(p)).toBe(0);
+    expect(linhasPorHora(COLETOR_VAZIO)).toBe(0);
+  });
+});
+
+describe("estatisticaPorMes", () => {
+  it("agrupa por mês e conta etapa sem registro (nulo) como descartada", () => {
+    const r = estatisticaPorMes([
+      { mes: "2026-07-01", minutos: 10 },
+      { mes: "2026-07-01", minutos: 30 },
+      { mes: "2026-08-01", minutos: null },
+      { mes: "2026-08-01", minutos: 60 },
+    ], 480);
+    expect(r.get("2026-07-01")?.medianaMin).toBe(20);
+    expect(r.get("2026-08-01")).toMatchObject({ qtd: 1, descartadas: 1, medianaMin: 60 });
   });
 });
