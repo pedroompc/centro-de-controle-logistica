@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { corDaEscala, COR_NEUTRA, COR_RAMPA_MIN, COR_RAMPA_MAX } from "@/domain/devolucoes-mapa";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { classificarRegiao } from "@/domain/pe-regioes";
-import { formatPercent } from "@/domain/format";
 
 const CARD_MS = 4200; // tempo de cada card de bairro
 
@@ -71,11 +70,6 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
   const bairro = bairros.length > 0 ? bairros[idx % bairros.length] : null;
   const ibgeFoco = geo?.find((g) => norm(g.nome) === norm(bairro?.cidade ?? ""))?.ibge;
 
-  // Participação do bairro na devolução da SUA cidade (%) — leitura sem R$.
-  const devPorCidade = new Map(cidades.map((c) => [norm(c.cidade), c.devolvido]));
-  const baseCidade = bairro ? devPorCidade.get(norm(bairro.cidade)) ?? 0 : 0;
-  const parteNaCidade = bairro && baseCidade > 0 ? bairro.devolvido / baseCidade : null;
-
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
       <div className="flex min-h-0 flex-col justify-center">
@@ -124,18 +118,12 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Da devolução da cidade</span>
-                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-rose-300 xl:text-4xl">
-                  {parteNaCidade !== null ? formatPercent(parteNaCidade) : "—"}
-                </span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Notas devolvidas</span>
+                <span className="font-[family-name:var(--font-sora)] text-4xl font-extrabold tabular-nums text-rose-300 xl:text-5xl">{inteiro.format(bairro.notas)}</span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Notas faturadas</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{inteiro.format(bairro.notasFaturadas)}</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Notas devolvidas</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{inteiro.format(bairro.notas)}</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white/80 xl:text-3xl">{inteiro.format(bairro.notasFaturadas)}</span>
               </div>
               <div>
                 <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
