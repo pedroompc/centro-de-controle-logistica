@@ -12,6 +12,23 @@ mês a mês?** Contagens brutas (movimentos, SKUs, peso) não respondem isso soz
 um mês com mais pedidos sempre terá mais movimento. Por isso cada KPI de volume
 vem acompanhado de um KPI **normalizado**.
 
+## Descoberta — rodada 1 (resultado)
+
+- **Produção = `HARPIAW2`** (2.082 tabelas, ~41 mi linhas, estatística de 16/09).
+  `HARPIAW` tem só 7 tabelas de integração (`HW_PDSAI`, `HW_NFENT`...): fora do escopo.
+- Candidatas por KPI (hipóteses até ver as colunas — rodada 2 em
+  `docs/wms/descoberta-harpiaw2-rodada2.sql`):
+  - Movimentação: `MOVIMENT_END_502` (~224 mil) e `MIRROR_502` (~2,4 mi —
+    provável histórico; é o que dá a série mês a mês), `MOVIMENT_END_FUNC_503`.
+  - Reabastecimento (vertical): `PREPARA_ABAST_809`, `PREPARA_ABAST_MERC_1361`.
+  - Nível do endereço: `DEPOSIT_EMPRESA_END_179` + `GRAU_END_318` (9 graus).
+  - SKU/saldo: `MERCADORIA_461`, `MERC_EMPRESA_468`, `LT_ESTOQ_MERC_447`.
+  - Separação: `PLAN_SEP_MAPA_1195`/`_MERC_1196`, `PLAN_SEP_COLETOR_1275`/`_MERC_1276`.
+  - Carga: `CARREG_VEIC_38`, `NUM_CARREG_1140`.
+- Bloco 7 (privilégios) veio sem grants diretos, mas as tabelas aparecem em
+  `ALL_TABLES` — ou seja, o acesso vem por role. Confirmar que o login usado
+  foi o `DB_USER` do app.
+
 ## KPIs
 
 | # | KPI | Fórmula | Por que importa |
