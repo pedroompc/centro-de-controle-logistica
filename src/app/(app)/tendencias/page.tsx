@@ -9,6 +9,7 @@ import { CORES, KpiCard, RankingBars, ComparativoRow, type Delta } from "./widge
 import { EvolucaoChart, type SeriePainel } from "./evolucao-chart";
 import { CompararMeses, type MesComparavel } from "./comparar-meses";
 import { ExportButton } from "./export-button";
+import { TendenciasTabs } from "./tabs";
 
 const MES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const rotuloMes = (mes: string) => {
@@ -125,10 +126,12 @@ export default async function TendenciasPage() {
 
   return (
     <div className="space-y-8">
+      <TendenciasTabs />
+
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">Tendências</h1>
+          <h1 className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">Tendências · Faturamento</h1>
           <p className="mt-1 text-sm text-slate-500">Últimos {serie.length} meses fechados · Filial 1</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">

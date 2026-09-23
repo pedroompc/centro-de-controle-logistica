@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { corDaEscala, COR_NEUTRA, COR_RAMPA_MIN, COR_RAMPA_MAX } from "@/domain/devolucoes-mapa";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { classificarRegiao } from "@/domain/pe-regioes";
-import { formatBRL } from "@/domain/format";
+import { formatPercent } from "@/domain/format";
 
 const CARD_MS = 4200; // tempo de cada card de bairro
 
@@ -71,6 +71,11 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
   const bairro = bairros.length > 0 ? bairros[idx % bairros.length] : null;
   const ibgeFoco = geo?.find((g) => norm(g.nome) === norm(bairro?.cidade ?? ""))?.ibge;
 
+  // Participação do bairro na devolução da SUA cidade (%) — leitura sem R$.
+  const devPorCidade = new Map(cidades.map((c) => [norm(c.cidade), c.devolvido]));
+  const baseCidade = bairro ? devPorCidade.get(norm(bairro.cidade)) ?? 0 : 0;
+  const parteNaCidade = bairro && baseCidade > 0 ? bairro.devolvido / baseCidade : null;
+
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
       <div className="flex min-h-0 flex-col justify-center">
@@ -110,7 +115,7 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
                 Bairro {(idx % bairros.length) + 1} de {bairros.length}
               </div>
-              <div className="text-xs tabular-nums text-white/35">por R$ devolvido</div>
+              <div className="text-xs tabular-nums text-white/35">por devolução</div>
             </div>
             <div className="mt-1 truncate font-[family-name:var(--font-sora)] text-3xl font-extrabold text-white xl:text-4xl" title={bairro.bairro}>
               {bairro.bairro}
@@ -119,12 +124,10 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Faturado</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-emerald-300 xl:text-3xl">{formatBRL(bairro.faturado)}</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Devolvido</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(bairro.devolvido)}</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Participação na cidade</span>
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-rose-300 xl:text-4xl">
+                  {parteNaCidade !== null ? formatPercent(parteNaCidade) : "—"}
+                </span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Notas devolvidas</span>
@@ -132,10 +135,7 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
               </div>
               <div>
                 <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
-                <div className="mt-1 flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 flex-1 truncate text-lg font-semibold text-amber-200 xl:text-xl" title={bairro.motivo}>{bairro.motivo}</span>
-                  <span className="shrink-0 font-[family-name:var(--font-sora)] text-xl font-bold tabular-nums text-amber-300 xl:text-2xl">{formatBRL(bairro.motivoValor)}</span>
-                </div>
+                <div className="mt-1 min-w-0 truncate text-xl font-semibold text-amber-200 xl:text-2xl" title={bairro.motivo}>{bairro.motivo}</div>
               </div>
             </div>
           </div>

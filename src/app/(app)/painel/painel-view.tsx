@@ -3,23 +3,29 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { formatBRL, formatPercent, formatKg } from "@/domain/format";
+import { mesAnterior, formatMesAno, primeiroDiaDoMes } from "@/domain/periodo";
 import type {
   DevolucaoPorMotorista,
   DevolucaoPorCliente,
   DevolucaoPorVendedor,
+  MotivoDetalhe,
 } from "@/domain/devolucoes";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
+import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa } from "../devolucoes/actions";
 import {
   carregarResumoDevolucao,
   carregarDevBairrosRMR,
   carregarAFaturar,
   carregarReceitas,
+  carregarReceitasDrivers,
   carregarDescarregos,
+  carregarSerieDescarrego,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
   type ResumoDescarregos,
+  type MesReceitaDetalhe,
 } from "./painel-actions";
 import Mapa from "./mapa";
 import MapaRMR from "./mapa-rmr";
@@ -44,15 +50,45 @@ const REFRESH_MS = 10 * 60_000; // 10 minutos (ou no botão de atualizar)
 
 const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";
 
+// Contagens (positivados, entregas, pedidos) com separador de milhar pt-BR.
+const inteiro = new Intl.NumberFormat("pt-BR");
+
+// Variação vs mês anterior para o rodapé dos KPIs do cabeçalho. `maiorEhBom`
+// decide a cor (regra do site: bom = neutro, ruim = rose).
+function deltaPct(atual: number, ant: number | undefined, maiorEhBom: boolean, prevLabel: string) {
+  if (ant === undefined || ant <= 0) return undefined;
+  const frac = (atual - ant) / ant;
+  return {
+    texto: `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))} vs ${prevLabel}`,
+    subindo: frac >= 0,
+    positivo: maiorEhBom ? frac >= 0 : frac <= 0,
+  };
+}
+// Para uma TAXA, "p.p." confunde na TV. Mostramos o valor do mês passado direto
+// ("vs Ago 3,9%"); a seta e a cor dão a direção. `maiorEhBom=false` na devolução.
+function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string) {
+  if (antFrac === undefined) return undefined;
+  const subiu = atualFrac > antFrac;
+  return {
+    texto: `vs ${prevLabel} ${formatPercent(antFrac)}`,
+    subindo: subiu,
+    positivo: maiorEhBom ? subiu : !subiu,
+  };
+}
+
 interface Dados {
   motoristas: DevolucaoPorMotorista[];
   clientes: DevolucaoPorCliente[];
   vendedores: DevolucaoPorVendedor[];
+  clientesMotivos: Record<number, MotivoDetalhe[]>;
+  vendedoresMotivos: Record<number, MotivoDetalhe[]>;
   cidades: CidadeDevolucao[];
   bairrosRMR: BairroDevolucao[];
   aFaturar: ResumoAFaturar | null;
   receitas: ResumoReceitas | null;
+  receitasDrivers: MesReceitaDetalhe[];
   descarregos: ResumoDescarregos | null;
+  serieDescarrego: PontoDescarregoMensal[];
 }
 
 interface Slide {
@@ -75,21 +111,21 @@ function Marca() {
 function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
-    s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "R$ devolvido por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} /> });
+    s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} /> });
   if (d.motoristas.length > 0)
     s.push({ id: "motoristas", titulo: "Motoristas que mais voltam", contexto: "top 10 por taxa de nota e por valor", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoMotoristas motoristas={d.motoristas} /> });
   if (d.clientes.length > 0 || d.vendedores.length > 0)
-    s.push({ id: "cli-ven", titulo: "Clientes e vendedores", contexto: "quem mais devolve", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoClientesVendedores clientes={d.clientes} vendedores={d.vendedores} /> });
+    s.push({ id: "cli-ven", titulo: "Clientes e vendedores", contexto: "participação no total devolvido, comercial ou logístico e o motivo predominante", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoClientesVendedores clientes={d.clientes} vendedores={d.vendedores} totalDevolvido={dev.total} clientesMotivos={d.clientesMotivos} vendedoresMotivos={d.vendedoresMotivos} /> });
   if (dev.porMotivo.length > 0)
-    s.push({ id: "motivos", titulo: "Motivos de devolução", contexto: "por valor devolvido", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoMotivos porMotivo={dev.porMotivo} /> });
+    s.push({ id: "motivos", titulo: "Motivos de devolução", contexto: "participação de cada motivo no total devolvido", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoMotivos porMotivo={dev.porMotivo} /> });
   if (d.bairrosRMR.length > 0)
-    s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "devolvido e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
+    s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "participação na cidade e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.receitas)
-    s.push({ id: "receitas", titulo: "Receitas", contexto: "descarrego, diários e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoReceitas dados={d.receitas} /> });
+    s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} /> });
   if (d.descarregos)
-    s.push({ id: "descarregos", titulo: "Descarrego", contexto: "por dia, semana e mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} mesLabel={mesLabel} /> });
+    s.push({ id: "descarregos", titulo: "Descarrego", contexto: "comparação com o mês anterior e o dia a dia do mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} serie={d.serieDescarrego} mesLabel={mesLabel} /> });
   return s;
 }
 
@@ -137,8 +173,9 @@ export default function PainelView({
   devInicial: ResumoDevolucao;
 }) {
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
+  const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, descarregos: null,
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [],
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
@@ -158,12 +195,16 @@ export default function PainelView({
     };
     await passo(async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
     await passo(async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
-    await passo(async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens })); });
-    await passo(async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens })); });
+    await passo(async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
+    await passo(async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
     await passo(async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
     await passo(async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
     await passo(async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
+    await passo(async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
     await passo(async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
+    await passo(async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
+    await passo(async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
     if (primeira.current) primeira.current = false;
     else await passo(async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
@@ -182,6 +223,12 @@ export default function PainelView({
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
+
+  // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
+  const mesRef = mes || primeiroDiaDoMes();
+  const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
+  const antOk = devAnt?.disponivel ? devAnt : undefined;
+  const receitaAnt = dados.receitas?.serie.find((p) => p.mes === mesAnterior(mesRef))?.valor;
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
   const proximo = useCallback(() => setIdx((i) => i + 1), []);
@@ -254,13 +301,15 @@ export default function PainelView({
           </div>
         </div>
 
-        {/* KPIs sempre visíveis — inclui o FATURAMENTO LÍQUIDO. */}
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Kpi label="Faturamento líquido" value={dev.disponivel ? formatBRL(dev.vendaLiquida) : "—"} hint="faturado − devoluções" tone="emerald" />
-          <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} hint="líquido (venda − devolução)" />
-          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} hint={dev.disponivel ? formatBRL(dev.total) : undefined} tone="rose" />
-          <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? formatBRL(dados.aFaturar.valorTotal) : "—"} hint={dados.aFaturar?.disponivel ? `${dados.aFaturar.totalPedidos} pedidos` : undefined} tone="amber" />
-          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" tone="emerald" />
+        {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
+            em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />
+          <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} delta={dev.disponivel ? deltaPct(dev.atendimentos, antOk?.atendimentos, true, prevLabel) : undefined} />
+          <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} delta={dev.disponivel ? deltaPct(dev.pesoFaturado, antOk?.pesoFaturado, true, prevLabel) : undefined} />
+          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} delta={dev.disponivel ? deltaTaxa(dev.taxaValor, antOk?.taxaValor, false, prevLabel) : undefined} tone="rose" />
+          <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
+          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />
         </div>
 
         {dev.porSetor.length > 0 && (

@@ -48,6 +48,33 @@ export async function serieDiversasMensais(): Promise<{ mes: string; valor: numb
   return [...porMes.entries()].map(([mes, valor]) => ({ mes, valor }));
 }
 
+export interface DiversaPorMaterialMes {
+  mes: string; // "yyyy-mm-01"
+  material: string;
+  kg: number;
+  valor: number;
+}
+
+/** Receitas diversas somadas por mês E material — driver do "porquê" do mês. */
+export async function serieDiversasPorMaterialMensal(): Promise<DiversaPorMaterialMes[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("receitas_diversas")
+    .select("data, material, quantidade, valor");
+  if (error) throw new Error(error.message);
+  const mapa = new Map<string, DiversaPorMaterialMes>();
+  for (const d of data ?? []) {
+    const mes = primeiroDiaDoMes(String(d.data));
+    const material = (d.material as string | null)?.trim() || "Sem material";
+    const chave = `${mes}|${material}`;
+    const cur = mapa.get(chave) ?? { mes, material, kg: 0, valor: 0 };
+    cur.kg += Number(d.quantidade) || 0;
+    cur.valor += Number(d.valor) || 0;
+    mapa.set(chave, cur);
+  }
+  return [...mapa.values()];
+}
+
 function parseForm(formData: FormData) {
   const data = String(formData.get("data") ?? "").trim();
   const categoria = String(formData.get("categoria") ?? "reciclagem") as ReceitaCategoria;
