@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { formatBRL, formatPercent, formatKg } from "@/domain/format";
+import { mesAnterior, formatMesAno, primeiroDiaDoMes } from "@/domain/periodo";
 import type {
   DevolucaoPorMotorista,
   DevolucaoPorCliente,
@@ -149,6 +150,7 @@ export default function PainelView({
   devInicial: ResumoDevolucao;
 }) {
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
+  const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
     motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [],
   });
@@ -178,6 +180,8 @@ export default function PainelView({
     await passo(async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
     await passo(async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
     await passo(async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
+    await passo(async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
     if (primeira.current) primeira.current = false;
     else await passo(async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
@@ -196,6 +200,10 @@ export default function PainelView({
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
+
+  // Placar do mês passado no cabeçalho: "Ago: 8.612" embaixo do valor do mês.
+  const prevLabel = formatMesAno(mesAnterior(mes || primeiroDiaDoMes())).slice(0, 3);
+  const hintAnt = (texto: string) => (devAnt?.disponivel ? `${prevLabel}: ${texto}` : undefined);
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
   const proximo = useCallback(() => setIdx((i) => i + 1), []);
@@ -271,10 +279,10 @@ export default function PainelView({
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-          <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} hint="clientes com venda no mês" />
-          <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} hint="clientes atendidos no mês" />
-          <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} hint="líquido (venda − devolução)" />
-          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} tone="rose" />
+          <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} hint={devAnt ? hintAnt(inteiro.format(devAnt.positivados)) : undefined} />
+          <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} hint={devAnt ? hintAnt(inteiro.format(devAnt.atendimentos)) : undefined} />
+          <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} hint={devAnt ? hintAnt(formatKg(devAnt.pesoFaturado)) : undefined} />
+          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} hint={devAnt ? hintAnt(formatPercent(devAnt.taxaValor)) : undefined} tone="rose" />
           <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
           <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" tone="emerald" />
         </div>
