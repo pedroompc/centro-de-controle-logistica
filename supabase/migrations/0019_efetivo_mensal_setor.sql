@@ -39,23 +39,32 @@ create policy "delete efetivo_mensal_setor" on efetivo_mensal_setor
 -- Seed histórico das fotos manuais, se existirem (banco de produção). Guardado
 -- por to_regclass para não quebrar num banco novo que não tem as tabelas de
 -- staging. Idempotente: on conflict do nothing.
+--
+-- O nome do setor é casado de forma TOLERANTE com a tabela `setores`
+-- (upper/trim), e o nome CANÔNICO (setores.nome) é o que fica gravado — assim a
+-- foto histórica bate com o que o Dashboard usa (que lê de `setores`). Se algum
+-- setor não casar, grava o nome cru da foto (não perde o dado).
 do $$
 begin
   if to_regclass('public._baseline_efetivo') is not null then
     insert into efetivo_mensal_setor (mes, filial, setor, ativos, afastados, desligados, custo_ativos)
-    select date '2026-07-01', '1', setor,
-           coalesce(ativos, 0), coalesce(afastados, 0), coalesce(desligados, 0), coalesce(custo_ativos, 0)
-    from _baseline_efetivo
-    where setor is not null
+    select date '2026-07-01', '1',
+           coalesce(s.nome, b.setor),
+           coalesce(b.ativos, 0), coalesce(b.afastados, 0), coalesce(b.desligados, 0), coalesce(b.custo_ativos, 0)
+    from _baseline_efetivo b
+    left join setores s on upper(trim(s.nome)) = upper(trim(b.setor))
+    where b.setor is not null
     on conflict (mes, filial, setor) do nothing;
   end if;
 
   if to_regclass('public._snapshot_efetivo') is not null then
     insert into efetivo_mensal_setor (mes, filial, setor, ativos, afastados, desligados, custo_ativos)
-    select date '2026-08-01', '1', setor,
-           coalesce(ativos, 0), coalesce(afastados, 0), coalesce(desligados, 0), coalesce(custo_ativos, 0)
-    from _snapshot_efetivo
-    where setor is not null
+    select date '2026-08-01', '1',
+           coalesce(s.nome, b.setor),
+           coalesce(b.ativos, 0), coalesce(b.afastados, 0), coalesce(b.desligados, 0), coalesce(b.custo_ativos, 0)
+    from _snapshot_efetivo b
+    left join setores s on upper(trim(s.nome)) = upper(trim(b.setor))
+    where b.setor is not null
     on conflict (mes, filial, setor) do nothing;
   end if;
 end $$;
