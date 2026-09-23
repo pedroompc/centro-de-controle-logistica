@@ -1,7 +1,7 @@
 # WMS — Eficiência do galpão
 
 **Data:** 2026-09-23
-**Página:** nova `/galpao` (a criar depois da descoberta do schema)
+**Página:** `/galpao`
 **Status:** ✅ página `/galpao` implementada · ⚠️ premissas a validar em
 `docs/wms/validacao-kpis-galpao.sql`
 
@@ -19,7 +19,7 @@ vem acompanhado de um KPI **normalizado**.
 - Candidatas por KPI (hipóteses até ver as colunas — rodada 2 em
   `docs/wms/descoberta-harpiaw2-rodada2.sql`):
   - Movimentação: `MOVIMENT_END_502` (~224 mil) e `MIRROR_502` (~2,4 mi —
-    provável histórico; é o que dá a série mês a mês), `MOVIMENT_END_FUNC_503`.
+    que se revelou log de auditoria — ver rodada 2), `MOVIMENT_END_FUNC_503`.
   - Reabastecimento (vertical): `PREPARA_ABAST_809`, `PREPARA_ABAST_MERC_1361`.
   - Nível do endereço: `DEPOSIT_EMPRESA_END_179` + `GRAU_END_318` (9 graus).
   - SKU/saldo: `MERCADORIA_461`, `MERC_EMPRESA_468`, `LT_ESTOQ_MERC_447`.
@@ -80,27 +80,16 @@ disponível, mas não é o número principal. Durações acima de um teto
 (padrão: 8 h) são descartadas como tarefa esquecida em aberto, e a quantidade
 descartada é exibida para que o descarte nunca fique escondido.
 
-## Decisões em aberto (precisam do Pedro)
+## Decisões
 
-1. **Definição de vertical × horizontal.** No WMS existe um campo de tipo de
-   movimento (reabastecimento, armazenagem, transferência...) ou precisamos
-   comparar o nível do endereço de origem com o de destino? O bloco 6 do script
-   de descoberta responde isso.
-2. **HARPIAW ou HARPIAW2?** Qual é o de produção? (bloco 1)
-3. **Horas-homem.** O KPI 9 precisa das horas trabalhadas pela equipe de
-   separação. Duas fontes possíveis: (a) o WMS registra o operador por tarefa;
-   (b) o efetivo do setor Depósito já cadastrado no Supabase × dias úteis.
-   (a) é mais preciso; (b) já existe.
-4. **"Carga" ou "pedido"?** O tempo de separação é por pedido, por onda ou por
-   carga (romaneio)? Muda o `GROUP BY`.
-5. **Permissão.** O `DB_USER` do app precisa de `SELECT` nas tabelas do WMS
-   (bloco 7).
+1. Vertical × horizontal: pelo **nível** do endereço (origem/destino), não pelo tipo de movimento — ver rodada 2.
+2. Produção = **HARPIAW2**.
+3. Horas-homem: tempo em tarefa do coletor (proxy). Hora paga fica para depois.
+4. Tempo de separação: **por carga** (`CARREG_VEIC_38`); por tarefa no coletor como complemento.
+5. Permissão: acesso via role — confirmar com o `DB_USER` do app.
 
-## Arquitetura (mesmo padrão do resto do projeto)
+## Arquitetura
 
-- `src/domain/wms.ts` — matemática pura e testada (estatísticas de duração,
-  produtividade). **Já criado**, porque não depende do schema.
-- `src/data/wms.ts` — queries Oracle no `HARPIAW` via `queryWinthor`
-  (a fazer depois da descoberta).
-- `src/app/(app)/galpao/page.tsx` — server component com `MesNav` +
-  `Promise.all`, cards de KPI e comparação mensal (a fazer).
+- `src/domain/wms.ts` — matemática pura e testada (estatísticas de duração, janela de meses, indicadores normalizados).
+- `src/data/wms.ts` — 4 queries no `HARPIAW2` via `queryWinthor`, cada uma isolada: se uma falha, a página avisa qual.
+- `src/app/(app)/galpao/page.tsx` — 6 meses fechados + mês corrente (parcial). KPIs comparam o último mês fechado com o anterior.
