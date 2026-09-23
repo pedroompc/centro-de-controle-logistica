@@ -1,4 +1,6 @@
 import { getPainelWms, TETO_CARGA_MIN, TETO_COLETOR_MIN } from "@/data/wms";
+import { getSerieTendencias } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoMesAtual } from "@/data/faturamento";
 import {
   janelaMeses, movimentosPorTonelada, abastecimentosPorCarga, linhasPorHora, porUnidade,
   type PontoWms,
@@ -16,10 +18,12 @@ const rotuloMes = (mes: string) => {
   return `${MES_ABREV[m - 1]}/${String(ano).slice(2)}`;
 };
 
-const inteiro = (v: number) => Math.round(v).toLocaleString("pt-BR");
+// Zero aqui quase sempre é "sem dado" (fonte vazia ou denominador zero), não um
+// zero real — mostrar "—" evita que o gestor leia 0,0 como resultado.
+const inteiro = (v: number) => (v ? Math.round(v).toLocaleString("pt-BR") : "—");
 const decimal = (v: number, casas = 1) =>
-  v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
-const toneladas = (kg: number) => `${decimal(kg / 1000)} t`;
+  v ? v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas }) : "—";
+const toneladas = (kg: number) => (kg ? `${decimal(kg / 1000)} t` : "—");
 const duracao = (min: number) => {
   if (min <= 0) return "—";
   const h = Math.floor(min / 60);
@@ -29,11 +33,12 @@ const duracao = (min: number) => {
 
 /** Delta vs mês anterior. `menorMelhor` = cair é bom; `neutro` = volume (sem juízo de valor). */
 function delta(atual: number, anterior: number, modo: "menorMelhor" | "maiorMelhor" | "neutro"): Delta {
+  // Sem dado num dos meses não há comparação: fica neutro (cinza), nunca vermelho.
+  if (anterior === 0 || atual === 0) return { texto: "sem dado para comparar", subindo: false, positivo: true };
   const frac = variacaoPercentual(atual, anterior);
   const subindo = atual > anterior;
   const positivo = modo === "neutro" ? true : modo === "menorMelhor" ? !subindo : subindo;
-  const texto = anterior === 0 ? "sem base" : `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`;
-  return { texto, subindo, positivo };
+  return { texto: `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`, subindo, positivo };
 }
 
 const Ic = ({ d }: { d: string }) => (
@@ -49,7 +54,17 @@ const IC_RAIO = "M13 2 4 14h7l-1 8 9-12h-7l1-8Z";
 
 export default async function GalpaoPage() {
   const meses = janelaMeses(new Date(), MESES_JANELA);
-  const { serie, estoque, indisponivel } = await getPainelWms(meses);
+  const [wms, fatFechados, fatAtual] = await Promise.all([
+    getPainelWms(meses),
+    getSerieTendencias(MESES_JANELA - 1), // mesmos 6 meses fechados, via foto do Supabase
+    getResumoFaturamentoMesAtual(),
+  ]);
+  const { estoque, indisponivel } = wms;
+
+  // Peso faturado do WinThor (o mesmo número do dashboard) como denominador.
+  const pesoPorMes = new Map(fatFechados.map((p) => [p.mes, p.pesoFaturado]));
+  if (fatAtual) pesoPorMes.set(meses[meses.length - 1], fatAtual.pesoFaturado);
+  const serie = wms.serie.map((p) => ({ ...p, pesoFaturadoKg: pesoPorMes.get(p.mes) ?? null }));
 
   if (indisponivel.length === 4) {
     return (
@@ -121,10 +136,10 @@ export default async function GalpaoPage() {
           valor={inteiro(atual.mov.horizontais)}
           delta={delta(atual.mov.horizontais, ant.mov.horizontais, "neutro")}
           valores={s((p) => p.mov.horizontais)} cor={CORES.pdv} />
-        <KpiCard icone={<Ic d={IC_PESO} />} nome="Peso expedido"
-          valor={toneladas(atual.cargas.pesoKg)}
-          delta={delta(atual.cargas.pesoKg, ant.cargas.pesoKg, "neutro")}
-          valores={s((p) => p.cargas.pesoKg)} cor={CORES.pdv} />
+        <KpiCard icone={<Ic d={IC_PESO} />} nome="Peso faturado"
+          valor={toneladas(atual.pesoFaturadoKg ?? 0)}
+          delta={delta(atual.pesoFaturadoKg ?? 0, ant.pesoFaturadoKg ?? 0, "neutro")}
+          valores={s((p) => p.pesoFaturadoKg ?? 0)} cor={CORES.pdv} />
         <KpiCard icone={<Ic d={IC_CARGA} />} nome="Cargas expedidas"
           valor={inteiro(atual.cargas.cargas)}
           delta={delta(atual.cargas.cargas, ant.cargas.cargas, "neutro")}
@@ -180,6 +195,7 @@ export default async function GalpaoPage() {
         <SectionTitle>Como ler</SectionTitle>
         <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-600">
           <li><b>Vertical</b>: origem ou destino acima do nível 01 (precisa de empilhadeira). <b>Horizontal</b>: tudo no chão. Só movimentos efetivados.</li>
+          <li><b>Peso</b>: o peso faturado líquido do WinThor, o mesmo do dashboard. O peso das cargas no WMS vem vazio e fica só na tabela até ser validado.</li>
           <li><b>Movimentos por tonelada</b> e <b>abastecimentos por carga</b> separam eficiência de volume: se sobem com o volume estável, o manuseio piorou (slotting ou picking subdimensionado).</li>
           <li><b>Separação por carga</b>: do início da separação ao início da conferência. Mediana, não média: uma carga esquecida aberta não distorce o número. Acima de {TETO_CARGA_MIN / 60} h é descartada (contagem na tabela).</li>
           <li><b>Linhas por hora</b>: só separação por coletor, sobre o tempo em tarefa (não a hora paga). Tarefas acima de {TETO_COLETOR_MIN / 60} h são descartadas.</li>
@@ -199,8 +215,9 @@ const LINHAS: [string, (p: PontoWms) => string][] = [
   ["· devoluções", (p) => inteiro(p.mov.devolucoes)],
   ["Peso movimentado (endereços)", (p) => formatKg(p.mov.pesoKg)],
   ["SKUs movimentados", (p) => inteiro(p.mov.skusMovimentados)],
-  ["Cargas expedidas", (p) => inteiro(p.cargas.cargas)],
-  ["Peso expedido", (p) => toneladas(p.cargas.pesoKg)],
+  ["Cargas expedidas (WMS)", (p) => inteiro(p.cargas.cargas)],
+  ["Peso faturado (WinThor)", (p) => toneladas(p.pesoFaturadoKg ?? 0)],
+  ["Peso das cargas (WMS, a validar)", (p) => toneladas(p.cargas.pesoKg)],
   ["Movimentos por tonelada", (p) => decimal(movimentosPorTonelada(p), 2)],
   ["Abastecimentos por carga", (p) => decimal(abastecimentosPorCarga(p))],
   ["Separação por carga — mediana", (p) => duracao(p.cargas.separacao.medianaMin)],

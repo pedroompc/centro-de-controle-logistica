@@ -91,6 +91,9 @@ export interface ColetorMes {
 
 export interface PontoWms {
   mes: string; // 1º dia do mês, ISO
+  // Peso faturado líquido do WinThor (o mesmo do dashboard) — denominador de
+  // eficiência. `null` = WinThor indisponível para o mês.
+  pesoFaturadoKg: number | null;
   mov: MovimentoMes;
   cargas: CargasMes;
   coletor: ColetorMes;
@@ -102,9 +105,9 @@ export const MOV_VAZIO: MovimentoMes = {
 };
 export const COLETOR_VAZIO: ColetorMes = { tarefas: 0, separadores: 0, minutos: 0, linhas: 0 };
 
-/** Movimentos de endereço (verticais + horizontais) por tonelada expedida. Sobe = mais manuseio por kg entregue. */
+/** Movimentos de endereço (verticais + horizontais) por tonelada faturada. Sobe = mais manuseio por kg entregue. */
 export function movimentosPorTonelada(p: PontoWms): number {
-  return porUnidade(p.mov.verticais + p.mov.horizontais, p.cargas.pesoKg / 1000);
+  return porUnidade(p.mov.verticais + p.mov.horizontais, (p.pesoFaturadoKg ?? 0) / 1000);
 }
 
 /** Abastecimentos (pulmão → picking) por carga expedida. */

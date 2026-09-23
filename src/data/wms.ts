@@ -208,6 +208,7 @@ export const getPainelWms = cache(async (meses: string[]): Promise<PainelWms> =>
   const vazio = estatisticaSeparacao([]);
   const serie: PontoWms[] = meses.map((mes) => ({
     mes,
+    pesoFaturadoKg: null, // preenchido pela página com o WinThor (fonte do dashboard)
     mov: mov.get(mes) ?? MOV_VAZIO,
     cargas: {
       ...(volume.get(mes) ?? { cargas: 0, pesoKg: 0 }),

@@ -66,6 +66,7 @@ describe("janelaMeses", () => {
 
 const ponto = (over: Partial<PontoWms> = {}): PontoWms => ({
   mes: "2026-08-01",
+  pesoFaturadoKg: 200_000,
   mov: { ...MOV_VAZIO, verticais: 300, horizontais: 100, abastecimentos: 120 },
   cargas: {
     cargas: 40, pesoKg: 200_000,
@@ -76,7 +77,7 @@ const ponto = (over: Partial<PontoWms> = {}): PontoWms => ({
 });
 
 describe("indicadores normalizados", () => {
-  it("movimentos por tonelada = (verticais + horizontais) ÷ t expedidas", () => {
+  it("movimentos por tonelada = (verticais + horizontais) ÷ t faturadas", () => {
     expect(movimentosPorTonelada(ponto())).toBe(2); // 400 ÷ 200 t
   });
   it("abastecimentos por carga", () => {
@@ -86,7 +87,7 @@ describe("indicadores normalizados", () => {
     expect(linhasPorHora({ tarefas: 10, separadores: 2, minutos: 90, linhas: 300 })).toBe(200);
   });
   it("sem expedição/sem tempo dá 0 em vez de infinito", () => {
-    const p = ponto({ cargas: { ...ponto().cargas, cargas: 0, pesoKg: 0 } });
+    const p = ponto({ pesoFaturadoKg: null, cargas: { ...ponto().cargas, cargas: 0, pesoKg: 0 } });
     expect(movimentosPorTonelada(p)).toBe(0);
     expect(abastecimentosPorCarga(p)).toBe(0);
     expect(linhasPorHora(COLETOR_VAZIO)).toBe(0);
