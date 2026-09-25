@@ -121,33 +121,40 @@ export async function getFaturamentoMensal(mes: string): Promise<PontoTendencia 
  * abrir 12 conexões Oracle de uma vez (o que derrubava meses por timeout).
  */
 export const getSerieTendencias = cache(
-  async (qtd = 12): Promise<PontoTendencia[]> => {
-    const meses = mesesFechados(new Date(), qtd);
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-      .from("faturamento_mensal")
-      .select(COLUNAS)
-      .eq("filial", FILIAL_LABEL)
-      .in("mes", meses);
-    if (error) console.error("[faturamento-mensal] Supabase indisponível:", error.message);
-
-    const porMes = new Map<string, PontoTendencia>();
-    for (const row of data ?? []) {
-      const p = rowToPonto(row as Record<string, unknown>);
-      porMes.set(p.mes, p);
-    }
-
-    const serie: PontoTendencia[] = [];
-    for (const mes of meses) {
-      const cached = porMes.get(mes);
-      if (cached) { serie.push(cached); continue; }
-      const p = await computarMes(supabase, mes); // sequencial: sem storm de conexões
-      if (p) serie.push(p);
-    }
-    return serie;
-  },
+  async (qtd = 12): Promise<PontoTendencia[]> => getSerieFaturamento(mesesFechados(new Date(), qtd)),
 );
+
+/**
+ * Série de faturamento para meses arbitrários (FECHADOS). UMA leitura no
+ * Supabase para todos e só calcula do Winthor os que faltam — SEQUENCIALMENTE,
+ * para não abrir várias conexões Oracle de uma vez (derrubava meses por timeout).
+ * Mês que o Winthor não conseguir calcular fica de fora da lista.
+ */
+export async function getSerieFaturamento(meses: string[]): Promise<PontoTendencia[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("faturamento_mensal")
+    .select(COLUNAS)
+    .eq("filial", FILIAL_LABEL)
+    .in("mes", meses);
+  if (error) console.error("[faturamento-mensal] Supabase indisponível:", error.message);
+
+  const porMes = new Map<string, PontoTendencia>();
+  for (const row of data ?? []) {
+    const p = rowToPonto(row as Record<string, unknown>);
+    porMes.set(p.mes, p);
+  }
+
+  const serie: PontoTendencia[] = [];
+  for (const mes of meses) {
+    const cached = porMes.get(mes);
+    if (cached) { serie.push(cached); continue; }
+    const p = await computarMes(supabase, mes); // sequencial: sem storm de conexões
+    if (p) serie.push(p);
+  }
+  return serie;
+}
 
 /**
  * Faturamento para o dashboard num mês qualquer. Vem SEMPRE AO VIVO do Winthor —

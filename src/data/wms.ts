@@ -254,3 +254,27 @@ export const getPainelWms = cache(async (meses: string[]): Promise<PainelWms> =>
 
   return { serie, estoque, indisponivel: falhas };
 });
+
+/** Só a movimentação mensal (sem cargas/coletor/estoque) — para séries longas como a do painel de gestão. */
+export const getMovimentosMensais = cache(async (ini: string, fimExclusivo: string): Promise<Map<string, MovimentoMes> | null> => {
+  try {
+    const rows = await queryWinthor<Record<string, unknown>>(SQL_MOVIMENTOS, { emp: EMPRESA, ini, fim: fimExclusivo });
+    const mov = new Map<string, MovimentoMes>();
+    for (const r of rows) {
+      mov.set(String(r.MES), {
+        verticais: n(r.VERTICAIS),
+        horizontais: n(r.HORIZONTAIS),
+        abastecimentos: n(r.ABASTECIMENTOS),
+        armazenagens: n(r.ARMAZENAGENS),
+        internas: n(r.INTERNAS),
+        devolucoes: n(r.DEVOLUCOES),
+        pesoKg: n(r.PESO),
+        skusMovimentados: n(r.SKUS),
+      });
+    }
+    return mov;
+  } catch (erro) {
+    console.error("[wms] movimentos mensais indisponíveis:", (erro as Error).message);
+    return null;
+  }
+});
