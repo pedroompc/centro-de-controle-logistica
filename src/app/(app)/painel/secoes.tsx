@@ -13,7 +13,7 @@ import type {
   MotivoDetalhe,
 } from "@/domain/devolucoes";
 import { setorPredominante, motivoPredominante } from "@/domain/devolucoes-ui";
-import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
+import { TIPOS_CARRO, ROTULO_TIPO } from "@/domain/descarregamento";
 import { pesoMedioPorCarro, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import { variacaoPercentual } from "@/domain/tendencias";
 import type { DescarregamentoTipo } from "@/domain/types";
@@ -454,7 +454,7 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
   ];
   const meses = detalhe.slice(-4); // últimos meses, lado a lado
   // Escala compartilhada dos carros por tipo — colunas comparáveis entre os meses.
-  const sharedMaxTipo = Math.max(1, ...meses.flatMap((m) => TIPOS_DESCARREGAMENTO.map((t) => m.porTipo[t])));
+  const sharedMaxTipo = Math.max(1, ...meses.flatMap((m) => TIPOS_CARRO.map((t) => m.porTipo[t])));
 
   return (
     <div className="flex h-full flex-col gap-5">
@@ -469,7 +469,7 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Por que cada mês rendeu isso</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {TIPOS_DESCARREGAMENTO.map((t) => (
+            {TIPOS_CARRO.map((t) => (
               <span key={t} className="inline-flex items-center gap-1.5 text-xs text-white/50">
                 <span className="h-2.5 w-2.5 rounded-sm" style={{ background: TIPO_COR_TV[t] }} />
                 {ROTULO_TIPO[t]}
@@ -483,7 +483,7 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
         ) : (
           <div className="grid min-h-0 flex-1 gap-4" style={{ gridTemplateColumns: `repeat(${meses.length}, minmax(0, 1fr))` }}>
             {meses.map((m) => {
-              const detalhados = TIPOS_DESCARREGAMENTO.reduce((s, t) => s + m.porTipo[t], 0);
+              const detalhados = TIPOS_CARRO.reduce((s, t) => s + m.porTipo[t], 0);
               const prog = progressoDoMes(m.mes);
               return (
                 <div key={m.mes} className="flex min-h-0 flex-col rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
@@ -499,11 +499,13 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
 
                   <div className="mt-3 flex items-baseline justify-between text-sm">
                     <span className="font-bold uppercase tracking-wide text-white/60">Descarrego</span>
-                    <span className="font-bold tabular-nums text-white/85">{inteiro.format(m.carros)} carros · {formatKg(m.pesoKg)}</span>
+                    <span className="font-bold tabular-nums text-white/85">
+                      {inteiro.format(m.carros)} carros{m.caixas > 0 ? ` · ${inteiro.format(m.caixas)} cx` : ""} · {formatKg(m.pesoKg)}
+                    </span>
                   </div>
                   {detalhados > 0 ? (
                     <div className="mt-3 flex min-h-[7rem] flex-1 items-stretch gap-2.5">
-                      {TIPOS_DESCARREGAMENTO.map((t) => (
+                      {TIPOS_CARRO.map((t) => (
                         <div key={t} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
                           <span className="shrink-0 text-sm font-extrabold tabular-nums text-white">{inteiro.format(m.porTipo[t])}</span>
                           <div className="flex w-full flex-1 items-end">
@@ -578,16 +580,19 @@ export function SecaoDescarregos({ dados, serie, mesLabel }: { dados: ResumoDesc
   const temAnt = Boolean(atual && ant);
   const prevLabel = ant ? formatMesAno(ant.mes).slice(0, 3) : "";
   const carros = atual?.carros ?? dados.totalMes;
+  const caixas = atual?.caixas ?? 0;
   const peso = atual?.pesoKg ?? 0;
   const pesoCarro = atual ? pesoMedioPorCarro(atual) : 0;
   const dCarros = temAnt ? variacaoPercentual(atual!.carros, ant!.carros) : 0;
+  const dCaixas = temAnt ? variacaoPercentual(atual!.caixas, ant!.caixas) : 0;
   const dPeso = temAnt ? variacaoPercentual(atual!.pesoKg, ant!.pesoKg) : 0;
   const dPesoCarro = temAnt ? variacaoPercentual(pesoMedioPorCarro(atual!), pesoMedioPorCarro(ant!)) : 0;
 
   return (
     <div className="flex h-full flex-col gap-6">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiComp label="Carros no mês" value={inteiro.format(carros)} frac={dCarros} temAnt={temAnt} prevLabel={prevLabel} />
+        <KpiComp label="Caixas (volume)" value={inteiro.format(caixas)} frac={dCaixas} temAnt={temAnt} prevLabel={prevLabel} />
         <KpiComp label="Peso total" value={formatKg(peso)} frac={dPeso} temAnt={temAnt} prevLabel={prevLabel} />
         <KpiComp label="Peso por carro" value={`${formatKg(pesoCarro)}/carro`} frac={dPesoCarro} temAnt={temAnt} prevLabel={prevLabel} />
       </div>

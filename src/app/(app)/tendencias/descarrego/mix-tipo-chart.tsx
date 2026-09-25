@@ -1,6 +1,6 @@
 import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import { mixFracao } from "@/domain/descarregamento-tendencia";
-import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
+import { TIPOS_CARRO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo } from "@/domain/types";
 
 /**
@@ -39,7 +39,7 @@ export function MixTipoChart({ pontos, rotulo }: { pontos: PontoDescarregoMensal
     <div>
       {/* Legenda */}
       <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1.5">
-        {TIPOS_DESCARREGAMENTO.map((t) => (
+        {TIPOS_CARRO.map((t) => (
           <span key={t} className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
             <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: TIPO_COR[t] }} />
             {ROTULO_TIPO[t]}
@@ -54,7 +54,7 @@ export function MixTipoChart({ pontos, rotulo }: { pontos: PontoDescarregoMensal
             <div key={p.mes} className="flex items-center gap-3">
               <span className="w-14 shrink-0 text-xs font-medium text-slate-500">{rotulo(p.mes)}</span>
               <div className="flex h-7 flex-1 overflow-hidden rounded-md bg-slate-100">
-                {TIPOS_DESCARREGAMENTO.map((t) =>
+                {TIPOS_CARRO.map((t) =>
                   mix[t] > 0 ? (
                     <div
                       key={t}

@@ -196,8 +196,9 @@ export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
 export interface MesReceitaDetalhe {
   mes: string; // "yyyy-mm-01"
   receita: number; // receita total do mês (3 origens)
-  carros: number; // carros descarregados no mês
-  porTipo: Record<DescarregamentoTipo, number>; // carros por tipo
+  carros: number; // carros descarregados no mês (batido+paletizado+pal-rem)
+  caixas: number; // volume, em caixas (unidade separada de carros)
+  porTipo: Record<DescarregamentoTipo, number>; // qtd por tipo (inclui volume)
   pesoKg: number; // peso descarregado
   diversas: number; // total de receitas diversas
   materiais: { material: string; kg: number; valor: number }[]; // top materiais de diversas
@@ -229,6 +230,7 @@ export async function carregarReceitasDrivers(qtdMeses = 6): Promise<MesReceitaD
       mes: r.mes,
       receita: r.valor,
       carros: d?.carros ?? 0,
+      caixas: d?.caixas ?? 0,
       porTipo: d?.porTipo ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 },
       pesoKg: d?.pesoKg ?? 0,
       diversas: divTotalPorMes.get(r.mes) ?? 0,
