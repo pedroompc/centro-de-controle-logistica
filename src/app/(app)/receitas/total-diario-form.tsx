@@ -4,7 +4,7 @@ import { useState } from "react";
 import { criarTotalDiario, editarTotalDiario } from "@/data/receitas-diario";
 import { toneladas } from "@/domain/receitas-metrics";
 import { formatBRL } from "@/domain/format";
-import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
+import { TIPOS_DESCARREGAMENTO, TIPOS_CARRO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { TotalDiarioDescarregamento } from "@/domain/types";
 
 const field =
@@ -24,11 +24,12 @@ export function TotalDiarioForm({ mes, total }: { mes: string; total?: TotalDiar
   const [aberto, setAberto] = useState(false);
   const [peso, setPeso] = useState(total?.pesoKg ?? 0);
   const [valor, setValor] = useState(total?.receita ?? 0);
-  // nº de carros por tipo; soma = total de descarregos do dia.
+  // qtd por tipo. Carros = batido+paletizado+pal-rem; volume é contado em caixas.
   const [qtds, setQtds] = useState<Record<string, number>>(
     () => Object.fromEntries(TIPOS_DESCARREGAMENTO.map((t) => [t, total?.porTipo?.[t] ?? 0])),
   );
-  const totalCarros = TIPOS_DESCARREGAMENTO.reduce((s, t) => s + (qtds[t] || 0), 0);
+  const totalCarros = TIPOS_CARRO.reduce((s, t) => s + (qtds[t] || 0), 0);
+  const totalCaixas = qtds.volume || 0;
 
   if (!aberto) {
     return total ? (
@@ -62,7 +63,7 @@ export function TotalDiarioForm({ mes, total }: { mes: string; total?: TotalDiar
           type="number"
           step="1"
           min="0"
-          placeholder={ROTULO_TIPO[t]}
+          placeholder={t === "volume" ? "Volume (caixas)" : ROTULO_TIPO[t]}
           value={qtds[t] || ""}
           onChange={(e) => setQtds((q) => ({ ...q, [t]: Number(e.target.value) }))}
           className={numField}
@@ -92,7 +93,10 @@ export function TotalDiarioForm({ mes, total }: { mes: string; total?: TotalDiar
       />
       <input name="observacao" defaultValue={total?.observacao ?? ""} placeholder="Observação" className={field} />
       <span className="px-2 py-2 text-sm font-semibold">
-        <span className="text-slate-600">{totalCarros} {totalCarros === 1 ? "carro" : "carros"}</span>
+        <span className="text-slate-600">
+          {totalCarros} {totalCarros === 1 ? "carro" : "carros"}
+          {totalCaixas > 0 && ` · ${totalCaixas} ${totalCaixas === 1 ? "caixa" : "caixas"}`}
+        </span>
         <span className="text-emerald-700">
           {" · "}{toneladas(peso || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t → {valor ? formatBRL(valor) : "—"}
         </span>

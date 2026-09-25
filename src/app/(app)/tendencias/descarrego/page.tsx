@@ -41,6 +41,9 @@ const IcPeso = (
 const IcReceita = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2v20" /><path d="M17 5.5A4 4 0 0 0 13 4h-1.5a3.5 3.5 0 0 0 0 7h1a3.5 3.5 0 0 1 0 7H11a4 4 0 0 1-4-1.5" /></svg>
 );
+const IcCaixa = (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="M4 7.5 12 12l8-4.5" /><path d="M12 12v9" /><path d="m8 5.2 8 4.6" /></svg>
+);
 const IcEficiencia = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 20a8 8 0 1 1 8-8" /><path d="M12 12l4-2.5" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></svg>
 );
@@ -86,12 +89,14 @@ export default async function DescarregoTendenciaPage() {
 
   // Séries mensais.
   const vCarros = serie.map((p) => p.carros);
+  const vCaixas = serie.map((p) => p.caixas);
   const vPeso = serie.map((p) => p.pesoKg);
   const vReceita = serie.map((p) => p.receita);
   const vPesoCarro = serie.map((p) => pesoMedioPorCarro(p));
 
   // Deltas do último mês vs o anterior (0 quando ainda não há dois meses).
   const dCarros = deltaBom(temAnterior ? variacaoPercentual(atual.carros, ant.carros) : 0);
+  const dCaixas = deltaBom(temAnterior ? variacaoPercentual(atual.caixas, ant.caixas) : 0);
   const dPeso = deltaBom(temAnterior ? variacaoPercentual(atual.pesoKg, ant.pesoKg) : 0);
   const dReceita = deltaBom(temAnterior ? variacaoPercentual(atual.receita, ant.receita) : 0);
   const dPesoCarro = deltaBom(
@@ -100,6 +105,7 @@ export default async function DescarregoTendenciaPage() {
 
   const series: SeriePainel[] = [
     { nome: "Carros descarregados", cor: CORES.pdv, valores: vCarros, abs: vCarros.map((v) => inteiro.format(v)) },
+    { nome: "Caixas (volume)", cor: "#f5b301", valores: vCaixas, abs: vCaixas.map((v) => inteiro.format(v)) },
     { nome: "Peso descarregado", cor: CORES.venda, valores: vPeso, abs: vPeso.map((v) => formatKg(v)) },
     { nome: "Receita de descarrego", cor: "#c2820a", valores: vReceita, abs: vReceita.map(formatBRL) },
     { nome: "Peso médio por carro", cor: "#8b5cf6", valores: vPesoCarro, abs: vPesoCarro.map(pesoPorCarro) },
@@ -123,8 +129,9 @@ export default async function DescarregoTendenciaPage() {
       </div>
 
       {/* KPIs — último mês + variação vs mês anterior */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard icone={IcCaminhao} nome="Carros descarregados" valor={inteiro.format(atual.carros)} delta={dCarros} valores={vCarros} cor={CORES.pdv} />
+        <KpiCard icone={IcCaixa} nome="Caixas (volume)" valor={inteiro.format(atual.caixas)} delta={dCaixas} valores={vCaixas} cor="#f5b301" />
         <KpiCard icone={IcPeso} nome="Peso descarregado" valor={formatKg(atual.pesoKg)} delta={dPeso} valores={vPeso} cor={CORES.venda} />
         <KpiCard icone={IcReceita} nome="Receita de descarrego" valor={formatBRL(atual.receita)} delta={dReceita} valores={vReceita} cor="#c2820a" />
         <KpiCard icone={IcEficiencia} nome="Peso médio por carro" valor={pesoPorCarro(pesoMedioPorCarro(atual))} delta={dPesoCarro} valores={vPesoCarro} cor="#8b5cf6" />
