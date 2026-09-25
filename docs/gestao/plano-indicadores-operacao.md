@@ -107,3 +107,12 @@ logins de setor/sistema ("EXPEDIÇÃO", "CONFERENTE") que não são uma pessoa.
 
 Painel do gestor = no máximo 6 números no topo: lead time (P90), % D+1, taxa de devolução logística,
 % erro de separação, custo logístico/faturamento, movimentos por tonelada. O resto é detalhe para investigar.
+
+---
+
+## Onde está no app
+
+Aba **Gestão** em `/galpao?aba=gestao&mes=`. Compara o mês com o anterior e com o mesmo mês
+do ano passado, lendo **só esses 3 meses**. A evolução de 13 meses carrega apenas no botão
+"Carregar evolução" (`&evolucao=1`), porque meses ainda não guardados no Supabase são
+calculados no WinThor um a um. O que se provar importante sobe depois para o Dashboard.

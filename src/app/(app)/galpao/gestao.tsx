@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { getPainelGestao } from "@/data/gestao";
+import { Suspense } from "react";
+import { getPainelGestao, getEvolucaoGestao } from "@/data/gestao";
 import {
-  INDICADORES, comparar, media12, mesAnoAnterior,
+  INDICADORES, comparar, mesAnoAnterior,
   type Indicador, type Formato, type Comparacao, type MesGestao,
 } from "@/domain/gestao";
 import { primeiroDiaDoMes, mesAnterior, mesProximo, formatMesAno } from "@/domain/periodo";
 import { formatBRL, formatPercent } from "@/domain/format";
-import { PageHeader, Card, SectionTitle } from "@/components/ui";
-import { CORES, MiniBars } from "../tendencias/widgets";
+import { Card, SectionTitle } from "@/components/ui";
 
 // Primeiro mês navegável: a comparação anual precisa do WinThor de 12 meses antes.
 const MES_MINIMO = "2025-01-01";
@@ -54,15 +54,24 @@ const corDelta = (c: Comparacao, ind: Indicador) =>
 const seta = (c: Comparacao, ind: Indicador) =>
   c.delta === null || irrelevante(c, ind) ? "" : c.delta > 0 ? "↑ " : "↓ ";
 
-export default async function GestaoPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
-  const sp = await searchParams;
+/** Mês da aba Gestão: padrão = último mês fechado, limitado a [MES_MINIMO, mês atual]. */
+export function mesGestao(param?: string): string {
   const atual = primeiroDiaDoMes();
-  const padrao = mesAnterior(atual); // último mês fechado
-  let mes = sp.mes ? primeiroDiaDoMes(sp.mes) : padrao;
+  let mes = param ? primeiroDiaDoMes(param) : mesAnterior(atual);
   if (mes > atual) mes = atual;
   if (mes < MES_MINIMO) mes = MES_MINIMO;
-  const parcial = mes === atual;
+  return mes;
+}
 
+const hrefGestao = (mes: string, evolucao = false) =>
+  `/galpao?aba=gestao&mes=${mes}${evolucao ? "&evolucao=1" : ""}`;
+
+/**
+ * Aba "Gestão": o mês contra o anterior e contra o mesmo mês do ano passado.
+ * Lê só esses 3 meses; a evolução de 13 meses carrega apenas quando pedida.
+ */
+export async function Gestao({ mes, evolucao }: { mes: string; evolucao: boolean }) {
+  const parcial = mes === primeiroDiaDoMes();
   const { serie, indisponivel, primeiroMesFaltas } = await getPainelGestao(mes);
   const porMes = new Map(serie.map((m) => [m.mes, m]));
   const mAtual = porMes.get(mes);
@@ -72,12 +81,9 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
 
   return (
     <div>
-      <PageHeader
-        title="Painel de gestão"
-        subtitle={`${formatMesAno(mes)}${parcial ? " (em andamento)" : ""} · comparado com ${rotulo(mesAnterior(mes))} e ${rotulo(mesAnoAnterior(mes))}`}
-      >
-        <NavMes mes={mes} atual={atual} />
-      </PageHeader>
+      <p className="mb-6 text-sm text-slate-500">
+        {formatMesAno(mes)}{parcial ? " (em andamento)" : ""} · comparado com {rotulo(mesAnterior(mes))} e {rotulo(mesAnoAnterior(mes))}
+      </p>
 
       {indisponivel.length > 0 && (
         <Card className="mb-6 border-amber-200 bg-amber-50/60 p-4">
@@ -98,7 +104,7 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {DESTAQUES.map((id) => {
           const ind = INDICADORES.find((i) => i.id === id)!;
-          return <CardDestaque key={id} ind={ind} serie={serie} atual={mAtual} ant={mAnt} ano={mAno} />;
+          return <CardDestaque key={id} ind={ind} atual={mAtual} ant={mAnt} ano={mAno} />;
         })}
       </div>
 
@@ -106,7 +112,7 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
         <SectionTitle>Quadro comparativo</SectionTitle>
       </div>
       <Card className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
               <th className="px-4 py-3 text-left font-semibold">Indicador</th>
@@ -115,13 +121,12 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
               <th className="px-3 py-3 text-right font-semibold">vs mês ant.</th>
               <th className="px-3 py-3 text-right font-semibold">{rotulo(mesAnoAnterior(mes))}</th>
               <th className="px-3 py-3 text-right font-semibold">vs ano ant.</th>
-              <th className="px-3 py-3 text-right font-semibold">Média 12 m</th>
             </tr>
           </thead>
           {grupos.map((g) => (
             <tbody key={g} className="tabular-nums">
               <tr>
-                <td colSpan={7} className="bg-slate-50/70 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{g}</td>
+                <td colSpan={6} className="bg-slate-50/70 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{g}</td>
               </tr>
               {INDICADORES.filter((i) => i.grupo === g).map((ind) => {
                 const cm = comparar(ind, mAtual, mAnt);
@@ -134,7 +139,6 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
                     <td className={`px-3 py-2.5 text-right text-xs font-semibold ${corDelta(cm, ind)}`}>{seta(cm, ind)}{textoDelta(cm, ind)}</td>
                     <td className="px-3 py-2.5 text-right text-slate-500">{formatar(ca.base, ind.formato)}</td>
                     <td className={`px-3 py-2.5 text-right text-xs font-semibold ${corDelta(ca, ind)}`}>{seta(ca, ind)}{textoDelta(ca, ind)}</td>
-                    <td className="px-3 py-2.5 text-right text-slate-500">{formatar(media12(ind, serie, mes), ind.formato)}</td>
                   </tr>
                 );
               })}
@@ -146,39 +150,27 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
       <div className="mt-8">
         <SectionTitle>Evolução — 13 meses</SectionTitle>
       </div>
-      <Card className="overflow-x-auto">
-        <table className="w-full min-w-[1300px] text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
-              <th className="sticky left-0 min-w-[220px] bg-white px-4 py-3 text-left font-semibold">Indicador</th>
-              {serie.map((m) => (
-                <th key={m.mes} className={`px-2.5 py-3 text-right font-semibold ${m.mes === mes ? "text-[#141a4d]" : ""}`}>
-                  {rotulo(m.mes)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {INDICADORES.map((ind) => (
-              <tr key={ind.id} className="border-b border-slate-50 last:border-0">
-                <td className="sticky left-0 whitespace-nowrap bg-white px-4 py-2 text-slate-700" title={ind.ajuda}>{ind.nome}</td>
-                {serie.map((m) => (
-                  <td key={m.mes} className={`whitespace-nowrap px-2.5 py-2 text-right ${m.mes === mes ? "font-semibold text-[#141a4d]" : "text-slate-500"}`}>
-                    {formatar(ind.valor(m), ind.formato, true)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {evolucao ? (
+        <Suspense fallback={<Card className="p-5"><p className="text-sm text-slate-500">Carregando 13 meses…</p></Card>}>
+          <Evolucao mes={mes} />
+        </Suspense>
+      ) : (
+        <Card className="flex flex-wrap items-center justify-between gap-3 p-5">
+          <p className="text-sm text-slate-600">
+            A série de 13 meses é mais pesada: meses que o app ainda não guardou são calculados no WinThor, um de cada vez.
+          </p>
+          <Link href={hrefGestao(mes, true)}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-50">
+            Carregar evolução
+          </Link>
+        </Card>
+      )}
 
       <Card className="mt-6 p-5">
         <SectionTitle>Como ler e o que ainda falta</SectionTitle>
         <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-600">
           <li><b>Taxas</b> (%, devolução, D+1) comparam em <b>pontos percentuais</b>; volumes, em % de variação. Seta vermelha = piorou. Variação boa fica cinza.</li>
           <li><b>Serviço</b>: dias de calendário entre a liberação do pedido (WinThor) e a primeira nota autorizada na SEFAZ. Pedido = venda VP/VV das filiais do app.</li>
-          <li><b>Devolução por motivo logístico</b> é calculada para o mês, o anterior e o do ano passado (a quebra por motivo é pesada para 13 meses).</li>
           <li><b>Armazém</b> começa quando o Harpia entrou em uso; antes disso aparece “—”. <b>Faltas</b> começam em {primeiroMesFaltas ? rotulo(primeiroMesFaltas) : "—"} (primeiro lançamento no app).</li>
           <li><b>Ainda não está aqui</b>: custo logístico por mês (o app guarda o salário de hoje, não o de cada mês), erro de separação e o tempo de cada etapa dentro do galpão — dependem das validações do WMS em andamento.</li>
         </ul>
@@ -187,21 +179,49 @@ export default async function GestaoPage({ searchParams }: { searchParams: Promi
   );
 }
 
-function CardDestaque({ ind, serie, atual, ant, ano }: {
-  ind: Indicador; serie: MesGestao[]; atual?: MesGestao; ant?: MesGestao; ano?: MesGestao;
+/** Tabela de 13 meses (sem devolução logística — a quebra por motivo mês a mês pesaria demais). */
+async function Evolucao({ mes }: { mes: string }) {
+  const { serie } = await getEvolucaoGestao(mes);
+  const indicadores = INDICADORES.filter((i) => i.id !== "devLog");
+  return (
+    <Card className="overflow-x-auto">
+      <table className="w-full min-w-[1300px] text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+            <th className="sticky left-0 min-w-[220px] bg-white px-4 py-3 text-left font-semibold">Indicador</th>
+            {serie.map((m) => (
+              <th key={m.mes} className={`px-2.5 py-3 text-right font-semibold ${m.mes === mes ? "text-[#141a4d]" : ""}`}>
+                {rotulo(m.mes)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="tabular-nums">
+          {indicadores.map((ind) => (
+            <tr key={ind.id} className="border-b border-slate-50 last:border-0">
+              <td className="sticky left-0 whitespace-nowrap bg-white px-4 py-2 text-slate-700" title={ind.ajuda}>{ind.nome}</td>
+              {serie.map((m: MesGestao) => (
+                <td key={m.mes} className={`whitespace-nowrap px-2.5 py-2 text-right ${m.mes === mes ? "font-semibold text-[#141a4d]" : "text-slate-500"}`}>
+                  {formatar(ind.valor(m), ind.formato, true)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function CardDestaque({ ind, atual, ant, ano }: {
+  ind: Indicador; atual?: MesGestao; ant?: MesGestao; ano?: MesGestao;
 }) {
   const cm = comparar(ind, atual, ant);
   const ca = comparar(ind, atual, ano);
-  const valores = serie.map((m) => ind.valor(m) ?? 0);
   return (
-    <Card className="@container overflow-hidden p-5">
-      <div className="flex items-start gap-3">
-        <span className="min-w-0 text-sm font-medium text-slate-500" title={ind.ajuda}>{ind.nome}</span>
-        <div className="ml-auto w-[108px] min-w-0 shrink">
-          <MiniBars valores={valores} cor={CORES.venda} />
-        </div>
-      </div>
-      <p className="mt-3 font-[family-name:var(--font-sora)] text-[clamp(1.1rem,10cqi,1.75rem)] font-extrabold leading-none tracking-tight tabular-nums text-[#141a4d]">
+    <Card className="p-5">
+      <span className="text-sm font-medium text-slate-500" title={ind.ajuda}>{ind.nome}</span>
+      <p className="mt-3 font-[family-name:var(--font-sora)] text-[1.75rem] font-extrabold leading-none tracking-tight tabular-nums text-[#141a4d]">
         {formatar(cm.valor, ind.formato)}
       </p>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
@@ -215,15 +235,18 @@ function CardDestaque({ ind, serie, atual, ant, ano }: {
 const btn = "rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 transition hover:bg-slate-50";
 const btnOff = "rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-slate-300";
 
-/** ◀ Mês ▶ próprio: a navegação global para em jul/26, mas aqui o histórico do WinThor vai mais longe. */
-function NavMes({ mes, atual }: { mes: string; atual: string }) {
-  const ant = mesAnterior(mes);
-  const prox = mesProximo(mes);
+/** ◀ Mês ▶ da aba Gestão: vai além do piso da navegação global (o WinThor tem mais histórico). */
+export function NavMesGestao({ mes }: { mes: string }) {
+  const atual = primeiroDiaDoMes();
   return (
     <div className="flex items-center gap-1">
-      {mes > MES_MINIMO ? <Link href={`/gestao?mes=${ant}`} aria-label="Mês anterior" className={btn}>◀</Link> : <span aria-hidden className={btnOff}>◀</span>}
+      {mes > MES_MINIMO
+        ? <Link href={hrefGestao(mesAnterior(mes))} aria-label="Mês anterior" className={btn}>◀</Link>
+        : <span aria-hidden className={btnOff}>◀</span>}
       <span className="min-w-[7rem] text-center text-sm font-semibold text-[#141a4d]">{formatMesAno(mes)}</span>
-      {mes < atual ? <Link href={`/gestao?mes=${prox}`} aria-label="Próximo mês" className={btn}>▶</Link> : <span aria-hidden className={btnOff}>▶</span>}
+      {mes < atual
+        ? <Link href={hrefGestao(mesProximo(mes))} aria-label="Próximo mês" className={btn}>▶</Link>
+        : <span aria-hidden className={btnOff}>▶</span>}
     </div>
   );
 }

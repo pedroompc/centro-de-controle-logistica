@@ -31,16 +31,6 @@ export const items: Item[] = [
     ),
   },
   {
-    href: "/gestao",
-    label: "Painel de gestão",
-    short: "Gestão",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
-      </svg>
-    ),
-  },
-  {
     href: "/setores",
     label: "Setores",
     icon: (
