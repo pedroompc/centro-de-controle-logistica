@@ -91,6 +91,7 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
     ped.CODUSUR                      AS CODRCA,
     usu.NOME                         AS RCA,
     ped.POSICAO                      AS POSICAO,
+    ped.NUMCAR                       AS NUMCAR,
     car.CODMOTORISTA                 AS CODMOTORISTA,
     emp.NOME                         AS MOTORISTA,
     ped.DTFAT                        AS DTFAT,
@@ -127,7 +128,7 @@ interface LinhaPedido {
   NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
   CODRCA: number | null; RCA: string | null;
-  POSICAO: string | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
+  POSICAO: string | null; NUMCAR: number | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
   MOTIVO_DEV: string | null;
 }
@@ -167,6 +168,8 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       codRca: r.CODRCA == null ? null : num(r.CODRCA),
       rca: str(r.RCA),
       posicao: (r.POSICAO ?? "").trim(),
+      // NUMCAR 0 = ainda sem carregamento (o Winthor grava 0, não NULL).
+      numcar: num(r.NUMCAR) > 0 ? num(r.NUMCAR) : null,
       codMotorista: r.CODMOTORISTA == null ? null : num(r.CODMOTORISTA),
       motorista: str(r.MOTORISTA),
       dataFaturamento: toISO(r.DTFAT),

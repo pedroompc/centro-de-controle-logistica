@@ -366,7 +366,8 @@ export const getMotoristasDevolucao = cache(async (
 const sqlCidade = () => `
 WITH ${ctes({})},
 fat AS (
-  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, SUM(nf.VLTOTAL) FATURADO
+  SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, SUM(nf.VLTOTAL) FATURADO,
+         COUNT(DISTINCT nf.NUMTRANSVENDA) NOTAS_FAT
   FROM PCNFSAID nf
   JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
@@ -400,6 +401,7 @@ SELECT TO_CHAR(NVL(fat.CODIBGE, dev.CODIBGE)) IBGE,
        NVL(fat.CIDADE, dev.CIDADE) CIDADE,
        ROUND(NVL(fat.FATURADO, 0), 2) FATURADO,
        ROUND(NVL(dev.DEVOLVIDO, 0), 2) DEVOLVIDO,
+       NVL(fat.NOTAS_FAT, 0) NOTAS_FAT,
        NVL(dev.NOTAS, 0) NOTAS,
        dev.MOTIVO_TOP,
        ROUND(NVL(dev.MOTIVO_VALOR, 0), 2) MOTIVO_VALOR
@@ -411,6 +413,7 @@ interface LinhaCidadeRaw {
   CIDADE: string | null;
   FATURADO: number;
   DEVOLVIDO: number;
+  NOTAS_FAT: number;
   NOTAS: number;
   MOTIVO_TOP: string | null;
   MOTIVO_VALOR: number;
@@ -434,6 +437,7 @@ export const getDevolucaoPorCidade = cache(async (
         cidade: r.CIDADE ?? `Cidade ${r.IBGE}`,
         faturado: n(r.FATURADO),
         devolvido: n(r.DEVOLVIDO),
+        notasEntregues: n(r.NOTAS_FAT),
         notasDevolvidas: n(r.NOTAS),
         motivo: r.MOTIVO_TOP ?? "—",
         motivoValor: n(r.MOTIVO_VALOR),
@@ -456,7 +460,8 @@ const BAIRRO_EXPR = "UPPER(TRIM(NVL(cli.BAIRROENT,'SEM BAIRRO')))";
 const sqlBairroRMR = () => `
 WITH ${ctes({})},
 fat AS (
-  SELECT ci.CODIBGE, ${BAIRRO_EXPR} BAIRRO, SUM(nf.VLTOTAL) FATURADO
+  SELECT ci.CODIBGE, ${BAIRRO_EXPR} BAIRRO, SUM(nf.VLTOTAL) FATURADO,
+         COUNT(DISTINCT nf.NUMTRANSVENDA) NOTAS_FAT
   FROM PCNFSAID nf
   JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
@@ -485,6 +490,7 @@ ranked AS (
 )
 SELECT r.CIDADE, r.BAIRRO,
        ROUND(NVL(f.FATURADO, 0), 2) FATURADO,
+       NVL(f.NOTAS_FAT, 0) NOTAS_FAT,
        ROUND(r.DEVOLVIDO, 2) DEVOLVIDO,
        r.NOTAS,
        r.MOTIVO MOTIVO_TOP,
@@ -498,6 +504,7 @@ interface LinhaBairroRaw {
   CIDADE: string | null;
   BAIRRO: string | null;
   FATURADO: number;
+  NOTAS_FAT: number;
   DEVOLVIDO: number;
   NOTAS: number;
   MOTIVO_TOP: string | null;
@@ -520,6 +527,7 @@ export const getDevolucaoPorBairroRMR = cache(async (
       cidade: r.CIDADE ?? "—",
       bairro: r.BAIRRO ?? "SEM BAIRRO",
       faturado: n(r.FATURADO),
+      notasFaturadas: n(r.NOTAS_FAT),
       devolvido: n(r.DEVOLVIDO),
       notas: n(r.NOTAS),
       motivo: r.MOTIVO_TOP ?? "Não informado",

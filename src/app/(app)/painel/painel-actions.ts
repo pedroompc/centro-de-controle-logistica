@@ -6,7 +6,10 @@ import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
 import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
-import { totalDiversasDoMes } from "@/data/receitas-diversas";
+import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
+import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
+import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
+import type { DescarregamentoTipo } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
 import { classificarRegiao, ORDEM_REGIAO, type RegiaoPE } from "@/domain/pe-regioes";
@@ -35,6 +38,8 @@ export interface ResumoDevolucao {
   taxaNotas: number;
   devolvidas: number;
   emitidas: number;
+  positivados: number; // clientes positivados no mês
+  atendimentos: number; // entregas realizadas (clientes atendidos)
   porSetor: DevolucaoPorSetor[];
   porMotivo: DevolucaoPorMotivo[];
 }
@@ -51,6 +56,8 @@ const DEV_VAZIO: ResumoDevolucao = {
   taxaNotas: 0,
   devolvidas: 0,
   emitidas: 0,
+  positivados: 0,
+  atendimentos: 0,
   porSetor: [],
   porMotivo: [],
 };
@@ -75,6 +82,8 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
     taxaNotas: fat ? taxaDevolucaoNotas(fat) : 0,
     devolvidas: fat?.devolvidas ?? 0,
     emitidas: fat?.emitidas ?? 0,
+    positivados: fat?.positivados ?? 0,
+    atendimentos: fat?.atendimentos ?? 0,
     porSetor: nucleo?.porSetor ?? [],
     porMotivo: nucleo?.porMotivo ?? [],
   };
@@ -182,6 +191,54 @@ export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
   };
 }
 
+// --- Receitas · drivers por mês (o "porquê" do mês) --------------------------
+
+export interface MesReceitaDetalhe {
+  mes: string; // "yyyy-mm-01"
+  receita: number; // receita total do mês (3 origens)
+  carros: number; // carros descarregados no mês (batido+paletizado+pal-rem)
+  caixas: number; // volume, em caixas (unidade separada de carros)
+  porTipo: Record<DescarregamentoTipo, number>; // qtd por tipo (inclui volume)
+  pesoKg: number; // peso descarregado
+  diversas: number; // total de receitas diversas
+  materiais: { material: string; kg: number; valor: number }[]; // top materiais de diversas
+}
+
+/**
+ * Detalhe por mês para explicar POR QUE um mês rendeu mais que o outro: junta a
+ * receita total com os drivers do descarrego (carros por tipo + peso) e a quebra
+ * de diversas por material. Alinhado aos meses da série de receita.
+ */
+export async function carregarReceitasDrivers(qtdMeses = 6): Promise<MesReceitaDetalhe[]> {
+  const [receita, desc, diversas] = await Promise.all([
+    serieReceitasMensais(qtdMeses),
+    serieDescarregoMensal(qtdMeses),
+    serieDiversasPorMaterialMensal(),
+  ]);
+  const descPorMes = new Map(desc.map((d) => [d.mes, d]));
+  const divPorMes = new Map<string, { material: string; kg: number; valor: number }[]>();
+  const divTotalPorMes = new Map<string, number>();
+  for (const d of diversas) {
+    const arr = divPorMes.get(d.mes) ?? [];
+    arr.push({ material: d.material, kg: d.kg, valor: d.valor });
+    divPorMes.set(d.mes, arr);
+    divTotalPorMes.set(d.mes, (divTotalPorMes.get(d.mes) ?? 0) + d.valor);
+  }
+  return receita.map((r) => {
+    const d = descPorMes.get(r.mes);
+    return {
+      mes: r.mes,
+      receita: r.valor,
+      carros: d?.carros ?? 0,
+      caixas: d?.caixas ?? 0,
+      porTipo: d?.porTipo ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 },
+      pesoKg: d?.pesoKg ?? 0,
+      diversas: divTotalPorMes.get(r.mes) ?? 0,
+      materiais: (divPorMes.get(r.mes) ?? []).sort((a, b) => b.valor - a.valor).slice(0, 3),
+    };
+  });
+}
+
 // --- Descarregamento (por dia / semana / mês) --------------------------------
 
 export interface ResumoDescarregos {
@@ -195,6 +252,11 @@ export interface ResumoDescarregos {
 function semanaDoMes(iso: string): number {
   const dia = Number(iso.slice(8, 10));
   return Math.floor((dia - 1) / 7) + 1;
+}
+
+/** Série mensal de descarrego (carros, tipo, peso) — comparação no slide da TV. */
+export async function carregarSerieDescarrego(qtdMeses = 6): Promise<PontoDescarregoMensal[]> {
+  return serieDescarregoMensal(qtdMeses);
 }
 
 /** Descarregos por dia/semana/mês a partir dos totais diários. */

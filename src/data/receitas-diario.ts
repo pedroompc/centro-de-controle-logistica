@@ -28,8 +28,9 @@ function parseForm(formData: FormData) {
   const qtdPaletizado = Number(formData.get("qtd_paletizado") ?? 0);
   const qtdPalRem = Number(formData.get("qtd_pal_rem") ?? 0);
   const qtdVolume = Number(formData.get("qtd_volume") ?? 0);
-  // descarregos é a soma dos tipos — não vem mais digitado direto.
-  const descarregos = qtdBatido + qtdPaletizado + qtdPalRem + qtdVolume;
+  // "descarregos" = nº de CARROS do dia (batido + paletizado + pal-rem).
+  // Volume NÃO entra — é contado em caixas (qtd_volume), unidade separada.
+  const descarregos = qtdBatido + qtdPaletizado + qtdPalRem;
   const pesoKg = Number(formData.get("peso_kg") ?? 0);
   const receita = Number(formData.get("receita") ?? 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
@@ -60,8 +61,8 @@ function revalidar() {
 export async function criarTotalDiario(formData: FormData): Promise<void> {
   await assertAdmin();
   const f = parseForm(formData);
-  // descarregos e receita são o mínimo de um total do dia; peso pode ser 0.
-  if (!f.data || !f.descarregos || !f.receita) return;
+  // Precisa ter data, receita e ALGUMA descarga (carros OU caixas); peso pode ser 0.
+  if (!f.data || (!f.descarregos && !f.qtdVolume) || !f.receita) return;
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_descarregamento_diario").insert(toRow(f));
   if (error) throw new Error(error.message);
@@ -72,7 +73,7 @@ export async function editarTotalDiario(formData: FormData): Promise<void> {
   await assertAdmin();
   const id = String(formData.get("id") ?? "");
   const f = parseForm(formData);
-  if (!id || !f.data || !f.descarregos || !f.receita) return;
+  if (!id || !f.data || (!f.descarregos && !f.qtdVolume) || !f.receita) return;
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_descarregamento_diario").update(toRow(f)).eq("id", id);
   if (error) throw new Error(error.message);

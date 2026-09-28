@@ -5,18 +5,21 @@ import {
   corDaEscala,
   rankingMetrica,
   tetoMetrica,
+  totalMetrica,
   COR_NEUTRA,
   COR_RAMPA_MIN,
   COR_RAMPA_MAX,
 } from "@/domain/devolucoes-mapa";
 import type { CidadeDevolucao } from "@/domain/devolucoes-mapa";
-import { formatBRL, formatPercent } from "@/domain/format";
+import { formatPercent } from "@/domain/format";
 
 // Mesmo viewBox impresso por scripts/gen-geo-pe.mjs usado no mapa interativo.
 const VIEWBOX = "0 0 1000 341";
 
 // Tempo que cada card de cidade fica no ar antes de passar para a próxima.
 const CARD_MS = 4200;
+
+const inteiro = new Intl.NumberFormat("pt-BR");
 
 interface Geo {
   ibge: string;
@@ -28,8 +31,14 @@ interface Geo {
  * Mapa de PE para o Modo TV: grande, sem interação, sempre na métrica de VALOR
  * (R$ devolvido) — a leitura de "onde está o volume" à distância. Reusa a
  * geometria carregada sob demanda e as funções puras do domínio do mapa.
+ *
+ * Números em R$ não são expostos no card (decisão da diretoria: painel de
+ * logística mostra %): por cidade exibimos notas entregues / devolvidas, a participação no
+ * faturamento geral,
+ * a taxa de devolução e o motivo predominante. `faturamentoGeral` é a venda
+ * faturada total do mês (denominador da participação).
  */
-export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
+export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeDevolucao[]; faturamentoGeral: number }) {
   const [geo, setGeo] = useState<Geo[] | null>(null);
 
   useEffect(() => {
@@ -45,7 +54,7 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
 
   const teto = tetoMetrica(cidades, "valor");
   const ranking = rankingMetrica(cidades, "valor");
-  const totalDevolvido = cidades.reduce((s, c) => s + c.devolvido, 0);
+  const taxaGeralPE = totalMetrica(cidades, "taxa"); // devolvido / faturado de PE
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
 
   // Card rotativo: passa por cada cidade (maior volume → menor), uma a cada
@@ -113,10 +122,10 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
       <div className="flex min-h-0 flex-col justify-center">
         <div className="mb-4 shrink-0">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-white/45">
-            Total devolvido · PE
+            Taxa de devolução · PE
           </div>
           <div className="font-[family-name:var(--font-sora)] text-4xl font-extrabold tabular-nums text-rose-300 xl:text-5xl">
-            {formatBRL(totalDevolvido)}
+            {formatPercent(taxaGeralPE)}
           </div>
         </div>
 
@@ -135,23 +144,26 @@ export default function TvMapa({ cidades }: { cidades: CidadeDevolucao[] }) {
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Faturado</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white xl:text-3xl">{formatBRL(exibida.faturado)}</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Notas entregues / devolvidas</span>
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-white xl:text-4xl">
+                  {inteiro.format(exibida.notasEntregues)}
+                  <span className="text-white/40"> / </span>
+                  <span className="text-rose-300">{inteiro.format(exibida.notasDevolvidas)}</span>
+                </span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Devolvido</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-rose-300 xl:text-3xl">{formatBRL(exibida.devolvido)}</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Do faturamento geral</span>
+                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white/80 xl:text-3xl">
+                  {formatPercent(faturamentoGeral > 0 ? exibida.faturado / faturamentoGeral : 0)}
+                </span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
                 <span className="text-sm uppercase tracking-wide text-white/50">Taxa de devolução</span>
-                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-amber-300 xl:text-4xl">{formatPercent(exibida.taxa)}</span>
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-rose-300 xl:text-4xl">{formatPercent(exibida.taxa)}</span>
               </div>
               <div>
                 <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
-                <div className="mt-1 flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 flex-1 truncate text-lg font-semibold text-amber-200 xl:text-xl" title={exibida.motivo}>{exibida.motivo}</span>
-                  <span className="shrink-0 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums text-amber-300 xl:text-xl">{formatBRL(exibida.motivoValor)}</span>
-                </div>
+                <div className="mt-1 min-w-0 truncate text-xl font-semibold text-amber-200 xl:text-2xl" title={exibida.motivo}>{exibida.motivo}</div>
               </div>
             </div>
           </div>

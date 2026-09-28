@@ -1,4 +1,54 @@
-import type { DevolucaoPorMotorista, TipoMotorista } from "./devolucoes";
+import type { DevolucaoPorMotorista, TipoMotorista, MotivoDetalhe, SetorDevolucao } from "./devolucoes";
+
+// Ordem de desempate quando dois setores empatam em valor.
+const ORDEM_SETOR: readonly SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
+
+export interface SetorPredominante {
+  setor: SetorDevolucao;
+  fracao: number; // 0..1 — quanto do R$ devolvido veio desse setor
+}
+
+/**
+ * Setor responsável predominante de uma entidade (cliente/vendedor), a partir da
+ * quebra por motivo: soma o valor por setor e devolve o de maior R$, com a fração
+ * que ele representa. Responde "essa devolução é mais comercial ou logística?".
+ * `null` se não há motivo/valor.
+ */
+export function setorPredominante(motivos: MotivoDetalhe[] | undefined): SetorPredominante | null {
+  if (!motivos || motivos.length === 0) return null;
+  const porSetor = new Map<SetorDevolucao, number>();
+  let total = 0;
+  for (const m of motivos) {
+    porSetor.set(m.setor, (porSetor.get(m.setor) ?? 0) + m.valor);
+    total += m.valor;
+  }
+  if (total <= 0) return null;
+  let melhor: SetorDevolucao = ORDEM_SETOR[0];
+  let melhorV = -1;
+  for (const s of ORDEM_SETOR) {
+    const v = porSetor.get(s) ?? 0;
+    if (v > melhorV) {
+      melhorV = v;
+      melhor = s;
+    }
+  }
+  if (melhorV <= 0) return null;
+  return { setor: melhor, fracao: melhorV / total };
+}
+
+/** Motivo isolado de maior R$ devolvido da entidade — o "porquê" específico. */
+export function motivoPredominante(motivos: MotivoDetalhe[] | undefined): string | null {
+  if (!motivos || motivos.length === 0) return null;
+  let melhor: string | null = null;
+  let melhorV = -1;
+  for (const m of motivos) {
+    if (m.valor > melhorV) {
+      melhorV = m.valor;
+      melhor = m.motivo;
+    }
+  }
+  return melhorV > 0 ? melhor : null;
+}
 
 /** Filtro em memória por texto: casa a busca contra qualquer um dos `campos`. */
 export function filtrarPorBusca<T>(

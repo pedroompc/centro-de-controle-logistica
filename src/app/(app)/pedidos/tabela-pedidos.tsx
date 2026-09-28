@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, Fragment } from "react";
 import { Card, PanelHeader } from "@/components/ui";
 import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import { formatBRL, formatKg } from "@/domain/format";
@@ -12,6 +12,13 @@ function fmtData(iso: string | null): string {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");
   return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
+// Versão curta p/ as células da tabela (dd/mm/aa) — economiza largura.
+function fmtDataCurta(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return d && m && y ? `${d}/${m}/${y.slice(2)}` : iso;
 }
 
 // Realça pedidos "parados": muitos dias no sistema e ainda não faturado/cancelado.
@@ -71,6 +78,7 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
               {pedido.temDevolucao ? "Sim" : "Não"}
             </b>
             {" · "}Motorista: <b className="text-[#141a4d]">{pedido.motorista ?? "—"}</b>
+            {" · "}Carga: <b className="text-[#141a4d]">{pedido.numcar ?? "—"}</b>
           </p>
           {pedido.temDevolucao && (
             <p className="text-slate-600">
@@ -136,21 +144,73 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
   );
 }
 
+// Checkbox de seleção. O clique não abre/fecha o detalhe da linha.
+function Marcar({ checked, indeterminado = false, onChange, label }: {
+  checked: boolean; indeterminado?: boolean; onChange: () => void; label: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminado;
+  }, [indeterminado]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      onClick={(e) => e.stopPropagation()}
+      aria-label={label}
+      className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#181d55]"
+    />
+  );
+}
+
 export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<number | null>(null);
   const [itens, setItens] = useState<Record<number, ItemPedido[]>>({});
   const [carregando, setCarregando] = useState<number | null>(null);
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
 
   const lista = useMemo(
     () => filtrarPorBusca(pedidos, busca, (p) => [
-      p.numped, p.cliente, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "",
+      p.numped, p.cliente, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
     ]),
     [pedidos, busca],
   );
 
   const totalValor = useMemo(() => lista.reduce((t, p) => t + p.valor, 0), [lista]);
   const comDev = useMemo(() => lista.filter((p) => p.temDevolucao).length, [lista]);
+
+  // Autosoma dos selecionados (mesmo os que a busca esconde continuam somando).
+  const soma = useMemo(() => {
+    let valor = 0, peso = 0, qtd = 0;
+    for (const p of pedidos) {
+      if (!selecionados.has(p.numped)) continue;
+      valor += p.valor; peso += p.peso; qtd += 1;
+    }
+    return { valor, peso, qtd };
+  }, [pedidos, selecionados]);
+
+  const visiveisMarcados = lista.filter((p) => selecionados.has(p.numped)).length;
+  const todosVisiveis = lista.length > 0 && visiveisMarcados === lista.length;
+
+  const alternar = useCallback((numped: number) => {
+    setSelecionados((s) => {
+      const n = new Set(s);
+      if (n.has(numped)) n.delete(numped); else n.add(numped);
+      return n;
+    });
+  }, []);
+
+  const alternarTodos = () => {
+    setSelecionados((s) => {
+      const n = new Set(s);
+      if (todosVisiveis) lista.forEach((p) => n.delete(p.numped));
+      else lista.forEach((p) => n.add(p.numped));
+      return n;
+    });
+  };
 
   const abrir = useCallback(async (numped: number) => {
     setAberto((a) => (a === numped ? null : numped));
@@ -170,12 +230,18 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
       <input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar pedido, cliente, motorista…"
+        placeholder="Buscar pedido, cliente, motorista, carga…"
         aria-label="Buscar pedido"
         className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50 sm:w-72"
       />
     </div>
   );
+
+  // Células compactas: a tabela cabe na tela sem rolar para o lado. Abaixo de
+  // xl, RCA e DT Pedido saem da grade (continuam no detalhe da linha).
+  const th = "px-2.5 py-3 font-semibold";
+  const td = "px-2.5 py-2.5";
+  const soXl = "hidden xl:table-cell";
 
   return (
     <Card className="overflow-hidden">
@@ -191,69 +257,88 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
-              <th className="px-3 py-3 text-left font-semibold">Pedido</th>
-              <th className="min-w-[200px] px-3 py-3 text-left font-semibold">Cliente</th>
-              <th className="px-3 py-3 text-left font-semibold">RCA</th>
-              <th className="px-3 py-3 text-left font-semibold">Cidade</th>
-              <th className="px-3 py-3 text-left font-semibold">Status</th>
-              <th className="px-3 py-3 text-right font-semibold">Dias</th>
-              <th className="px-3 py-3 text-left font-semibold">Motorista</th>
-              <th className="px-3 py-3 text-left font-semibold">DT Pedido</th>
-              <th className="px-3 py-3 text-left font-semibold">DT Faturada</th>
-              <th className="px-3 py-3 text-right font-semibold">Peso</th>
-              <th className="px-3 py-3 text-right font-semibold">Valor</th>
-              <th className="w-10 px-3 py-3" aria-label="Detalhes" />
+              <th className="w-8 py-3 pl-4 pr-1 text-left">
+                <Marcar
+                  checked={todosVisiveis}
+                  indeterminado={visiveisMarcados > 0 && !todosVisiveis}
+                  onChange={alternarTodos}
+                  label="Selecionar todos os pedidos"
+                />
+              </th>
+              <th className={`${th} text-left`}>Pedido</th>
+              <th className={`${th} text-left`}>Cliente</th>
+              <th className={`${th} ${soXl} text-left`}>RCA</th>
+              <th className={`${th} text-left`}>Cidade</th>
+              <th className={`${th} text-left`}>Status</th>
+              <th className={`${th} text-left`}>Carga</th>
+              <th className={`${th} text-left`}>Motorista</th>
+              <th className={`${th} ${soXl} text-left`}>DT Pedido</th>
+              <th className={`${th} text-left`}>DT Faturada</th>
+              <th className={`${th} text-right`}>Peso</th>
+              <th className={`${th} text-right`}>Valor</th>
+              <th className="w-8 py-3 pr-3" aria-label="Detalhes" />
             </tr>
           </thead>
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={12} className="py-12 text-center text-sm text-slate-400">
+                <td colSpan={13} className="py-12 text-center text-sm text-slate-400">
                   {busca ? `Nenhum pedido para "${busca}".` : "Nenhum pedido para os filtros selecionados."}
                 </td>
               </tr>
             ) : (
               lista.map((p) => {
                 const estaAberto = aberto === p.numped;
+                const marcado = selecionados.has(p.numped);
                 return (
                   <Fragment key={p.numped}>
                     <tr
                       onClick={() => abrir(p.numped)}
                       aria-expanded={estaAberto}
-                      className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/50 ${estaAberto ? "bg-amber-50/40" : ""}`}
+                      className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/50 ${marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}`}
                     >
-                      <td className="px-3 py-3">
+                      <td className="py-2.5 pl-4 pr-1">
+                        <Marcar checked={marcado} onChange={() => alternar(p.numped)} label={`Selecionar pedido ${p.numped}`} />
+                      </td>
+                      <td className={td}>
                         <div className="font-semibold tabular-nums text-[#141a4d]">{p.numped}</div>
                         {p.temDevolucao && <span className="mt-0.5 inline-flex rounded bg-rose-50 px-1.5 text-[9px] font-semibold text-rose-600">devolução</span>}
                       </td>
-                      <td className="px-3 py-3">
-                        <div className="max-w-[260px] truncate text-[#141a4d]">{p.cliente}</div>
+                      <td className={td}>
+                        <div className="max-w-[220px] truncate text-[#141a4d]" title={p.cliente}>{p.cliente}</div>
                         <div className="text-[10px] text-slate-400">Cód. {p.codcli}</div>
                       </td>
-                      <td className="px-3 py-3 text-slate-600">
-                        <div className="max-w-[160px] truncate">{p.rca ?? <span className="text-slate-300">—</span>}</div>
+                      <td className={`${td} ${soXl} text-slate-600`}>
+                        <div className="max-w-[130px] truncate" title={p.rca ?? undefined}>{p.rca ?? <span className="text-slate-300">—</span>}</div>
                         {p.codRca != null && <div className="text-[10px] text-slate-400">Cód. {p.codRca}</div>}
                       </td>
-                      <td className="px-3 py-3 text-slate-600">
-                        {p.cidade ?? "—"}{p.uf ? <span className="text-slate-400"> / {p.uf}</span> : null}
+                      <td className={`${td} text-slate-600`}>
+                        <div className="max-w-[130px] truncate" title={p.cidade ?? undefined}>
+                          {p.cidade ?? "—"}{p.uf ? <span className="text-slate-400"> / {p.uf}</span> : null}
+                        </div>
                       </td>
-                      <td className="px-3 py-3"><Selo posicao={p.posicao} /></td>
-                      <td className={`px-3 py-3 text-right tabular-nums ${corDias(p)}`}>{p.diasNoSistema}</td>
-                      <td className="px-3 py-3 text-slate-600">{p.motorista ?? <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-3 tabular-nums text-slate-600">{fmtData(p.data)}</td>
-                      <td className="px-3 py-3 text-slate-600">
-                        <div className="tabular-nums">{fmtData(p.dataFaturamento)}</div>
+                      <td className={td}>
+                        <Selo posicao={p.posicao} />
+                        <div className={`mt-0.5 text-[10px] tabular-nums ${corDias(p)}`}>{p.diasNoSistema} {p.diasNoSistema === 1 ? "dia" : "dias"}</div>
+                      </td>
+                      <td className={`${td} tabular-nums text-slate-600`}>{p.numcar ?? <span className="text-slate-300">—</span>}</td>
+                      <td className={`${td} text-slate-600`}>
+                        <div className="max-w-[150px] truncate" title={p.motorista ?? undefined}>{p.motorista ?? <span className="text-slate-300">—</span>}</div>
+                      </td>
+                      <td className={`${td} ${soXl} whitespace-nowrap tabular-nums text-slate-600`}>{fmtDataCurta(p.data)}</td>
+                      <td className={`${td} whitespace-nowrap text-slate-600`}>
+                        <div className="tabular-nums">{fmtDataCurta(p.dataFaturamento)}</div>
                         {p.notaFiscal != null && <div className="text-[10px] tabular-nums text-slate-400">NF {p.notaFiscal}</div>}
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatKg(p.peso)}</td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</td>
-                      <td className="px-3 py-3 text-center text-slate-400">
+                      <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-600`}>{formatKg(p.peso)}</td>
+                      <td className={`${td} whitespace-nowrap text-right font-semibold tabular-nums text-[#141a4d]`}>{formatBRL(p.valor)}</td>
+                      <td className="py-2.5 pr-3 text-center text-slate-400">
                         {estaAberto ? <IconeCima className="mx-auto h-4 w-4" /> : <IconeBaixo className="mx-auto h-4 w-4" />}
                       </td>
                     </tr>
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
-                        <td colSpan={12} className="p-0">
+                        <td colSpan={13} className="p-0">
                           <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />
                         </td>
                       </tr>
@@ -275,10 +360,12 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
         ) : (
           lista.map((p) => {
             const estaAberto = aberto === p.numped;
+            const marcado = selecionados.has(p.numped);
             return (
-              <li key={p.numped} className={estaAberto ? "bg-amber-50/40" : ""}>
+              <li key={p.numped} className={marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}>
                 <div onClick={() => abrir(p.numped)} className="cursor-pointer px-4 py-3">
                   <div className="flex items-center gap-2">
+                    <Marcar checked={marcado} onChange={() => alternar(p.numped)} label={`Selecionar pedido ${p.numped}`} />
                     <span className="font-semibold tabular-nums text-[#141a4d]">#{p.numped}</span>
                     <Selo posicao={p.posicao} />
                     {p.temDevolucao && <span className="rounded bg-rose-50 px-1.5 text-[9px] font-semibold text-rose-600">devolução</span>}
@@ -290,6 +377,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     <span>{p.cidade ?? "—"}{p.uf ? `/${p.uf}` : ""}</span>
                     <span className={corDias(p)}>{p.diasNoSistema} dias</span>
                     {p.rca && <span>RCA: {p.rca}</span>}
+                    {p.numcar != null && <span>Carga: {p.numcar}</span>}
                     {p.motorista && <span>Mot.: {p.motorista}</span>}
                     <span>Ped.: {fmtData(p.data)}</span>
                     <span>Fat.: {fmtData(p.dataFaturamento)}</span>
@@ -303,6 +391,26 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
           })
         )}
       </ul>
+
+      {/* Autosoma dos selecionados — barra flutuante no rodapé da tela. */}
+      {soma.qtd > 0 && (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-2xl bg-[#181d55] px-5 py-3 text-sm text-white shadow-2xl ring-1 ring-white/10">
+            <span className="font-semibold">
+              {soma.qtd} {soma.qtd === 1 ? "pedido selecionado" : "pedidos selecionados"}
+            </span>
+            <span className="text-white/70">Valor <b className="tabular-nums text-white">{formatBRL(soma.valor)}</b></span>
+            <span className="text-white/70">Peso <b className="tabular-nums text-white">{formatKg(soma.peso)}</b></span>
+            <button
+              type="button"
+              onClick={() => setSelecionados(new Set())}
+              className="rounded-lg bg-white/10 px-3 py-1 text-xs font-semibold transition hover:bg-white/20"
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

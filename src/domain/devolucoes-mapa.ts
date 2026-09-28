@@ -9,6 +9,7 @@ export interface LinhaCidadeDevolucao {
   cidade: string;
   faturado: number; // R$ faturado atribuído à cidade no período
   devolvido: number; // R$ devolvido (líquido, rotina 111)
+  notasEntregues: number; // nº de NFs de venda faturadas p/ a cidade no período
   notasDevolvidas: number;
   motivo: string; // motivo de devolução predominante (maior R$); "—" se sem devolução
   motivoValor: number; // R$ devolvido desse motivo
@@ -30,9 +31,10 @@ export const MIN_FATURADO_CIDADE = 5000;
 export interface BairroDevolucao {
   cidade: string;
   bairro: string;
-  faturado: number; // R$ faturado no bairro no período (contexto; NÃO vira taxa)
+  faturado: number; // R$ faturado no bairro no período (painel TV mostra taxa indicativa)
+  notasFaturadas: number; // nº de NFs de venda faturadas no bairro
   devolvido: number;
-  notas: number;
+  notas: number; // nº de notas devolvidas
   motivo: string; // motivo de devolução predominante
   motivoValor: number; // R$ devolvido desse motivo
 }

@@ -19,6 +19,7 @@ export interface PedidoConsulta {
   rca: string | null; // vendedor (PCUSUARI.NOME)
   posicao: string; // PCPEDC.POSICAO cru
   codMotorista: number | null;
+  numcar: number | null; // nº do carregamento (PCPEDC.NUMCAR); null antes da montagem
   motorista: string | null;
   dataFaturamento: string | null; // quando foi faturado (ISO) ou null
   notaFiscal: number | null; // nº da NF (PCNFSAID.NUMNOTA) quando faturado
