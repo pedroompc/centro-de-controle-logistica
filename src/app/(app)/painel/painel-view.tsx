@@ -64,13 +64,15 @@ function deltaPct(atual: number, ant: number | undefined, maiorEhBom: boolean, p
     positivo: maiorEhBom ? frac >= 0 : frac <= 0,
   };
 }
-// Para uma TAXA, "p.p." confunde na TV. Mostramos o valor do mês passado direto
-// ("vs Ago 3,9%"); a seta e a cor dão a direção. `maiorEhBom=false` na devolução.
+// Para uma TAXA, compara % com %: a diferença direta entre as taxas (5,3% hoje vs
+// 3,9% no mês passado → "+1,4% vs Ago"). Sem "p.p." (confunde na TV). A seta e a
+// cor dão a direção. `maiorEhBom=false` na devolução.
 function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string) {
   if (antFrac === undefined) return undefined;
-  const subiu = atualFrac > antFrac;
+  const dif = atualFrac - antFrac;
+  const subiu = dif > 0;
   return {
-    texto: `vs ${prevLabel} ${formatPercent(antFrac)}`,
+    texto: `${dif >= 0 ? "+" : "−"}${formatPercent(Math.abs(dif))} vs ${prevLabel}`,
     subindo: subiu,
     positivo: maiorEhBom ? subiu : !subiu,
   };
