@@ -19,6 +19,8 @@ const VIEWBOX = "0 0 1000 341";
 // Tempo que cada card de cidade fica no ar antes de passar para a próxima.
 const CARD_MS = 4200;
 
+const inteiro = new Intl.NumberFormat("pt-BR");
+
 interface Geo {
   ibge: string;
   nome: string;
@@ -31,7 +33,8 @@ interface Geo {
  * geometria carregada sob demanda e as funções puras do domínio do mapa.
  *
  * Números em R$ não são expostos no card (decisão da diretoria: painel de
- * logística mostra %): por cidade exibimos a participação no faturamento geral,
+ * logística mostra %): por cidade exibimos notas entregues / devolvidas, a participação no
+ * faturamento geral,
  * a taxa de devolução e o motivo predominante. `faturamentoGeral` é a venda
  * faturada total do mês (denominador da participação).
  */
@@ -52,9 +55,6 @@ export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeD
   const teto = tetoMetrica(cidades, "valor");
   const ranking = rankingMetrica(cidades, "valor");
   const taxaGeralPE = totalMetrica(cidades, "taxa"); // devolvido / faturado de PE
-  // Faturado total de PE = soma das cidades. Numerador e denominador vêm da MESMA
-  // fonte, então o "peso em PE" de todas as cidades soma exatamente 100%.
-  const totalFaturadoPE = cidades.reduce((s, c) => s + c.faturado, 0);
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
 
   // Card rotativo: passa por cada cidade (maior volume → menor), uma a cada
@@ -144,9 +144,11 @@ export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeD
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Peso em Pernambuco</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Notas entregues / devolvidas</span>
                 <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-white xl:text-4xl">
-                  {formatPercent(totalFaturadoPE > 0 ? exibida.faturado / totalFaturadoPE : 0)}
+                  {inteiro.format(exibida.notasEntregues)}
+                  <span className="text-white/40"> / </span>
+                  <span className="text-rose-300">{inteiro.format(exibida.notasDevolvidas)}</span>
                 </span>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
