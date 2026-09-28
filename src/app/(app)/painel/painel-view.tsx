@@ -119,7 +119,7 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slid
   if (dev.porMotivo.length > 0)
     s.push({ id: "motivos", titulo: "Motivos de devolução", contexto: "participação de cada motivo no total devolvido", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoMotivos porMotivo={dev.porMotivo} /> });
   if (d.bairrosRMR.length > 0)
-    s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "participação na cidade e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
+    s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "notas entregues / devolvidas e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.receitas)

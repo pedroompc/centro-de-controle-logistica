@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { corDaEscala, COR_NEUTRA, COR_RAMPA_MIN, COR_RAMPA_MAX } from "@/domain/devolucoes-mapa";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { classificarRegiao } from "@/domain/pe-regioes";
+import { formatPercent } from "@/domain/format";
 
 const CARD_MS = 4200; // tempo de cada card de bairro
 
@@ -40,12 +41,14 @@ function calcularViewBox(paths: Geo[]): string {
 /**
  * Mapa apenas da RMR (recorte da geometria de PE, com zoom). Colore os
  * municípios por R$ devolvido (mesma base do mapa de PE) e passa um card por
- * BAIRRO ao lado, mostrando devolvido, nº de notas e o motivo predominante +
- * o valor dele. O município do bairro em foco acende no mapa.
+ * BAIRRO ao lado, mostrando notas entregues / devolvidas e o motivo
+ * predominante. O município do bairro em foco acende no mapa. Passar o mouse
+ * num município PAUSA a rotação e mostra o card da cidade (igual ao mapa de PE).
  */
 export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao[]; bairros: BairroDevolucao[] }) {
   const [geo, setGeo] = useState<Geo[] | null>(null);
   const [idx, setIdx] = useState(0);
+  const [hoverIbge, setHoverIbge] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -58,17 +61,20 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
   }, []);
 
   useEffect(() => {
-    if (bairros.length <= 1) return;
+    if (bairros.length <= 1 || hoverIbge) return;
     const t = setInterval(() => setIdx((i) => i + 1), CARD_MS);
     return () => clearInterval(t);
-  }, [bairros.length]);
+  }, [bairros.length, hoverIbge]);
 
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
   const teto = geo
     ? geo.reduce((m, g) => Math.max(m, porIbge.get(g.ibge)?.devolvido ?? 0), 0)
     : 0;
   const bairro = bairros.length > 0 ? bairros[idx % bairros.length] : null;
-  const ibgeFoco = geo?.find((g) => norm(g.nome) === norm(bairro?.cidade ?? ""))?.ibge;
+  const hovered = hoverIbge ? porIbge.get(hoverIbge) ?? null : null; // hover manda; senão o bairro da rotação
+  const ibgeFoco = hovered
+    ? hovered.ibge
+    : geo?.find((g) => norm(g.nome) === norm(bairro?.cidade ?? ""))?.ibge;
 
   return (
     <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
@@ -86,7 +92,9 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
                   fill={fill}
                   stroke={foco ? "#ffffff" : "#0a1650"}
                   strokeWidth={foco ? 1.4 : 0.5}
-                  className="transition-[stroke-width]"
+                  onMouseEnter={() => setHoverIbge(g.ibge)}
+                  onMouseLeave={() => setHoverIbge((h) => (h === g.ibge ? null : h))}
+                  className="cursor-pointer transition-[stroke-width]"
                   style={foco ? { filter: "drop-shadow(0 0 5px rgba(255,255,255,0.7))" } : undefined}
                 />
               );
@@ -103,7 +111,30 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
       </div>
 
       <div className="flex min-h-0 flex-col justify-center">
-        {bairro ? (
+        {hovered ? (
+          // Card do município sob o cursor.
+          <div key={`cidade|${hovered.ibge}`} className="card-fade rounded-2xl bg-white/[0.06] p-6 ring-1 ring-white/10 xl:p-7">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">sob o cursor</div>
+            <div className="mt-1 truncate font-[family-name:var(--font-sora)] text-3xl font-extrabold text-white xl:text-4xl" title={hovered.cidade}>
+              {hovered.cidade}
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Notas entregues / devolvidas</span>
+                <NotasPar entregues={hovered.notasEntregues} devolvidas={hovered.notasDevolvidas} />
+              </div>
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Taxa de devolução</span>
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-rose-300 xl:text-4xl">{formatPercent(hovered.taxa)}</span>
+              </div>
+              <div>
+                <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
+                <div className="mt-1 min-w-0 truncate text-xl font-semibold text-amber-200 xl:text-2xl" title={hovered.motivo}>{hovered.motivo}</div>
+              </div>
+            </div>
+          </div>
+        ) : bairro ? (
           <div key={`${bairro.cidade}|${bairro.bairro}`} className="card-fade rounded-2xl bg-white/[0.06] p-6 ring-1 ring-white/10 xl:p-7">
             <div className="flex items-baseline justify-between gap-3">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
@@ -118,12 +149,8 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
 
             <div className="mt-6 space-y-4">
               <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Notas devolvidas</span>
-                <span className="font-[family-name:var(--font-sora)] text-4xl font-extrabold tabular-nums text-rose-300 xl:text-5xl">{inteiro.format(bairro.notas)}</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
-                <span className="text-sm uppercase tracking-wide text-white/50">Notas faturadas</span>
-                <span className="font-[family-name:var(--font-sora)] text-2xl font-bold tabular-nums text-white/80 xl:text-3xl">{inteiro.format(bairro.notasFaturadas)}</span>
+                <span className="text-sm uppercase tracking-wide text-white/50">Notas entregues / devolvidas</span>
+                <NotasPar entregues={bairro.notasFaturadas} devolvidas={bairro.notas} />
               </div>
               <div>
                 <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
@@ -141,5 +168,16 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
         .card-fade { animation: cardFade 0.45s ease-out both; }
       `}</style>
     </div>
+  );
+}
+
+/** "entregues / devolvidas" — devolvidas em rosa, como no mapa de PE. */
+function NotasPar({ entregues, devolvidas }: { entregues: number; devolvidas: number }) {
+  return (
+    <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-white xl:text-4xl">
+      {inteiro.format(entregues)}
+      <span className="text-white/40"> / </span>
+      <span className="text-rose-300">{inteiro.format(devolvidas)}</span>
+    </span>
   );
 }
