@@ -108,3 +108,15 @@ Mesma base de movimentos (`CTE_MOVIMENTOS` em `src/data/wms.ts`: `MOVIMENT_END_5
   `mov/h` = movimentos ÷ (horas da faixa × dias), para faixas de tamanhos diferentes serem comparáveis.
 - **Dia da semana × hora**: média por dia daquele dia da semana (dia ISO via `TRUNC(d) - TRUNC(d,'IW')`, sem NLS).
 - ⚠️ Usuário de sistema/login compartilhado aparece como um operador — confirmar quais usuários são pessoas.
+
+## Aba "Produtos" (`/galpao?aba=produtos&mes=`)
+
+Mesma base (`CTE_MOVIMENTOS`, que agora também traz `QTD`, `END_O`, `END_D`). Uma linha por produto do mês:
+
+- **Curva ABC de movimento** (não de venda): A até 80% acumulado dos movimentos, B até 95%, C o resto.
+- **Quem**: pessoas distintas e quem mais movimentou (`STATS_MODE` do usuário).
+- **Endereço inferido dos movimentos**: picking = destino mais frequente dos abastecimentos (S); pulmões = origens distintas.
+  Troca pelo picking cadastrado (`MERC_EMPRESA_END_470`) quando V4 confirmar.
+- **Paletização**: praticada = quantidade mais comum por armazenagem (E); cadastro = `PCPRODUT.LASTROPAL × ALTURAPAL` / `QTTOTPAL`.
+- **Alertas**: classe A com picking acima do nível 01 · classe A sem picking · palete praticado ≠ cadastro (>10%).
+- ⚠️ Premissas em `docs/wms/validacao-produtos.sql`: código WMS = CODPROD, unidade de `QTD_502`, colunas de paletização.

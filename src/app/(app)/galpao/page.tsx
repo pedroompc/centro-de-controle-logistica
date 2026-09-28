@@ -4,13 +4,15 @@ import { PageHeader } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
 import { Indicadores } from "./indicadores";
 import { Operacao } from "./operacao";
+import { Produtos } from "./produtos";
 import { Gestao, NavMesGestao, mesGestao } from "./gestao";
 
-type Aba = "indicadores" | "operacao" | "gestao";
+type Aba = "indicadores" | "operacao" | "produtos" | "gestao";
 
 const ABAS: { id: Aba; rotulo: string }[] = [
   { id: "indicadores", rotulo: "Indicadores" },
   { id: "operacao", rotulo: "Operação" },
+  { id: "produtos", rotulo: "Produtos" },
   { id: "gestao", rotulo: "Gestão" },
 ];
 
@@ -20,19 +22,21 @@ export default async function GalpaoPage({
   searchParams: Promise<{ aba?: string; mes?: string; evolucao?: string }>;
 }) {
   const sp = await searchParams;
-  const aba: Aba = sp.aba === "operacao" || sp.aba === "gestao" ? sp.aba : "indicadores";
-  // Operação abre no último mês FECHADO: o corrente ainda não tem todos os dias.
+  const aba: Aba =
+    sp.aba === "operacao" || sp.aba === "produtos" || sp.aba === "gestao" ? sp.aba : "indicadores";
+  // Operação e Produtos abrem no último mês FECHADO: o corrente ainda não tem todos os dias.
   const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : mesAnterior(primeiroDiaDoMes()));
-  const hrefMes = (m: string) => `/galpao?aba=operacao&mes=${m}`;
+  const abaMensal = aba === "produtos" ? "produtos" : "operacao";
+  const hrefMes = (m: string) => `/galpao?aba=${abaMensal}&mes=${m}`;
   // Gestão tem navegação própria: compara com o ano anterior, então vai além do piso global.
   const mesG = mesGestao(sp.mes);
   const hrefAba = (a: Aba) =>
-    a === "operacao" ? hrefMes(mes) : a === "gestao" ? `/galpao?aba=gestao&mes=${mesG}` : "/galpao";
+    a === "operacao" || a === "produtos" ? `/galpao?aba=${a}&mes=${mes}` : a === "gestao" ? `/galpao?aba=gestao&mes=${mesG}` : "/galpao";
 
   return (
     <div>
       <PageHeader title="Galpão" subtitle="Eficiência do armazém · WMS Harpia">
-        {aba === "operacao" && <MesNav mes={mes} hrefFor={hrefMes} />}
+        {(aba === "operacao" || aba === "produtos") && <MesNav mes={mes} hrefFor={hrefMes} />}
         {aba === "gestao" && <NavMesGestao mes={mesG} />}
       </PageHeader>
 
@@ -54,6 +58,7 @@ export default async function GalpaoPage({
       </nav>
 
       {aba === "operacao" && <Operacao mes={mes} />}
+      {aba === "produtos" && <Produtos mes={mes} />}
       {aba === "gestao" && <Gestao mes={mesG} evolucao={sp.evolucao === "1"} />}
       {aba === "indicadores" && <Indicadores />}
     </div>
