@@ -108,3 +108,35 @@ Mesma base de movimentos (`CTE_MOVIMENTOS` em `src/data/wms.ts`: `MOVIMENT_END_5
   `mov/h` = movimentos ÷ (horas da faixa × dias), para faixas de tamanhos diferentes serem comparáveis.
 - **Dia da semana × hora**: média por dia daquele dia da semana (dia ISO via `TRUNC(d) - TRUNC(d,'IW')`, sem NLS).
 - ⚠️ Usuário de sistema/login compartilhado aparece como um operador — confirmar quais usuários são pessoas.
+
+## Painel por turno (`/galpao`) — tela principal (2026-09-28)
+
+Pedido do Pedro: **um painel só**, estilo BI, com a eficiência do galpão **por turno**:
+movimentações verticais, horizontais e separação de carga (tempo, SKU e peso médios).
+As abas anteriores (Indicadores, Operação, Gestão) saíram da navegação e ficam em
+`?aba=` com um link discreto no rodapé, até decidirmos se saem de vez.
+
+**Drill-down por clique = filtro na URL** (`?mes=&turno=&dia=&op=`). Cada clique
+(linha do turno, coluna do dia, linha do operador) adiciona um filtro, e todos os blocos
+recalculam. Clicar de novo ou no × do chip remove o filtro. Cada quebra ignora o próprio
+filtro (a tabela de turnos continua mostrando os 4 turnos com o turno escolhido em
+destaque) e respeita os demais.
+
+| Decisão | Regra |
+|---|---|
+| Turno | Pela hora (mesmas faixas da aba Operação): Manhã 07–13, Manhã+Tarde 13–17, Tarde 17–22, Noite 22–07. A sobreposição fica como faixa própria até existir turno por funcionário (BACKLOG 1). |
+| Noite × virada do dia | 00h–06h59 pertence à Noite do **dia anterior**. A query vai até o dia 2 do mês seguinte (exclusivo) para fechar a última Noite; o domínio descarta a madrugada do dia 1º (é do mês anterior). |
+| Normalização | **Por turno** = total ÷ turnos com atividade (faixa × dia). Operador: movimentos ÷ turnos em que efetivou algo. |
+| Separação por turno | Pela hora de `DT_HR_INICIO_SEPARACAO_38` (não por `DT_CARREG_PK_38`, como na aba Indicadores: os totais do mês podem diferir). Tempo = início da separação → início da conferência. **Mediana** em destaque, média e P90 ao lado, teto 12 h. |
+| SKU médio | Produtos distintos por carga nos mapas de separação (`1196 → 1195.CARGA_1195`), média simples entre as cargas. |
+| Peso médio | `PESO_CARREG_38` (unidade ainda não validada — V4). |
+| Operador × separação | O filtro de operador **não** recorta a separação: `CARREG_VEIC_38` não registra quem separou. |
+| Sem hora | Movimento sem hora de efetivação e carga sem hora de início ficam fora (não têm turno); a quantidade aparece em "Como ler". |
+
+Arquitetura: `src/domain/wms-eficiencia.ts` (`montarPainel`, puro e testado),
+`src/data/wms-eficiencia.ts` (2 queries por mês, cada uma em `tentar()`),
+`src/app/(app)/galpao/painel.tsx`. O mês abre no **corrente** (acompanhamento do dia).
+
+⚠️ Não validado no Oracle (sem acesso à rede da empresa na hora da implementação):
+a subquery de SKUs por carga (`CARGA_1195 = CARREG_PK_38`, mesma junção já usada em
+`SQL_ESTOQUE`) e o volume de linhas da query de movimentos por dia × hora × operador.

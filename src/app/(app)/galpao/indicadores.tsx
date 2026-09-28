@@ -26,8 +26,9 @@ const decimal = (v: number, casas = 1) =>
 const toneladas = (kg: number) => (kg ? `${decimal(kg / 1000)} t` : "—");
 const duracao = (min: number) => {
   if (min <= 0) return "—";
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
+  const total = Math.round(min); // arredonda antes de quebrar: evita "2h 60min"
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return h ? `${h}h ${String(m).padStart(2, "0")}min` : `${m} min`;
 };
 
