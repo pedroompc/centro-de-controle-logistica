@@ -31,7 +31,7 @@ export const MIN_FATURADO_CIDADE = 5000;
 export interface BairroDevolucao {
   cidade: string;
   bairro: string;
-  faturado: number; // R$ faturado no bairro no período (contexto; NÃO vira taxa)
+  faturado: number; // R$ faturado no bairro no período (painel TV mostra taxa indicativa)
   notasFaturadas: number; // nº de NFs de venda faturadas no bairro
   devolvido: number;
   notas: number; // nº de notas devolvidas

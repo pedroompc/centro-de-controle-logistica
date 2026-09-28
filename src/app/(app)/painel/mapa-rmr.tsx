@@ -152,6 +152,13 @@ export default function MapaRMR({ cidades, bairros }: { cidades: CidadeDevolucao
                 <span className="text-sm uppercase tracking-wide text-white/50">Notas entregues / devolvidas</span>
                 <NotasPar entregues={bairro.notasFaturadas} devolvidas={bairro.notas} />
               </div>
+              <div className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-3">
+                <span className="text-sm uppercase tracking-wide text-white/50">Taxa de devolução</span>
+                {/* Indicativa: faturado pela data de saída, devolvido pela data da devolução. */}
+                <span className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tabular-nums text-rose-300 xl:text-4xl">
+                  {bairro.faturado > 0 ? formatPercent(bairro.devolvido / bairro.faturado) : "—"}
+                </span>
+              </div>
               <div>
                 <div className="text-sm uppercase tracking-wide text-white/50">Motivo predominante</div>
                 <div className="mt-1 min-w-0 truncate text-xl font-semibold text-amber-200 xl:text-2xl" title={bairro.motivo}>{bairro.motivo}</div>
