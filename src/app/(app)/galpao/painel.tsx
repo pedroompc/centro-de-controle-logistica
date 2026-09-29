@@ -1,10 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { getBaseEficiencia } from "@/data/wms-eficiencia";
+import { getBaseEficiencia, getEstoqueGalpao, type EstoqueGalpao } from "@/data/wms-eficiencia";
 import { TETO_CARGA_MIN } from "@/data/wms";
-import { montarPainel, type FiltroEficiencia, type Fatia, type IdFaixa } from "@/domain/wms-eficiencia";
+import {
+  montarPainel, resumirOcupacao, TIPO_PICKING, TIPO_PULMAO,
+  type FiltroEficiencia, type Fatia, type IdFaixa, type Ocupacao,
+} from "@/domain/wms-eficiencia";
 import { FAIXAS_TURNO } from "@/domain/wms-operacao";
 import { formatMesAno } from "@/domain/periodo";
+import { formatPercent } from "@/domain/format";
 import { Card, SectionTitle } from "@/components/ui";
 import { CORES } from "../tendencias/widgets";
 
@@ -49,9 +53,9 @@ export function hrefPainel(p: ParamsPainel): string {
 }
 
 export async function PainelGalpao(p: ParamsPainel) {
-  const base = await getBaseEficiencia(p.mes);
+  const [base, estoque] = await Promise.all([getBaseEficiencia(p.mes), getEstoqueGalpao()]);
 
-  if (base.indisponivel.length === 2) {
+  if (base.indisponivel.length === 2 && estoque.indisponivel.length === 3) {
     return (
       <Card className="p-6">
         <p className="text-sm text-slate-500">
@@ -67,30 +71,38 @@ export async function PainelGalpao(p: ParamsPainel) {
   const turnoSel = FAIXAS_TURNO.find((f) => f.id === p.turno);
   const opSel = painel.operadores.find((o) => o.usuario === p.op);
   const ir = (mudar: Partial<ParamsPainel>) => hrefPainel({ ...p, ...mudar });
+  const filtrado = !!turnoSel || !!p.dia || p.op !== undefined;
+  const falhas = [...base.indisponivel, ...estoque.indisponivel];
 
   return (
     <div>
-      {base.indisponivel.length > 0 && (
+      {falhas.length > 0 && (
         <Card className="mb-6 border-amber-200 bg-amber-50/60 p-4">
-          <p className="text-sm text-amber-800">Parte dos dados não carregou ({base.indisponivel.join(", ")}).</p>
+          <p className="text-sm text-amber-800">Parte dos dados não carregou ({falhas.join(", ")}).</p>
         </Card>
       )}
 
       {/* Trilha do drill-down: cada filtro ativo vira um chip removível */}
       <div className="mb-5 flex flex-wrap items-center gap-2 text-sm">
         <Link href={hrefPainel({ mes: p.mes })}
-          className={`rounded-full px-3 py-1 font-semibold ${turnoSel || p.dia || p.op !== undefined ? "text-[#3d47a8] hover:underline" : "bg-[#141a4d] text-white"}`}>
-          Galpão · {formatMesAno(p.mes)}
+          className={`rounded-full px-3 py-1 font-semibold ${filtrado ? "text-[#3d47a8] hover:underline" : "bg-[#141a4d] text-white"}`}>
+          Operação geral · {formatMesAno(p.mes)}
         </Link>
         {turnoSel && <Chip rotulo={`Turno: ${turnoSel.rotulo}`} href={ir({ turno: undefined })} />}
         {p.dia && <Chip rotulo={`Dia: ${diaSemana(p.dia)} ${diaCurto(p.dia)}`} href={ir({ dia: undefined })} />}
         {p.op !== undefined && <Chip rotulo={`Operador: ${opSel?.nome ?? p.op}`} href={ir({ op: undefined })} />}
-        {!turnoSel && !p.dia && p.op === undefined && (
-          <span className="text-xs text-slate-400">Clique num turno, dia ou operador para aprofundar.</span>
+        {!filtrado && (
+          <span className="text-xs text-slate-400">Todos os turnos. Clique num turno, dia ou operador para aprofundar.</span>
         )}
       </div>
 
-      <Kpis fatia={g} filtroOperador={p.op !== undefined} />
+      <SectionTitle>{filtrado ? "Recorte selecionado" : "Operação do mês — todos os turnos"}</SectionTitle>
+      <Kpis fatia={g} filtrado={filtrado} filtroOperador={p.op !== undefined} />
+
+      <div className="mt-8">
+        <SectionTitle>Estoque — foto de agora (não muda com mês nem filtros)</SectionTitle>
+      </div>
+      <PainelEstoque estoque={estoque} />
 
       <div className="mt-8">
         <SectionTitle>Por turno — clique para filtrar</SectionTitle>
@@ -128,7 +140,8 @@ export async function PainelGalpao(p: ParamsPainel) {
         <SectionTitle>Como ler</SectionTitle>
         <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-600">
           <li><b>Turno</b> pelo horário: Manhã 07h–13h, Manhã+Tarde 13h–17h (os dois turnos no galpão; pelo horário não dá para separar), Tarde 17h–22h, Noite 22h–07h. A madrugada conta para a Noite do dia anterior.</li>
-          <li><b>Por turno</b> = total ÷ turnos com atividade (turno × dia). Assim um mês com mais dias não parece mais eficiente.</li>
+          <li>Sem filtro, os números são da <b>operação inteira</b> do mês. <b>Por dia</b> e <b>por turno</b> dividem pelo que teve atividade (turno = faixa × dia), para comparar meses e turnos de tamanhos diferentes.</li>
+          <li><b>Estoque</b>: foto de agora do WMS (não há histórico). Utilizada = posições ocupadas ÷ posições não bloqueadas. Picking = endereços tipo &apos;{TIPO_PICKING}&apos;, pulmão = tipo &apos;{TIPO_PULMAO}&apos;.</li>
           <li><b>Vertical</b> = origem ou destino acima do nível 01 (empilhadeira). <b>Horizontal</b> = origem e destino no chão.</li>
           <li><b>Separação</b>: tempo do início da separação ao início da conferência, pela hora de início. Mediana é o número principal; média e P90 ao lado. Acima de {TETO_CARGA_MIN / 60} h é descartado como carga esquecida aberta.</li>
           <li>O filtro de operador não recorta a separação: a carga não registra quem separou.</li>
@@ -151,15 +164,20 @@ function Chip({ rotulo, href }: { rotulo: string; href: string }) {
   );
 }
 
-function Kpis({ fatia, filtroOperador }: { fatia: Fatia; filtroOperador: boolean }) {
+const plural = (v: number, um: string, varios: string) => `${int(v)} ${v === 1 ? um : varios}`;
+
+function Kpis({ fatia, filtrado, filtroOperador }: { fatia: Fatia; filtrado: boolean; filtroOperador: boolean }) {
   const m = fatia.movimento;
   const s = fatia.separacao;
+  const onde = filtrado ? "no recorte" : "no mês";
+  const ritmo = (porDia: number, porTurno: number) =>
+    `${dec(porDia)} por dia · ${dec(porTurno)} por turno · ${plural(m.dias, "dia", "dias")}, ${plural(m.turnos, "turno", "turnos")} com atividade`;
   return (
     <div className="grid gap-4 md:grid-cols-3">
-      <Kpi cor={COR_VERT} titulo="Movimentações verticais" valor={dec(m.verticaisPorTurno)} unidade="por turno"
-        rodape={`${int(m.verticais)} no recorte · ${int(m.turnos)} turnos com atividade`} />
-      <Kpi cor={COR_HORIZ} titulo="Movimentações horizontais" valor={dec(m.horizontaisPorTurno)} unidade="por turno"
-        rodape={`${int(m.horizontais)} no recorte · ${int(m.turnos)} turnos com atividade`} />
+      <Kpi cor={COR_VERT} titulo="Movimentações verticais" valor={int(m.verticais)} unidade={onde}
+        rodape={ritmo(m.verticaisPorDia, m.verticaisPorTurno)} />
+      <Kpi cor={COR_HORIZ} titulo="Movimentações horizontais" valor={int(m.horizontais)} unidade={onde}
+        rodape={ritmo(m.horizontaisPorDia, m.horizontaisPorTurno)} />
       <Card className="p-5">
         <p className="text-sm font-medium text-slate-500">Separação de carga</p>
         <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">
@@ -172,11 +190,14 @@ function Kpis({ fatia, filtroOperador }: { fatia: Fatia; filtroOperador: boolean
           <div><dt className="text-slate-400">Peso médio</dt><dd className="font-semibold tabular-nums text-[#141a4d]">{kg(s.mediaPesoKg)}</dd></div>
         </dl>
         <p className="mt-2 text-xs text-slate-500">
-          {int(s.cargas)} cargas · {dec(s.cargasPorTurno)} por turno · P90 {duracao(s.tempo.p90Min)}
+          {plural(s.cargas, "carga", "cargas")} ({kg(s.pesoTotalKg)}) · {dec(s.cargasPorTurno)} por turno · P90 {duracao(s.tempo.p90Min)}
           {s.tempo.descartadas > 0 && ` · ${s.tempo.descartadas} sem tempo válido`}
           {filtroOperador && " · sem filtro de operador"}
         </p>
       </Card>
+      <p className="text-xs text-slate-500 md:col-span-3">
+        {plural(m.operadores, "pessoa efetivou", "pessoas efetivaram")} movimentos {onde}.
+      </p>
     </div>
   );
 }
@@ -190,6 +211,63 @@ function Kpi({ cor, titulo, valor, unidade, rodape }: { cor: string; titulo: str
         {valor}<span className="ml-1 text-sm font-semibold text-slate-400">{unidade}</span>
       </p>
       <p className="mt-1.5 text-xs text-slate-500">{rodape}</p>
+    </Card>
+  );
+}
+
+// Ocupação: acima de 90% o armazém perde flexibilidade (sem posição livre para receber).
+const ALERTA_OCUPACAO = 0.9;
+
+function PainelEstoque({ estoque }: { estoque: EstoqueGalpao }) {
+  const oc = resumirOcupacao(estoque.enderecos);
+  const semEnderecos = estoque.enderecos.length === 0;
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="p-5">
+          <p className="text-sm font-medium text-slate-500">SKUs cadastrados</p>
+          <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">
+            {estoque.skusCadastrados === null ? "—" : int(estoque.skusCadastrados)}
+          </p>
+          <p className="mt-1.5 text-xs text-slate-500">
+            {estoque.skusComSaldo === null ? "saldo indisponível" : (
+              <>
+                {int(estoque.skusComSaldo)} com saldo
+                {estoque.skusCadastrados ? ` (${formatPercent(estoque.skusComSaldo / estoque.skusCadastrados)})` : ""}
+                {estoque.skusSemSaida90d !== null && ` · ${int(estoque.skusSemSaida90d)} sem saída há 90 dias`}
+              </>
+            )}
+          </p>
+        </Card>
+        <Medidor titulo="% utilizada do estoque" oc={semEnderecos ? null : oc.estoque} ausente="endereços indisponíveis" />
+        <Medidor titulo="% utilizada do picking" oc={oc.picking} ausente={`sem endereços do tipo '${TIPO_PICKING}'`} />
+        <Medidor titulo="% utilizada do pulmão" oc={oc.pulmao} ausente={`sem endereços do tipo '${TIPO_PULMAO}'`} />
+      </div>
+      {oc.outros.length > 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          Outros tipos de endereço (entram no total do estoque):{" "}
+          {oc.outros.map((o) => `${o.rotulo} ${formatPercent(o.taxa)} (${int(o.ocupados)}/${int(o.uteis)})`).join(" · ")}
+        </p>
+      )}
+    </>
+  );
+}
+
+function Medidor({ titulo, oc, ausente }: { titulo: string; oc: Ocupacao | null; ausente: string }) {
+  const alto = !!oc && oc.taxa >= ALERTA_OCUPACAO;
+  return (
+    <Card className="p-5">
+      <p className="text-sm font-medium text-slate-500">{titulo}</p>
+      <p className="mt-2 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">
+        {oc && oc.uteis ? formatPercent(oc.taxa) : "—"}
+        {alto && <span className="ml-2 align-middle text-xs font-semibold text-rose-600">▲ acima de {formatPercent(ALERTA_OCUPACAO, 0)}</span>}
+      </p>
+      <div className="mt-2 h-2 rounded bg-slate-100" role="img" aria-label={oc ? `${formatPercent(oc.taxa)} ocupado` : ausente}>
+        {oc && <div className="h-full rounded" style={{ width: `${Math.min(1, oc.taxa) * 100}%`, backgroundColor: alto ? "#e11d48" : COR_VERT }} />}
+      </div>
+      <p className="mt-1.5 text-xs text-slate-500">
+        {oc ? `${int(oc.ocupados)} de ${int(oc.uteis)} posições · ${int(oc.bloqueados)} bloqueadas` : ausente}
+      </p>
     </Card>
   );
 }

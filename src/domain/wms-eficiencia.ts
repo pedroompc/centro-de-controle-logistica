@@ -67,8 +67,12 @@ export interface ResumoMovimento {
   verticais: number;
   horizontais: number;
   turnos: number; // turnos com movimento (faixa × dia) — denominador do "por turno"
+  dias: number; // dias com movimento — denominador do "por dia"
+  operadores: number; // pessoas distintas que efetivaram movimento
   verticaisPorTurno: number;
   horizontaisPorTurno: number;
+  verticaisPorDia: number;
+  horizontaisPorDia: number;
 }
 
 export interface ResumoSeparacao {
@@ -76,6 +80,7 @@ export interface ResumoSeparacao {
   tempo: EstatisticaDuracao;
   mediaSkus: number;
   mediaPesoKg: number;
+  pesoTotalKg: number;
   turnos: number;
   cargasPorTurno: number;
 }
@@ -108,22 +113,29 @@ function resumoMovimento(linhas: (MovHoraOperador & Chaveado)[]): ResumoMoviment
   const turnos = new Set(linhas.map((l) => `${l.faixa}|${l.diaTurno}`)).size;
   const verticais = linhas.reduce((s, l) => s + l.verticais, 0);
   const horizontais = linhas.reduce((s, l) => s + l.horizontais, 0);
+  const dias = new Set(linhas.map((l) => l.diaTurno)).size;
   return {
     verticais,
     horizontais,
     turnos,
+    dias,
+    operadores: new Set(linhas.filter((l) => l.usuario !== null).map((l) => l.usuario)).size,
     verticaisPorTurno: porUnidade(verticais, turnos),
     horizontaisPorTurno: porUnidade(horizontais, turnos),
+    verticaisPorDia: porUnidade(verticais, dias),
+    horizontaisPorDia: porUnidade(horizontais, dias),
   };
 }
 
 export function resumoSeparacao(cargas: (CargaSeparada & Chaveado)[], tetoMin: number): ResumoSeparacao {
   const turnos = new Set(cargas.map((c) => `${c.faixa}|${c.diaTurno}`)).size;
+  const pesoTotalKg = cargas.reduce((s, c) => s + c.pesoKg, 0);
   return {
     cargas: cargas.length,
     tempo: estatisticaSeparacao(cargas.map((c) => c.minutos ?? NaN), tetoMin),
     mediaSkus: porUnidade(cargas.reduce((s, c) => s + c.skus, 0), cargas.length),
-    mediaPesoKg: porUnidade(cargas.reduce((s, c) => s + c.pesoKg, 0), cargas.length),
+    mediaPesoKg: porUnidade(pesoTotalKg, cargas.length),
+    pesoTotalKg,
     turnos,
     cargasPorTurno: porUnidade(cargas.length, turnos),
   };
@@ -189,5 +201,66 @@ export function montarPainel(
     cargas,
     movSemHora: semHora.reduce((s, m) => s + m.verticais + m.horizontais, 0),
     cargasSemHora: cargasBrutas.filter((c) => c.hora === null && doMes(c.dia)).length,
+  };
+}
+
+/*
+ * Ocupação do armazém — foto de HOJE (DEPOSIT_EMPRESA_END_179). O WMS não guarda
+ * histórico de ocupação, então isso não muda com o mês nem com os filtros.
+ * Útil = posição não bloqueada (STATUS_179 <> 'B'); ocupada = STATUS_179 = 'O'.
+ */
+export interface EnderecosPorTipo {
+  tipo: string; // TIPO_END_179 cru
+  total: number;
+  uteis: number;
+  ocupados: number;
+}
+
+export interface Ocupacao {
+  rotulo: string;
+  tipos: string[];
+  uteis: number;
+  ocupados: number;
+  bloqueados: number;
+  taxa: number; // ocupados ÷ úteis
+}
+
+/** Códigos de TIPO_END_179. 'M' = pulmão (spec, rodada 2). Picking ainda não confirmado. */
+export const TIPO_PULMAO = "M";
+export const TIPO_PICKING = "P";
+
+function ocupacaoDe(rotulo: string, linhas: EnderecosPorTipo[]): Ocupacao {
+  const uteis = linhas.reduce((s, l) => s + l.uteis, 0);
+  const ocupados = linhas.reduce((s, l) => s + l.ocupados, 0);
+  return {
+    rotulo,
+    tipos: linhas.map((l) => l.tipo),
+    uteis,
+    ocupados,
+    bloqueados: linhas.reduce((s, l) => s + l.total - l.uteis, 0),
+    taxa: porUnidade(ocupados, uteis),
+  };
+}
+
+/**
+ * Estoque inteiro, picking, pulmão e cada tipo não mapeado à parte — assim um
+ * código novo aparece na tela em vez de sumir dentro do total.
+ */
+export function resumirOcupacao(linhas: EnderecosPorTipo[]): {
+  estoque: Ocupacao;
+  picking: Ocupacao | null;
+  pulmao: Ocupacao | null;
+  outros: Ocupacao[];
+} {
+  const doTipo = (t: string) => linhas.filter((l) => l.tipo === t);
+  const picking = doTipo(TIPO_PICKING);
+  const pulmao = doTipo(TIPO_PULMAO);
+  return {
+    estoque: ocupacaoDe("Estoque", linhas),
+    picking: picking.length ? ocupacaoDe("Picking", picking) : null,
+    pulmao: pulmao.length ? ocupacaoDe("Pulmão", pulmao) : null,
+    outros: linhas
+      .filter((l) => l.tipo !== TIPO_PICKING && l.tipo !== TIPO_PULMAO)
+      .map((l) => ocupacaoDe(`Tipo ${l.tipo}`, [l])),
   };
 }

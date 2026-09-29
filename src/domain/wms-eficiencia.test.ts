@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  faixaDaHora, diaDoTurno, montarPainel,
+  faixaDaHora, diaDoTurno, montarPainel, resumirOcupacao,
   type MovHoraOperador, type CargaSeparada,
 } from "./wms-eficiencia";
 
@@ -80,5 +80,41 @@ describe("montarPainel", () => {
     expect(p.geral.separacao.cargas).toBe(3);
     expect(p.operadores.map((o) => o.usuario)).toEqual([2, 1]); // ranking ignora o próprio filtro
     expect(p.operadores[0].porTurno).toBeCloseTo(47 / 2);
+  });
+});
+
+describe("montarPainel — visão geral", () => {
+  it("dá o total do mês com média por dia e por turno", () => {
+    const p = montarPainel(MES, [
+      mov("2026-08-03", 8, 1, 10, 4),
+      mov("2026-08-03", 23, 2, 20, 6),
+      mov("2026-08-04", 9, 1, 30, 2),
+    ], [carga("A", "2026-08-03", 8, 60, 10, 2000), carga("B", "2026-08-04", 9, 60, 10, 3000)], {}, TETO);
+    const m = p.geral.movimento;
+    expect(m.dias).toBe(2);
+    expect(m.turnos).toBe(3);
+    expect(m.operadores).toBe(2);
+    expect(m.verticaisPorDia).toBe(30);
+    expect(m.horizontaisPorDia).toBe(6);
+    expect(p.geral.separacao.pesoTotalKg).toBe(5000);
+  });
+});
+
+describe("resumirOcupacao", () => {
+  it("separa picking e pulmão e mostra tipos não mapeados à parte", () => {
+    const r = resumirOcupacao([
+      { tipo: "P", total: 100, uteis: 90, ocupados: 72 },
+      { tipo: "M", total: 400, uteis: 380, ocupados: 342 },
+      { tipo: "X", total: 10, uteis: 10, ocupados: 1 },
+    ]);
+    expect(r.picking?.taxa).toBeCloseTo(0.8);
+    expect(r.pulmao?.taxa).toBeCloseTo(0.9);
+    expect(r.pulmao?.bloqueados).toBe(20);
+    expect(r.estoque.uteis).toBe(480);
+    expect(r.estoque.taxa).toBeCloseTo(415 / 480);
+    expect(r.outros.map((o) => o.rotulo)).toEqual(["Tipo X"]);
+  });
+  it("sem o código de picking devolve null em vez de 0%", () => {
+    expect(resumirOcupacao([{ tipo: "M", total: 1, uteis: 1, ocupados: 1 }]).picking).toBeNull();
   });
 });

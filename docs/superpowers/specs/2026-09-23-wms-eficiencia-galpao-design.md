@@ -109,6 +109,18 @@ Mesma base de movimentos (`CTE_MOVIMENTOS` em `src/data/wms.ts`: `MOVIMENT_END_5
 - **Dia da semana × hora**: média por dia daquele dia da semana (dia ISO via `TRUNC(d) - TRUNC(d,'IW')`, sem NLS).
 - ⚠️ Usuário de sistema/login compartilhado aparece como um operador — confirmar quais usuários são pessoas.
 
+## Aba "Produtos" (`/galpao?aba=produtos&mes=`)
+
+Mesma base (`CTE_MOVIMENTOS`, que agora também traz `QTD`, `END_O`, `END_D`). Uma linha por produto do mês:
+
+- **Curva ABC de movimento** (não de venda): A até 80% acumulado dos movimentos, B até 95%, C o resto.
+- **Quem**: pessoas distintas e quem mais movimentou (`STATS_MODE` do usuário).
+- **Endereço inferido dos movimentos**: picking = destino mais frequente dos abastecimentos (S); pulmões = origens distintas.
+  Troca pelo picking cadastrado (`MERC_EMPRESA_END_470`) quando V4 confirmar.
+- **Paletização**: praticada = quantidade mais comum por armazenagem (E); cadastro = `PCPRODUT.LASTROPAL × ALTURAPAL` / `QTTOTPAL`.
+- **Alertas**: classe A com picking acima do nível 01 · classe A sem picking · palete praticado ≠ cadastro (>10%).
+- ⚠️ Premissas em `docs/wms/validacao-produtos.sql`: código WMS = CODPROD, unidade de `QTD_502`, colunas de paletização.
+
 ## Painel por turno (`/galpao`) — tela principal (2026-09-28)
 
 Pedido do Pedro: **um painel só**, estilo BI, com a eficiência do galpão **por turno**:
@@ -140,3 +152,14 @@ Arquitetura: `src/domain/wms-eficiencia.ts` (`montarPainel`, puro e testado),
 ⚠️ Não validado no Oracle (sem acesso à rede da empresa na hora da implementação):
 a subquery de SKUs por carga (`CARGA_1195 = CARREG_PK_38`, mesma junção já usada em
 `SQL_ESTOQUE`) e o volume de linhas da query de movimentos por dia × hora × operador.
+
+### Painel — visão geral e estoque (2026-09-29)
+
+- **Sem filtro = operação inteira.** Os cards de movimentação mostram o **total do mês** em destaque;
+  por dia e por turno ficam embaixo como normalização. O selo do topo diz "Operação geral".
+- **Estoque (foto de agora)**, fora dos filtros e do mês — o WMS não guarda histórico de ocupação:
+  - SKUs cadastrados = `COUNT(*) MERC_EMPRESA_468` da empresa; com saldo e sem saída 90 d reaproveitam `SQL_ESTOQUE`.
+  - % utilizada = `STATUS_179='O'` ÷ `STATUS_179<>'B'` em `DEPOSIT_EMPRESA_END_179`, agrupado por `TIPO_END_179`.
+    Estoque = todos os tipos; pulmão = `'M'` (rodada 2); **picking = `'P'` NÃO confirmado**.
+    Tipos sem mapeamento aparecem numa linha à parte, para um código errado se revelar na primeira execução.
+  - Acima de 90% o medidor fica vermelho com ▲ (sem posição livre para receber).

@@ -40,6 +40,7 @@ const nivel = (col: string, virt: string) =>
 //   COM_HORA = 1 se DT_FIN_502 traz hora de verdade (DT_MOVIMENT_502 às vezes é só data)
 //   USU      = quem efetivou (USU_EFETIV_FK_502; sem ele, quem registrou)
 //   VERT/HORIZ = 1/0 conforme o nível de origem/destino
+//   QTD/END_O/END_D = quantidade e endereços de origem/destino (aba Produtos)
 export const CTE_MOVIMENTOS = `
 WITH virt AS (
   SELECT PRIM_GRAU_END_PK_611 RUA FROM HARPIAW2.PRIM_GRAU_END_611
@@ -52,6 +53,9 @@ niv AS (
          m.TIPO_MOVIMENT_502 TIPO,
          m.MERC_PF_502 MERC,
          NVL(m.PESO_502, 0) PESO,
+         m.QTD_502 QTD,
+         m.END_PF_502 END_O,
+         m.END_DESTINO_FK_502 END_D,
          ${nivel("m.END_PF_502", "vo")} NIV_O,
          ${nivel("m.END_DESTINO_FK_502", "vd")} NIV_D
     FROM HARPIAW2.MOVIMENT_END_502 m
@@ -126,7 +130,7 @@ SELECT TO_CHAR(MES, 'YYYY-MM-DD') MES,
 // Foto de HOJE (o WMS não guarda saldo histórico por SKU).
 // "Sem saída" = SKU com saldo que não entrou em nenhuma carga dos últimos 90 dias
 // (mapa de separação 1196 → planilha 1195 → carga 38).
-const SQL_ESTOQUE = `
+export const SQL_ESTOQUE = `
 SELECT
   (SELECT COUNT(*) FROM HARPIAW2.MERC_EMPRESA_468
     WHERE EMPRESA_PF_468 = :emp AND SALDO_ESTOQ_468 > 0) SKUS,

@@ -1,8 +1,8 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { mesProximo } from "@/domain/periodo";
-import type { MovHoraOperador, CargaSeparada } from "@/domain/wms-eficiencia";
-import { CTE_MOVIMENTOS, EMPRESA, faixa, tentar } from "./wms";
+import type { MovHoraOperador, CargaSeparada, EnderecosPorTipo } from "@/domain/wms-eficiencia";
+import { CTE_MOVIMENTOS, EMPRESA, SQL_ESTOQUE, faixa, tentar } from "./wms";
 
 /*
  * Base do painel de eficiência por turno (/galpao). Duas queries por mês; todo o
@@ -78,6 +78,54 @@ export const getBaseEficiencia = cache(async (mes: string): Promise<BaseEficienc
       minutos: nulo(r.MIN_SEP),
       skus: n(r.SKUS),
       pesoKg: n(r.PESO),
+    })),
+    indisponivel: falhas,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Estoque — foto de HOJE (não depende do mês nem dos filtros do painel).
+// ---------------------------------------------------------------------------
+
+// SKUs cadastrados na empresa do WMS (com ou sem saldo).
+const SQL_SKU_CADASTRO = `
+SELECT COUNT(*) CADASTRADOS FROM HARPIAW2.MERC_EMPRESA_468 WHERE EMPRESA_PF_468 = :emp`;
+
+// Posições por tipo de endereço. Útil = não bloqueada; ocupada = STATUS 'O'.
+const SQL_ENDERECOS = `
+SELECT TIPO_END_179 TIPO,
+       COUNT(*) TOTAL,
+       SUM(CASE WHEN STATUS_179 <> 'B' THEN 1 ELSE 0 END) UTEIS,
+       SUM(CASE WHEN STATUS_179 = 'O' THEN 1 ELSE 0 END) OCUPADOS
+  FROM HARPIAW2.DEPOSIT_EMPRESA_END_179
+ WHERE EMPRESA_PF_179 = :emp
+ GROUP BY TIPO_END_179`;
+
+export interface EstoqueGalpao {
+  skusCadastrados: number | null;
+  skusComSaldo: number | null;
+  skusSemSaida90d: number | null;
+  enderecos: EnderecosPorTipo[];
+  indisponivel: string[];
+}
+
+export const getEstoqueGalpao = cache(async (): Promise<EstoqueGalpao> => {
+  const falhas: string[] = [];
+  const binds = { emp: EMPRESA };
+  const [cad, est, end] = await Promise.all([
+    tentar("SKUs cadastrados", falhas, () => queryWinthor<Record<string, unknown>>(SQL_SKU_CADASTRO, binds)),
+    tentar("SKUs com saldo", falhas, () => queryWinthor<Record<string, unknown>>(SQL_ESTOQUE, binds)),
+    tentar("ocupação de endereços", falhas, () => queryWinthor<Record<string, unknown>>(SQL_ENDERECOS, binds)),
+  ]);
+  return {
+    skusCadastrados: cad ? n(cad[0]?.CADASTRADOS) : null,
+    skusComSaldo: est ? n(est[0]?.SKUS) : null,
+    skusSemSaida90d: est ? n(est[0]?.SKUS_SEM_SAIDA) : null,
+    enderecos: (end ?? []).map((r) => ({
+      tipo: String(r.TIPO ?? "?").trim(),
+      total: n(r.TOTAL),
+      uteis: n(r.UTEIS),
+      ocupados: n(r.OCUPADOS),
     })),
     indisponivel: falhas,
   };
