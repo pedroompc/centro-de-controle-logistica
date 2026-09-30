@@ -51,7 +51,7 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
     buscarTodas((de, ate) =>
       supabase
         .from("receitas_descarregamento")
-        .select("data, tipo, quantidade, peso_kg, receita")
+        .select("data, tipo, quantidade, carros, peso_kg, receita")
         .gte("data", inicio)
         .lte("data", fim)
         .order("id")
@@ -68,6 +68,7 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
       data: String(r.data),
       tipo: r.tipo as DescarregamentoTipo,
       quantidade: r.quantidade == null ? null : Number(r.quantidade),
+      carros: r.carros == null ? null : Number(r.carros),
       pesoKg: Number(r.peso_kg),
       receita: Number(r.receita),
     })),

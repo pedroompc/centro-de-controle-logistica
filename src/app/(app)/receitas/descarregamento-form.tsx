@@ -31,6 +31,8 @@ export function DescarregamentoForm({
   const [preco, setPreco] = useState(receita?.precoPorTonelada ?? precoDe("batido"));
   const [quantidade, setQuantidade] = useState(receita?.quantidade ?? 0);
   const [precoUnidade, setPrecoUnidade] = useState(receita?.precoPorUnidade ?? precoUnidadeDe("volume"));
+  // Em quantos carros vieram as caixas. Lançamento antigo sem o dado conta 1.
+  const [carros, setCarros] = useState<number | "">(receita?.carros ?? 1);
 
   const ehVolume = tipo === "volume";
   const previa = ehVolume
@@ -120,6 +122,18 @@ export function DescarregamentoForm({
             onChange={(e) => setPrecoUnidade(Number(e.target.value))}
             className={field}
           />
+          <input
+            name="carros"
+            type="number"
+            step="1"
+            min="0"
+            required
+            placeholder="Carros"
+            title="Em quantos carros vieram essas caixas"
+            value={carros}
+            onChange={(e) => setCarros(e.target.value === "" ? "" : Number(e.target.value))}
+            className={`${field} w-24`}
+          />
         </>
       ) : (
         <input
@@ -137,7 +151,7 @@ export function DescarregamentoForm({
       <input name="observacao" defaultValue={receita?.observacao ?? ""} placeholder="Observação" className={field} />
       <span className="px-2 py-2 text-sm font-semibold text-emerald-700">
         {ehVolume
-          ? `${quantidade || 0} cx → ${temPrevia ? formatBRL(previa) : "—"}`
+          ? `${quantidade || 0} cx · ${carros || 0} ${carros === 1 ? "carro" : "carros"} → ${temPrevia ? formatBRL(previa) : "—"}`
           : `${toneladas(peso || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t → ${temPrevia ? formatBRL(previa) : "—"}`}
       </span>
       <button className="rounded-xl bg-[#181d55] px-4 py-2 font-semibold text-white transition hover:bg-[#10143f]">

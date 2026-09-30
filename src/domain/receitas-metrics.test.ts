@@ -3,14 +3,14 @@ import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
-  receitaPorDia, calcularReceitaVolume,
+  receitaPorDia, calcularReceitaVolume, carrosDoLancamento,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
   pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20,
-  minimoAplicado: 0, observacao: null, quantidade: null, precoPorUnidade: null, ...over,
+  minimoAplicado: 0, observacao: null, quantidade: null, precoPorUnidade: null, carros: null, ...over,
 });
 
 const td = (over: Partial<TotalDiarioDescarregamento>): TotalDiarioDescarregamento => ({
@@ -321,5 +321,24 @@ describe("contagem real de carros do dia (lançamento é nota, não caminhão)",
 
   it("quantidadePorTipo: o dia ajustado troca as notas pela contagem; os outros seguem 1 por linha", () => {
     expect(quantidadePorTipo(rs, [], carros)).toEqual({ batido: 1, paletizado: 1, pal_rem: 1, volume: 0 });
+  });
+});
+
+describe("carros no lançamento de Volume", () => {
+  it("volume conta os carros informados; sem informar, 1; outros tipos sempre 1", () => {
+    expect(carrosDoLancamento({ tipo: "volume", carros: 3 })).toBe(3);
+    expect(carrosDoLancamento({ tipo: "volume", carros: null })).toBe(1);
+    expect(carrosDoLancamento({ tipo: "batido", carros: 5 })).toBe(1);
+  });
+
+  it("receitaPorDia e quantidadePorTipo somam os carros do volume, notas seguem por lançamento", () => {
+    const rs = [
+      r({ data: "2026-10-01", tipo: "volume", quantidade: 500, carros: 2 }),
+      r({ data: "2026-10-01", tipo: "batido" }),
+    ];
+    const [d] = receitaPorDia(rs);
+    expect(d.descarregos).toBe(3);
+    expect(d.notas).toBe(2);
+    expect(quantidadePorTipo(rs)).toEqual({ batido: 1, paletizado: 0, pal_rem: 0, volume: 2 });
   });
 });

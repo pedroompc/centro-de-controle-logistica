@@ -12,7 +12,7 @@ import { totalDiversasDoMes, serieDiversasMensais } from "./receitas-diversas";
 import type { Receita, DescarregamentoTipo } from "@/domain/types";
 
 const COLS =
-  "id, data, fornecedor_id, peso_kg, tipo, preco_por_tonelada, quantidade, preco_por_unidade, receita, minimo_aplicado, observacao, fornecedores(nome)";
+  "id, data, fornecedor_id, peso_kg, tipo, preco_por_tonelada, quantidade, preco_por_unidade, carros, receita, minimo_aplicado, observacao, fornecedores(nome)";
 
 export interface FiltrosReceita {
   fornecedorId?: string;
@@ -104,8 +104,10 @@ function parseForm(formData: FormData) {
   const precoPorTonelada = Number(formData.get("preco_por_tonelada") ?? 0);
   const quantidade = Number(formData.get("quantidade") ?? 0);
   const precoPorUnidade = Number(formData.get("preco_por_unidade") ?? 0);
+  const carrosBruto = String(formData.get("carros") ?? "").trim();
+  const carros = carrosBruto === "" ? null : Math.max(0, Math.trunc(Number(carrosBruto)) || 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
-  return { data, fornecedorId, pesoKg, tipo, precoPorTonelada, quantidade, precoPorUnidade, observacao };
+  return { data, fornecedorId, pesoKg, tipo, precoPorTonelada, quantidade, precoPorUnidade, carros, observacao };
 }
 
 /** Valor e colunas gravadas, ramificando Volume × tipos por peso. */
@@ -122,6 +124,7 @@ function calcularEColunas(f: ReturnType<typeof parseForm>, valorMinimo: number) 
     preco_por_tonelada: ehVolume ? 0 : f.precoPorTonelada,
     quantidade: ehVolume ? f.quantidade : null,
     preco_por_unidade: ehVolume ? f.precoPorUnidade : null,
+    carros: ehVolume ? f.carros : null,
     receita,
     minimo_aplicado: valorMinimo,
     observacao: f.observacao,

@@ -87,7 +87,7 @@ export function quantidadePorTipo(
   const diasComLinha = new Set<string>();
   for (const r of rs) {
     diasComLinha.add(r.data);
-    if (!carrosPorData.has(r.data)) acc[r.tipo] += 1;
+    if (!carrosPorData.has(r.data)) acc[r.tipo] += carrosDoLancamento(r);
   }
   for (const d of diasComLinha) {
     const c = carrosPorData.get(d);
@@ -98,6 +98,14 @@ export function quantidadePorTipo(
     for (const tipo of TIPOS_DESCARREGAMENTO) acc[tipo] += t.porTipo[tipo];
   }
   return acc;
+}
+
+/**
+ * Carros de um lançamento: o Volume diz em quantos carros vieram as caixas
+ * (sem informar, 1); os outros tipos são sempre 1 por lançamento.
+ */
+export function carrosDoLancamento(r: Pick<Receita, "tipo"> & { carros?: number | null }): number {
+  return r.tipo === "volume" ? (r.carros ?? 1) : 1;
 }
 
 export interface DiaDescarregamento {
@@ -142,7 +150,7 @@ export function receitaPorDia(
   for (const r of rs) {
     const atual =
       mapa.get(r.data) ?? { data: r.data, descarregos: 0, pesoKg: 0, receita: 0, origem: "detalhado" as const, notas: 0 };
-    atual.descarregos += 1;
+    atual.descarregos += carrosDoLancamento(r);
     atual.notas! += 1;
     atual.pesoKg += r.pesoKg;
     atual.receita = arredonda2(atual.receita + r.receita);

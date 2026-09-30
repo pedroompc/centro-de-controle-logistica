@@ -5,7 +5,7 @@ import { listarPrecos } from "@/data/precos-descarregamento";
 import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin } from "@/data/auth";
 import {
-  resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas,
+  resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas, carrosDoLancamento,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes } from "@/domain/periodo";
@@ -143,7 +143,7 @@ export default async function ReceitasPage({
   const carrosIniciais = new Map<string, CarrosDia["porTipo"]>();
   for (const r of receitas) {
     const q = carrosIniciais.get(r.data) ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 };
-    q[r.tipo] += 1;
+    q[r.tipo] += carrosDoLancamento(r);
     carrosIniciais.set(r.data, q);
   }
   for (const c of carrosVisiveis) if (carrosIniciais.has(c.data)) carrosIniciais.set(c.data, { ...c.porTipo });
@@ -435,7 +435,7 @@ export default async function ReceitasPage({
                       </td>
                       <td className="px-5 py-3 tabular-nums text-slate-600">
                         {r.tipo === "volume"
-                          ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)}`
+                          ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)} · ${r.carros ?? 1} ${(r.carros ?? 1) === 1 ? "carro" : "carros"}`
                           : formatBRL(r.precoPorTonelada)}
                       </td>
                       <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(r.receita)}</td>
@@ -475,7 +475,7 @@ export default async function ReceitasPage({
                     </Pill>
                     <span className="tabular-nums">
                       {r.tipo === "volume"
-                        ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)}`
+                        ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)} · ${r.carros ?? 1} ${(r.carros ?? 1) === 1 ? "carro" : "carros"}`
                         : formatBRL(r.precoPorTonelada)}
                     </span>
                   </div>

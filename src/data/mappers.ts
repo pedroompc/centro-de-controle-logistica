@@ -98,6 +98,7 @@ export function mapReceita(row: {
   preco_por_tonelada: string | number; receita: string | number;
   minimo_aplicado: string | number; observacao: string | null;
   quantidade?: string | number | null; preco_por_unidade?: string | number | null;
+  carros?: string | number | null;
 }): Receita {
   const forn = Array.isArray(row.fornecedores) ? row.fornecedores[0] : row.fornecedores;
   return {
@@ -110,6 +111,7 @@ export function mapReceita(row: {
     precoPorTonelada: Number(row.preco_por_tonelada),
     quantidade: row.quantidade == null ? null : Number(row.quantidade),
     precoPorUnidade: row.preco_por_unidade == null ? null : Number(row.preco_por_unidade),
+    carros: row.carros == null ? null : Number(row.carros),
     receita: Number(row.receita),
     minimoAplicado: Number(row.minimo_aplicado),
     observacao: row.observacao,

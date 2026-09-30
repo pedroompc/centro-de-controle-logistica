@@ -88,6 +88,7 @@ export interface Receita {
   precoPorTonelada: number;     // 0 no Volume (n/a)
   quantidade: number | null;    // só Volume: nº de caixas
   precoPorUnidade: number | null; // só Volume: R$/caixa
+  carros: number | null;        // só Volume: em quantos carros vieram as caixas (null = 1)
   receita: number;
   minimoAplicado: number; // SNAPSHOT do mínimo vigente no lançamento
   observacao: string | null;

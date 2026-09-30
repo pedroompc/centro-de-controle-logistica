@@ -59,7 +59,7 @@ const zeroTipos = (): Record<DescarregamentoTipo, number> => ({
  * tipo e descargas de volume); peso, receita e caixas seguem dos lançamentos.
  */
 export function diariosDosLancamentos(
-  rs: Pick<Receita, "data" | "tipo" | "quantidade" | "pesoKg" | "receita">[],
+  rs: (Pick<Receita, "data" | "tipo" | "quantidade" | "pesoKg" | "receita"> & { carros?: number | null })[],
   carros: CarrosDia[] = [],
 ): TotalDiarioDescarregamento[] {
   const porData = new Map<string, TotalDiarioDescarregamento>();
@@ -69,7 +69,7 @@ export function diariosDosLancamentos(
       { id: `lancamentos-${r.data}`, data: r.data, descarregos: 0, porTipo: zeroTipos(), pesoKg: 0, pesoPorTipo: zeroTipos(), descargasVolume: 0, receita: 0, observacao: null };
     if (r.tipo === "volume") {
       d.porTipo!.volume += r.quantidade ?? 0;
-      d.descargasVolume! += 1;
+      d.descargasVolume! += r.carros ?? 1; // carros informados no lançamento; sem, 1
     } else {
       d.porTipo![r.tipo] += 1;
       d.descarregos += 1;

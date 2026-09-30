@@ -145,3 +145,15 @@ describe("diariosDosLancamentos com a contagem real de carros", () => {
     expect(agregarPorMes([d])[0].carros).toBe(2);
   });
 });
+
+describe("descargas de volume com carros no lançamento", () => {
+  it("soma os carros do lançamento de volume (sem informar, 1)", () => {
+    const [d] = diariosDosLancamentos([
+      { data: "2026-10-01", tipo: "volume", quantidade: 300, carros: 2, pesoKg: 900, receita: 240 },
+      { data: "2026-10-01", tipo: "volume", quantidade: 40, carros: null, pesoKg: 100, receita: 32 },
+    ]);
+    expect(d.descargasVolume).toBe(3);
+    expect(d.porTipo!.volume).toBe(340); // caixas
+    expect(d.descarregos).toBe(0); // volume fora dos carros de batido/paletizado/pal-rem
+  });
+});

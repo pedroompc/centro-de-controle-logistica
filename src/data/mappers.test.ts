@@ -115,6 +115,7 @@ describe("mapReceita", () => {
       precoPorTonelada: 33.33,
       quantidade: null,
       precoPorUnidade: null,
+      carros: null,
       receita: 41.13,
       minimoAplicado: 25,
       observacao: null,
@@ -140,7 +141,8 @@ describe("mapReceita", () => {
       peso_kg: "5000", tipo: "volume", preco_por_tonelada: "0", receita: "300",
       minimo_aplicado: "25", observacao: null, quantidade: "100", preco_por_unidade: "3.00",
     };
-    expect(mapReceita(row)).toMatchObject({ tipo: "volume", quantidade: 100, precoPorUnidade: 3 });
+    expect(mapReceita(row)).toMatchObject({ tipo: "volume", quantidade: 100, precoPorUnidade: 3, carros: null });
+    expect(mapReceita({ ...row, carros: "2" }).carros).toBe(2);
   });
 
   it("mapPreco lê o preço/caixa", () => {
