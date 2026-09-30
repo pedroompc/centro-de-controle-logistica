@@ -26,6 +26,8 @@ const fator = FATOR_ENCARGOS_SALARIO.toLocaleString("pt-BR");
 
 export function FuncionarioForm({ setores, inicial }: { setores: Setor[]; inicial?: Funcionario }) {
   const [aberto, setAberto] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   // Texto cru de cada rubrica: "" = não informada (vira null, mostra "—").
   const [rubricas, setRubricas] = useState<Record<keyof ComposicaoCusto, string>>(() => {
     const txt = (v: number | null | undefined) => (v == null ? "" : String(v));
@@ -57,7 +59,24 @@ export function FuncionarioForm({ setores, inicial }: { setores: Setor[]; inicia
   }
 
   return (
-    <form action={salvarFuncionario} className="grid w-full gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
+    <form
+      // Fecha ao salvar: aberto, o form parecia não ter gravado (e o React
+      // devolve os campos ao valor antigo). Erro do banco aparece aqui, em vez
+      // de sumir.
+      action={async (formData) => {
+        setSalvando(true);
+        setErro(null);
+        try {
+          const resultado = await salvarFuncionario(formData);
+          if (resultado?.erro) setErro(resultado.erro);
+          else setAberto(false);
+        } catch (e) {
+          setErro(e instanceof Error ? e.message : "Não foi possível salvar.");
+        } finally {
+          setSalvando(false);
+        }
+      }}
+      className="grid w-full gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
       {inicial && <input type="hidden" name="id" value={inicial.id} />}
       <label className="sm:col-span-2">
         <span className={lbl}>Nome</span>
@@ -118,8 +137,15 @@ export function FuncionarioForm({ setores, inicial }: { setores: Setor[]; inicia
           ))}
         </select>
       </label>
+      {erro && (
+        <p className="col-span-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          Não salvou: {erro}
+        </p>
+      )}
       <div className="col-span-full flex gap-2 pt-1">
-        <button className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]">Salvar</button>
+        <button disabled={salvando} className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f] disabled:opacity-60">
+          {salvando ? "Salvando…" : "Salvar"}
+        </button>
         <button type="button" onClick={() => setAberto(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
           Cancelar
         </button>

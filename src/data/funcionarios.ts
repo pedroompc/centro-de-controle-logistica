@@ -37,7 +37,11 @@ function rubrica(formData: FormData, campo: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export async function salvarFuncionario(formData: FormData): Promise<void> {
+/**
+ * Devolve `{ erro }` em vez de lançar: em produção o Next troca a mensagem de
+ * um erro lançado por uma genérica, e quem salva precisa ver o motivo real.
+ */
+export async function salvarFuncionario(formData: FormData): Promise<{ erro: string } | undefined> {
   await assertAdmin();
   const id = String(formData.get("id") ?? "").trim();
   const composicao = {
@@ -72,7 +76,7 @@ export async function salvarFuncionario(formData: FormData): Promise<void> {
     ? supabase.from("funcionarios").update(registro).eq("id", id)
     : supabase.from("funcionarios").insert(registro);
   const { error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) return { erro: error.message };
   revalidarEfetivo();
 }
 
