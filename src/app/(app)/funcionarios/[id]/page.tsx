@@ -4,6 +4,7 @@ import { faltasDoFuncionario, excluirFalta } from "@/data/faltas";
 import { listarSetores } from "@/data/setores";
 import { isAdmin } from "@/data/auth";
 import { formatBRL, formatDataBR } from "@/domain/format";
+import { FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge, Pill } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
 import { FuncionarioForm } from "../funcionario-form";
@@ -70,10 +71,26 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
                 <div key={r.label} className="flex items-center justify-between py-2.5">
                   <dt className="text-sm text-slate-500">{r.label}</dt>
                   <dd className="text-sm font-medium tabular-nums text-[#141a4d]">
-                    {r.valor === null ? "—" : formatBRL(r.valor)}
+                    {r.valor === null ? (
+                      "—"
+                    ) : r.label === "Salário base" ? (
+                      // No custo mensal o salário entra com os encargos.
+                      <>
+                        <span className="font-normal text-slate-400">
+                          {formatBRL(r.valor)} × {FATOR_ENCARGOS_SALARIO.toLocaleString("pt-BR")} ={" "}
+                        </span>
+                        {formatBRL(r.valor * FATOR_ENCARGOS_SALARIO)}
+                      </>
+                    ) : (
+                      formatBRL(r.valor)
+                    )}
                   </dd>
                 </div>
               ))}
+              <div className="flex items-center justify-between pt-3">
+                <dt className="text-sm font-semibold text-[#141a4d]">Custo mensal</dt>
+                <dd className="text-sm font-bold tabular-nums text-[#141a4d]">{formatBRL(funcionario.custoMensal)}</dd>
+              </div>
             </dl>
           ) : (
             <p className="text-sm text-slate-400">

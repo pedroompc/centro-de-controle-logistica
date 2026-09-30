@@ -42,6 +42,29 @@ export const RUBRICAS_FOLHA = [
 
 type RubricaChave = (typeof RUBRICAS_FOLHA)[number][0];
 
+/**
+ * Quanto o salário base custa para a empresa: salário × 1,85 (encargos sobre a
+ * folha). Só o salário leva o fator; benefícios e adicionais entram pelo valor.
+ */
+export const FATOR_ENCARGOS_SALARIO = 1.85;
+
+export type ComposicaoCusto = Pick<Funcionario, RubricaChave>;
+
+/**
+ * Custo mensal a partir das rubricas: salário base × 1,85 + as demais pelo
+ * valor. `null` quando nenhuma rubrica foi informada — aí o custo é o digitado
+ * à mão (funcionário sem composição cadastrada).
+ */
+export function custoMensalDaComposicao(c: ComposicaoCusto): number | null {
+  if (RUBRICAS_FOLHA.every(([chave]) => c[chave] === null)) return null;
+  const outras = RUBRICAS_FOLHA.filter(([chave]) => chave !== "salarioBase").reduce(
+    (total, [chave]) => total + (c[chave] ?? 0),
+    0,
+  );
+  const total = (c.salarioBase ?? 0) * FATOR_ENCARGOS_SALARIO + outras;
+  return Math.round((total + Number.EPSILON) * 100) / 100;
+}
+
 export interface ItemComposicao {
   chave: RubricaChave;
   label: string;

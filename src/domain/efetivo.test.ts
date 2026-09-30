@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fotoAtual, composicaoFolha, fotoSetorAtual, totaisEfetivoPorMes } from "./efetivo";
+import { fotoAtual, composicaoFolha, fotoSetorAtual, totaisEfetivoPorMes, custoMensalDaComposicao } from "./efetivo";
 import { absenteismoPorMes } from "./absenteismo-mensal";
 import type { Funcionario, Falta } from "./types";
 
@@ -97,5 +97,28 @@ describe("absenteismoPorMes", () => {
     expect(pontos[0].porTipo.ferias).toBe(1);
     expect(pontos[1].total).toBe(0); // agosto vazio
     expect(pontos[2].total).toBe(1);
+  });
+});
+
+describe("custoMensalDaComposicao", () => {
+  const vazio = {
+    salarioBase: null, passagem: null, alimentacao: null, planoSaude: null,
+    ajudaCusto: null, premiacao: null, adicionalNoturno: null,
+  };
+
+  it("salário × 1,85 + demais rubricas pelo valor (caso real: 1.640 + 198 + 330 = 3.562)", () => {
+    expect(custoMensalDaComposicao({ ...vazio, salarioBase: 1640, passagem: 198, alimentacao: 330, ajudaCusto: 0, adicionalNoturno: 0 })).toBe(3562);
+  });
+
+  it("o fator vale só para o salário", () => {
+    expect(custoMensalDaComposicao({ ...vazio, premiacao: 100, adicionalNoturno: 50 })).toBe(150);
+  });
+
+  it("arredonda a centavos", () => {
+    expect(custoMensalDaComposicao({ ...vazio, salarioBase: 1234.57 })).toBe(2283.95);
+  });
+
+  it("sem nenhuma rubrica: null (custo fica o digitado)", () => {
+    expect(custoMensalDaComposicao(vazio)).toBeNull();
   });
 });

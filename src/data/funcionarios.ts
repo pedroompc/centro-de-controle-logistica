@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { mapFuncionario } from "./mappers";
 import { revalidarEfetivo } from "./revalidate";
 import { assertAdmin } from "./auth";
+import { custoMensalDaComposicao } from "@/domain/efetivo";
 import type { Funcionario } from "@/domain/types";
 
 // Literal único (não concatenar): o Supabase infere as colunas a partir do tipo
@@ -28,16 +29,43 @@ export async function buscarFuncionario(id: string): Promise<Funcionario | null>
   return data ? mapFuncionario(data) : null;
 }
 
+/** Rubrica do formulário: vazio = não informada (null), não zero. */
+function rubrica(formData: FormData, campo: string): number | null {
+  const bruto = String(formData.get(campo) ?? "").trim();
+  if (bruto === "") return null;
+  const n = Number(bruto);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 export async function salvarFuncionario(formData: FormData): Promise<void> {
   await assertAdmin();
   const id = String(formData.get("id") ?? "").trim();
+  const composicao = {
+    salarioBase: rubrica(formData, "salario_base"),
+    passagem: rubrica(formData, "passagem"),
+    alimentacao: rubrica(formData, "alimentacao"),
+    planoSaude: rubrica(formData, "plano_saude"),
+    ajudaCusto: rubrica(formData, "ajuda_custo"),
+    premiacao: rubrica(formData, "premiacao"),
+    adicionalNoturno: rubrica(formData, "adicional_noturno"),
+  };
+  // Com rubricas, o custo é calculado aqui (salário × 1,85 + demais) — o valor
+  // vindo do navegador é só prévia. Sem nenhuma, vale o custo digitado.
+  const calculado = custoMensalDaComposicao(composicao);
   const registro = {
     nome: String(formData.get("nome") ?? "").trim(),
     cargo: String(formData.get("cargo") ?? "").trim(),
     setor_id: String(formData.get("setor_id") ?? ""),
-    custo_mensal: Number(formData.get("custo_mensal") ?? 0),
+    custo_mensal: calculado ?? Number(formData.get("custo_mensal") ?? 0),
     data_admissao: String(formData.get("data_admissao") ?? ""),
     status: String(formData.get("status") ?? "ativo"),
+    salario_base: composicao.salarioBase,
+    passagem: composicao.passagem,
+    alimentacao: composicao.alimentacao,
+    plano_saude: composicao.planoSaude,
+    ajuda_custo: composicao.ajudaCusto,
+    premiacao: composicao.premiacao,
+    adicional_noturno: composicao.adicionalNoturno,
   };
   const supabase = await createClient();
   const query = id
