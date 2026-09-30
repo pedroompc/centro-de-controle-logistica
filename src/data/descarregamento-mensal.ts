@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapTotalDiario } from "./mappers";
-import { agregarPorMes, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
+import { buscarTodas } from "./paginar";
+import {
+  agregarPorMes,
+  diariosDosLancamentos,
+  type PontoDescarregoMensal,
+} from "@/domain/descarregamento-tendencia";
+import type { DescarregamentoTipo } from "@/domain/types";
 import { primeiroDiaDoMes, mesAnterior, inicioFimDoMes, INICIO_HISTORICO } from "@/domain/periodo";
 
 const COLS =
@@ -11,6 +17,8 @@ const COLS =
  * corrente (em andamento). Diferente da Tendências de faturamento, que só usa
  * meses fechados: o histórico de descarrego é curto (começa em julho/2026) e o
  * gestor quer enxergar o mês corrente. A UI marca o último mês como parcial.
+ *
+ * Soma as duas formas de lançar descarrego: total do dia e por fornecedor.
  *
  * Retorna só os meses que têm lançamento — sem inventar meses zerados, que num
  * dado de digitação manual seriam "não lancei" e não "não descarreguei".
@@ -26,16 +34,39 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
   const fim = inicioFimDoMes(atual).fim; // último dia do mês corrente
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("receitas_descarregamento_diario")
-    .select(COLS)
-    .gte("data", inicio)
-    .lte("data", fim)
-    .order("data", { ascending: true });
-  if (error) throw new Error(error.message);
+  // As duas formas de lançar descarrego: total do dia e por fornecedor.
+  const [totais, lancamentos] = await Promise.all([
+    buscarTodas((de, ate) =>
+      supabase
+        .from("receitas_descarregamento_diario")
+        .select(COLS)
+        .gte("data", inicio)
+        .lte("data", fim)
+        .order("id")
+        .range(de, ate),
+    ),
+    buscarTodas((de, ate) =>
+      supabase
+        .from("receitas_descarregamento")
+        .select("data, tipo, quantidade, peso_kg, receita")
+        .gte("data", inicio)
+        .lte("data", fim)
+        .order("id")
+        .range(de, ate),
+    ),
+  ]);
 
-  const diarios = (data ?? []).map((row) =>
+  const diarios = totais.map((row) =>
     mapTotalDiario(row as Parameters<typeof mapTotalDiario>[0]),
   );
-  return agregarPorMes(diarios);
+  const porFornecedor = diariosDosLancamentos(
+    lancamentos.map((r) => ({
+      data: String(r.data),
+      tipo: r.tipo as DescarregamentoTipo,
+      quantidade: r.quantidade == null ? null : Number(r.quantidade),
+      pesoKg: Number(r.peso_kg),
+      receita: Number(r.receita),
+    })),
+  );
+  return agregarPorMes([...diarios, ...porFornecedor]);
 }

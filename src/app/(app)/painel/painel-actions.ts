@@ -8,7 +8,7 @@ import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
-import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
+import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import type { DescarregamentoTipo } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
@@ -243,7 +243,7 @@ export async function carregarReceitasDrivers(qtdMeses = 6): Promise<MesReceitaD
 
 export interface ResumoDescarregos {
   totalMes: number; // soma de carros descarregados no mês
-  receitaMes: number; // receita dos totais diários no mês
+  receitaMes: number; // receita de descarrego no mês (total do dia + por fornecedor)
   porDia: { data: string; descarregos: number }[]; // dias com lançamento, em ordem
   porSemana: { rotulo: string; descarregos: number }[]; // agrupado por semana do mês
 }
@@ -259,12 +259,20 @@ export async function carregarSerieDescarrego(qtdMeses = 6): Promise<PontoDescar
   return serieDescarregoMensal(qtdMeses);
 }
 
-/** Descarregos por dia/semana/mês a partir dos totais diários. */
+/**
+ * Descarregos (carros) por dia/semana/mês, somando total do dia e lançamento por
+ * fornecedor — o mesmo dia pode ter os dois e vira uma barra só.
+ */
 export async function carregarDescarregos(mes: string): Promise<ResumoDescarregos> {
-  const linhas = await listarTotaisDiariosDoMes(mesNorm(mes));
-  const porDia = [...linhas]
-    .sort((a, b) => a.data.localeCompare(b.data))
-    .map((l) => ({ data: l.data, descarregos: l.descarregos }));
+  const m = mesNorm(mes);
+  const [totais, lancamentos] = await Promise.all([listarTotaisDiariosDoMes(m), listarReceitasDoMes(m)]);
+  const linhas = [...totais, ...diariosDosLancamentos(lancamentos)];
+
+  const dias = new Map<string, number>();
+  for (const l of linhas) dias.set(l.data, (dias.get(l.data) ?? 0) + l.descarregos);
+  const porDia = [...dias.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([data, descarregos]) => ({ data, descarregos }));
 
   const semanas = new Map<number, number>();
   for (const l of linhas) {

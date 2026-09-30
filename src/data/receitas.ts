@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapReceita } from "./mappers";
+import { buscarTodas } from "./paginar";
 import { assertAdmin } from "./auth";
 import { calcularReceita, calcularReceitaVolume } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
@@ -67,19 +68,22 @@ export async function receitaTotalDoMes(mes: string): Promise<number> {
  */
 export async function serieReceitasMensais(qtd = 12): Promise<{ mes: string; valor: number }[]> {
   const supabase = await createClient();
+  // Sem filtro de período: passa de 1000 linhas rápido, então pagina.
   const [desc, diarios, diversas] = await Promise.all([
-    supabase.from("receitas_descarregamento").select("data, receita"),
-    supabase.from("receitas_descarregamento_diario").select("data, receita"),
+    buscarTodas((de, ate) =>
+      supabase.from("receitas_descarregamento").select("data, receita").order("id").range(de, ate),
+    ),
+    buscarTodas((de, ate) =>
+      supabase.from("receitas_descarregamento_diario").select("data, receita").order("id").range(de, ate),
+    ),
     serieDiversasMensais(),
   ]);
-  if (desc.error) throw new Error(desc.error.message);
-  if (diarios.error) throw new Error(diarios.error.message);
   const porMes = new Map<string, number>();
-  for (const r of desc.data ?? []) {
+  for (const r of desc) {
     const mes = primeiroDiaDoMes(String(r.data));
     porMes.set(mes, (porMes.get(mes) ?? 0) + Number(r.receita));
   }
-  for (const r of diarios.data ?? []) {
+  for (const r of diarios) {
     const mes = primeiroDiaDoMes(String(r.data));
     porMes.set(mes, (porMes.get(mes) ?? 0) + Number(r.receita));
   }

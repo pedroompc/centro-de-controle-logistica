@@ -71,8 +71,8 @@ export default async function DescarregoTendenciaPage() {
         <Cabecalho />
         <Card className="p-6">
           <p className="text-sm text-slate-500">
-            Ainda não há lançamentos de descarrego no período. Registre os totais diários em
-            Receitas para o comparativo começar a se formar.
+            Ainda não há lançamentos de descarrego no período. Lance o descarrego em
+            Receitas (total do dia ou por fornecedor) para o comparativo começar a se formar.
           </p>
         </Card>
       </div>

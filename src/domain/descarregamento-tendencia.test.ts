@@ -5,6 +5,7 @@ import {
   receitaMediaPorCarro,
   tipoPredominante,
   mixFracao,
+  diariosDosLancamentos,
 } from "./descarregamento-tendencia";
 import type { TotalDiarioDescarregamento } from "./types";
 
@@ -84,5 +85,37 @@ describe("métricas derivadas", () => {
     expect(soma).toBeCloseTo(1);
     expect(mix.volume).toBe(0);
     expect(mix.batido).toBeCloseTo(0.6);
+  });
+});
+
+describe("diariosDosLancamentos", () => {
+  const lanc = (data: string, tipo: "batido" | "paletizado" | "pal_rem" | "volume", pesoKg: number, receita: number, quantidade: number | null = null) =>
+    ({ data, tipo, quantidade, pesoKg, receita });
+
+  it("um dia por data: cada lançamento de carro é 1 carro; volume soma caixas", () => {
+    const dias = diariosDosLancamentos([
+      lanc("2026-09-01", "batido", 20000, 1260),
+      lanc("2026-09-01", "pal_rem", 5000, 260),
+      lanc("2026-09-01", "volume", 800, 64, 80),
+      lanc("2026-09-02", "paletizado", 10000, 300),
+    ]);
+    expect(dias).toHaveLength(2);
+    const d1 = dias.find((d) => d.data === "2026-09-01")!;
+    expect(d1.descarregos).toBe(2); // volume não é carro
+    expect(d1.porTipo).toEqual({ batido: 1, paletizado: 0, pal_rem: 1, volume: 80 });
+    expect(d1.pesoKg).toBe(25800);
+    expect(d1.receita).toBe(1584);
+  });
+
+  it("junto com totais do dia: soma as duas origens e não conta o dia duas vezes", () => {
+    const [p] = agregarPorMes([
+      diario("2026-09-01", 3, { batido: 3, paletizado: 0, pal_rem: 0, volume: 0 }, 9000, 500),
+      ...diariosDosLancamentos([lanc("2026-09-01", "batido", 20000, 1260), lanc("2026-09-03", "volume", 100, 25, 40)]),
+    ]);
+    expect(p.carros).toBe(4);
+    expect(p.carrosDetalhados).toBe(4);
+    expect(p.caixas).toBe(40);
+    expect(p.receita).toBe(1785);
+    expect(p.dias).toBe(2);
   });
 });

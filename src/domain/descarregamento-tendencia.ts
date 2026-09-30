@@ -12,10 +12,13 @@
  * total de carros e do mix, senão uma descarga de milhares de caixas viraria
  * "milhares de carros".
  *
- * A camada de dados (`src/data/descarregamento-mensal.ts`) puxa os diários e
+ * O descarrego entra no app de dois jeitos — total do dia OU lançamento por
+ * fornecedor — e a série precisa enxergar os dois. `diariosDosLancamentos`
+ * converte os lançamentos por fornecedor para o formato do total do dia; a
+ * camada de dados (`src/data/descarregamento-mensal.ts`) junta as duas origens e
  * chama `agregarPorMes`.
  */
-import type { DescarregamentoTipo, TotalDiarioDescarregamento } from "./types";
+import type { DescarregamentoTipo, Receita, TotalDiarioDescarregamento } from "./types";
 import { TIPOS_DESCARREGAMENTO, TIPOS_CARRO } from "./descarregamento";
 import { primeiroDiaDoMes } from "./periodo";
 
@@ -38,6 +41,35 @@ const zeroTipos = (): Record<DescarregamentoTipo, number> => ({
 });
 
 /**
+ * Colapsa os lançamentos por fornecedor em um "total do dia" por data, já com a
+ * quebra por tipo: cada lançamento de batido/paletizado/pal-rem é 1 carro; o de
+ * Volume soma as suas caixas (`quantidade`), nunca vira carro.
+ *
+ * Sem isso, quem lança por fornecedor em vez do total do dia vê o painel e a
+ * tendência de descarrego zerados, com a receita do mesmo mês aparecendo cheia.
+ */
+export function diariosDosLancamentos(
+  rs: Pick<Receita, "data" | "tipo" | "quantidade" | "pesoKg" | "receita">[],
+): TotalDiarioDescarregamento[] {
+  const porData = new Map<string, TotalDiarioDescarregamento>();
+  for (const r of rs) {
+    const d =
+      porData.get(r.data) ??
+      { id: `lancamentos-${r.data}`, data: r.data, descarregos: 0, porTipo: zeroTipos(), pesoKg: 0, receita: 0, observacao: null };
+    if (r.tipo === "volume") {
+      d.porTipo!.volume += r.quantidade ?? 0;
+    } else {
+      d.porTipo![r.tipo] += 1;
+      d.descarregos += 1;
+    }
+    d.pesoKg += r.pesoKg;
+    d.receita += r.receita;
+    porData.set(r.data, d);
+  }
+  return [...porData.values()];
+}
+
+/**
  * Soma os diários por mês. Carros = só os tipos de carro (batido/paletizado/
  * pal-rem); volume entra em `caixas`. Registro sem quebra por tipo (`porTipo ===
  * null`, lançamento antigo) não dá pra separar volume — o total gravado entra
@@ -45,6 +77,8 @@ const zeroTipos = (): Record<DescarregamentoTipo, number> => ({
  */
 export function agregarPorMes(diarios: TotalDiarioDescarregamento[]): PontoDescarregoMensal[] {
   const porMes = new Map<string, PontoDescarregoMensal>();
+  // Um dia com total do dia E lançamento por fornecedor conta como um dia só.
+  const diasPorMes = new Map<string, Set<string>>();
   for (const d of diarios) {
     const mes = primeiroDiaDoMes(d.data);
     const p =
@@ -52,7 +86,10 @@ export function agregarPorMes(diarios: TotalDiarioDescarregamento[]): PontoDesca
       { mes, carros: 0, carrosDetalhados: 0, caixas: 0, pesoKg: 0, receita: 0, porTipo: zeroTipos(), dias: 0 };
     p.pesoKg += d.pesoKg;
     p.receita += d.receita;
-    p.dias += 1;
+    const dias = diasPorMes.get(mes) ?? new Set<string>();
+    dias.add(d.data);
+    diasPorMes.set(mes, dias);
+    p.dias = dias.size;
     if (d.porTipo) {
       for (const t of TIPOS_DESCARREGAMENTO) p.porTipo[t] += d.porTipo[t];
       const carrosDia = TIPOS_CARRO.reduce((s, t) => s + d.porTipo![t], 0);
