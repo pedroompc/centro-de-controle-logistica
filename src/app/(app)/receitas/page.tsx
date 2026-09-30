@@ -42,12 +42,24 @@ function lerVista(bruto: string | undefined): Vista {
   return bruto === "detalhado" ? "detalhado" : "simples";
 }
 
-// Monta querystring preservando filtros e vista ao navegar entre meses.
-function qs(mes: string, f: FiltrosReceita, vista: Vista): string {
+/**
+ * Dia aberto a partir da vista Simples ("yyyy-mm-dd"). Só vale na vista
+ * Detalhado e dentro do mês exibido — um dia de outro mês daria uma tabela vazia
+ * sem explicação, então é descartado.
+ */
+function lerDia(bruto: string | undefined, mes: string, vista: Vista): string | undefined {
+  if (vista !== "detalhado" || !bruto || !/^\d{4}-\d{2}-\d{2}$/.test(bruto)) return undefined;
+  return primeiroDiaDoMes(bruto) === mes ? bruto : undefined;
+}
+
+// Monta querystring preservando filtros e vista ao navegar entre meses. O dia só
+// vai quando passado: trocar de mês ou de vista volta ao mês inteiro.
+function qs(mes: string, f: FiltrosReceita, vista: Vista, dia?: string): string {
   const p = new URLSearchParams({ mes });
   if (f.fornecedorId) p.set("fornecedor", f.fornecedorId);
   if (f.tipo) p.set("tipo", f.tipo);
   if (vista === "detalhado") p.set("vista", vista); // simples é o padrão; só marca o não-padrão
+  if (dia) p.set("dia", dia);
   return `/receitas?${p.toString()}`;
 }
 
@@ -82,7 +94,7 @@ function SeletorVista({ mes, filtros, vista }: { mes: string; filtros: FiltrosRe
 export default async function ReceitasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string; vista?: string }>;
+  searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string; vista?: string; dia?: string }>;
 }) {
   const sp = await searchParams;
   const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
@@ -91,6 +103,7 @@ export default async function ReceitasPage({
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
   };
   const vista = lerVista(sp.vista);
+  const dia = lerDia(sp.dia, mes, vista);
 
   const [receitas, fornecedores, precos, config, serie, admin, diversas, totais] = await Promise.all([
     listarReceitasDoMes(mes, filtros),
@@ -124,6 +137,8 @@ export default async function ReceitasPage({
   const pesoTotalKg = porDia.reduce((t, d) => t + d.pesoKg, 0);
   // A contagem antiga `receitas.length` ignora os totais do dia lançados direto.
   const descarregosTotal = porDia.reduce((t, d) => t + d.descarregos, 0);
+  // Só a tabela detalhada é recortada pelo dia; cards e gráficos seguem o mês.
+  const receitasTabela = dia ? receitas.filter((r) => r.data === dia) : receitas;
 
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
@@ -174,6 +189,7 @@ export default async function ReceitasPage({
           <input type="hidden" name="mes" value={mes} />
           {/* Sem isto, "Filtrar" recarrega sem `vista` e devolve o usuário ao padrão (simples). */}
           <input type="hidden" name="vista" value={vista} />
+          {dia && <input type="hidden" name="dia" value={dia} />}
           <select name="fornecedor" defaultValue={filtros.fornecedorId ?? ""} className={field}>
             <option value="">Todos os fornecedores</option>
             {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
@@ -224,7 +240,20 @@ export default async function ReceitasPage({
             <SeletorVista mes={mes} filtros={filtros} vista={vista} />
           </div>
         </div>
-        {(vista === "simples" ? porDia.length === 0 : receitas.length === 0) ? (
+        {dia && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-2.5 text-sm">
+            <span className="text-amber-900">
+              Lançamentos de <strong className="tabular-nums">{formatDataBR(dia)}</strong> · {receitasTabela.length}{" "}
+              {receitasTabela.length === 1 ? "lançamento" : "lançamentos"} ·{" "}
+              <strong className="tabular-nums">{formatBRL(receitasTabela.reduce((t, x) => t + x.receita, 0))}</strong>
+            </span>
+            <span className="flex gap-3 font-medium">
+              <Link href={qs(mes, filtros, "simples")} className="text-amber-800 hover:underline">← voltar aos dias</Link>
+              <Link href={qs(mes, filtros, "detalhado")} className="text-amber-800 hover:underline">ver o mês inteiro</Link>
+            </span>
+          </div>
+        )}
+        {(vista === "simples" ? porDia.length === 0 : receitasTabela.length === 0) ? (
           <p className="text-sm text-slate-400">Nenhum descarrego no período.</p>
         ) : vista === "simples" ? (
           <Card className="overflow-hidden">
@@ -242,8 +271,16 @@ export default async function ReceitasPage({
                 </thead>
                 <tbody>
                   {porDia.map((d) => (
-                    <tr key={d.id ?? d.data} className="border-b border-slate-50 last:border-0">
-                      <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(d.data)}</td>
+                    <tr key={d.id ?? d.data} className={`border-b border-slate-50 last:border-0 ${d.origem === "detalhado" ? "hover:bg-amber-50/40" : ""}`}>
+                      <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">
+                        {d.origem === "detalhado" ? (
+                          <Link href={qs(mes, filtros, "detalhado", d.data)} className="font-medium text-[#141a4d] underline decoration-slate-300 underline-offset-4 hover:decoration-amber-500">
+                            {formatDataBR(d.data)}
+                          </Link>
+                        ) : (
+                          formatDataBR(d.data)
+                        )}
+                      </td>
                       <td className="px-5 py-3 tabular-nums font-medium text-[#141a4d]">
                         {d.descarregos}
                         {d.origem === "total" && (
@@ -266,7 +303,9 @@ export default async function ReceitasPage({
                               </form>
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-300">detalhado</span>
+                            <Link href={qs(mes, filtros, "detalhado", d.data)} className="text-xs font-medium text-slate-400 hover:text-amber-700">
+                              ver lançamentos →
+                            </Link>
                           )}
                         </td>
                       )}
@@ -295,7 +334,13 @@ export default async function ReceitasPage({
                 <li key={d.id ?? d.data} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="tabular-nums font-medium text-[#141a4d]">{formatDataBR(d.data)}</p>
+                      {d.origem === "detalhado" ? (
+                        <Link href={qs(mes, filtros, "detalhado", d.data)} className="tabular-nums font-medium text-[#141a4d] underline decoration-slate-300 underline-offset-4">
+                          {formatDataBR(d.data)}
+                        </Link>
+                      ) : (
+                        <p className="tabular-nums font-medium text-[#141a4d]">{formatDataBR(d.data)}</p>
+                      )}
                       <p className="mt-0.5 text-xs text-slate-500">
                         {d.descarregos} descarregos
                         {d.origem === "total" ? " · total do dia" : ""} · {formatKg(d.pesoKg)}
@@ -344,7 +389,7 @@ export default async function ReceitasPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {receitas.map((r) => (
+                  {receitasTabela.map((r) => (
                     <tr key={r.id} className="border-b border-slate-50 last:border-0 align-top">
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(r.data)}</td>
                       <td className="px-5 py-3 font-medium text-[#141a4d]">{r.fornecedorNome}</td>
@@ -381,7 +426,7 @@ export default async function ReceitasPage({
 
             {/* Mobile: cards */}
             <ul className="divide-y divide-slate-100 md:hidden">
-              {receitas.map((r) => (
+              {receitasTabela.map((r) => (
                 <li key={r.id} className="px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
