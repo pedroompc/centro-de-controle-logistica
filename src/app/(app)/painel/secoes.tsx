@@ -508,8 +508,12 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
                       {TIPOS_CARRO.map((t) => (
                         <div key={t} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
                           <span className="shrink-0 text-sm font-extrabold tabular-nums text-white">{inteiro.format(m.porTipo[t])}</span>
+                          {/* Peso do tipo logo abaixo da quantidade; some quando o mês só tem total do dia (sem essa quebra). */}
+                          {m.pesoPorTipo[t] > 0 && (
+                            <span className="-mt-1 w-full shrink-0 truncate text-center text-xs font-semibold tabular-nums text-white/60">{formatKg(m.pesoPorTipo[t])}</span>
+                          )}
                           <div className="flex w-full flex-1 items-end">
-                            <div className="w-full rounded-t-md" style={{ height: `${Math.max(2, (m.porTipo[t] / sharedMaxTipo) * 100)}%`, background: TIPO_COR_TV[t] }} title={`${ROTULO_TIPO[t]}: ${inteiro.format(m.porTipo[t])} carros`} />
+                            <div className="w-full rounded-t-md" style={{ height: `${Math.max(2, (m.porTipo[t] / sharedMaxTipo) * 100)}%`, background: TIPO_COR_TV[t] }} title={`${ROTULO_TIPO[t]}: ${inteiro.format(m.porTipo[t])} carros${m.pesoPorTipo[t] > 0 ? ` · ${formatKg(m.pesoPorTipo[t])}` : ""}`} />
                           </div>
                           <span className="w-full truncate text-center text-xs font-bold text-white/85" title={ROTULO_TIPO[t]}>{ROTULO_TIPO[t]}</span>
                         </div>

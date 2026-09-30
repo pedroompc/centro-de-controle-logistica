@@ -59,6 +59,7 @@ describe("métricas derivadas", () => {
     pesoKg: 30000,
     receita: 2000,
     porTipo: { batido: 6, paletizado: 3, pal_rem: 1, volume: 500 },
+    pesoPorTipo: { batido: 18000, paletizado: 9000, pal_rem: 3000, volume: 0 },
     dias: 5,
   };
 
@@ -104,6 +105,7 @@ describe("diariosDosLancamentos", () => {
     expect(d1.descarregos).toBe(2); // volume não é carro
     expect(d1.porTipo).toEqual({ batido: 1, paletizado: 0, pal_rem: 1, volume: 80 });
     expect(d1.pesoKg).toBe(25800);
+    expect(d1.pesoPorTipo).toEqual({ batido: 20000, paletizado: 0, pal_rem: 5000, volume: 800 });
     expect(d1.receita).toBe(1584);
   });
 
@@ -117,5 +119,8 @@ describe("diariosDosLancamentos", () => {
     expect(p.caixas).toBe(40);
     expect(p.receita).toBe(1785);
     expect(p.dias).toBe(2);
+    // Peso por tipo só do que tem quebra: os 9000 kg do total do dia ficam de fora.
+    expect(p.pesoPorTipo).toEqual({ batido: 20000, paletizado: 0, pal_rem: 0, volume: 100 });
+    expect(p.pesoKg).toBe(29100);
   });
 });

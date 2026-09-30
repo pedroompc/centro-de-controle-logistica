@@ -106,6 +106,9 @@ export interface TotalDiarioDescarregamento {
   // Quando presente, tem os 4 tipos (0 onde não houve).
   porTipo: Record<DescarregamentoTipo, number> | null;
   pesoKg: number;
+  // Peso de cada tipo. O total do dia digitado não tem essa quebra (só o peso do
+  // dia); só existe quando o dia vem dos lançamentos por fornecedor.
+  pesoPorTipo?: Record<DescarregamentoTipo, number> | null;
   receita: number;
   observacao: string | null;
 }

@@ -30,6 +30,9 @@ export interface PontoDescarregoMensal {
   pesoKg: number;
   receita: number;
   porTipo: Record<DescarregamentoTipo, number>; // inclui volume, para referência
+  // Peso (kg) por tipo — só do que tem essa quebra (lançamento por fornecedor).
+  // Total do dia digitado entra em `pesoKg`, mas não aqui.
+  pesoPorTipo: Record<DescarregamentoTipo, number>;
   dias: number; // dias com lançamento
 }
 
@@ -55,7 +58,7 @@ export function diariosDosLancamentos(
   for (const r of rs) {
     const d =
       porData.get(r.data) ??
-      { id: `lancamentos-${r.data}`, data: r.data, descarregos: 0, porTipo: zeroTipos(), pesoKg: 0, receita: 0, observacao: null };
+      { id: `lancamentos-${r.data}`, data: r.data, descarregos: 0, porTipo: zeroTipos(), pesoKg: 0, pesoPorTipo: zeroTipos(), receita: 0, observacao: null };
     if (r.tipo === "volume") {
       d.porTipo!.volume += r.quantidade ?? 0;
     } else {
@@ -63,6 +66,7 @@ export function diariosDosLancamentos(
       d.descarregos += 1;
     }
     d.pesoKg += r.pesoKg;
+    d.pesoPorTipo![r.tipo] += r.pesoKg;
     d.receita += r.receita;
     porData.set(r.data, d);
   }
@@ -83,8 +87,9 @@ export function agregarPorMes(diarios: TotalDiarioDescarregamento[]): PontoDesca
     const mes = primeiroDiaDoMes(d.data);
     const p =
       porMes.get(mes) ??
-      { mes, carros: 0, carrosDetalhados: 0, caixas: 0, pesoKg: 0, receita: 0, porTipo: zeroTipos(), dias: 0 };
+      { mes, carros: 0, carrosDetalhados: 0, caixas: 0, pesoKg: 0, receita: 0, porTipo: zeroTipos(), pesoPorTipo: zeroTipos(), dias: 0 };
     p.pesoKg += d.pesoKg;
+    if (d.pesoPorTipo) for (const t of TIPOS_DESCARREGAMENTO) p.pesoPorTipo[t] += d.pesoPorTipo[t];
     p.receita += d.receita;
     const dias = diasPorMes.get(mes) ?? new Set<string>();
     dias.add(d.data);
