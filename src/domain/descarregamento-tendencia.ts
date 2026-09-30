@@ -18,7 +18,7 @@
  * camada de dados (`src/data/descarregamento-mensal.ts`) junta as duas origens e
  * chama `agregarPorMes`.
  */
-import type { DescarregamentoTipo, Receita, TotalDiarioDescarregamento } from "./types";
+import type { CarrosDia, DescarregamentoTipo, Receita, TotalDiarioDescarregamento } from "./types";
 import { TIPOS_DESCARREGAMENTO, TIPOS_CARRO } from "./descarregamento";
 import { primeiroDiaDoMes } from "./periodo";
 
@@ -53,9 +53,14 @@ const zeroTipos = (): Record<DescarregamentoTipo, number> => ({
  *
  * Sem isso, quem lança por fornecedor em vez do total do dia vê o painel e a
  * tendência de descarrego zerados, com a receita do mesmo mês aparecendo cheia.
+ *
+ * Cada lançamento é uma nota fiscal, não um caminhão. Quando o dia tem a
+ * contagem real em `carros`, ela substitui a contagem de lançamentos (carros por
+ * tipo e descargas de volume); peso, receita e caixas seguem dos lançamentos.
  */
 export function diariosDosLancamentos(
   rs: Pick<Receita, "data" | "tipo" | "quantidade" | "pesoKg" | "receita">[],
+  carros: CarrosDia[] = [],
 ): TotalDiarioDescarregamento[] {
   const porData = new Map<string, TotalDiarioDescarregamento>();
   for (const r of rs) {
@@ -73,6 +78,13 @@ export function diariosDosLancamentos(
     d.pesoPorTipo![r.tipo] += r.pesoKg;
     d.receita += r.receita;
     porData.set(r.data, d);
+  }
+  for (const c of carros) {
+    const d = porData.get(c.data);
+    if (!d) continue; // contagem de carros sem lançamento no dia não tem o que corrigir
+    for (const t of TIPOS_CARRO) d.porTipo![t] = c.porTipo[t];
+    d.descarregos = TIPOS_CARRO.reduce((s, t) => s + c.porTipo[t], 0);
+    d.descargasVolume = c.porTipo.volume;
   }
   return [...porData.values()];
 }

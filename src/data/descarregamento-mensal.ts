@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { mapTotalDiario } from "./mappers";
 import { buscarTodas } from "./paginar";
+import { listarCarrosDia } from "./carros-dia";
 import {
   agregarPorMes,
   diariosDosLancamentos,
@@ -18,7 +19,9 @@ const COLS =
  * meses fechados: o histórico de descarrego é curto (começa em julho/2026) e o
  * gestor quer enxergar o mês corrente. A UI marca o último mês como parcial.
  *
- * Soma as duas formas de lançar descarrego: total do dia e por fornecedor.
+ * Soma as duas formas de lançar descarrego: total do dia e por fornecedor. No
+ * lançamento por fornecedor, os carros vêm da contagem real do dia quando ela
+ * existe (um lançamento é uma nota, não um caminhão).
  *
  * Retorna só os meses que têm lançamento — sem inventar meses zerados, que num
  * dado de digitação manual seriam "não lancei" e não "não descarreguei".
@@ -35,7 +38,7 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
 
   const supabase = await createClient();
   // As duas formas de lançar descarrego: total do dia e por fornecedor.
-  const [totais, lancamentos] = await Promise.all([
+  const [totais, lancamentos, carros] = await Promise.all([
     buscarTodas((de, ate) =>
       supabase
         .from("receitas_descarregamento_diario")
@@ -54,6 +57,7 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
         .order("id")
         .range(de, ate),
     ),
+    listarCarrosDia(inicio, fim),
   ]);
 
   const diarios = totais.map((row) =>
@@ -67,6 +71,7 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
       pesoKg: Number(r.peso_kg),
       receita: Number(r.receita),
     })),
+    carros,
   );
   return agregarPorMes([...diarios, ...porFornecedor]);
 }

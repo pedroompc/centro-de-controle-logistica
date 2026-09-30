@@ -116,6 +116,18 @@ export interface TotalDiarioDescarregamento {
   observacao: string | null;
 }
 
+/**
+ * Carros descarregados no dia, digitados à parte. O lançamento por fornecedor é
+ * por NOTA FISCAL e um caminhão traz várias notas, então contar lançamentos
+ * infla os carros. Quando existe, substitui essa contagem no dia — valor e peso
+ * continuam vindo dos lançamentos. `porTipo.volume` = carros só de volume (não
+ * caixas).
+ */
+export interface CarrosDia {
+  data: string; // ISO "yyyy-mm-dd"
+  porTipo: Record<DescarregamentoTipo, number>;
+}
+
 export type ReceitaCategoria = "reciclagem";
 
 /**

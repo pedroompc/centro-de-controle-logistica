@@ -128,3 +128,20 @@ describe("diariosDosLancamentos", () => {
     expect(p.carros).toBe(4); // a descarga de volume não vira carro
   });
 });
+
+describe("diariosDosLancamentos com a contagem real de carros", () => {
+  it("troca carros e descargas de volume do dia; peso, receita e caixas seguem as notas", () => {
+    const lanc = (tipo: "batido" | "pal_rem" | "volume", quantidade: number | null = null) =>
+      ({ data: "2026-07-10", tipo, quantidade, pesoKg: 1000, receita: 100 });
+    const [d] = diariosDosLancamentos(
+      [lanc("batido"), lanc("batido"), lanc("batido"), lanc("pal_rem"), lanc("volume", 40)],
+      [{ data: "2026-07-10", porTipo: { batido: 1, paletizado: 0, pal_rem: 1, volume: 0 } }],
+    );
+    expect(d.descarregos).toBe(2);
+    expect(d.porTipo).toEqual({ batido: 1, paletizado: 0, pal_rem: 1, volume: 40 });
+    expect(d.descargasVolume).toBe(0);
+    expect(d.pesoKg).toBe(5000);
+    expect(d.receita).toBe(500);
+    expect(agregarPorMes([d])[0].carros).toBe(2);
+  });
+});

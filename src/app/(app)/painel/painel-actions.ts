@@ -6,6 +6,7 @@ import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
 import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
+import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
@@ -269,8 +270,13 @@ export async function carregarSerieDescarrego(qtdMeses = 6): Promise<PontoDescar
  */
 export async function carregarDescarregos(mes: string): Promise<ResumoDescarregos> {
   const m = mesNorm(mes);
-  const [totais, lancamentos] = await Promise.all([listarTotaisDiariosDoMes(m), listarReceitasDoMes(m)]);
-  const linhas = [...totais, ...diariosDosLancamentos(lancamentos)];
+  const { inicio, fim } = inicioFimDoMes(m);
+  const [totais, lancamentos, carros] = await Promise.all([
+    listarTotaisDiariosDoMes(m),
+    listarReceitasDoMes(m),
+    listarCarrosDia(inicio, fim),
+  ]);
+  const linhas = [...totais, ...diariosDosLancamentos(lancamentos, carros)];
 
   const dias = new Map<string, number>();
   for (const l of linhas) dias.set(l.data, (dias.get(l.data) ?? 0) + l.descarregos);

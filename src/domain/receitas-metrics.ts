@@ -1,4 +1,4 @@
-import type { Receita, DescarregamentoTipo, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
+import type { CarrosDia, Receita, DescarregamentoTipo, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 import { TIPOS_DESCARREGAMENTO } from "./descarregamento";
 
 /** Arredonda a 2 casas (centavos), estável para somas de dinheiro. */
@@ -70,18 +70,29 @@ export function receitaPorTipo(rs: Receita[]): Record<DescarregamentoTipo, numbe
 
 /**
  * Quantidade de carros por tipo, juntando os dois modos de lançamento:
- *   • detalhado  → cada linha é 1 carro do seu tipo;
+ *   • detalhado  → cada linha é 1 carro do seu tipo, exceto nos dias com a
+ *     contagem real de carros (`carros`), que substitui as linhas do dia;
  *   • total do dia → soma de `porTipo` (registros antigos, sem quebra, ficam de fora).
  * Diferente de `receitaPorTipo` (R$), que o total do dia não fatia por tipo.
  */
 export function quantidadePorTipo(
   rs: Receita[],
   totais: TotalDiarioDescarregamento[] = [],
+  carros: CarrosDia[] = [],
 ): Record<DescarregamentoTipo, number> {
   const acc = Object.fromEntries(
     TIPOS_DESCARREGAMENTO.map((t) => [t, 0]),
   ) as Record<DescarregamentoTipo, number>;
-  for (const r of rs) acc[r.tipo] += 1;
+  const carrosPorData = new Map(carros.map((c) => [c.data, c]));
+  const diasComLinha = new Set<string>();
+  for (const r of rs) {
+    diasComLinha.add(r.data);
+    if (!carrosPorData.has(r.data)) acc[r.tipo] += 1;
+  }
+  for (const d of diasComLinha) {
+    const c = carrosPorData.get(d);
+    if (c) for (const tipo of TIPOS_DESCARREGAMENTO) acc[tipo] += c.porTipo[tipo];
+  }
   for (const t of totais) {
     if (!t.porTipo) continue;
     for (const tipo of TIPOS_DESCARREGAMENTO) acc[tipo] += t.porTipo[tipo];
@@ -98,10 +109,15 @@ export interface DiaDescarregamento {
   origem: "detalhado" | "total";
   /** Só presente em origem "total" — é a linha editável/removível na vista Simples. */
   id?: string;
+  /** Origem "detalhado": quantos lançamentos (notas fiscais) o dia tem. */
+  notas?: number;
+  /** Origem "detalhado": `descarregos` veio da contagem real de carros, não das notas. */
+  carrosAjustados?: boolean;
 }
 
 /**
- * Colapsa os lançamentos em uma linha por dia: quantos descarregos entraram,
+ * Colapsa os lançamentos em uma linha por dia: quantos descarregos entraram
+ * (contagem real de carros do dia quando existe; senão, 1 por lançamento),
  * quanto pesaram e quanto renderam. É a leitura de quem só quer o resultado do
  * dia, sem o detalhe de fornecedor, tipo e R$/ton.
  *
@@ -120,15 +136,25 @@ export interface DiaDescarregamento {
 export function receitaPorDia(
   rs: Receita[],
   totais: TotalDiarioDescarregamento[] = [],
+  carros: CarrosDia[] = [],
 ): DiaDescarregamento[] {
   const mapa = new Map<string, DiaDescarregamento>();
   for (const r of rs) {
     const atual =
-      mapa.get(r.data) ?? { data: r.data, descarregos: 0, pesoKg: 0, receita: 0, origem: "detalhado" as const };
+      mapa.get(r.data) ?? { data: r.data, descarregos: 0, pesoKg: 0, receita: 0, origem: "detalhado" as const, notas: 0 };
     atual.descarregos += 1;
+    atual.notas! += 1;
     atual.pesoKg += r.pesoKg;
     atual.receita = arredonda2(atual.receita + r.receita);
     mapa.set(r.data, atual);
+  }
+  // Um lançamento é uma nota, não um caminhão: com a contagem real do dia, ela
+  // manda (todos os tipos, volume incluso — aqui "descarregos" é caminhão).
+  for (const c of carros) {
+    const dia = mapa.get(c.data);
+    if (!dia) continue;
+    dia.descarregos = TIPOS_DESCARREGAMENTO.reduce((s, t) => s + c.porTipo[t], 0);
+    dia.carrosAjustados = true;
   }
   // Totais diários NÃO se fundem com os derivados nem entre si: cada um é uma
   // linha própria, editável pelo id. Um dia misto vira duas linhas rotuladas.

@@ -236,7 +236,7 @@ describe("receitaPorDia", () => {
       r({ id: "b", data: "2026-07-10", pesoKg: 2500, receita: 62.5 }),
     ]);
     expect(dias).toEqual([
-      { data: "2026-07-10", descarregos: 2, pesoKg: 3500, receita: 82.5, origem: "detalhado" },
+      { data: "2026-07-10", descarregos: 2, pesoKg: 3500, receita: 82.5, origem: "detalhado", notas: 2 },
     ]);
   });
 
@@ -292,5 +292,34 @@ describe("receitaPorDia", () => {
       receitaPorDia(rs).reduce((t, d) => t + d.receita, 0),
     );
     expect(somaDosDias).toBe(receitaTotal(rs));
+  });
+});
+
+describe("contagem real de carros do dia (lançamento é nota, não caminhão)", () => {
+  const carros = [{ data: "2026-07-10", porTipo: { batido: 1, paletizado: 0, pal_rem: 1, volume: 0 } }];
+  // 5 notas no dia 10 (3 batido, 1 pal-rem, 1 volume) e 1 no dia 11.
+  const rs = [
+    r({ data: "2026-07-10", tipo: "batido", receita: 100 }),
+    r({ data: "2026-07-10", tipo: "batido", receita: 100 }),
+    r({ data: "2026-07-10", tipo: "batido", receita: 100 }),
+    r({ data: "2026-07-10", tipo: "pal_rem", receita: 50 }),
+    r({ data: "2026-07-10", tipo: "volume", receita: 25, quantidade: 40 }),
+    r({ data: "2026-07-11", tipo: "paletizado", receita: 30 }),
+  ];
+
+  it("receitaPorDia: o dia ajustado mostra os carros, guarda as notas e mantém valor e peso", () => {
+    const [d11, d10] = receitaPorDia(rs, [], carros);
+    expect(d10).toMatchObject({ data: "2026-07-10", descarregos: 2, notas: 5, carrosAjustados: true, receita: 375, pesoKg: 5000 });
+    expect(d11).toMatchObject({ data: "2026-07-11", descarregos: 1, notas: 1 });
+    expect(d11.carrosAjustados).toBeUndefined();
+  });
+
+  it("receitaPorDia: contagem de um dia sem lançamento é ignorada", () => {
+    const dias = receitaPorDia(rs, [], [{ data: "2026-07-20", porTipo: { batido: 9, paletizado: 0, pal_rem: 0, volume: 0 } }]);
+    expect(dias.map((d) => d.data)).toEqual(["2026-07-11", "2026-07-10"]);
+  });
+
+  it("quantidadePorTipo: o dia ajustado troca as notas pela contagem; os outros seguem 1 por linha", () => {
+    expect(quantidadePorTipo(rs, [], carros)).toEqual({ batido: 1, paletizado: 1, pal_rem: 1, volume: 0 });
   });
 });

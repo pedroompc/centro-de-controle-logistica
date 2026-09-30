@@ -8,7 +8,7 @@ import {
   resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
-import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico } from "@/domain/periodo";
+import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes } from "@/domain/periodo";
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
 import { DescarregamentoForm } from "./descarregamento-form";
@@ -21,6 +21,9 @@ import { ROTULO_CATEGORIA } from "@/domain/receitas-diversas";
 import { DiversaForm } from "./diversa-form";
 import { listarTotaisDiariosDoMes, removerTotalDiario } from "@/data/receitas-diario";
 import { TotalDiarioForm } from "./total-diario-form";
+import { listarCarrosDia } from "@/data/carros-dia";
+import { CarrosDiaForm } from "./carros-dia-form";
+import type { CarrosDia } from "@/domain/types";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -105,7 +108,8 @@ export default async function ReceitasPage({
   const vista = lerVista(sp.vista);
   const dia = lerDia(sp.dia, mes, vista);
 
-  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais] = await Promise.all([
+  const { inicio: inicioMes, fim: fimMes } = inicioFimDoMes(mes);
+  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia] = await Promise.all([
     listarReceitasDoMes(mes, filtros),
     listarFornecedores(),
     listarPrecos(),
@@ -114,6 +118,7 @@ export default async function ReceitasPage({
     isAdmin(),
     listarDiversasDoMes(mes),
     listarTotaisDiariosDoMes(mes),
+    listarCarrosDia(inicioMes, fimMes),
   ]);
 
   // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
@@ -126,11 +131,22 @@ export default async function ReceitasPage({
   // Totais do dia não têm fornecedor/tipo, então saem do recorte pela mesma
   // razão que as diversas.
   const totaisVisiveis = filtrandoDescarregamento ? [] : totais;
+  // Carros reais do dia valem para o dia inteiro, não para um fornecedor/tipo.
+  const carrosVisiveis = filtrandoDescarregamento ? [] : carrosDia;
 
   const resumo = resumoReceitas(receitas, diversasVisiveis, totaisVisiveis);
   const porFornecedor = receitaPorFornecedor(receitas);
   const porTipo = receitaPorTipo(receitas);
-  const porDia = receitaPorDia(receitas, totaisVisiveis);
+  const porDia = receitaPorDia(receitas, totaisVisiveis, carrosVisiveis);
+  // Valor inicial do "ajustar carros" de cada dia: a contagem salva ou, sem ela,
+  // 1 carro por lançamento do tipo (é o que a tela mostrava até então).
+  const carrosIniciais = new Map<string, CarrosDia["porTipo"]>();
+  for (const r of receitas) {
+    const q = carrosIniciais.get(r.data) ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 };
+    q[r.tipo] += 1;
+    carrosIniciais.set(r.data, q);
+  }
+  for (const c of carrosVisiveis) if (carrosIniciais.has(c.data)) carrosIniciais.set(c.data, { ...c.porTipo });
   // Somado da própria coluna, não derivado de `resumo.toneladas`: aquele valor é
   // arredondado a 2 casas de tonelada (granularidade de 10 kg) e o rodapé deixaria
   // de fechar com os kg exibidos nas linhas.
@@ -143,7 +159,7 @@ export default async function ReceitasPage({
   const barrasFornecedor = porFornecedor.map((f) => ({
     label: f.nome, value: f.valor, display: formatBRL(f.valor),
   }));
-  const porTipoQtd = quantidadePorTipo(receitas, totaisVisiveis);
+  const porTipoQtd = quantidadePorTipo(receitas, totaisVisiveis, carrosVisiveis);
   const barrasTipo = TIPOS_DESCARREGAMENTO.map((t) => ({
     label: ROTULO_TIPO[t], value: porTipo[t], display: formatBRL(porTipo[t]),
   }));
@@ -283,6 +299,11 @@ export default async function ReceitasPage({
                       </td>
                       <td className="px-5 py-3 tabular-nums font-medium text-[#141a4d]">
                         {d.descarregos}
+                        {d.carrosAjustados && (
+                          <span className="ml-2 align-middle text-[0.65rem] font-semibold uppercase tracking-wide text-amber-600" title="Carros contados à parte; o dia tem mais notas que caminhões">
+                            carros · {d.notas} {d.notas === 1 ? "nota" : "notas"}
+                          </span>
+                        )}
                         {d.origem === "total" && (
                           <span className="ml-2 align-middle text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
                             total do dia
@@ -303,9 +324,14 @@ export default async function ReceitasPage({
                               </form>
                             </div>
                           ) : (
-                            <Link href={qs(mes, filtros, "detalhado", d.data)} className="text-xs font-medium text-slate-400 hover:text-amber-700">
-                              ver lançamentos →
-                            </Link>
+                            <div className="flex flex-col items-end gap-1.5">
+                              <Link href={qs(mes, filtros, "detalhado", d.data)} className="text-xs font-medium text-slate-400 hover:text-amber-700">
+                                ver lançamentos →
+                              </Link>
+                              {!filtrandoDescarregamento && carrosIniciais.has(d.data) && (
+                                <CarrosDiaForm data={d.data} inicial={carrosIniciais.get(d.data)!} ajustado={Boolean(d.carrosAjustados)} />
+                              )}
+                            </div>
                           )}
                         </td>
                       )}
@@ -342,12 +368,18 @@ export default async function ReceitasPage({
                         <p className="tabular-nums font-medium text-[#141a4d]">{formatDataBR(d.data)}</p>
                       )}
                       <p className="mt-0.5 text-xs text-slate-500">
-                        {d.descarregos} descarregos
+                        {d.descarregos} {d.carrosAjustados ? "carros" : "descarregos"}
+                        {d.carrosAjustados ? ` (${d.notas} notas)` : ""}
                         {d.origem === "total" ? " · total do dia" : ""} · {formatKg(d.pesoKg)}
                       </p>
                     </div>
                     <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{formatBRL(d.receita)}</span>
                   </div>
+                  {admin && d.origem === "detalhado" && !filtrandoDescarregamento && carrosIniciais.has(d.data) && (
+                    <div className="mt-2.5">
+                      <CarrosDiaForm data={d.data} inicial={carrosIniciais.get(d.data)!} ajustado={Boolean(d.carrosAjustados)} />
+                    </div>
+                  )}
                   {admin && d.origem === "total" && d.id && (
                     <div className="mt-2.5 flex items-center gap-2">
                       <TotalDiarioForm mes={mes} total={totaisVisiveis.find((t) => t.id === d.id)} />
