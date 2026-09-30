@@ -109,6 +109,9 @@ export interface TotalDiarioDescarregamento {
   // Peso de cada tipo. O total do dia digitado não tem essa quebra (só o peso do
   // dia); só existe quando o dia vem dos lançamentos por fornecedor.
   pesoPorTipo?: Record<DescarregamentoTipo, number> | null;
+  // Quantas descargas de Volume (lançamentos) — `porTipo.volume` conta caixas.
+  // Mesma origem de `pesoPorTipo`: o total do dia digitado não tem.
+  descargasVolume?: number;
   receita: number;
   observacao: string | null;
 }

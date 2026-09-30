@@ -13,7 +13,7 @@ import type {
   MotivoDetalhe,
 } from "@/domain/devolucoes";
 import { setorPredominante, motivoPredominante } from "@/domain/devolucoes-ui";
-import { TIPOS_CARRO, ROTULO_TIPO } from "@/domain/descarregamento";
+import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import { pesoMedioPorCarro, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import { variacaoPercentual } from "@/domain/tendencias";
 import type { DescarregamentoTipo } from "@/domain/types";
@@ -24,7 +24,7 @@ const TIPO_COR_TV: Record<DescarregamentoTipo, string> = {
   batido: "#5b6fd6",
   paletizado: "#8b93e0",
   pal_rem: "#f5b301",
-  volume: "#a78bfa",
+  volume: "#38bdf8",
 };
 
 /**
@@ -453,8 +453,12 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
     { rotulo: "Diversas", valor: dados.diversas },
   ];
   const meses = detalhe.slice(-4); // últimos meses, lado a lado
-  // Escala compartilhada dos carros por tipo — colunas comparáveis entre os meses.
-  const sharedMaxTipo = Math.max(1, ...meses.flatMap((m) => TIPOS_CARRO.map((t) => m.porTipo[t])));
+  // Altura da barra = descargas. Volume usa as descargas (lançamentos), não as
+  // caixas — senão 30 mil caixas esmagariam as colunas de carros.
+  const qtdBarra = (m: MesReceitaDetalhe, t: DescarregamentoTipo) =>
+    t === "volume" ? m.descargasVolume : m.porTipo[t];
+  // Escala compartilhada — colunas comparáveis entre os meses.
+  const sharedMaxTipo = Math.max(1, ...meses.flatMap((m) => TIPOS_DESCARREGAMENTO.map((t) => qtdBarra(m, t))));
 
   return (
     <div className="flex h-full flex-col gap-5">
@@ -469,7 +473,7 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">Por que cada mês rendeu isso</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {TIPOS_CARRO.map((t) => (
+            {TIPOS_DESCARREGAMENTO.map((t) => (
               <span key={t} className="inline-flex items-center gap-1.5 text-xs text-white/50">
                 <span className="h-2.5 w-2.5 rounded-sm" style={{ background: TIPO_COR_TV[t] }} />
                 {ROTULO_TIPO[t]}
@@ -483,7 +487,7 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
         ) : (
           <div className="grid min-h-0 flex-1 gap-4" style={{ gridTemplateColumns: `repeat(${meses.length}, minmax(0, 1fr))` }}>
             {meses.map((m) => {
-              const detalhados = TIPOS_CARRO.reduce((s, t) => s + m.porTipo[t], 0);
+              const detalhados = TIPOS_DESCARREGAMENTO.reduce((s, t) => s + qtdBarra(m, t), 0);
               const prog = progressoDoMes(m.mes);
               return (
                 <div key={m.mes} className="flex min-h-0 flex-col rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
@@ -505,19 +509,24 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
                   </div>
                   {detalhados > 0 ? (
                     <div className="mt-3 flex min-h-[7rem] flex-1 items-stretch gap-2.5">
-                      {TIPOS_CARRO.map((t) => (
-                        <div key={t} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-                          <span className="shrink-0 text-sm font-extrabold tabular-nums text-white">{inteiro.format(m.porTipo[t])}</span>
-                          {/* Peso do tipo logo abaixo da quantidade; some quando o mês só tem total do dia (sem essa quebra). */}
-                          {m.pesoPorTipo[t] > 0 && (
-                            <span className="-mt-1 w-full shrink-0 truncate text-center text-xs font-semibold tabular-nums text-white/60">{formatKg(m.pesoPorTipo[t])}</span>
-                          )}
-                          <div className="flex w-full flex-1 items-end">
-                            <div className="w-full rounded-t-md" style={{ height: `${Math.max(2, (m.porTipo[t] / sharedMaxTipo) * 100)}%`, background: TIPO_COR_TV[t] }} title={`${ROTULO_TIPO[t]}: ${inteiro.format(m.porTipo[t])} carros${m.pesoPorTipo[t] > 0 ? ` · ${formatKg(m.pesoPorTipo[t])}` : ""}`} />
+                      {TIPOS_DESCARREGAMENTO.map((t) => {
+                        const qtd = qtdBarra(m, t);
+                        const unidade = t === "volume" ? "descargas" : "carros";
+                        const caixas = t === "volume" && m.caixas > 0 ? ` · ${inteiro.format(m.caixas)} cx` : "";
+                        return (
+                          <div key={t} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+                            <span className="shrink-0 text-sm font-extrabold tabular-nums text-white">{inteiro.format(qtd)}</span>
+                            {/* Peso do tipo logo abaixo da quantidade; some quando o mês só tem total do dia (sem essa quebra). */}
+                            {m.pesoPorTipo[t] > 0 && (
+                              <span className="-mt-1 w-full shrink-0 truncate text-center text-xs font-semibold tabular-nums text-white/60">{formatKg(m.pesoPorTipo[t])}</span>
+                            )}
+                            <div className="flex w-full flex-1 items-end">
+                              <div className="w-full rounded-t-md" style={{ height: `${Math.max(2, (qtd / sharedMaxTipo) * 100)}%`, background: TIPO_COR_TV[t] }} title={`${ROTULO_TIPO[t]}: ${inteiro.format(qtd)} ${unidade}${caixas}${m.pesoPorTipo[t] > 0 ? ` · ${formatKg(m.pesoPorTipo[t])}` : ""}`} />
+                            </div>
+                            <span className="w-full truncate text-center text-xs font-bold text-white/85" title={ROTULO_TIPO[t]}>{ROTULO_TIPO[t]}</span>
                           </div>
-                          <span className="w-full truncate text-center text-xs font-bold text-white/85" title={ROTULO_TIPO[t]}>{ROTULO_TIPO[t]}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="mt-3 flex-1 text-xs font-semibold text-white/40">sem quebra por tipo</div>

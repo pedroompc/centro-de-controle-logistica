@@ -200,6 +200,7 @@ export interface MesReceitaDetalhe {
   caixas: number; // volume, em caixas (unidade separada de carros)
   porTipo: Record<DescarregamentoTipo, number>; // qtd por tipo (inclui volume)
   pesoPorTipo: Record<DescarregamentoTipo, number>; // kg por tipo (só lançamento por fornecedor)
+  descargasVolume: number; // descargas de Volume (lançamentos), fora de `carros`
   pesoKg: number; // peso descarregado
   diversas: number; // total de receitas diversas
   materiais: { material: string; kg: number; valor: number }[]; // top materiais de diversas
@@ -234,6 +235,7 @@ export async function carregarReceitasDrivers(qtdMeses = 6): Promise<MesReceitaD
       caixas: d?.caixas ?? 0,
       porTipo: d?.porTipo ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 },
       pesoPorTipo: d?.pesoPorTipo ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 },
+      descargasVolume: d?.descargasVolume ?? 0,
       pesoKg: d?.pesoKg ?? 0,
       diversas: divTotalPorMes.get(r.mes) ?? 0,
       materiais: (divPorMes.get(r.mes) ?? []).sort((a, b) => b.valor - a.valor).slice(0, 3),
