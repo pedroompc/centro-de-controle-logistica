@@ -136,7 +136,7 @@ export function RecebimentoProjecoes({
   const [crescimento, setCrescimento] = useState(0);
   const [horizonte, setHorizonte] = useState(12);
   const [serieGrafico, setSerieGrafico] = useState<"acumulado" | "mensal">("acumulado");
-  const [faturamentoAno, setFaturamentoAno] = useState(base?.faturamentoMes ? Math.round((base.faturamentoMes * 12) / 1e6) : 50);
+  const [faturamentoAno, setFaturamentoAno] = useState(base?.faturamentoMes ? Math.round((base.faturamentoMes * 12) / 1e6) : 540);
 
   if (!base) {
     return <Card className="p-8 text-center text-slate-400">Ainda não há mês fechado com descarrego para servir de base.</Card>;
@@ -330,11 +330,13 @@ const FONTE_FDC =
   "https://ci.fdc.org.br/AcervoDigital/Relat%C3%B3rios%20de%20Pesquisa/Relat%C3%B3rios%20de%20pesquisa%202018/Apresentacao_Custos_Logisticos_no%20Brasil%202018_FDC%20_%20revRVC%20abr18%20(002).pdf";
 const FONTE_SETCESP = "https://setcesp.org.br/imprensa/apenas-46-dos-centros-distribuicao-da-grande-sao-paulo-emitem-nota-fiscal/";
 
-function Faixa({ valor, min, max, fmt }: { valor: number; min: number; max: number; fmt: (v: number) => string }) {
+function Faixa({ valor, min, max, fmt, menorEhBom = false }: { valor: number; min: number; max: number; fmt: (v: number) => string; menorEhBom?: boolean }) {
   // Régua: 0 → 2×max; faixa de referência pintada; marcador no seu valor.
   const topo = max * 2;
   const pos = (v: number) => `${Math.min(100, Math.max(0, (v / topo) * 100))}%`;
   const dentro = valor >= min && valor <= max;
+  // Em custo, ficar abaixo da faixa é bom (verde); acima pede atenção (âmbar).
+  const cor = dentro ? "text-sky-700" : valor > max ? (menorEhBom ? "text-amber-700" : "text-slate-600") : menorEhBom ? "text-emerald-700" : "text-slate-600";
   return (
     <div>
       <div className="relative mt-3 h-3 rounded-full bg-slate-100">
@@ -343,7 +345,7 @@ function Faixa({ valor, min, max, fmt }: { valor: number; min: number; max: numb
       </div>
       <div className="mt-1.5 flex justify-between text-xs text-slate-400">
         <span>faixa: {fmt(min)} a {fmt(max)}</span>
-        <span className={`font-semibold ${dentro ? "text-sky-700" : valor > max ? "text-amber-700" : "text-slate-600"}`}>
+        <span className={`font-semibold ${cor}`}>
           você: {fmt(valor)} · {dentro ? "dentro" : valor > max ? "acima" : "abaixo"}
         </span>
       </div>
@@ -385,7 +387,7 @@ function Mercado({ base, faturamentoAno, setFaturamentoAno }: { base: BaseRitmo;
             <span className="font-semibold text-[#141a4d]">Custo do recebimento ÷ faturamento</span>
             <Confianca nivel="estimativa" />
           </div>
-          <Faixa valor={custoSobreFat} min={0.003} max={0.008} fmt={(v) => formatPercent(v, 2)} />
+          <Faixa valor={custoSobreFat} min={0.003} max={0.008} fmt={(v) => formatPercent(v, 2)} menorEhBom />
           <p className="mt-3 text-xs leading-relaxed text-slate-500">
             {formatBRL(custoAno)}/ano sobre R$ {inteiro.format(faturamentoAno)} mi. A faixa de 0,3% a 0,8% é estimativa minha: o custo logístico médio das empresas
             brasileiras é <strong>12,37% do faturamento</strong> e a armazenagem é <strong>17,7%</strong> dele (≈ 2,2% do faturamento,{" "}
