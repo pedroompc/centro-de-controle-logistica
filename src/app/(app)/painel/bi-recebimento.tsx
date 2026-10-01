@@ -117,7 +117,7 @@ function Quadro({ ativo, onClick, rotulo, valor, sub, verde }: { ativo: boolean;
 }
 
 /** O topo do BI: 6 quadros (menu) + a barra de filtros ativos. */
-export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: DadosBI; visao: VisaoBI; onVisao: (v: VisaoBI) => void } & Filtro) {
+export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: DadosBI; visao: VisaoBI | null; onVisao: (v: VisaoBI) => void } & Filtro) {
   const x = recortar(dados, filtro);
   if (!x) return null;
   const { r, sel } = x;

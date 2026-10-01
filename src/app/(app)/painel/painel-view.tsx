@@ -272,7 +272,12 @@ export default function PainelView({
   });
   // BI: o topo é o menu e o palco mostra a visão clicada. `null` = modo
   // apresentação (os slides antigos girando sozinhos).
-  const [visao, setVisao] = useState<VisaoBI | null>("custo");
+  // `apresentacao` = slides antigos girando; senão é o BI. No BI, `visao` é o
+  // quadro aberto — começa FECHADO (null): o detalhe só aparece ao clicar.
+  const [apresentacao, setApresentacao] = useState(false);
+  const [visao, setVisao] = useState<VisaoBI | null>(null);
+  // Clicar no quadro aberto fecha ele.
+  const abrirVisao = useCallback((v: VisaoBI) => setVisao((atual) => (atual === v ? null : v)), []);
   // Filtro cruzado do BI (dia, fornecedor, tipo) — vale para todos os quadros.
   const [filtro, setFiltro] = useState<FiltroBI>({});
   const [idx, setIdx] = useState(0);
@@ -355,17 +360,17 @@ export default function PainelView({
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
   // No BI as setas passam de visão em visão; na apresentação, de slide em slide.
   const passoVisao = useCallback((d: number) => setVisao((v) => {
-    if (v === null) return v;
+    if (v === null) return VISOES_BI[d > 0 ? 0 : VISOES_BI.length - 1].id;
     const i = VISOES_BI.findIndex((x) => x.id === v);
     return VISOES_BI[(i + d + VISOES_BI.length) % VISOES_BI.length].id;
   }), []);
-  const proximo = useCallback(() => (visao ? passoVisao(1) : setIdx((i) => i + 1)), [visao, passoVisao]);
-  const anterior = useCallback(() => (visao ? passoVisao(-1) : setIdx((i) => i - 1)), [visao, passoVisao]);
+  const proximo = useCallback(() => (!apresentacao ? passoVisao(1) : setIdx((i) => i + 1)), [apresentacao, passoVisao]);
+  const anterior = useCallback(() => (!apresentacao ? passoVisao(-1) : setIdx((i) => i - 1)), [apresentacao, passoVisao]);
   // ▶ no BI = começa a apresentação; na apresentação = trava/destrava.
   const playPause = useCallback(() => {
-    if (visao) { setVisao(null); setPausado(false); }
+    if (!apresentacao) { setApresentacao(true); setPausado(false); }
     else setPausado((p) => !p);
-  }, [visao]);
+  }, [apresentacao]);
   const telaCheia = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     else document.exitFullscreen?.().catch(() => {});
@@ -384,10 +389,10 @@ export default function PainelView({
 
   // Auto-avanço — pausa quando travado.
   useEffect(() => {
-    if (visao || pausado || nSlides === 0) return;
+    if (!apresentacao || pausado || nSlides === 0) return;
     const t = setTimeout(() => setIdx((i) => i + 1), atual?.dwell ?? DWELL_PADRAO);
     return () => clearTimeout(t);
-  }, [idx, pausado, nSlides, atual?.dwell, visao]);
+  }, [idx, pausado, nSlides, atual?.dwell, apresentacao]);
 
   // Atalhos: ← → passam; espaço trava/destrava; F tela cheia.
   useEffect(() => {
@@ -427,26 +432,26 @@ export default function PainelView({
                     sem dados: {falhas.join(", ")}
                   </span>
                 )}
-                {!visao && pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
-                {!visao && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70">apresentação</span>}
+                {apresentacao && pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
+                {apresentacao && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70">apresentação</span>}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!visao && (
-              <button onClick={() => setVisao("custo")} className="rounded-xl bg-amber-400 px-3.5 py-2 text-sm font-bold text-[#0a1650] transition hover:bg-amber-300">
+            {apresentacao && (
+              <button onClick={() => setApresentacao(false)} className="rounded-xl bg-amber-400 px-3.5 py-2 text-sm font-bold text-[#0a1650] transition hover:bg-amber-300">
                 Voltar ao BI
               </button>
             )}
-            <BotaoCtrl onClick={anterior} title={visao ? "Visão anterior (←)" : "Página anterior (←)"}><IcoPrev /></BotaoCtrl>
+            <BotaoCtrl onClick={anterior} title={!apresentacao ? "Quadro anterior (←)" : "Página anterior (←)"}><IcoPrev /></BotaoCtrl>
             <BotaoCtrl
               onClick={playPause}
-              title={visao ? "Modo apresentação: slides girando (espaço)" : pausado ? "Retomar (espaço)" : "Travar nesta página (espaço)"}
-              ativo={!visao && pausado}
+              title={!apresentacao ? "Modo apresentação: slides girando (espaço)" : pausado ? "Retomar (espaço)" : "Travar nesta página (espaço)"}
+              ativo={apresentacao && pausado}
             >
-              {visao || pausado ? <IcoPlay /> : <IcoPause />}
+              {!apresentacao || pausado ? <IcoPlay /> : <IcoPause />}
             </BotaoCtrl>
-            <BotaoCtrl onClick={proximo} title={visao ? "Próxima visão (→)" : "Próxima página (→)"}><IcoNext /></BotaoCtrl>
+            <BotaoCtrl onClick={proximo} title={!apresentacao ? "Próximo quadro (→)" : "Próxima página (→)"}><IcoNext /></BotaoCtrl>
             <BotaoCtrl onClick={atualizar} title="Atualizar agora"><IcoRefresh spin={atualizando} /></BotaoCtrl>
             <button onClick={telaCheia} className="ml-1 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/15">
               Tela cheia
@@ -459,9 +464,9 @@ export default function PainelView({
 
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
-        {visao ? (
+        {!apresentacao ? (
           recSerie.length > 0 ? (
-            <MenuBI dados={biDados} visao={visao} onVisao={setVisao} filtro={filtro} onFiltro={setFiltro} />
+            <MenuBI dados={biDados} visao={visao} onVisao={abrirVisao} filtro={filtro} onFiltro={setFiltro} />
           ) : (
             <div className="mt-4 rounded-2xl bg-white/[0.06] px-5 py-6 text-center text-white/40 ring-1 ring-white/10">Carregando o recebimento…</div>
           )
@@ -478,7 +483,7 @@ export default function PainelView({
         </div>
         )}
 
-        {!visao && !placarRecebimento && dev.porSetor.length > 0 && (
+        {apresentacao && !placarRecebimento && dev.porSetor.length > 0 && (
           <div className="mt-4">
             <SetorBar porSetor={dev.porSetor} />
           </div>
@@ -488,7 +493,13 @@ export default function PainelView({
       {/* Palco rotativo */}
       <main className="relative min-h-0 flex-1 px-6 pb-6 xl:px-10 xl:pb-8">
         <div className="flex h-full flex-col rounded-3xl bg-white/[0.04] p-6 ring-1 ring-white/10 xl:p-8">
-          {visao ? (
+          {!apresentacao && !visao ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+              <span className="text-4xl text-white/20" aria-hidden>↑</span>
+              <p className="text-xl font-semibold text-white/60">Clique num quadro acima para abrir o detalhe</p>
+              <p className="text-sm text-white/35">Clique de novo no mesmo quadro para fechar · ← → passam de quadro em quadro</p>
+            </div>
+          ) : !apresentacao && visao ? (
             <>
               <div className="mb-4 flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-amber-300"><IconeUsuario className="h-6 w-6" /></span>
@@ -524,12 +535,12 @@ export default function PainelView({
         </div>
 
         {/* Indicadores de página (clicáveis) */}
-        {visao ? (
+        {!apresentacao ? (
           <div className="mt-4 flex items-center justify-center gap-2">
             {VISOES_BI.map((v) => (
               <button
                 key={v.id}
-                onClick={() => setVisao(v.id)}
+                onClick={() => abrirVisao(v.id)}
                 aria-label={`Abrir ${v.titulo}`}
                 className={`h-1.5 rounded-full transition-all ${v.id === visao ? "w-10 bg-amber-400" : "w-4 bg-white/20 hover:bg-white/40"}`}
               />
