@@ -131,7 +131,7 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recAt
     s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "notas entregues / devolvidas e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
-  if (recAtual && recAtual.equipe.total > 0)
+  if (recAtual)
     s.push({ id: "recebimento", titulo: "Recebimento", contexto: "produtividade da equipe de descarga e quanto ela custa, mês a mês", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoRecebimento serie={[...d.recebimento.slice(0, -1), recAtual].slice(-4)} /> });
   if (d.receitas)
     s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} /> });
@@ -243,34 +243,40 @@ export default function PainelView({
   const [pausado, setPausado] = useState(false);
   const [relogio, setRelogio] = useState("");
   const [atualizando, setAtualizando] = useState(false);
+  const [falhas, setFalhas] = useState<string[]>([]);
   const primeira = useRef(true);
 
   // Aquece os dados SEQUENCIALMENTE (um await por vez) — nunca uma rajada de
-  // conexões Oracle. Cada bloco é isolado: se um falhar, o slide só não entra.
+  // conexões Oracle. Cada bloco é isolado: se um falhar, o slide só não entra —
+  // mas o nome do bloco vai para o cabeçalho ("sem dados: …") e para o console,
+  // para o slide não sumir sem explicação.
   const aquecer = useCallback(async () => {
-    const passo = async (fn: () => Promise<void>) => {
+    const falhou: string[] = [];
+    const passo = async (nome: string, fn: () => Promise<void>) => {
       try {
         await fn();
-      } catch {
-        /* mantém o dado anterior; o slide simplesmente não aparece */
+      } catch (e) {
+        falhou.push(nome);
+        console.error(`[painel] falha ao carregar ${nome}:`, e);
       }
     };
-    await passo(async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
-    await passo(async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
-    await passo(async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
-    await passo(async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
-    await passo(async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
-    await passo(async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
-    await passo(async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
-    await passo(async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
-    await passo(async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
-    await passo(async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    await passo(async () => { const v = await carregarRecebimento(mes); setDados((d) => ({ ...d, recebimento: v })); });
+    await passo("mapa", async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
+    await passo("motoristas", async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
+    await passo("clientes", async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
+    await passo("vendedores", async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
+    await passo("bairros RMR", async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
+    await passo("a faturar", async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
+    await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
+    await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
+    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
+    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    await passo("recebimento", async () => { const v = await carregarRecebimento(mes); setDados((d) => ({ ...d, recebimento: v })); });
     // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
-    await passo(async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
+    await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
     if (primeira.current) primeira.current = false;
-    else await passo(async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
+    else await passo("placar", async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
+    setFalhas(falhou);
     setRelogio(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
   }, [mes]);
 
@@ -361,6 +367,11 @@ export default function PainelView({
                   <Link href="/painel" className="mr-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70 hover:bg-white/20">mês atual</Link>
                 )}
                 · filiais 1 e 11{relogio && ` · atualizado ${relogio}`}
+                {falhas.length > 0 && (
+                  <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-xs font-semibold text-rose-200" title="Veja o console / log do servidor">
+                    sem dados: {falhas.join(", ")}
+                  </span>
+                )}
                 {pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
               </p>
             </div>

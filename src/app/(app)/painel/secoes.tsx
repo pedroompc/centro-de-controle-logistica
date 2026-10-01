@@ -669,6 +669,14 @@ const LINHAS_RECEBIMENTO: LinhaRecebimento[] = [
  * linha fica em verde (só entre meses fechados — o corrente é parcial).
  */
 export function SecaoRecebimento({ serie }: { serie: IndicadoresRecebimento[] }) {
+  if (serie.length === 0 || serie.every((r) => r.equipe.total === 0))
+    return (
+      <div className="flex h-full items-center justify-center text-center text-lg text-white/50">
+        Nenhum funcionário ativo num setor com &quot;Recebimento&quot; no nome.
+        <br />
+        Confira o setor e os cargos (Ajudante / Conferente) no cadastro de funcionários.
+      </div>
+    );
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-hidden rounded-2xl ring-1 ring-white/10">
