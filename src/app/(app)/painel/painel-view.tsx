@@ -23,9 +23,6 @@ import {
   carregarDescarregos,
   carregarSerieDescarrego,
   carregarRecebimento,
-  carregarDetalheCusto,
-  carregarFatosDescarrego,
-  type DetalheCusto,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
@@ -33,8 +30,6 @@ import {
   type MesReceitaDetalhe,
 } from "./painel-actions";
 import Mapa from "./mapa";
-import { MenuBI, PalcoBI, VISOES_BI, type VisaoBI } from "./bi-recebimento";
-import type { FatoDescarrego, FiltroBI } from "@/domain/bi-recebimento";
 import MapaRMR from "./mapa-rmr";
 import {
   Kpi,
@@ -99,8 +94,6 @@ interface Dados {
   descarregos: ResumoDescarregos | null;
   serieDescarrego: PontoDescarregoMensal[];
   recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
-  custoDet: DetalheCusto | null; // BI: pessoas e equipamentos
-  fatos: FatoDescarrego[] | null; // BI: descarrego do mês (dia × fornecedor × tipo)
 }
 
 // Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
@@ -223,7 +216,7 @@ export function PlacarRecebimento({
       <Kpi
         label="Custo do recebimento"
         value={formatBRL(r.equipe.custo)}
-        hint={`${r.equipe.custoEquipamentos ? `folha + empilhadeira ${formatBRL(r.equipe.custoEquipamentos)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
+        hint={`${r.equipe.custoEquipamentos ? `folha + equipamentos ${formatBRL(r.equipe.custoEquipamentos)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
       />
       <Kpi
         label="Kg por ajudante"
@@ -268,18 +261,8 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], custoDet: null, fatos: null,
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [],
   });
-  // BI: o topo é o menu e o palco mostra a visão clicada. `null` = modo
-  // apresentação (os slides antigos girando sozinhos).
-  // `apresentacao` = slides antigos girando; senão é o BI. No BI, `visao` é o
-  // quadro aberto — começa FECHADO (null): o detalhe só aparece ao clicar.
-  const [apresentacao, setApresentacao] = useState(false);
-  const [visao, setVisao] = useState<VisaoBI | null>(null);
-  // Clicar no quadro aberto fecha ele.
-  const abrirVisao = useCallback((v: VisaoBI) => setVisao((atual) => (atual === v ? null : v)), []);
-  // Filtro cruzado do BI (dia, fornecedor, tipo) — vale para todos os quadros.
-  const [filtro, setFiltro] = useState<FiltroBI>({});
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [relogio, setRelogio] = useState("");
@@ -301,12 +284,6 @@ export default function PainelView({
         console.error(`[painel] falha ao carregar ${nome}:`, e);
       }
     };
-    // BI primeiro (Supabase, rápido); depois o que abre conexão Oracle.
-    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
-    await passo("custo", async () => { const v = await carregarDetalheCusto(); setDados((d) => ({ ...d, custoDet: v })); });
-    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
-    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    await passo("fornecedores", async () => { const v = await carregarFatosDescarrego(mes); setDados((d) => ({ ...d, fatos: v })); });
     await passo("mapa", async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
     await passo("motoristas", async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
     await passo("clientes", async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
@@ -315,6 +292,9 @@ export default function PainelView({
     await passo("a faturar", async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
     await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
     await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
+    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
+    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
     // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
     await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
@@ -343,7 +323,6 @@ export default function PainelView({
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
   const slides = construirSlides(dados, dev, mesLabel, recSerie);
-  const biDados = { mes: mesRef, serie: recSerie, custo: dados.custoDet, fatos: dados.fatos };
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
@@ -358,19 +337,8 @@ export default function PainelView({
   const placarRecebimento = !!recAtual && !!atual && SLIDES_RECEBIMENTO.has(atual.id);
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
-  // No BI as setas passam de visão em visão; na apresentação, de slide em slide.
-  const passoVisao = useCallback((d: number) => setVisao((v) => {
-    if (v === null) return VISOES_BI[d > 0 ? 0 : VISOES_BI.length - 1].id;
-    const i = VISOES_BI.findIndex((x) => x.id === v);
-    return VISOES_BI[(i + d + VISOES_BI.length) % VISOES_BI.length].id;
-  }), []);
-  const proximo = useCallback(() => (!apresentacao ? passoVisao(1) : setIdx((i) => i + 1)), [apresentacao, passoVisao]);
-  const anterior = useCallback(() => (!apresentacao ? passoVisao(-1) : setIdx((i) => i - 1)), [apresentacao, passoVisao]);
-  // ▶ no BI = começa a apresentação; na apresentação = trava/destrava.
-  const playPause = useCallback(() => {
-    if (!apresentacao) { setApresentacao(true); setPausado(false); }
-    else setPausado((p) => !p);
-  }, [apresentacao]);
+  const proximo = useCallback(() => setIdx((i) => i + 1), []);
+  const anterior = useCallback(() => setIdx((i) => i - 1), []);
   const telaCheia = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     else document.exitFullscreen?.().catch(() => {});
@@ -389,23 +357,22 @@ export default function PainelView({
 
   // Auto-avanço — pausa quando travado.
   useEffect(() => {
-    if (!apresentacao || pausado || nSlides === 0) return;
+    if (pausado || nSlides === 0) return;
     const t = setTimeout(() => setIdx((i) => i + 1), atual?.dwell ?? DWELL_PADRAO);
     return () => clearTimeout(t);
-  }, [idx, pausado, nSlides, atual?.dwell, apresentacao]);
+  }, [idx, pausado, nSlides, atual?.dwell]);
 
   // Atalhos: ← → passam; espaço trava/destrava; F tela cheia.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") proximo();
       else if (e.key === "ArrowLeft") anterior();
-      else if (e.key === " ") { e.preventDefault(); playPause(); }
-      else if (e.key === "Escape") setFiltro({});
+      else if (e.key === " ") { e.preventDefault(); setPausado((p) => !p); }
       else if (e.key.toLowerCase() === "f") telaCheia();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [proximo, anterior, telaCheia, playPause]);
+  }, [proximo, anterior, telaCheia]);
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden text-white" style={{ background: NAVY }}>
@@ -432,26 +399,16 @@ export default function PainelView({
                     sem dados: {falhas.join(", ")}
                   </span>
                 )}
-                {apresentacao && pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
-                {apresentacao && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70">apresentação</span>}
+                {pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {apresentacao && (
-              <button onClick={() => setApresentacao(false)} className="rounded-xl bg-amber-400 px-3.5 py-2 text-sm font-bold text-[#0a1650] transition hover:bg-amber-300">
-                Voltar ao BI
-              </button>
-            )}
-            <BotaoCtrl onClick={anterior} title={!apresentacao ? "Quadro anterior (←)" : "Página anterior (←)"}><IcoPrev /></BotaoCtrl>
-            <BotaoCtrl
-              onClick={playPause}
-              title={!apresentacao ? "Modo apresentação: slides girando (espaço)" : pausado ? "Retomar (espaço)" : "Travar nesta página (espaço)"}
-              ativo={apresentacao && pausado}
-            >
-              {!apresentacao || pausado ? <IcoPlay /> : <IcoPause />}
+            <BotaoCtrl onClick={anterior} title="Página anterior (←)"><IcoPrev /></BotaoCtrl>
+            <BotaoCtrl onClick={() => setPausado((p) => !p)} title={pausado ? "Retomar (espaço)" : "Travar nesta página (espaço)"} ativo={pausado}>
+              {pausado ? <IcoPlay /> : <IcoPause />}
             </BotaoCtrl>
-            <BotaoCtrl onClick={proximo} title={!apresentacao ? "Próximo quadro (→)" : "Próxima página (→)"}><IcoNext /></BotaoCtrl>
+            <BotaoCtrl onClick={proximo} title="Próxima página (→)"><IcoNext /></BotaoCtrl>
             <BotaoCtrl onClick={atualizar} title="Atualizar agora"><IcoRefresh spin={atualizando} /></BotaoCtrl>
             <button onClick={telaCheia} className="ml-1 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/15">
               Tela cheia
@@ -464,13 +421,7 @@ export default function PainelView({
 
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
-        {!apresentacao ? (
-          recSerie.length > 0 ? (
-            <MenuBI dados={biDados} visao={visao} onVisao={abrirVisao} filtro={filtro} onFiltro={setFiltro} />
-          ) : (
-            <div className="mt-4 rounded-2xl bg-white/[0.06] px-5 py-6 text-center text-white/40 ring-1 ring-white/10">Carregando o recebimento…</div>
-          )
-        ) : placarRecebimento && recAtual ? (
+        {placarRecebimento && recAtual ? (
           <PlacarRecebimento r={recAtual} ant={recAnt} janela={janelaTrimestre} prevLabel={prevLabel} />
         ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -483,7 +434,7 @@ export default function PainelView({
         </div>
         )}
 
-        {apresentacao && !placarRecebimento && dev.porSetor.length > 0 && (
+        {!placarRecebimento && dev.porSetor.length > 0 && (
           <div className="mt-4">
             <SetorBar porSetor={dev.porSetor} />
           </div>
@@ -493,28 +444,7 @@ export default function PainelView({
       {/* Palco rotativo */}
       <main className="relative min-h-0 flex-1 px-6 pb-6 xl:px-10 xl:pb-8">
         <div className="flex h-full flex-col rounded-3xl bg-white/[0.04] p-6 ring-1 ring-white/10 xl:p-8">
-          {!apresentacao && !visao ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-              <span className="text-4xl text-white/20" aria-hidden>↑</span>
-              <p className="text-xl font-semibold text-white/60">Clique num quadro acima para abrir o detalhe</p>
-              <p className="text-sm text-white/35">Clique de novo no mesmo quadro para fechar · ← → passam de quadro em quadro</p>
-            </div>
-          ) : !apresentacao && visao ? (
-            <>
-              <div className="mb-4 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-amber-300"><IconeUsuario className="h-6 w-6" /></span>
-                <div>
-                  <h2 className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight xl:text-3xl">
-                    {VISOES_BI.find((v) => v.id === visao)?.titulo} <span className="text-white/40">· {formatMesAno(mesRef)}</span>
-                  </h2>
-                  <p className="text-sm text-white/45">{VISOES_BI.find((v) => v.id === visao)?.contexto}</p>
-                </div>
-              </div>
-              <div key={visao} className="tv-fade min-h-0 flex-1 overflow-hidden">
-                <PalcoBI dados={biDados} visao={visao} filtro={filtro} onFiltro={setFiltro} />
-              </div>
-            </>
-          ) : atual ? (
+          {atual ? (
             <>
               <div className="mb-4 flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-amber-300">{atual.icon}</span>
@@ -535,18 +465,7 @@ export default function PainelView({
         </div>
 
         {/* Indicadores de página (clicáveis) */}
-        {!apresentacao ? (
-          <div className="mt-4 flex items-center justify-center gap-2">
-            {VISOES_BI.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => abrirVisao(v.id)}
-                aria-label={`Abrir ${v.titulo}`}
-                className={`h-1.5 rounded-full transition-all ${v.id === visao ? "w-10 bg-amber-400" : "w-4 bg-white/20 hover:bg-white/40"}`}
-              />
-            ))}
-          </div>
-        ) : nSlides > 0 && (
+        {nSlides > 0 && (
           <div className="mt-4 flex items-center justify-center gap-2">
             {slides.map((s, i) => (
               <button

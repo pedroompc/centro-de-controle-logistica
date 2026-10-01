@@ -28,7 +28,7 @@ import {
 } from "@/domain/bi-recebimento";
 import type { DescarregamentoTipo, TipoEquipamento } from "@/domain/types";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
-import type { DetalheCusto, PessoaRecebimento } from "./painel-actions";
+import type { DetalheCusto, PessoaRecebimento } from "../../painel/painel-actions";
 
 export type VisaoBI = "custo" | "descarrego" | "receita" | "eficiencia";
 
