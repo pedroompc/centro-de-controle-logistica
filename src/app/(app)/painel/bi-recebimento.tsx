@@ -29,13 +29,12 @@ import {
 import type { DescarregamentoTipo, TipoEquipamento } from "@/domain/types";
 import type { DetalheCusto, PessoaRecebimento } from "./painel-actions";
 
-export type VisaoBI = "custo" | "descarrego" | "receita" | "fornecedores" | "eficiencia";
+export type VisaoBI = "custo" | "descarrego" | "receita" | "eficiencia";
 
 export const VISOES_BI: { id: VisaoBI; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
-  { id: "descarrego", titulo: "Descarrego", contexto: "carros, tipos, peso, dia a dia e fornecedores · clique para filtrar" },
+  { id: "descarrego", titulo: "Descarrego", contexto: "carros, fornecedores atendidos, tipos, peso e dia a dia · clique para filtrar" },
   { id: "receita", titulo: "Receita de descarrego", contexto: "de onde vem a receita e quanto dela o custo consome · clique para filtrar" },
-  { id: "fornecedores", titulo: "Fornecedores", contexto: "quem mais descarrega e mais paga · clique para filtrar" },
   { id: "eficiencia", titulo: "Eficiência", contexto: "custo por tonelada, sobre o descarrego e sobre o faturamento" },
 ];
 
@@ -135,13 +134,12 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
   const usar = x.temFatos;
   const peso = usar ? sel.pesoKg : r.pesoKg;
   const receita = usar ? sel.receita : r.receitaDescarrego;
-  const topForn = usar ? agrupar(filtrarFatos(dados.fatos!, filtro, "fornecedor"), (f) => f.fornecedor).sort((a, b) => b.resumo.pesoKg - a.resumo.pesoKg) : [];
   const pessoas = dados.custo?.pessoas ?? [];
   const cont = (p: PessoaRecebimento["papel"]) => pessoas.filter((y) => y.papel === p).length;
 
   return (
     <div className="mt-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Quadro
           {...q("custo")}
           rotulo="Custo e equipe"
@@ -151,14 +149,8 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
             `${pessoas.length ? `${cont("ajudante")} aj · ${cont("conferente")} conf · ${cont("empilhador")} emp` : `${r.equipe.total} pessoas`}${resumoEquip ? ` · ${resumoEquip}` : ""}`
           }
         />
-        <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${ton(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}`} verde={verde("carrosPorDia")} />
+        <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${ton(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}${usar ? ` · ${sel.fornecedores} fornecedores` : ""}`} verde={verde("carrosPorDia")} />
         <Quadro {...q("receita")} rotulo="Receita" valor={formatBRL(receita)} sub={`custo consome ${receita > 0 ? formatPercent(x.custo / receita) : "—"}`} verde={verde("resultado")} />
-        <Quadro
-          {...q("fornecedores")}
-          rotulo="Fornecedores"
-          valor={usar ? inteiro.format(filtro.fornecedor ? 1 : topForn.length) : "—"}
-          sub={filtro.fornecedor ?? (topForn[0] ? `maior: ${topForn[0].chave}` : "com lançamento")}
-        />
         <Quadro
           {...q("eficiencia")}
           rotulo="Eficiência"
@@ -214,8 +206,6 @@ export function PalcoBI({ dados, visao, filtro, onFiltro }: { dados: DadosBI; vi
       return <VisaoDescarrego {...p} />;
     case "receita":
       return <VisaoReceita {...p} />;
-    case "fornecedores":
-      return <VisaoFornecedores {...p} />;
     case "eficiencia":
       return <VisaoEficiencia {...p} />;
   }
@@ -673,11 +663,11 @@ function VisaoDescarrego(p: PropsVisao) {
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
         <Mini rotulo={x.porNotas ? "Notas" : "Carros"} valor={inteiro.format(qtd)} sub={sel.dias > 0 ? `${dec1(qtd / sel.dias)} por dia` : undefined} />
+        <Mini rotulo="Fornecedores atendidos" valor={inteiro.format(sel.fornecedores)} sub={sel.notas > 0 ? `${inteiro.format(sel.notas)} notas descarregadas` : "com lançamento no recorte"} />
         <Mini rotulo="Peso" valor={ton(sel.pesoKg)} sub={qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
         <Mini rotulo="Caixas (volume)" valor={inteiro.format(sel.caixas)} sub={`${inteiro.format(sel.descargasVolume)} descargas`} />
         <Mini rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={formatMesAno(x.r.mes)} />
         <Mini rotulo="Receita" valor={formatBRL(sel.receita)} sub={qtd > 0 ? `${semCentavos(sel.receita / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
-        <Mini rotulo="Fornecedores" valor={inteiro.format(sel.fornecedores)} sub="no recorte" />
       </div>
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
@@ -727,29 +717,6 @@ function VisaoReceita(p: PropsVisao) {
         </Bloco>
         <Bloco titulo="Quem mais paga">
           <TabelaFornecedores {...p} ordemInicial="receita" />
-        </Bloco>
-      </div>
-    </div>
-  );
-}
-
-// --- FORNECEDORES -------------------------------------------------------------
-
-function VisaoFornecedores(p: PropsVisao) {
-  const { x } = p;
-  if (!x.temFatos) return <Vazio>Carregando os fornecedores do mês…</Vazio>;
-  const medida: Medida = "pesoKg";
-  return (
-    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-      <Bloco titulo={`Fornecedores · ${formatMesAno(x.r.mes)}`}>
-        <TabelaFornecedores {...p} />
-      </Bloco>
-      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-        <Bloco titulo="Peso por dia" direita={<Dica>clique para filtrar</Dica>}>
-          <GraficoDias {...p} medida={medida} altura={140} />
-        </Bloco>
-        <Bloco titulo="Por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
-          <ListaTipos {...p} medida="pesoKg" />
         </Bloco>
       </div>
     </div>
