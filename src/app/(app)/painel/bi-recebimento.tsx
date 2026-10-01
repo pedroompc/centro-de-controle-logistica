@@ -40,7 +40,7 @@ export const VISOES_BI: { id: VisaoBI; titulo: string; contexto: string }[] = [
 
 const inteiro = new Intl.NumberFormat("pt-BR");
 const dec1 = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-const ton = (kg: number) => `${(kg / 1000).toLocaleString("pt-BR", { maximumFractionDigits: kg < 10_000 ? 1 : 0 })} t`;
+const fmtPeso = (kg: number) => formatKg(kg); // peso sempre em kg (pedido do gestor)
 const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
 const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const semCentavos = (v: number) => formatBRL(v).replace(",00", "");
@@ -149,7 +149,7 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
             `${pessoas.length ? `${cont("ajudante")} aj · ${cont("conferente")} conf · ${cont("empilhador")} emp` : `${r.equipe.total} pessoas`}${resumoEquip ? ` · ${resumoEquip}` : ""}`
           }
         />
-        <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${ton(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}${usar ? ` · ${sel.fornecedores} fornecedores` : ""}`} verde={verde("carrosPorDia")} />
+        <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${fmtPeso(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}${usar ? ` · ${sel.fornecedores} fornecedores` : ""}`} verde={verde("carrosPorDia")} />
         <Quadro {...q("receita")} rotulo="Receita" valor={formatBRL(receita)} sub={`custo consome ${receita > 0 ? formatPercent(x.custo / receita) : "—"}`} verde={verde("resultado")} />
         <Quadro
           {...q("eficiencia")}
@@ -354,23 +354,83 @@ function SerieMeses({ dados, valor, fmt, maiorEhBom, altura = 170 }: { dados: Da
 
 type Medida = "carros" | "pesoKg" | "receita";
 // Contagem inteira sem casas; média (fracionária) com 1 casa.
-const FMT_MEDIDA: Record<Medida, (v: number) => string> = { carros: (v) => (Number.isInteger(v) ? inteiro.format(v) : dec1(v)), pesoKg: ton, receita: semCentavos };
+const FMT_MEDIDA: Record<Medida, (v: number) => string> = { carros: (v) => (Number.isInteger(v) ? inteiro.format(v) : dec1(v)), pesoKg: fmtPeso, receita: semCentavos };
 const valorMedida = (s: ResumoFatos, m: Medida, porNotas: boolean) => (m === "carros" && porNotas ? s.notas : s[m]);
 
-/** Dia a dia do mês (ignora o filtro de dia; o dia escolhido fica em âmbar). Clique filtra o dia. */
-function GraficoDias({ dados, x, filtro, onFiltro, medida, altura = 150 }: PropsVisao & { medida: Medida; altura?: number }) {
+const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+/**
+ * Dia a dia do mês como CALENDÁRIO (ignora o filtro de dia; o dia escolhido
+ * fica em âmbar). Cor: um tom só, mais forte quanto maior o valor do dia;
+ * dia sem descarrego fica apagado. Clique filtra o dia.
+ */
+function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medida: Medida; altura?: number }) {
+  const [hover, setHover] = useState<string | null>(null);
   const fatos = filtrarFatos(dados.fatos ?? [], filtro, "dia");
-  const dias = agrupar(fatos, (f) => f.data).sort((a, b) => a.chave.localeCompare(b.chave));
-  const vals = dias.map((d) => valorMedida(d.resumo, medida, x.porNotas));
+  const porDia = new Map(agrupar(fatos, (f) => f.data).map((d) => [d.chave, valorMedida(d.resumo, medida, x.porNotas)]));
+  const [ano, mes] = dados.mes.split("-").map(Number);
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  const primeiroDow = new Date(ano, mes - 1, 1).getDay(); // 0 = domingo
+  const vals = [...porDia.values()].filter((v) => v > 0);
+  const max = Math.max(1e-9, ...vals);
   const media = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  const fmt = FMT_MEDIDA[medida];
+  const celulas: (string | null)[] = [...Array(primeiroDow).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => `${dados.mes.slice(0, 8)}${String(i + 1).padStart(2, "0")}`)];
+  while (celulas.length % 7) celulas.push(null);
+  const hv = hover ? porDia.get(hover) : undefined;
+
   return (
-    <BarrasTV
-      altura={altura}
-      fmt={FMT_MEDIDA[medida]}
-      referencia={{ valor: media, rotulo: "média" }}
-      onClick={(d) => onFiltro({ ...filtro, dia: filtro.dia === d ? null : d })}
-      itens={dias.map((d, i) => ({ chave: d.chave, rotulo: d.chave.slice(8, 10), valor: vals[i], detalhe: ddmm(d.chave), selecionado: filtro.dia === d.chave }))}
-    />
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs text-white/45">
+        <span>
+          {hover ? (
+            <>
+              <strong className="text-white">{ddmm(hover)}</strong> · {hv ? fmt(hv) : "sem descarrego"}
+              {hv ? ` · ${hv >= media ? "acima" : "abaixo"} da média` : ""}
+            </>
+          ) : (
+            <>média {fmt(media)} por dia com descarrego</>
+          )}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          menos
+          {[0.15, 0.4, 0.7, 1].map((o) => (
+            <span key={o} className="h-2.5 w-2.5 rounded-sm" style={{ background: "#5b6fd6", opacity: o }} />
+          ))}
+          mais
+        </span>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[0.65rem] font-semibold uppercase tracking-wide text-white/35">
+        {SEMANA.map((d) => (
+          <span key={d}>{d}</span>
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-7 gap-1" onMouseLeave={() => setHover(null)}>
+        {celulas.map((dia, i) => {
+          if (!dia) return <span key={`v${i}`} />;
+          const v = porDia.get(dia) ?? 0;
+          const sel = filtro.dia === dia;
+          const fim = new Date(ano, mes - 1, Number(dia.slice(8, 10))).getDay() % 6 === 0;
+          return (
+            <button
+              key={dia}
+              type="button"
+              disabled={v === 0}
+              onMouseEnter={() => setHover(dia)}
+              onClick={() => onFiltro({ ...filtro, dia: sel ? null : dia })}
+              title={`${ddmm(dia)} · ${v ? fmt(v) : "sem descarrego"}`}
+              className={`relative flex h-14 flex-col justify-between rounded-md px-1.5 py-1 text-left transition ${v ? "cursor-pointer hover:ring-2 hover:ring-white/50" : "cursor-default"} ${sel ? "ring-2 ring-amber-300" : ""} ${filtro.dia && !sel ? "opacity-45" : ""}`}
+              style={{
+                background: sel ? "#f5b301" : v ? `rgba(91,111,214,${0.18 + 0.82 * (v / max)})` : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
+              }}
+            >
+              <span className={`text-[0.65rem] font-bold leading-none ${sel ? "text-[#0a1650]" : v ? "text-white/70" : "text-white/25"}`}>{Number(dia.slice(8, 10))}</span>
+              {v > 0 && <span className={`self-end text-xs font-extrabold leading-none tabular-nums ${sel ? "text-[#0a1650]" : "text-white"}`}>{fmt(v)}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -408,7 +468,7 @@ function ListaTipos({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medid
                     {s ? (
                       <>
                         <strong className="text-white">{t === "volume" ? `${inteiro.format(s.descargasVolume)} descargas` : x.porNotas ? `${s.notas} notas` : `${inteiro.format(s.carros)} carros`}</strong>
-                        {s.pesoKg > 0 && ` · ${ton(s.pesoKg)}`}
+                        {s.pesoKg > 0 && ` · ${fmtPeso(s.pesoKg)}`}
                         {s.receita > 0 && ` · ${semCentavos(s.receita)}`}
                         {t === "volume" && s.caixas > 0 && ` · ${inteiro.format(s.caixas)} cx`}
                       </>
@@ -427,7 +487,7 @@ function ListaTipos({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medid
       </ul>
       {(semTipo.pesoKg > 0 || semTipo.receita > 0) && (
         <p className="mt-2 text-xs text-white/35">
-          + {ton(semTipo.pesoKg)} e {semCentavos(semTipo.receita)} do total do dia digitado, sem quebra por tipo.
+          + {fmtPeso(semTipo.pesoKg)} e {semCentavos(semTipo.receita)} do total do dia digitado, sem quebra por tipo.
         </p>
       )}
     </div>
@@ -478,7 +538,7 @@ function TabelaFornecedores({ dados, filtro, onFiltro, ordemInicial = "pesoKg" }
                     </div>
                   </td>
                   <td className="py-2 text-right tabular-nums text-white/70">{f.resumo.notas}</td>
-                  <td className="py-2 text-right tabular-nums text-white/70">{ton(f.resumo.pesoKg)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{fmtPeso(f.resumo.pesoKg)}</td>
                   <td className="py-2 text-right font-bold tabular-nums text-white">{semCentavos(f.resumo.receita)}</td>
                   <td className="py-2 text-right tabular-nums text-white/50">{total > 0 ? formatPercent(f.resumo[ordem] / total, 0) : "—"}</td>
                 </tr>
@@ -488,7 +548,7 @@ function TabelaFornecedores({ dados, filtro, onFiltro, ordemInicial = "pesoKg" }
               <tr className="border-t border-white/[0.06] text-white/45">
                 <td className="py-2 italic">Total do dia (sem fornecedor)</td>
                 <td className="py-2 text-right">—</td>
-                <td className="py-2 text-right tabular-nums">{ton(semForn.pesoKg)}</td>
+                <td className="py-2 text-right tabular-nums">{fmtPeso(semForn.pesoKg)}</td>
                 <td className="py-2 text-right tabular-nums">{semCentavos(semForn.receita)}</td>
                 <td />
               </tr>
@@ -535,7 +595,7 @@ function VisaoCusto({ dados, x }: PropsVisao) {
         <Mini rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
         <Mini rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${c.equipamentos.reduce((t, e) => t + e.quantidade, 0)} unidades · por mês`} />
         <Mini rotulo={x.porNotas ? "Custo por nota" : "Custo por carro"} valor={carros > 0 ? formatBRL(x.custo / carros) : "—"} sub={x.porNotas ? `${sel.notas} notas` : `${inteiro.format(sel.carros)} carros`} />
-        <Mini rotulo="Custo por tonelada" valor={sel.pesoKg > 0 ? formatBRL(x.custo / (sel.pesoKg / 1000)) : "—"} sub={ton(sel.pesoKg)} />
+        <Mini rotulo="Custo por tonelada" valor={sel.pesoKg > 0 ? formatBRL(x.custo / (sel.pesoKg / 1000)) : "—"} sub={fmtPeso(sel.pesoKg)} />
       </div>
 
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -664,23 +724,24 @@ function VisaoDescarrego(p: PropsVisao) {
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
         <Mini rotulo={x.porNotas ? "Notas" : "Carros"} valor={inteiro.format(qtd)} sub={sel.dias > 0 ? `${dec1(qtd / sel.dias)} por dia` : undefined} />
         <Mini rotulo="Fornecedores atendidos" valor={inteiro.format(sel.fornecedores)} sub={sel.notas > 0 ? `${inteiro.format(sel.notas)} notas descarregadas` : "com lançamento no recorte"} />
-        <Mini rotulo="Peso" valor={ton(sel.pesoKg)} sub={qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
+        <Mini rotulo="Peso" valor={fmtPeso(sel.pesoKg)} sub={qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
         <Mini rotulo="Caixas (volume)" valor={inteiro.format(sel.caixas)} sub={`${inteiro.format(sel.descargasVolume)} descargas`} />
         <Mini rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={formatMesAno(x.r.mes)} />
         <Mini rotulo="Receita" valor={formatBRL(sel.receita)} sub={qtd > 0 ? `${semCentavos(sel.receita / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
       </div>
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      {/* Calendário sozinho à esquerda; tipos e fornecedores empilhados à direita. */}
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
+          <GraficoDias {...p} medida="carros" />
+        </Bloco>
         <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-          <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
-            <GraficoDias {...p} medida="carros" />
-          </Bloco>
           <Bloco titulo="Por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
             <ListaTipos {...p} medida="carros" />
           </Bloco>
+          <Bloco titulo="Fornecedores">
+            <TabelaFornecedores {...p} />
+          </Bloco>
         </div>
-        <Bloco titulo="Fornecedores">
-          <TabelaFornecedores {...p} />
-        </Bloco>
       </div>
     </div>
   );
@@ -699,22 +760,21 @@ function VisaoReceita(p: PropsVisao) {
         <Mini rotulo="Custo do recebimento" valor={formatBRL(x.custo)} sub={x.criterioCusto ?? "do mês"} />
         <Mini rotulo="Sobra (receita − custo)" valor={formatBRL(sel.receita - x.custo)} />
         <Mini rotulo="Custo consome" valor={sel.receita > 0 ? formatPercent(x.custo / sel.receita) : "—"} sub="da receita" />
-        <Mini rotulo="Receita por tonelada" valor={sel.pesoKg > 0 ? formatBRL(sel.receita / (sel.pesoKg / 1000)) : "—"} sub={ton(sel.pesoKg)} />
+        <Mini rotulo="Receita por tonelada" valor={sel.pesoKg > 0 ? formatBRL(sel.receita / (sel.pesoKg / 1000)) : "—"} sub={fmtPeso(sel.pesoKg)} />
       </div>
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.1fr)]">
+      {/* Calendário | tipos + mês a mês | fornecedores — nada fica fora da tela. */}
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+        <Bloco titulo="Receita por dia" direita={<Dica>clique para filtrar</Dica>}>
+          <GraficoDias {...p} medida="receita" />
+        </Bloco>
         <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-          <Bloco titulo="Receita por dia" direita={<Dica>clique para filtrar</Dica>}>
-            <GraficoDias {...p} medida="receita" altura={130} />
-          </Bloco>
           <Bloco titulo="Receita por tipo" direita={<Dica>clique para filtrar</Dica>}>
             <ListaTipos {...p} medida="receita" />
           </Bloco>
+          <Bloco titulo="Receita · mês a mês">
+            <SerieMeses dados={dados} valor={(y) => y.receitaDescarrego} fmt={semCentavos} maiorEhBom altura={110} />
+          </Bloco>
         </div>
-        <Bloco titulo="Receita e custo · mês a mês">
-          <SerieMeses dados={dados} valor={(y) => y.receitaDescarrego} fmt={semCentavos} maiorEhBom altura={150} />
-          <div className="mt-3 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">Quanto o custo consome da receita</div>
-          <SerieMeses dados={dados} valor={(y) => y.custoSobreDescarrego} fmt={(v) => formatPercent(v)} maiorEhBom={false} altura={120} />
-        </Bloco>
         <Bloco titulo="Quem mais paga">
           <TabelaFornecedores {...p} ordemInicial="receita" />
         </Bloco>
