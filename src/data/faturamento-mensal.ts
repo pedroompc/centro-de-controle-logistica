@@ -178,3 +178,25 @@ export const getResumoFaturamentoDashboard = cache(
     return mes < primeiroDiaDoMes() ? lerSnapshot(supabase, mes) : null;
   },
 );
+
+/**
+ * Venda líquida dos meses pedidos, SÓ das fotos do Supabase (nunca toca o
+ * Winthor). Para comparativos do Painel da TV, que não pode abrir uma conexão
+ * Oracle por mês. Mês sem foto (o corrente, ou Supabase fora) fica de fora.
+ */
+export async function vendaLiquidaDasFotos(meses: string[]): Promise<Map<string, number>> {
+  const res = new Map<string, number>();
+  if (meses.length === 0) return res;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("faturamento_mensal")
+    .select("mes, venda_liquida")
+    .eq("filial", FILIAL_LABEL)
+    .in("mes", meses);
+  if (error) {
+    console.error("[faturamento-mensal] Supabase indisponível:", error.message);
+    return res;
+  }
+  for (const r of data ?? []) res.set(primeiroDiaDoMes(String(r.mes)), num(r.venda_liquida));
+  return res;
+}

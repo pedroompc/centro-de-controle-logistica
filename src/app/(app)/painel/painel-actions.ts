@@ -12,7 +12,22 @@ import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import type { DescarregamentoTipo } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
-import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
+import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
+import { listarFuncionarios } from "@/data/funcionarios";
+import { listarSetores } from "@/data/setores";
+import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
+import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
+import { vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
+import {
+  linhasEquipePorCargo,
+  equipeDasLinhas,
+  ehSetorRecebimento,
+  fracaoDoMes,
+  calcularIndicadores,
+  EQUIPE_VAZIA,
+  type EquipeRecebimento,
+  type IndicadoresRecebimento,
+} from "@/domain/recebimento";
 import { classificarRegiao, ORDEM_REGIAO, type RegiaoPE } from "@/domain/pe-regioes";
 import type { DevolucaoPorSetor, DevolucaoPorMotivo } from "@/domain/devolucoes";
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
@@ -299,4 +314,67 @@ export async function carregarDescarregos(mes: string): Promise<ResumoDescarrego
     porDia,
     porSemana,
   };
+}
+
+// --- Recebimento (equipe × descarrego) ---------------------------------------
+
+/**
+ * Indicadores do recebimento mês a mês, de julho/2026 até o mês pedido: kg por
+ * ajudante, carros/kg por conferente, custo da equipe sobre o faturamento
+ * líquido e sobre a receita de descarrego, dias de descarrego.
+ *
+ * Equipe de cada mês: a foto por cargo (efetivo_mensal_cargo) quando existe; no
+ * mês corrente, o cadastro vivo (e grava a foto). Mês passado sem foto usa os
+ * cargos de hoje — `equipeEstimada` — mas, se houver a foto por SETOR daquele
+ * mês, pega dela o total e a folha reais.
+ *
+ * Faturamento líquido vem só das fotos (sem Oracle); o do mês na tela a view
+ * troca pelo valor ao vivo que o placar já buscou.
+ */
+export async function carregarRecebimento(mes: string): Promise<IndicadoresRecebimento[]> {
+  const m = mesNorm(mes);
+  const atual = primeiroDiaDoMes();
+  const meses: string[] = [];
+  for (let x = INICIO_HISTORICO; x <= m; x = mesProximo(x)) meses.push(x);
+
+  const [funcionarios, setores, fotosCargo, fotosSetor, descarrego, vendas] = await Promise.all([
+    listarFuncionarios().catch(() => []),
+    listarSetores().catch(() => []),
+    listarFotosEquipeCargo(),
+    serieEfetivoSetorMensal(24),
+    serieDescarregoMensal(24),
+    vendaLiquidaDasFotos(meses.filter((x) => x < atual)),
+  ]);
+
+  const vivo = linhasEquipePorCargo(funcionarios, setores);
+  const equipeHoje = vivo.setor ? equipeDasLinhas(vivo.setor, vivo.linhas) : EQUIPE_VAZIA;
+  if (vivo.setor) await registrarFotoEquipeCargo(vivo.setor, vivo.linhas);
+
+  const cargoPorMes = new Map(fotosCargo.map((f) => [f.mes, f]));
+  const descPorMes = new Map(descarrego.map((d) => [d.mes, d]));
+
+  return meses.map((x) => {
+    let equipe: EquipeRecebimento = equipeHoje;
+    let equipeEstimada = false;
+    const foto = cargoPorMes.get(x);
+    if (foto && x !== atual) {
+      equipe = equipeDasLinhas(foto.setor, foto.linhas);
+    } else if (x !== atual) {
+      equipeEstimada = true;
+      const setor = fotosSetor.find((f) => f.mes === x && ehSetorRecebimento(f.setor));
+      if (setor) equipe = { ...equipeHoje, total: setor.ativos, custo: setor.custoAtivos };
+    }
+    const d = descPorMes.get(x);
+    return calcularIndicadores({
+      mes: x,
+      equipe,
+      equipeEstimada,
+      diasDescarrego: d?.dias ?? 0,
+      carros: d?.carros ?? 0,
+      pesoKg: d?.pesoKg ?? 0,
+      receitaDescarrego: d?.receita ?? 0,
+      faturamentoLiquido: vendas.get(x) ?? null,
+      fracaoMes: fracaoDoMes(x),
+    });
+  });
 }
