@@ -67,9 +67,14 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">
           <SectionTitle>Fixos</SectionTitle>
-          <Link href="/custos/fixos" className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]">
-            {admin ? "Gerenciar fixos" : "Ver fixos"}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/custos/equipamentos" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-50">
+              Equipamentos
+            </Link>
+            <Link href="/custos/fixos" className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]">
+              {admin ? "Gerenciar fixos" : "Ver fixos"}
+            </Link>
+          </div>
         </div>
         <BlocoLancamentos itens={fixos} vazio="Nenhum custo fixo neste mês." admin={admin} />
       </section>

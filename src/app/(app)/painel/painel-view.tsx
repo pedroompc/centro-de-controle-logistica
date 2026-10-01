@@ -216,7 +216,7 @@ export function PlacarRecebimento({
       <Kpi
         label="Custo do recebimento"
         value={formatBRL(r.equipe.custo)}
-        hint={`${r.equipe.custoEmpilhadeira ? `folha + empilhadeira ${formatBRL(r.equipe.custoEmpilhadeira)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
+        hint={`${r.equipe.custoEquipamentos ? `folha + empilhadeira ${formatBRL(r.equipe.custoEquipamentos)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
       />
       <Kpi
         label="Kg por ajudante"

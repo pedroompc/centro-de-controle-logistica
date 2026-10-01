@@ -12,6 +12,7 @@ import {
   empilhadorDoCadastro,
   comEmpilhador,
   CUSTO_EMPILHADEIRA_MENSAL,
+  custoDosEquipamentos,
   equipeDoMes,
 } from "./recebimento";
 import type { Funcionario } from "./types";
@@ -214,5 +215,23 @@ describe("equipeDoMes", () => {
     const e = comEmpilhador(hoje, { candidatos: 1, custo: 3000, jaNoSetor: true });
     expect(e.total).toBe(8);
     expect(e.ajudantes + e.conferentes + (e.empilhadores ?? 0)).toBe(8);
+  });
+});
+
+describe("custoDosEquipamentos", () => {
+  it("soma quantidade × custo; sem tabela usa a empilhadeira padrão", () => {
+    expect(
+      custoDosEquipamentos([
+        { id: "1", nome: "Empilhadeira", tipo: "empilhadeira", quantidade: 1, custoUnitario: 6000 },
+        { id: "2", nome: "Patinha elétrica", tipo: "patinha", quantidade: 2, custoUnitario: 1200 },
+      ]),
+    ).toBe(8400);
+    expect(custoDosEquipamentos([])).toBe(0);
+    expect(custoDosEquipamentos(null)).toBe(CUSTO_EMPILHADEIRA_MENSAL);
+  });
+  it("entra no custo do recebimento", () => {
+    const e = comEmpilhador({ setor: "Recebimento", total: 7, ajudantes: 5, conferentes: 2, custo: 25_000 }, { candidatos: 0, custo: 0, jaNoSetor: false }, 8400);
+    expect(e.custo).toBe(33_400);
+    expect(e.custoEquipamentos).toBe(8400);
   });
 });

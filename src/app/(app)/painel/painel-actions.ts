@@ -17,6 +17,7 @@ import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
 import { vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
+import { listarEquipamentos } from "@/data/equipamentos";
 import {
   linhasEquipePorCargo,
   equipeDasLinhas,
@@ -25,6 +26,7 @@ import {
   calcularIndicadores,
   empilhadorDoCadastro,
   comEmpilhador,
+  custoDosEquipamentos,
   EQUIPE_VAZIA,
   type IndicadoresRecebimento,
 } from "@/domain/recebimento";
@@ -335,12 +337,13 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
 
-  const [funcionarios, setores, fotosCargo, descarrego, vendas] = await Promise.all([
+  const [funcionarios, setores, fotosCargo, descarrego, vendas, equipamentos] = await Promise.all([
     listarFuncionarios().catch(() => []),
     listarSetores().catch(() => []),
     listarFotosEquipeCargo(),
     serieDescarregoMensal(24),
     vendaLiquidaDasFotos(meses.filter((x) => x < atual)),
+    listarEquipamentos().catch(() => null),
   ]);
 
   const vivo = linhasEquipePorCargo(funcionarios, setores);
@@ -350,6 +353,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   // 1 empilhador + 1 empilhadeira entram em todo mês (a foto por cargo não os
   // guarda — o operador costuma estar em outro setor; usa o cadastro de hoje).
   const empilhador = empilhadorDoCadastro(funcionarios, setores);
+  const custoEquip = custoDosEquipamentos(equipamentos);
   const cargoPorMes = new Map(fotosCargo.map((f) => [f.mes, f]));
   const descPorMes = new Map(descarrego.map((d) => [d.mes, d]));
 
@@ -358,7 +362,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
     const d = descPorMes.get(x);
     return calcularIndicadores({
       mes: x,
-      equipe: comEmpilhador(equipe, empilhador),
+      equipe: comEmpilhador(equipe, empilhador, custoEquip),
       equipeEstimada,
       diasDescarrego: d?.dias ?? 0,
       carros: d?.carros ?? 0,
