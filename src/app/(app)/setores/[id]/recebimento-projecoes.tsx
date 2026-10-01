@@ -5,7 +5,9 @@ import { Card, SectionTitle } from "@/components/ui";
 import { Chip, Segmentado, RotuloFiltro, GraficoLinhas } from "./bi";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
+import type { IndicadoresRecebimento } from "@/domain/recebimento";
 import {
+  baseDoRitmo,
   projetar,
   CENARIO_ATUAL,
   CENARIOS_RAPIDOS,
@@ -117,7 +119,19 @@ const iguais = (a: Cenario, b: Partial<Cenario>) =>
   (b.deltaAjudantes ?? 0) === a.deltaAjudantes && (b.deltaConferentes ?? 0) === a.deltaConferentes && (b.carrosExtrasDia ?? 0) === a.carrosExtrasDia;
 
 /** Aba Projeções do setor Recebimento — simulador estilo BI. */
-export function RecebimentoProjecoes({ base, perfil }: { base: BaseRitmo | null; perfil: PerfilDiario }) {
+export function RecebimentoProjecoes({
+  serie,
+  custoMedio,
+  perfil,
+}: {
+  serie: IndicadoresRecebimento[];
+  custoMedio: { ajudante: number; conferente: number };
+  perfil: PerfilDiario;
+}) {
+  // Base = média dos últimos N meses FECHADOS (janela que anda com o calendário).
+  const [janela, setJanela] = useState<number>(3);
+  const base: BaseRitmo | null = baseDoRitmo(serie, custoMedio, janela);
+  const qtdFechados = serie.filter((r) => r.fracaoMes >= 1 && r.carros > 0).length;
   const [cen, setCen] = useState<Cenario>(CENARIO_ATUAL);
   const [crescimento, setCrescimento] = useState(0);
   const [horizonte, setHorizonte] = useState(12);
@@ -146,6 +160,25 @@ export function RecebimentoProjecoes({ base, perfil }: { base: BaseRitmo | null;
             <button type="button" onClick={() => { setCen(CENARIO_ATUAL); setCrescimento(0); }} className="-mt-3 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
               Zerar
             </button>
+          </div>
+
+          <div>
+            <RotuloFiltro>Base da projeção</RotuloFiltro>
+            <div className="mt-2">
+              <Segmentado
+                opcoes={[
+                  { valor: 3, rotulo: "Últimos 3 meses" },
+                  { valor: 6, rotulo: "Últimos 6" },
+                  { valor: 999, rotulo: "Todos fechados" },
+                ]}
+                valor={janela}
+                onChange={setJanela}
+              />
+            </div>
+            <div className="mt-1 text-[0.65rem] text-slate-400">
+              {qtdFechados} {qtdFechados === 1 ? "mês fechado" : "meses fechados"} hoje
+              {qtdFechados <= 3 ? " — as três opções ainda dão o mesmo resultado" : ""} · 3 reage rápido, mais meses suaviza
+            </div>
           </div>
 
           <div>

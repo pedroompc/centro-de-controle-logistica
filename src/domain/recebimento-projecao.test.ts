@@ -88,3 +88,12 @@ describe("projetar", () => {
     expect(p.mensal.kgPorAjudanteDia).toBeNull();
   });
 });
+
+describe("baseDoRitmo · janela", () => {
+  const longa = ["2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01", "2026-11-01"].map((m, i) => mes(m, 100 + i * 10));
+  it("3 = últimos 3 fechados (a janela anda); 999 = todos", () => {
+    expect(baseDoRitmo(longa, { ajudante: 0, conferente: 0 }, 3)!.meses).toEqual(["2026-09-01", "2026-10-01", "2026-11-01"]);
+    expect(baseDoRitmo(longa, { ajudante: 0, conferente: 0 }, 3)!.carrosMes).toBe(130);
+    expect(baseDoRitmo(longa, { ajudante: 0, conferente: 0 }, 999)!.carrosMes).toBe(120);
+  });
+});

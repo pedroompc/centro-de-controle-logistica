@@ -10,7 +10,6 @@ import { inicioFimMesAtual } from "@/domain/periodo";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
 import { ehSetorRecebimento } from "@/domain/recebimento";
-import { baseDoRitmo } from "@/domain/recebimento-projecao";
 import { carregarAnaliseRecebimento } from "./recebimento-dados";
 import { RecebimentoDesempenho } from "./recebimento-desempenho";
 import { RecebimentoProjecoes } from "./recebimento-projecoes";
@@ -77,7 +76,7 @@ export default async function SetorDetalhe({
         {aba === "desempenho" ? (
           <RecebimentoDesempenho dados={analise} />
         ) : (
-          <RecebimentoProjecoes base={baseDoRitmo(analise.serie, analise.custoMedio)} perfil={analise.perfil} />
+          <RecebimentoProjecoes serie={analise.serie} custoMedio={analise.custoMedio} perfil={analise.perfil} />
         )}
       </div>
     );
