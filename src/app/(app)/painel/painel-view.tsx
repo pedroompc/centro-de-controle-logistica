@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link";
 import { formatBRL, formatPercent, formatKg } from "@/domain/format";
 import { mesAnterior, mesProximo, formatMesAno, primeiroDiaDoMes, INICIO_HISTORICO } from "@/domain/periodo";
-import { calcularIndicadores, type IndicadoresRecebimento } from "@/domain/recebimento";
+import { calcularIndicadores, ehMelhorDaJanela, type IndicadoresRecebimento, type IndicadorComparavel } from "@/domain/recebimento";
 import type {
   DevolucaoPorMotorista,
   DevolucaoPorCliente,
@@ -188,34 +188,53 @@ const pct = (v: number | null) => (v === null ? "—" : formatPercent(v));
 /**
  * Placar do topo nos slides do recebimento: equipe, custo e a produtividade de
  * ajudantes e conferentes. Médias da EQUIPE (peso do mês ÷ pessoas).
+ *
+ * Cor: verde = o mês na tela é o melhor do trimestre (ele e os 2 anteriores)
+ * naquele indicador; senão branco. A seta ▲▼ vs o mês anterior continua.
  */
-export function PlacarRecebimento({ r, ant, prevLabel }: { r: IndicadoresRecebimento; ant?: IndicadoresRecebimento; prevLabel: string }) {
+export function PlacarRecebimento({
+  r,
+  ant,
+  janela,
+  prevLabel,
+}: {
+  r: IndicadoresRecebimento;
+  ant?: IndicadoresRecebimento;
+  janela: IndicadoresRecebimento[];
+  prevLabel: string;
+}) {
   const parcial = r.fracaoMes < 1;
   const est = r.equipeEstimada ? " · estimativa (equipe de hoje)" : "";
-  const antKg = ant?.kgPorAjudante ?? undefined;
+  const tom = (chave: IndicadorComparavel) => (ehMelhorDaJanela(janela, r.mes, chave) ? "emerald" : "white");
   return (
     <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
       <Kpi label="Equipe do recebimento" value={inteiro.format(r.equipe.total)} hint={`${r.equipe.ajudantes} ajudantes · ${r.equipe.conferentes} conferentes${est}`} />
-      <Kpi label="Custo do recebimento" value={formatBRL(r.equipe.custo)} hint={parcial ? `folha do mês · ${formatBRL(r.custoPeriodo)} até hoje` : "folha do mês"} tone="amber" />
+      <Kpi label="Custo do recebimento" value={formatBRL(r.equipe.custo)} hint={parcial ? `folha do mês · ${formatBRL(r.custoPeriodo)} até hoje` : "folha do mês"} />
       <Kpi
         label="Kg por ajudante"
         value={kgInt(r.kgPorAjudante)}
-        delta={r.kgPorAjudante !== null && !parcial ? deltaPct(r.kgPorAjudante, antKg, true, prevLabel) : undefined}
+        delta={r.kgPorAjudante !== null && !parcial ? deltaPct(r.kgPorAjudante, ant?.kgPorAjudante ?? undefined, true, prevLabel) : undefined}
         hint={r.kgPorAjudanteDia !== null ? `${formatKg(r.kgPorAjudanteDia)} por dia de descarrego` : "sem ajudante ou sem peso"}
-        tone="emerald"
+        tone={tom("kgPorAjudante")}
       />
       <Kpi
         label="Por conferente"
         value={r.carrosPorConferente === null ? "—" : `${inteiro.format(Math.round(r.carrosPorConferente))} carros`}
         hint={r.kgPorConferente !== null ? `${formatKg(r.kgPorConferente)} conferidos` : "sem conferente cadastrado"}
+        tone={tom("carrosPorConferente")}
       />
-      <Kpi label="Custo / fat. líquido" value={pct(r.custoSobreFaturamento)} hint={parcial ? "folha proporcional ao mês" : "folha ÷ faturamento líquido"} />
+      <Kpi
+        label="Custo / fat. líquido"
+        value={r.custoSobreFaturamento === null ? "—" : formatPercent(r.custoSobreFaturamento, 2)}
+        hint={parcial ? "folha proporcional ao mês" : "folha ÷ faturamento líquido"}
+        tone={tom("custoSobreFaturamento")}
+      />
       <Kpi
         label="Custo / descarrego"
         value={pct(r.custoSobreDescarrego)}
         delta={r.custoSobreDescarrego !== null && !parcial ? deltaTaxa(r.custoSobreDescarrego, ant?.custoSobreDescarrego ?? undefined, false, prevLabel) : undefined}
         hint="folha ÷ receita só de descarrego"
-        tone="rose"
+        tone={tom("custoSobreDescarrego")}
       />
       <Kpi label="Dias de descarrego" value={inteiro.format(r.diasDescarrego)} hint={r.carrosPorDia !== null ? `${r.carrosPorDia.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} carros por dia` : "nenhum lançamento"} />
     </div>
@@ -292,6 +311,8 @@ export default function PainelView({
   const recAtual = recBase && dev.disponivel ? calcularIndicadores({ ...recBase, faturamentoLiquido: dev.vendaLiquida }) : recBase;
   const recAnt = dados.recebimento.find((r) => r.mes === mesAnterior(mesRef));
   const recSerie = dados.recebimento.map((r) => (r.mes === mesRef && recAtual ? recAtual : r));
+  // Trimestre do placar: o mês na tela e os 2 anteriores.
+  const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
   const slides = construirSlides(dados, dev, mesLabel, recSerie);
   const nSlides = slides.length;
@@ -393,7 +414,7 @@ export default function PainelView({
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
         {placarRecebimento && recAtual ? (
-          <PlacarRecebimento r={recAtual} ant={recAnt} prevLabel={prevLabel} />
+          <PlacarRecebimento r={recAtual} ant={recAnt} janela={janelaTrimestre} prevLabel={prevLabel} />
         ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
           <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />

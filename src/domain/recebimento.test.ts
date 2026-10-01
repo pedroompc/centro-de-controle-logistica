@@ -6,6 +6,8 @@ import {
   equipeDasLinhas,
   fracaoDoMes,
   calcularIndicadores,
+  indicesMelhores,
+  ehMelhorDaJanela,
 } from "./recebimento";
 import type { Funcionario } from "./types";
 
@@ -128,5 +130,29 @@ describe("calcularIndicadores", () => {
     expect(r.custoSobreFaturamento).toBeNull();
     expect(r.custoSobreDescarrego).toBeNull();
     expect(r.resultado).toBe(-15_000);
+  });
+});
+
+describe("indicesMelhores", () => {
+  it("maior é bom / menor é bom", () => {
+    const it3 = [10, 30, 20].map((valor) => ({ valor, fechado: true }));
+    expect([...indicesMelhores(it3, true)]).toEqual([1]);
+    expect([...indicesMelhores(it3, false)]).toEqual([0]);
+  });
+  it("ignora mês aberto e nulo; exige 2 comparáveis; empate destaca todos", () => {
+    expect([...indicesMelhores([{ valor: 5, fechado: true }, { valor: 99, fechado: false }, { valor: null, fechado: true }], true)]).toEqual([]);
+    expect([...indicesMelhores([{ valor: 5, fechado: true }, { valor: 5, fechado: true }], true)]).toEqual([0, 1]);
+  });
+});
+
+describe("ehMelhorDaJanela", () => {
+  const base = { setor: "Recebimento", total: 3, ajudantes: 2, conferentes: 1, custo: 3000 };
+  const mk = (mes: string, receita: number) =>
+    calcularIndicadores({ mes, equipe: base, equipeEstimada: false, diasDescarrego: 20, carros: 100, pesoKg: 1_000_000, receitaDescarrego: receita, faturamentoLiquido: null, fracaoMes: 1 });
+  const serie = [mk("2026-07-01", 10_000), mk("2026-08-01", 20_000)];
+  it("custo/descarrego menor vence; resultado maior vence", () => {
+    expect(ehMelhorDaJanela(serie, "2026-08-01", "custoSobreDescarrego")).toBe(true);
+    expect(ehMelhorDaJanela(serie, "2026-07-01", "custoSobreDescarrego")).toBe(false);
+    expect(ehMelhorDaJanela(serie, "2026-08-01", "resultado")).toBe(true);
   });
 });

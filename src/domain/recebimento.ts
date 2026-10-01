@@ -111,7 +111,9 @@ export interface IndicadoresRecebimento {
   custoPorTonelada: number | null; // R$/t
   kgPorCarro: number | null;
   carrosPorDia: number | null;
+  receitaPorTonelada: number | null; // R$/t só de descarrego
   resultado: number; // receita de descarrego − custo do período
+  margem: number | null; // resultado ÷ receita de descarrego (0..1)
 }
 
 const div = (a: number, b: number): number | null => (b > 0 ? a / b : null);
@@ -141,6 +143,55 @@ export function calcularIndicadores(p: {
     custoPorTonelada: div(custoPeriodo, p.pesoKg / 1000),
     kgPorCarro: div(p.pesoKg, p.carros),
     carrosPorDia: div(p.carros, p.diasDescarrego),
+    receitaPorTonelada: div(p.receitaDescarrego, p.pesoKg / 1000),
     resultado: p.receitaDescarrego - custoPeriodo,
+    margem: div(p.receitaDescarrego - custoPeriodo, p.receitaDescarrego),
   };
+}
+
+// --- Melhor do trimestre ------------------------------------------------------
+
+/**
+ * Compara valores de meses e diz quais são o MELHOR da janela (para pintar de
+ * verde). `maiorEhBom` decide a direção (custo % baixo é bom). Só entra mês
+ * FECHADO — o corrente é parcial e ganharia ou perderia por falta de dias — e
+ * só há destaque com pelo menos 2 meses comparáveis. Empate destaca todos.
+ */
+export function indicesMelhores(
+  itens: { valor: number | null; fechado: boolean }[],
+  maiorEhBom: boolean,
+): Set<number> {
+  const validos = itens
+    .map((it, i) => ({ ...it, i }))
+    .filter((it): it is { valor: number; fechado: boolean; i: number } => it.fechado && it.valor !== null);
+  if (validos.length < 2) return new Set();
+  const alvo = maiorEhBom ? Math.max(...validos.map((v) => v.valor)) : Math.min(...validos.map((v) => v.valor));
+  return new Set(validos.filter((v) => v.valor === alvo).map((v) => v.i));
+}
+
+/** Os indicadores que têm "melhor" (dias de descarrego não: mais dias não é melhor nem pior). */
+export const DIRECAO_INDICADOR = {
+  kgPorAjudante: true,
+  kgPorAjudanteDia: true,
+  carrosPorConferente: true,
+  kgPorConferente: true,
+  custoSobreFaturamento: false,
+  custoSobreDescarrego: false,
+  custoPorTonelada: false,
+  carrosPorDia: true,
+  receitaPorTonelada: true,
+  resultado: true,
+  margem: true,
+} as const satisfies Partial<Record<keyof IndicadoresRecebimento, boolean>>;
+
+export type IndicadorComparavel = keyof typeof DIRECAO_INDICADOR;
+
+/** O mês `mes` é o melhor da janela `serie` neste indicador? */
+export function ehMelhorDaJanela(serie: IndicadoresRecebimento[], mes: string, chave: IndicadorComparavel): boolean {
+  const i = serie.findIndex((r) => r.mes === mes);
+  if (i < 0) return false;
+  return indicesMelhores(
+    serie.map((r) => ({ valor: r[chave], fechado: r.fracaoMes >= 1 })),
+    DIRECAO_INDICADOR[chave],
+  ).has(i);
 }
