@@ -7,7 +7,7 @@ import {
   diariosDosLancamentos,
   type PontoDescarregoMensal,
 } from "@/domain/descarregamento-tendencia";
-import type { DescarregamentoTipo } from "@/domain/types";
+import type { DescarregamentoTipo, TotalDiarioDescarregamento } from "@/domain/types";
 import { primeiroDiaDoMes, mesAnterior, inicioFimDoMes, INICIO_HISTORICO } from "@/domain/periodo";
 
 const COLS =
@@ -35,7 +35,15 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
 
   const inicio = inicioMes; // já é dia 01
   const fim = inicioFimDoMes(atual).fim; // último dia do mês corrente
+  return agregarPorMes(await listarDiariosDescarrego(inicio, fim));
+}
 
+/**
+ * Lançamentos de descarrego dia a dia entre `inicio` e `fim` (ISO, inclusivos):
+ * total do dia + lançamentos por fornecedor já colapsados por data. O mesmo dia
+ * pode aparecer duas vezes (uma de cada forma) — quem agrega soma.
+ */
+export async function listarDiariosDescarrego(inicio: string, fim: string): Promise<TotalDiarioDescarregamento[]> {
   const supabase = await createClient();
   // As duas formas de lançar descarrego: total do dia e por fornecedor.
   const [totais, lancamentos, carros] = await Promise.all([
@@ -74,5 +82,5 @@ export async function serieDescarregoMensal(qtdMeses = 12): Promise<PontoDescarr
     })),
     carros,
   );
-  return agregarPorMes([...diarios, ...porFornecedor]);
+  return [...diarios, ...porFornecedor];
 }

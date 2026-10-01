@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { formatBRL, formatPercent, formatKg } from "@/domain/format";
-import { mesAnterior, formatMesAno, primeiroDiaDoMes } from "@/domain/periodo";
+import { mesAnterior, mesProximo, formatMesAno, primeiroDiaDoMes, INICIO_HISTORICO } from "@/domain/periodo";
+import { calcularIndicadores, ehMelhorDaJanela, type IndicadoresRecebimento, type IndicadorComparavel } from "@/domain/recebimento";
 import type {
   DevolucaoPorMotorista,
   DevolucaoPorCliente,
@@ -21,6 +22,7 @@ import {
   carregarReceitasDrivers,
   carregarDescarregos,
   carregarSerieDescarrego,
+  carregarRecebimento,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
@@ -91,7 +93,11 @@ interface Dados {
   receitasDrivers: MesReceitaDetalhe[];
   descarregos: ResumoDescarregos | null;
   serieDescarrego: PontoDescarregoMensal[];
+  recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
 }
+
+// Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
+const SLIDES_RECEBIMENTO = new Set(["receitas", "descarregos"]);
 
 interface Slide {
   id: string;
@@ -110,7 +116,7 @@ function Marca() {
   );
 }
 
-function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slide[] {
+function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[]): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
     s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} /> });
@@ -125,7 +131,7 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string): Slid
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.receitas)
-    s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} /> });
+    s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} recebimento={recSerie} /> });
   if (d.descarregos)
     s.push({ id: "descarregos", titulo: "Descarrego", contexto: "comparação com o mês anterior e o dia a dia do mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} serie={d.serieDescarrego} mesLabel={mesLabel} /> });
   return s;
@@ -165,6 +171,84 @@ function BotaoCtrl({ onClick, title, children, ativo = false }: { onClick: () =>
   );
 }
 
+/** Seta de mês no cabeçalho — some (fica apagada) no limite do histórico. */
+function NavMes({ href, title, children }: { href: string | null; title: string; children: ReactNode }) {
+  const cls = "inline-flex h-6 w-6 items-center justify-center rounded-md [&_svg]:h-4 [&_svg]:w-4";
+  if (!href) return <span aria-hidden className={`${cls} text-white/15`}>{children}</span>;
+  return (
+    <Link href={href} title={title} aria-label={title} className={`${cls} text-white/70 ring-1 ring-white/15 hover:bg-white/15`}>
+      {children}
+    </Link>
+  );
+}
+
+const kgInt = (v: number | null) => (v === null ? "—" : formatKg(v));
+const pct = (v: number | null) => (v === null ? "—" : formatPercent(v));
+
+/**
+ * Placar do topo nos slides do recebimento: equipe, custo e a produtividade de
+ * ajudantes e conferentes. Médias da EQUIPE (peso do mês ÷ pessoas).
+ *
+ * Cor: verde = o mês na tela é o melhor do trimestre (ele e os 2 anteriores)
+ * naquele indicador; senão branco. A seta ▲▼ vs o mês anterior continua.
+ */
+export function PlacarRecebimento({
+  r,
+  ant,
+  janela,
+  prevLabel,
+}: {
+  r: IndicadoresRecebimento;
+  ant?: IndicadoresRecebimento;
+  janela: IndicadoresRecebimento[];
+  prevLabel: string;
+}) {
+  const parcial = r.fracaoMes < 1;
+  const est = r.equipeEstimada ? " · estimativa" : "";
+  const tom = (chave: IndicadorComparavel) => (ehMelhorDaJanela(janela, r.mes, chave) ? "emerald" : "white");
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+      <Kpi
+        label="Equipe do recebimento"
+        value={inteiro.format(r.equipe.total)}
+        hint={`${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf${r.equipe.empilhadores ? ` · ${r.equipe.empilhadores} empilhador` : ""}${est}`}
+      />
+      <Kpi
+        label="Custo do recebimento"
+        value={formatBRL(r.equipe.custo)}
+        hint={`${r.equipe.custoEmpilhadeira ? `folha + empilhadeira ${formatBRL(r.equipe.custoEmpilhadeira)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
+      />
+      <Kpi
+        label="Kg por ajudante"
+        value={kgInt(r.kgPorAjudante)}
+        delta={r.kgPorAjudante !== null && !parcial ? deltaPct(r.kgPorAjudante, ant?.kgPorAjudante ?? undefined, true, prevLabel) : undefined}
+        hint={r.kgPorAjudanteDia !== null ? `${formatKg(r.kgPorAjudanteDia)} por dia de descarrego` : "sem ajudante ou sem peso"}
+        tone={tom("kgPorAjudante")}
+      />
+      <Kpi
+        label="Por conferente"
+        value={r.carrosPorConferente === null ? "—" : `${inteiro.format(Math.round(r.carrosPorConferente))} carros`}
+        hint={r.kgPorConferente !== null ? `${formatKg(r.kgPorConferente)} conferidos` : "sem conferente cadastrado"}
+        tone={tom("carrosPorConferente")}
+      />
+      <Kpi
+        label="Custo / fat. líquido"
+        value={r.custoSobreFaturamento === null ? "—" : formatPercent(r.custoSobreFaturamento, 2)}
+        hint={parcial ? "custo proporcional ao mês" : "custo ÷ faturamento líquido"}
+        tone={tom("custoSobreFaturamento")}
+      />
+      <Kpi
+        label="Custo / descarrego"
+        value={pct(r.custoSobreDescarrego)}
+        delta={r.custoSobreDescarrego !== null && !parcial ? deltaTaxa(r.custoSobreDescarrego, ant?.custoSobreDescarrego ?? undefined, false, prevLabel) : undefined}
+        hint="custo ÷ receita só de descarrego"
+        tone={tom("custoSobreDescarrego")}
+      />
+      <Kpi label="Dias de descarrego" value={inteiro.format(r.diasDescarrego)} hint={r.carrosPorDia !== null ? `${r.carrosPorDia.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} carros por dia` : "nenhum lançamento"} />
+    </div>
+  );
+}
+
 export default function PainelView({
   mes,
   mesLabel,
@@ -177,39 +261,46 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [],
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [],
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [relogio, setRelogio] = useState("");
   const [atualizando, setAtualizando] = useState(false);
+  const [falhas, setFalhas] = useState<string[]>([]);
   const primeira = useRef(true);
 
   // Aquece os dados SEQUENCIALMENTE (um await por vez) — nunca uma rajada de
-  // conexões Oracle. Cada bloco é isolado: se um falhar, o slide só não entra.
+  // conexões Oracle. Cada bloco é isolado: se um falhar, o slide só não entra —
+  // mas o nome do bloco vai para o cabeçalho ("sem dados: …") e para o console,
+  // para o slide não sumir sem explicação.
   const aquecer = useCallback(async () => {
-    const passo = async (fn: () => Promise<void>) => {
+    const falhou: string[] = [];
+    const passo = async (nome: string, fn: () => Promise<void>) => {
       try {
         await fn();
-      } catch {
-        /* mantém o dado anterior; o slide simplesmente não aparece */
+      } catch (e) {
+        falhou.push(nome);
+        console.error(`[painel] falha ao carregar ${nome}:`, e);
       }
     };
-    await passo(async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
-    await passo(async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
-    await passo(async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
-    await passo(async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
-    await passo(async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
-    await passo(async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
-    await passo(async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
-    await passo(async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
-    await passo(async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
-    await passo(async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    await passo("mapa", async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
+    await passo("motoristas", async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
+    await passo("clientes", async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
+    await passo("vendedores", async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
+    await passo("bairros RMR", async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
+    await passo("a faturar", async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
+    await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
+    await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
+    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
+    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
     // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
-    await passo(async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
+    await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
     if (primeira.current) primeira.current = false;
-    else await passo(async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
+    else await passo("placar", async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
+    setFalhas(falhou);
     setRelogio(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
   }, [mes]);
 
@@ -221,16 +312,29 @@ export default function PainelView({
     return () => clearInterval(t);
   }, [aquecer]);
 
-  const slides = construirSlides(dados, dev, mesLabel);
+  // Recebimento do mês na tela: o faturamento líquido vem ao vivo do placar
+  // (a série só tem as fotos dos meses fechados).
+  const mesRef = mes || primeiroDiaDoMes();
+  const recBase = dados.recebimento.find((r) => r.mes === mesRef) ?? null;
+  const recAtual = recBase && dev.disponivel ? calcularIndicadores({ ...recBase, faturamentoLiquido: dev.vendaLiquida }) : recBase;
+  const recAnt = dados.recebimento.find((r) => r.mes === mesAnterior(mesRef));
+  const recSerie = dados.recebimento.map((r) => (r.mes === mesRef && recAtual ? recAtual : r));
+  // Trimestre do placar: o mês na tela e os 2 anteriores.
+  const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
+
+  const slides = construirSlides(dados, dev, mesLabel, recSerie);
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
 
   // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
-  const mesRef = mes || primeiroDiaDoMes();
   const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
   const antOk = devAnt?.disponivel ? devAnt : undefined;
   const receitaAnt = dados.receitas?.serie.find((p) => p.mes === mesAnterior(mesRef))?.valor;
+  const mesAtual = primeiroDiaDoMes();
+  const podeVoltar = mesRef > INICIO_HISTORICO;
+  const podeAvancar = mesRef < mesAtual;
+  const placarRecebimento = !!recAtual && !!atual && SLIDES_RECEBIMENTO.has(atual.id);
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
   const proximo = useCallback(() => setIdx((i) => i + 1), []);
@@ -281,8 +385,20 @@ export default function PainelView({
               <h1 className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight xl:text-3xl">
                 Painel da Operação
               </h1>
-              <p className="text-sm text-white/50">
-                {mesLabel} · filiais 1 e 11{relogio && ` · atualizado ${relogio}`}
+              <p className="flex flex-wrap items-center gap-x-1 text-sm text-white/50">
+                {/* Navegação de mês: o painel inteiro passa a mostrar o mês escolhido. */}
+                <NavMes href={podeVoltar ? `/painel?mes=${mesAnterior(mesRef)}` : null} title="Mês anterior"><IcoPrev /></NavMes>
+                <span className="font-semibold text-white/75">{mesLabel}</span>
+                <NavMes href={podeAvancar ? `/painel?mes=${mesProximo(mesRef)}` : null} title="Próximo mês"><IcoNext /></NavMes>
+                {podeAvancar && (
+                  <Link href="/painel" className="mr-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70 hover:bg-white/20">mês atual</Link>
+                )}
+                · filiais 1 e 11{relogio && ` · atualizado ${relogio}`}
+                {falhas.length > 0 && (
+                  <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-xs font-semibold text-rose-200" title="Veja o console / log do servidor">
+                    sem dados: {falhas.join(", ")}
+                  </span>
+                )}
                 {pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
               </p>
             </div>
@@ -305,6 +421,9 @@ export default function PainelView({
 
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
+        {placarRecebimento && recAtual ? (
+          <PlacarRecebimento r={recAtual} ant={recAnt} janela={janelaTrimestre} prevLabel={prevLabel} />
+        ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
           <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />
           <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} delta={dev.disponivel ? deltaPct(dev.atendimentos, antOk?.atendimentos, true, prevLabel) : undefined} />
@@ -313,8 +432,9 @@ export default function PainelView({
           <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
           <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />
         </div>
+        )}
 
-        {dev.porSetor.length > 0 && (
+        {!placarRecebimento && dev.porSetor.length > 0 && (
           <div className="mt-4">
             <SetorBar porSetor={dev.porSetor} />
           </div>

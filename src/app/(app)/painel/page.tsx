@@ -21,5 +21,6 @@ export default async function PainelPage({
 
   const devInicial = await carregarResumoDevolucao(mesSel);
 
-  return <PainelView mes={mesFechado ? mesSel : ""} mesLabel={mesLabel} devInicial={devInicial} />;
+  // `key` por mês: ao navegar de mês o painel recomeça do zero (estado e dados).
+  return <PainelView key={mesSel} mes={mesFechado ? mesSel : ""} mesLabel={mesLabel} devInicial={devInicial} />;
 }
