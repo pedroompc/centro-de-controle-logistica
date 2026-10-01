@@ -102,7 +102,7 @@ function Comparativo({ rotulo, atual, cenario, fmt, maiorEhBom = true, destaque 
         {cenario === null ? "—" : fmt(cenario)}
       </div>
       <div className={`mt-1 text-xs ${destaque ? "text-white/60" : "text-slate-400"}`}>
-        hoje {atual === null ? "—" : fmt(atual)}
+        sem mudança {atual === null ? "—" : fmt(atual)}
         {mudou && (
           <span className={`ml-2 font-bold ${bom ? (destaque ? "text-emerald-300" : "text-emerald-600") : destaque ? "text-rose-300" : "text-rose-600"}`}>
             {dif! > 0 ? "▲" : "▼"} {fmt(Math.abs(dif!))}
@@ -197,10 +197,10 @@ export function RecebimentoProjecoes({ base, perfil }: { base: BaseRitmo | null;
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Comparativo destaque rotulo={`Resultado em ${horizonte} meses`} atual={atual.anual.resultado} cenario={sim.anual.resultado} fmt={formatBRL} />
-            <Comparativo rotulo="Receita por mês (fim)" atual={atual.mensal.receita} cenario={sim.mensal.receita} fmt={formatBRL} />
+            <Comparativo rotulo="Receita no último mês da projeção" atual={atual.mensal.receita} cenario={sim.mensal.receita} fmt={formatBRL} />
             <Comparativo rotulo="Custo por mês" atual={atual.mensal.custo} cenario={sim.mensal.custo} fmt={formatBRL} maiorEhBom={false} />
             <Comparativo rotulo="Custo / descarrego" atual={atual.mensal.custoSobreDescarrego} cenario={sim.mensal.custoSobreDescarrego} fmt={(v) => formatPercent(v)} maiorEhBom={false} />
-            <Comparativo rotulo="Carros por mês (fim)" atual={atual.mensal.carros} cenario={sim.mensal.carros} fmt={(v) => inteiro.format(Math.round(v))} />
+            <Comparativo rotulo="Carros no último mês da projeção" atual={atual.mensal.carros} cenario={sim.mensal.carros} fmt={(v) => inteiro.format(Math.round(v))} />
             <Comparativo rotulo="Kg por ajudante / dia" atual={atual.mensal.kgPorAjudanteDia} cenario={sim.mensal.kgPorAjudanteDia} fmt={(v) => formatKg(v)} />
             <Comparativo rotulo="Carros por conferente" atual={atual.mensal.carrosPorConferente} cenario={sim.mensal.carrosPorConferente} fmt={(v) => inteiro.format(Math.round(v))} />
             <Comparativo rotulo="Custo / faturamento líquido" atual={atual.mensal.custoSobreFaturamento} cenario={sim.mensal.custoSobreFaturamento} fmt={(v) => formatPercent(v, 2)} maiorEhBom={false} />
