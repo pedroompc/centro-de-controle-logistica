@@ -23,6 +23,10 @@ import {
   carregarDescarregos,
   carregarSerieDescarrego,
   carregarRecebimento,
+  carregarDetalheCusto,
+  carregarDetalheDescarrego,
+  type DetalheCusto,
+  type DetalheDescarrego,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
@@ -30,6 +34,7 @@ import {
   type MesReceitaDetalhe,
 } from "./painel-actions";
 import Mapa from "./mapa";
+import { MenuBI, PalcoBI, VISOES_BI, type VisaoBI } from "./bi-recebimento";
 import MapaRMR from "./mapa-rmr";
 import {
   Kpi,
@@ -94,6 +99,8 @@ interface Dados {
   descarregos: ResumoDescarregos | null;
   serieDescarrego: PontoDescarregoMensal[];
   recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
+  custoDet: DetalheCusto | null; // BI: pessoas e equipamentos
+  descDet: DetalheDescarrego | null; // BI: fornecedores e receita por tipo do mês
 }
 
 // Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
@@ -261,8 +268,11 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [],
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], custoDet: null, descDet: null,
   });
+  // BI: o topo é o menu e o palco mostra a visão clicada. `null` = modo
+  // apresentação (os slides antigos girando sozinhos).
+  const [visao, setVisao] = useState<VisaoBI | null>("custo");
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [relogio, setRelogio] = useState("");
@@ -284,6 +294,12 @@ export default function PainelView({
         console.error(`[painel] falha ao carregar ${nome}:`, e);
       }
     };
+    // BI primeiro (Supabase, rápido); depois o que abre conexão Oracle.
+    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
+    await passo("custo", async () => { const v = await carregarDetalheCusto(); setDados((d) => ({ ...d, custoDet: v })); });
+    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
+    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
+    await passo("fornecedores", async () => { const v = await carregarDetalheDescarrego(mes); setDados((d) => ({ ...d, descDet: v })); });
     await passo("mapa", async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
     await passo("motoristas", async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
     await passo("clientes", async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
@@ -292,9 +308,6 @@ export default function PainelView({
     await passo("a faturar", async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
     await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
     await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
-    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
-    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
     // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
     await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
@@ -323,6 +336,7 @@ export default function PainelView({
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
   const slides = construirSlides(dados, dev, mesLabel, recSerie);
+  const biDados = { mes: mesRef, serie: recSerie, custo: dados.custoDet, descarrego: dados.descDet, dias: dados.descarregos, pontos: dados.serieDescarrego };
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
@@ -337,8 +351,19 @@ export default function PainelView({
   const placarRecebimento = !!recAtual && !!atual && SLIDES_RECEBIMENTO.has(atual.id);
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
-  const proximo = useCallback(() => setIdx((i) => i + 1), []);
-  const anterior = useCallback(() => setIdx((i) => i - 1), []);
+  // No BI as setas passam de visão em visão; na apresentação, de slide em slide.
+  const passoVisao = useCallback((d: number) => setVisao((v) => {
+    if (v === null) return v;
+    const i = VISOES_BI.findIndex((x) => x.id === v);
+    return VISOES_BI[(i + d + VISOES_BI.length) % VISOES_BI.length].id;
+  }), []);
+  const proximo = useCallback(() => (visao ? passoVisao(1) : setIdx((i) => i + 1)), [visao, passoVisao]);
+  const anterior = useCallback(() => (visao ? passoVisao(-1) : setIdx((i) => i - 1)), [visao, passoVisao]);
+  // ▶ no BI = começa a apresentação; na apresentação = trava/destrava.
+  const playPause = useCallback(() => {
+    if (visao) { setVisao(null); setPausado(false); }
+    else setPausado((p) => !p);
+  }, [visao]);
   const telaCheia = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     else document.exitFullscreen?.().catch(() => {});
@@ -357,22 +382,22 @@ export default function PainelView({
 
   // Auto-avanço — pausa quando travado.
   useEffect(() => {
-    if (pausado || nSlides === 0) return;
+    if (visao || pausado || nSlides === 0) return;
     const t = setTimeout(() => setIdx((i) => i + 1), atual?.dwell ?? DWELL_PADRAO);
     return () => clearTimeout(t);
-  }, [idx, pausado, nSlides, atual?.dwell]);
+  }, [idx, pausado, nSlides, atual?.dwell, visao]);
 
   // Atalhos: ← → passam; espaço trava/destrava; F tela cheia.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") proximo();
       else if (e.key === "ArrowLeft") anterior();
-      else if (e.key === " ") { e.preventDefault(); setPausado((p) => !p); }
+      else if (e.key === " ") { e.preventDefault(); playPause(); }
       else if (e.key.toLowerCase() === "f") telaCheia();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [proximo, anterior, telaCheia]);
+  }, [proximo, anterior, telaCheia, playPause]);
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden text-white" style={{ background: NAVY }}>
@@ -399,16 +424,26 @@ export default function PainelView({
                     sem dados: {falhas.join(", ")}
                   </span>
                 )}
-                {pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
+                {!visao && pausado && <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold text-amber-200">travado</span>}
+                {!visao && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70">apresentação</span>}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <BotaoCtrl onClick={anterior} title="Página anterior (←)"><IcoPrev /></BotaoCtrl>
-            <BotaoCtrl onClick={() => setPausado((p) => !p)} title={pausado ? "Retomar (espaço)" : "Travar nesta página (espaço)"} ativo={pausado}>
-              {pausado ? <IcoPlay /> : <IcoPause />}
+            {!visao && (
+              <button onClick={() => setVisao("custo")} className="rounded-xl bg-amber-400 px-3.5 py-2 text-sm font-bold text-[#0a1650] transition hover:bg-amber-300">
+                Voltar ao BI
+              </button>
+            )}
+            <BotaoCtrl onClick={anterior} title={visao ? "Visão anterior (←)" : "Página anterior (←)"}><IcoPrev /></BotaoCtrl>
+            <BotaoCtrl
+              onClick={playPause}
+              title={visao ? "Modo apresentação: slides girando (espaço)" : pausado ? "Retomar (espaço)" : "Travar nesta página (espaço)"}
+              ativo={!visao && pausado}
+            >
+              {visao || pausado ? <IcoPlay /> : <IcoPause />}
             </BotaoCtrl>
-            <BotaoCtrl onClick={proximo} title="Próxima página (→)"><IcoNext /></BotaoCtrl>
+            <BotaoCtrl onClick={proximo} title={visao ? "Próxima visão (→)" : "Próxima página (→)"}><IcoNext /></BotaoCtrl>
             <BotaoCtrl onClick={atualizar} title="Atualizar agora"><IcoRefresh spin={atualizando} /></BotaoCtrl>
             <button onClick={telaCheia} className="ml-1 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/15">
               Tela cheia
@@ -421,7 +456,13 @@ export default function PainelView({
 
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
-        {placarRecebimento && recAtual ? (
+        {visao ? (
+          recSerie.length > 0 ? (
+            <MenuBI dados={biDados} visao={visao} onVisao={setVisao} />
+          ) : (
+            <div className="mt-4 rounded-2xl bg-white/[0.06] px-5 py-6 text-center text-white/40 ring-1 ring-white/10">Carregando o recebimento…</div>
+          )
+        ) : placarRecebimento && recAtual ? (
           <PlacarRecebimento r={recAtual} ant={recAnt} janela={janelaTrimestre} prevLabel={prevLabel} />
         ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -434,7 +475,7 @@ export default function PainelView({
         </div>
         )}
 
-        {!placarRecebimento && dev.porSetor.length > 0 && (
+        {!visao && !placarRecebimento && dev.porSetor.length > 0 && (
           <div className="mt-4">
             <SetorBar porSetor={dev.porSetor} />
           </div>
@@ -444,7 +485,22 @@ export default function PainelView({
       {/* Palco rotativo */}
       <main className="relative min-h-0 flex-1 px-6 pb-6 xl:px-10 xl:pb-8">
         <div className="flex h-full flex-col rounded-3xl bg-white/[0.04] p-6 ring-1 ring-white/10 xl:p-8">
-          {atual ? (
+          {visao ? (
+            <>
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-amber-300"><IconeUsuario className="h-6 w-6" /></span>
+                <div>
+                  <h2 className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight xl:text-3xl">
+                    {VISOES_BI.find((v) => v.id === visao)?.titulo} <span className="text-white/40">· {formatMesAno(mesRef)}</span>
+                  </h2>
+                  <p className="text-sm text-white/45">{VISOES_BI.find((v) => v.id === visao)?.contexto}</p>
+                </div>
+              </div>
+              <div key={visao} className="tv-fade min-h-0 flex-1 overflow-hidden">
+                <PalcoBI dados={biDados} visao={visao} />
+              </div>
+            </>
+          ) : atual ? (
             <>
               <div className="mb-4 flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-amber-300">{atual.icon}</span>
@@ -465,7 +521,18 @@ export default function PainelView({
         </div>
 
         {/* Indicadores de página (clicáveis) */}
-        {nSlides > 0 && (
+        {visao ? (
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {VISOES_BI.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setVisao(v.id)}
+                aria-label={`Abrir ${v.titulo}`}
+                className={`h-1.5 rounded-full transition-all ${v.id === visao ? "w-10 bg-amber-400" : "w-4 bg-white/20 hover:bg-white/40"}`}
+              />
+            ))}
+          </div>
+        ) : nSlides > 0 && (
           <div className="mt-4 flex items-center justify-center gap-2">
             {slides.map((s, i) => (
               <button

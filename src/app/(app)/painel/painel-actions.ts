@@ -10,7 +10,7 @@ import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
-import type { DescarregamentoTipo } from "@/domain/types";
+import type { DescarregamentoTipo, Equipamento } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
@@ -27,6 +27,10 @@ import {
   empilhadorDoCadastro,
   comEmpilhador,
   custoDosEquipamentos,
+  ehSetorRecebimento,
+  ehCargoEmpilhador,
+  grupoDoCargo,
+  CUSTO_EMPILHADEIRA_MENSAL,
   EQUIPE_VAZIA,
   type IndicadoresRecebimento,
 } from "@/domain/recebimento";
@@ -372,4 +376,93 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
       fracaoMes: fracaoDoMes(x),
     });
   });
+}
+
+// --- BI do recebimento: detalhes ao clicar nos quadros -----------------------
+
+export interface PessoaRecebimento {
+  id: string;
+  nome: string;
+  cargo: string;
+  papel: "ajudante" | "conferente" | "empilhador" | "outros";
+  custo: number;
+  outroSetor: boolean; // empilhador cadastrado fora do setor Recebimento
+}
+
+export interface DetalheCusto {
+  pessoas: PessoaRecebimento[]; // cadastro ATUAL (não há histórico por pessoa)
+  equipamentos: Equipamento[];
+  equipamentosPadrao: boolean; // true = tabela 0023 ausente, usando a empilhadeira padrão
+}
+
+/** Quem compõe o custo do recebimento hoje: pessoas (com salário) e equipamentos. */
+export async function carregarDetalheCusto(): Promise<DetalheCusto> {
+  const [funcionarios, setores, equipamentos] = await Promise.all([
+    listarFuncionarios(),
+    listarSetores(),
+    listarEquipamentos().catch(() => null),
+  ]);
+  const idsRec = new Set(setores.filter((s) => ehSetorRecebimento(s.nome)).map((s) => s.id));
+  const ativos = funcionarios.filter((f) => f.status === "ativo");
+  const doSetor = ativos.filter((f) => idsRec.has(f.setorId));
+  const opsFora = ativos.filter((f) => !idsRec.has(f.setorId) && ehCargoEmpilhador(f.cargo));
+  const pessoas: PessoaRecebimento[] = [
+    ...doSetor.map((f) => ({
+      id: f.id,
+      nome: f.nome,
+      cargo: f.cargo,
+      papel: ehCargoEmpilhador(f.cargo) ? ("empilhador" as const) : grupoDoCargo(f.cargo),
+      custo: f.custoMensal,
+      outroSetor: false,
+    })),
+    // Operador de fora do setor só entra se não houver um no setor (mesma regra do custo).
+    ...(doSetor.some((f) => ehCargoEmpilhador(f.cargo))
+      ? []
+      : opsFora.map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, papel: "empilhador" as const, custo: f.custoMensal, outroSetor: true }))),
+  ];
+  return {
+    pessoas,
+    equipamentos: equipamentos ?? [{ id: "padrao", nome: "Empilhadeira", tipo: "empilhadeira", quantidade: 1, custoUnitario: CUSTO_EMPILHADEIRA_MENSAL }],
+    equipamentosPadrao: equipamentos === null,
+  };
+}
+
+export interface FornecedorDescarrego {
+  nome: string;
+  notas: number;
+  pesoKg: number;
+  receita: number;
+  tipos: DescarregamentoTipo[];
+}
+
+export interface DetalheDescarrego {
+  porFornecedor: FornecedorDescarrego[]; // lançamentos por fornecedor do mês
+  receitaPorTipo: Record<DescarregamentoTipo, number>;
+  semFornecedor: { pesoKg: number; receita: number; carros: number }; // total do dia digitado
+}
+
+/** Descarrego do mês por fornecedor e receita por tipo (BI do recebimento). */
+export async function carregarDetalheDescarrego(mes: string): Promise<DetalheDescarrego> {
+  const m = mesNorm(mes);
+  const [lancs, totais] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m)]);
+  const porForn = new Map<string, FornecedorDescarrego>();
+  const receitaPorTipo: Record<DescarregamentoTipo, number> = { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 };
+  for (const l of lancs) {
+    const f = porForn.get(l.fornecedorNome) ?? { nome: l.fornecedorNome, notas: 0, pesoKg: 0, receita: 0, tipos: [] };
+    f.notas += 1;
+    f.pesoKg += l.pesoKg;
+    f.receita += l.receita;
+    if (!f.tipos.includes(l.tipo)) f.tipos.push(l.tipo);
+    porForn.set(l.fornecedorNome, f);
+    receitaPorTipo[l.tipo] += l.receita;
+  }
+  return {
+    porFornecedor: [...porForn.values()].sort((a, b) => b.pesoKg - a.pesoKg),
+    receitaPorTipo,
+    semFornecedor: {
+      pesoKg: totais.reduce((t, d) => t + d.pesoKg, 0),
+      receita: totais.reduce((t, d) => t + d.receita, 0),
+      carros: totais.reduce((t, d) => t + d.descarregos, 0),
+    },
+  };
 }
