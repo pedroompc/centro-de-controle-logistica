@@ -8,6 +8,10 @@ import {
   calcularIndicadores,
   indicesMelhores,
   ehMelhorDaJanela,
+  ehCargoEmpilhador,
+  empilhadorDoCadastro,
+  comEmpilhador,
+  CUSTO_EMPILHADEIRA_MENSAL,
 } from "./recebimento";
 import type { Funcionario } from "./types";
 
@@ -154,5 +158,38 @@ describe("ehMelhorDaJanela", () => {
     expect(ehMelhorDaJanela(serie, "2026-08-01", "custoSobreDescarrego")).toBe(true);
     expect(ehMelhorDaJanela(serie, "2026-07-01", "custoSobreDescarrego")).toBe(false);
     expect(ehMelhorDaJanela(serie, "2026-08-01", "resultado")).toBe(true);
+  });
+});
+
+describe("empilhador + empilhadeira", () => {
+  const setores = [
+    { id: "rec", nome: "Recebimento" },
+    { id: "arm", nome: "Armazenagem" },
+  ];
+  const equipe = { setor: "Recebimento", total: 7, ajudantes: 5, conferentes: 2, custo: 25_000 };
+  it("reconhece o cargo", () => {
+    expect(ehCargoEmpilhador("MÁQUINA")).toBe(true);
+    expect(ehCargoEmpilhador("Operador de Empilhadeira")).toBe(true);
+    expect(ehCargoEmpilhador("Ajudante")).toBe(false);
+  });
+  it("operador de outro setor entra como 1 pessoa (média) + a máquina", () => {
+    const op = empilhadorDoCadastro(
+      [func({ cargo: "Máquina", setorId: "arm", custoMensal: 3000 }), func({ cargo: "Máquina", setorId: "arm", custoMensal: 4000 })],
+      setores,
+    );
+    expect(op).toEqual({ candidatos: 2, custo: 3500, jaNoSetor: false });
+    const e = comEmpilhador(equipe, op);
+    expect(e.total).toBe(8);
+    expect(e.custo).toBe(25_000 + 3500 + CUSTO_EMPILHADEIRA_MENSAL);
+  });
+  it("operador já no setor não é somado de novo; só a máquina", () => {
+    const op = empilhadorDoCadastro([func({ cargo: "Máquina", setorId: "rec", custoMensal: 3000 })], setores);
+    const e = comEmpilhador(equipe, op);
+    expect(e.total).toBe(7);
+    expect(e.custo).toBe(25_000 + CUSTO_EMPILHADEIRA_MENSAL);
+  });
+  it("sem equipe no setor, não soma nada", () => {
+    const vazio = { setor: null, total: 0, ajudantes: 0, conferentes: 0, custo: 0 };
+    expect(comEmpilhador(vazio, { candidatos: 1, custo: 3000, jaNoSetor: false })).toEqual(vazio);
   });
 });

@@ -204,12 +204,20 @@ export function PlacarRecebimento({
   prevLabel: string;
 }) {
   const parcial = r.fracaoMes < 1;
-  const est = r.equipeEstimada ? " · estimativa (equipe de hoje)" : "";
+  const est = r.equipeEstimada ? " · estimativa" : "";
   const tom = (chave: IndicadorComparavel) => (ehMelhorDaJanela(janela, r.mes, chave) ? "emerald" : "white");
   return (
     <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-      <Kpi label="Equipe do recebimento" value={inteiro.format(r.equipe.total)} hint={`${r.equipe.ajudantes} ajudantes · ${r.equipe.conferentes} conferentes${est}`} />
-      <Kpi label="Custo do recebimento" value={formatBRL(r.equipe.custo)} hint={parcial ? `folha do mês · ${formatBRL(r.custoPeriodo)} até hoje` : "folha do mês"} />
+      <Kpi
+        label="Equipe do recebimento"
+        value={inteiro.format(r.equipe.total)}
+        hint={`${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf${r.equipe.empilhadores ? ` · ${r.equipe.empilhadores} empilhador` : ""}${est}`}
+      />
+      <Kpi
+        label="Custo do recebimento"
+        value={formatBRL(r.equipe.custo)}
+        hint={`${r.equipe.custoEmpilhadeira ? `folha + empilhadeira ${formatBRL(r.equipe.custoEmpilhadeira)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
+      />
       <Kpi
         label="Kg por ajudante"
         value={kgInt(r.kgPorAjudante)}
@@ -226,14 +234,14 @@ export function PlacarRecebimento({
       <Kpi
         label="Custo / fat. líquido"
         value={r.custoSobreFaturamento === null ? "—" : formatPercent(r.custoSobreFaturamento, 2)}
-        hint={parcial ? "folha proporcional ao mês" : "folha ÷ faturamento líquido"}
+        hint={parcial ? "custo proporcional ao mês" : "custo ÷ faturamento líquido"}
         tone={tom("custoSobreFaturamento")}
       />
       <Kpi
         label="Custo / descarrego"
         value={pct(r.custoSobreDescarrego)}
         delta={r.custoSobreDescarrego !== null && !parcial ? deltaTaxa(r.custoSobreDescarrego, ant?.custoSobreDescarrego ?? undefined, false, prevLabel) : undefined}
-        hint="folha ÷ receita só de descarrego"
+        hint="custo ÷ receita só de descarrego"
         tone={tom("custoSobreDescarrego")}
       />
       <Kpi label="Dias de descarrego" value={inteiro.format(r.diasDescarrego)} hint={r.carrosPorDia !== null ? `${r.carrosPorDia.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} carros por dia` : "nenhum lançamento"} />

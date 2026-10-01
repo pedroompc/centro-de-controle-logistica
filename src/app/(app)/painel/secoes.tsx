@@ -777,7 +777,7 @@ function BlocoRecebimento({ r, janela }: { r?: IndicadoresRecebimento; janela: I
   if (!r) return null;
   const equipe =
     r.equipe.total > 0
-      ? `${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf · ${formatBRL(r.equipe.custo)}${r.equipeEstimada ? " · est." : ""}`
+      ? `${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf${r.equipe.empilhadores ? ` · ${r.equipe.empilhadores} emp` : ""} · ${formatBRL(r.equipe.custo)}${r.equipeEstimada ? " · est." : ""}`
       : undefined;
   if (r.equipe.total === 0)
     return (

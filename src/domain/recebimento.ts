@@ -42,7 +42,10 @@ export interface EquipeRecebimento {
   total: number; // ativos
   ajudantes: number;
   conferentes: number;
-  custo: number; // folha mensal dos ativos (custo cheio do mês)
+  custo: number; // custo mensal TOTAL (folha + empilhador + empilhadeira) — base de todas as razões
+  empilhadores?: number; // operador de empilhadeira somado à equipe (0 ou 1)
+  custoEmpilhador?: number; // folha do operador somado (0 se já estava no setor)
+  custoEmpilhadeira?: number; // a máquina
 }
 
 export const EQUIPE_VAZIA: EquipeRecebimento = { setor: null, total: 0, ajudantes: 0, conferentes: 0, custo: 0 };
@@ -62,6 +65,56 @@ export function linhasEquipePorCargo(
     l.custoAtivos += f.custoMensal;
   }
   return { setor: setor.nome, linhas };
+}
+
+// --- Empilhador + empilhadeira ----------------------------------------------
+
+/** Custo mensal de 1 empilhadeira (informado pelo gestor em out/2026). */
+export const CUSTO_EMPILHADEIRA_MENSAL = 6000;
+
+/** Operador de empilhadeira: cargo com "máquina" ou "empilhad" (sem acento/caixa). */
+export function ehCargoEmpilhador(cargo: string): boolean {
+  const c = normalizarTexto(cargo);
+  return c.includes("maquina") || c.includes("empilhad");
+}
+
+export interface EmpilhadorCadastro {
+  candidatos: number; // ativos com cargo de operador, em qualquer setor
+  custo: number; // custo de UM operador (média dos candidatos)
+  jaNoSetor: boolean; // algum já está no setor Recebimento (já somado na folha)
+}
+
+/**
+ * O recebimento usa 1 empilhador e 1 empilhadeira. O operador pode estar
+ * cadastrado em outro setor; se houver vários com o cargo, entra o custo de UM
+ * (a média). Se já estiver no setor Recebimento, a folha do setor já o tem.
+ */
+export function empilhadorDoCadastro(
+  funcionarios: Funcionario[],
+  setores: { id: string; nome: string }[],
+): EmpilhadorCadastro {
+  const idsRecebimento = new Set(setores.filter((s) => ehSetorRecebimento(s.nome)).map((s) => s.id));
+  const ops = funcionarios.filter((f) => f.status === "ativo" && ehCargoEmpilhador(f.cargo));
+  return {
+    candidatos: ops.length,
+    custo: ops.length > 0 ? ops.reduce((t, f) => t + f.custoMensal, 0) / ops.length : 0,
+    jaNoSetor: ops.some((f) => idsRecebimento.has(f.setorId)),
+  };
+}
+
+/** Soma à equipe o empilhador (se ainda não está nela) e a empilhadeira. */
+export function comEmpilhador(e: EquipeRecebimento, op: EmpilhadorCadastro): EquipeRecebimento {
+  if (e.total === 0) return e; // sem setor Recebimento: não inventa equipe
+  const somaOperador = op.candidatos > 0 && !op.jaNoSetor;
+  const custoEmpilhador = somaOperador ? op.custo : 0;
+  return {
+    ...e,
+    total: e.total + (somaOperador ? 1 : 0),
+    empilhadores: op.candidatos > 0 ? 1 : 0,
+    custoEmpilhador,
+    custoEmpilhadeira: CUSTO_EMPILHADEIRA_MENSAL,
+    custo: e.custo + custoEmpilhador + CUSTO_EMPILHADEIRA_MENSAL,
+  };
 }
 
 /** Soma as linhas por cargo na equipe do mês. */

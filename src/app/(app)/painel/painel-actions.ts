@@ -24,6 +24,8 @@ import {
   ehSetorRecebimento,
   fracaoDoMes,
   calcularIndicadores,
+  empilhadorDoCadastro,
+  comEmpilhador,
   EQUIPE_VAZIA,
   type EquipeRecebimento,
   type IndicadoresRecebimento,
@@ -349,6 +351,9 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const equipeHoje = vivo.setor ? equipeDasLinhas(vivo.setor, vivo.linhas) : EQUIPE_VAZIA;
   if (vivo.setor) await registrarFotoEquipeCargo(vivo.setor, vivo.linhas);
 
+  // 1 empilhador + 1 empilhadeira entram em todo mês (a foto por cargo não os
+  // guarda — o operador costuma estar em outro setor; usa o cadastro de hoje).
+  const empilhador = empilhadorDoCadastro(funcionarios, setores);
   const cargoPorMes = new Map(fotosCargo.map((f) => [f.mes, f]));
   const descPorMes = new Map(descarrego.map((d) => [d.mes, d]));
 
@@ -366,7 +371,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
     const d = descPorMes.get(x);
     return calcularIndicadores({
       mes: x,
-      equipe,
+      equipe: comEmpilhador(equipe, empilhador),
       equipeEstimada,
       diasDescarrego: d?.dias ?? 0,
       carros: d?.carros ?? 0,
