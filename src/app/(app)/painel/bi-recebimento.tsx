@@ -27,6 +27,7 @@ import {
   type ResumoFatos,
 } from "@/domain/bi-recebimento";
 import type { DescarregamentoTipo, TipoEquipamento } from "@/domain/types";
+import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import type { DetalheCusto, PessoaRecebimento } from "./painel-actions";
 
 export type VisaoBI = "custo" | "descarrego" | "receita" | "eficiencia";
@@ -388,17 +389,27 @@ const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
  * dia sem descarrego fica apagado. Clique filtra o dia.
  */
 function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medida: Medida; altura?: number }) {
-  const [hover, setHover] = useState<string | null>(null);
   const fatos = filtrarFatos(dados.fatos ?? [], filtro, "dia");
   const porDia = new Map(agrupar(fatos, (f) => f.data).map((d) => [d.chave, valorMedida(d.resumo, medida, x.porNotas)]));
-  const [ano, mes] = dados.mes.split("-").map(Number);
+  return <Calendario mes={dados.mes} porDia={porDia} fmt={FMT_MEDIDA[medida]} filtro={filtro} onFiltro={onFiltro} />;
+}
+
+/**
+ * Calendário do mês (Dom–Sáb) com um valor por dia. Cor: um tom só, mais forte
+ * quanto maior o valor (ou quanto MENOR, em custo: `menorEhMelhor` inverte para
+ * o dia bom ficar forte). Dia sem valor fica apagado. Clique filtra o dia.
+ */
+function Calendario({ mes: mesISO, porDia, fmt, filtro, onFiltro, menorEhMelhor = false }: { mes: string; porDia: Map<string, number>; fmt: (v: number) => string; menorEhMelhor?: boolean } & Filtro) {
+  const [hover, setHover] = useState<string | null>(null);
+  const [ano, mes] = mesISO.split("-").map(Number);
   const diasNoMes = new Date(ano, mes, 0).getDate();
   const primeiroDow = new Date(ano, mes - 1, 1).getDay(); // 0 = domingo
   const vals = [...porDia.values()].filter((v) => v > 0);
   const max = Math.max(1e-9, ...vals);
+  const min = vals.length ? Math.min(...vals) : 0;
   const media = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-  const fmt = FMT_MEDIDA[medida];
-  const celulas: (string | null)[] = [...Array(primeiroDow).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => `${dados.mes.slice(0, 8)}${String(i + 1).padStart(2, "0")}`)];
+  const forca = (v: number) => (menorEhMelhor ? (max > min ? (max - v) / (max - min) : 1) : v / max);
+  const celulas: (string | null)[] = [...Array(primeiroDow).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => `${mesISO.slice(0, 8)}${String(i + 1).padStart(2, "0")}`)];
   while (celulas.length % 7) celulas.push(null);
   const hv = hover ? porDia.get(hover) : undefined;
 
@@ -416,11 +427,11 @@ function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medi
           )}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          menos
+          {menorEhMelhor ? "pior" : "menos"}
           {[0.15, 0.4, 0.7, 1].map((o) => (
             <span key={o} className="h-2.5 w-2.5 rounded-sm" style={{ background: "#5b6fd6", opacity: o }} />
           ))}
-          mais
+          {menorEhMelhor ? "melhor" : "mais"}
         </span>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-[0.65rem] font-semibold uppercase tracking-wide text-white/35">
@@ -445,7 +456,7 @@ function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medi
               title={`${ddmm(dia)} · ${v ? fmt(v) : "sem descarrego"}`}
               className={`relative flex min-h-[2.25rem] flex-col justify-between rounded-md px-1.5 py-1 text-left transition ${v ? "cursor-pointer hover:ring-2 hover:ring-white/50" : "cursor-default"} ${sel ? "ring-2 ring-amber-300" : ""} ${filtro.dia && !sel ? "opacity-45" : ""}`}
               style={{
-                background: sel ? "#f5b301" : v ? `rgba(91,111,214,${0.18 + 0.82 * (v / max)})` : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
+                background: sel ? "#f5b301" : v ? `rgba(91,111,214,${0.18 + 0.82 * forca(v)})` : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
               }}
             >
               <span className={`text-[0.65rem] font-bold leading-none ${sel ? "text-[#0a1650]" : v ? "text-white/70" : "text-white/25"}`}>{Number(dia.slice(8, 10))}</span>
@@ -591,119 +602,367 @@ function TabelaFornecedores({ dados, filtro, onFiltro, ordemInicial = "pesoKg" }
 
 // --- CUSTO --------------------------------------------------------------------
 
-function VisaoCusto({ dados, x }: PropsVisao) {
-  const [papel, setPapel] = useState<PessoaRecebimento["papel"] | "todos">("todos");
+type SubCusto = "custo" | "equipe" | "folha" | "equipamentos" | "porCarro" | "porTonelada";
+const TITULO_SUB_CUSTO: Record<SubCusto, string> = {
+  custo: "Custo do mês",
+  equipe: "Equipe",
+  folha: "Folha",
+  equipamentos: "Equipamentos",
+  porCarro: "Custo por carro",
+  porTonelada: "Custo por tonelada",
+};
+
+/**
+ * Custo de cada dia de descarrego: o custo do mês ÷ dias de descarrego; com
+ * filtro de fornecedor/tipo, rateado pelo peso do dia. Volta carros e peso do
+ * dia para as razões (por carro, por tonelada).
+ */
+function custosPorDia(dados: DadosBI, x: Recorte, filtro: FiltroBI) {
+  const todos = dados.fatos ?? [];
+  const pesoTotalDia = new Map(agrupar(todos, (f) => f.data).map((d) => [d.chave, d.resumo.pesoKg]));
+  const custoDia = x.mes.dias > 0 ? x.r.custoPeriodo / x.mes.dias : 0;
+  const rateia = !!(filtro.fornecedor || filtro.tipo);
+  return agrupar(filtrarFatos(todos, filtro, "dia"), (f) => f.data).map((d) => {
+    const base = pesoTotalDia.get(d.chave) ?? 0;
+    const custo = rateia ? (base > 0 ? (custoDia * d.resumo.pesoKg) / base : 0) : custoDia;
+    return { data: d.chave, custo, carros: x.porNotas ? d.resumo.notas : d.resumo.carros, pesoKg: d.resumo.pesoKg };
+  });
+}
+
+function VisaoCusto(p: PropsVisao) {
+  const { dados, x, filtro, onFiltro } = p;
+  const { sub, abrir, fechar } = useSub<SubCusto>();
   const c = dados.custo;
   if (!c) return <Vazio>Carregando pessoas e equipamentos…</Vazio>;
   const { r, sel } = x;
-  const folha = c.pessoas.reduce((t, p) => t + p.custo, 0);
+  const folha = c.pessoas.reduce((t, y) => t + y.custo, 0);
   const custoEquip = c.equipamentos.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
-  const totalCad = folha + custoEquip;
-  const papeis = ORDEM_PAPEL.filter((p) => c.pessoas.some((y) => y.papel === p));
-  const lista = c.pessoas.filter((p) => papel === "todos" || p.papel === papel).sort((a, b) => ORDEM_PAPEL.indexOf(a.papel) - ORDEM_PAPEL.indexOf(b.papel) || b.custo - a.custo);
+  const papeis = ORDEM_PAPEL.filter((pp) => c.pessoas.some((y) => y.papel === pp));
   const fatias = [
-    ...papeis.map((p) => ({ rotulo: PAPEL[p].plural, valor: c.pessoas.filter((y) => y.papel === p).reduce((t, y) => t + y.custo, 0), cor: PAPEL[p].cor })),
+    ...papeis.map((pp) => ({ rotulo: PAPEL[pp].plural, valor: c.pessoas.filter((y) => y.papel === pp).reduce((t, y) => t + y.custo, 0), cor: PAPEL[pp].cor })),
     { rotulo: "Equipamentos", valor: custoEquip, cor: "#f5b301" },
   ].filter((f) => f.valor > 0);
   const carros = x.porNotas ? sel.notas : sel.carros;
+  const un = x.porNotas ? "nota" : "carro";
+  const card = (k: SubCusto) => ({ onClick: abrir(k), ativo: sub === k });
+  const dias = custosPorDia(dados, x, filtro);
+  const porCarroDia = new Map(dias.filter((d) => d.carros > 0).map((d) => [d.data, d.custo / d.carros]));
+  const porTonDia = new Map(dias.filter((d) => d.pesoKg > 0).map((d) => [d.data, d.custo / (d.pesoKg / 1000)]));
+  const resumoDias = (m: Map<string, number>, fmt: (v: number) => string) => {
+    const v = [...m.entries()].sort((a, b) => a[1] - b[1]);
+    if (!v.length) return null;
+    return (
+      <div className="grid grid-cols-3 gap-3">
+        <Mini rotulo="Média dos dias" valor={fmt(v.reduce((t, e) => t + e[1], 0) / v.length)} sub="cada dia pesa igual" />
+        <Mini rotulo="Melhor dia (mais barato)" valor={fmt(v[0][1])} sub={ddmm(v[0][0])} />
+        <Mini rotulo="Pior dia (mais caro)" valor={fmt(v[v.length - 1][1])} sub={ddmm(v[v.length - 1][0])} />
+      </div>
+    );
+  };
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini rotulo={x.criterioCusto ? "Custo no filtro" : "Custo do mês"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(r.mes))} />
+        <Mini {...card("custo")} rotulo={x.criterioCusto ? "Custo no filtro" : "Custo do mês"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(r.mes))} />
         <Mini
+          {...card("equipe")}
           rotulo="Equipe"
           valor={`${c.pessoas.length} pessoas`}
           sub={papeis.map((pp) => `${c.pessoas.filter((y) => y.papel === pp).length} ${PAPEL[pp].rotulo.toLowerCase().slice(0, 4)}.`).join(" · ")}
         />
-        <Mini rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
-        <Mini rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${c.equipamentos.reduce((t, e) => t + e.quantidade, 0)} unidades · por mês`} />
-        <Mini rotulo={x.porNotas ? "Custo por nota" : "Custo por carro"} valor={carros > 0 ? formatBRL(x.custo / carros) : "—"} sub={x.porNotas ? `${sel.notas} notas` : `${inteiro.format(sel.carros)} carros`} />
-        <Mini rotulo="Custo por tonelada" valor={sel.pesoKg > 0 ? formatBRL(x.custo / (sel.pesoKg / 1000)) : "—"} sub={fmtPeso(sel.pesoKg)} />
+        <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
+        <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${c.equipamentos.reduce((t, e) => t + e.quantidade, 0)} unidades · por mês`} />
+        <Mini {...card("porCarro")} rotulo={`Custo por ${un}`} valor={carros > 0 ? formatBRL(x.custo / carros) : "—"} sub={x.porNotas ? `${sel.notas} notas` : `${inteiro.format(sel.carros)} carros`} />
+        <Mini {...card("porTonelada")} rotulo="Custo por tonelada" valor={sel.pesoKg > 0 ? formatBRL(x.custo / (sel.pesoKg / 1000)) : "—"} sub={fmtPeso(sel.pesoKg)} />
+      </div>
+      <div className="flex items-center gap-3 text-xs">
+        {sub ? (
+          <>
+            <button type="button" onClick={fechar} className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/20">
+              ◂ Voltar ao resumo
+            </button>
+            <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Custo e equipe › {TITULO_SUB_CUSTO[sub]}</span>
+          </>
+        ) : (
+          <span className="text-white/35">Clique num card para abrir o detalhe dele</span>
+        )}
       </div>
 
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <Bloco
-          titulo="Equipe e salários"
-          direita={
-            <div className="flex flex-wrap gap-1.5">
-              <ChipTV ativo={papel === "todos"} onClick={() => setPapel("todos")}>Todos {c.pessoas.length}</ChipTV>
-              {papeis.map((p) => (
-                <ChipTV key={p} ativo={papel === p} onClick={() => setPapel(p)}>
-                  {PAPEL[p].rotulo} {c.pessoas.filter((y) => y.papel === p).length}
-                </ChipTV>
-              ))}
-            </div>
-          }
-        >
-          <div className="h-full overflow-auto pr-1">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-                <tr>
-                  <th className="py-2 font-semibold">Nome</th>
-                  <th className="py-2 font-semibold">Cargo</th>
-                  <th className="py-2 text-right font-semibold">Custo / mês</th>
-                  <th className="w-24 py-2 text-right font-semibold">% do custo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lista.map((p, i) => (
-                  <Fragment key={p.id}>
-                    {/* Cabeçalho do grupo (função) com o subtotal, ao trocar de função. */}
-                    {(i === 0 || lista[i - 1].papel !== p.papel) && (
-                      <tr className="border-t border-white/10">
-                        <td colSpan={2} className="pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em]" style={{ color: PAPEL[p.papel].cor }}>
-                          {PAPEL[p.papel].plural} · {lista.filter((y) => y.papel === p.papel).length}
-                        </td>
-                        <td className="pb-1 pt-3 text-right text-xs font-bold tabular-nums text-white/70">
-                          {formatBRL(lista.filter((y) => y.papel === p.papel).reduce((t, y) => t + y.custo, 0))}
-                        </td>
-                        <td className="pb-1 pt-3 text-right text-xs tabular-nums text-white/40">
-                          {totalCad > 0 ? formatPercent(lista.filter((y) => y.papel === p.papel).reduce((t, y) => t + y.custo, 0) / totalCad) : ""}
-                        </td>
-                      </tr>
-                    )}
-                  <tr className="border-t border-white/[0.06] hover:bg-white/[0.04]">
-                    <td className="py-2 font-semibold text-white">
-                      <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: PAPEL[p.papel].cor }} />
-                      {p.nome}
-                    </td>
-                    <td className="py-2 text-white/60">
-                      {p.cargo}
-                      {p.outroSetor && <span className="ml-1 text-xs text-amber-300">(outro setor)</span>}
-                    </td>
-                    <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(p.custo)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/50">{totalCad > 0 ? formatPercent(p.custo / totalCad) : "—"}</td>
-                  </tr>
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-            <p className="mt-2 text-xs text-white/35">Cadastro atual (custo mensal com encargos). Salário é do mês; os filtros de dia/fornecedor/tipo ratiam o custo, não mudam a lista.</p>
+      {sub === null && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <TabelaEquipe c={c} total={folha + custoEquip} />
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <ListaEquipamentos c={c} />
+            <Bloco titulo="Do que é feito o custo">
+              <BarraComposicao fatias={fatias} />
+              <div className="mt-4 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">Custo por mês</div>
+              <SerieMeses dados={dados} valor={(y) => y.equipe.custo} fmt={semCentavos} maiorEhBom={false} altura={110} />
+            </Bloco>
           </div>
-        </Bloco>
+        </div>
+      )}
 
-        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-          <Bloco titulo="Equipamentos" direita={c.equipamentosPadrao ? <span className="text-xs text-amber-300">padrão — rode a migração 0023</span> : <Dica>Custos › Equipamentos</Dica>}>
-            <ul className="space-y-2">
-              {c.equipamentos.map((e) => (
-                <li key={e.id} className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="text-white">
-                    {e.nome} <span className="text-white/45">· {e.quantidade} × {formatBRL(e.custoUnitario)}</span>
-                  </span>
-                  <span className="font-bold tabular-nums text-white">{formatBRL(e.quantidade * e.custoUnitario)}</span>
-                </li>
-              ))}
-              {c.equipamentos.length === 0 && <li className="text-sm text-white/40">Nenhum equipamento cadastrado.</li>}
-            </ul>
-          </Bloco>
+      {sub === "custo" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Bloco titulo="Do que é feito o custo">
             <BarraComposicao fatias={fatias} />
-            <div className="mt-4 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">Custo por mês</div>
-            <SerieMeses dados={dados} valor={(y) => y.equipe.custo} fmt={semCentavos} maiorEhBom={false} altura={110} />
+            <ul className="mt-4 space-y-2">
+              {fatias.map((f) => (
+                <li key={f.rotulo} className="flex items-baseline justify-between text-sm">
+                  <span className="inline-flex items-center gap-2 text-white">
+                    <span className="h-2.5 w-2.5 rounded-sm" style={{ background: f.cor }} />
+                    {f.rotulo}
+                  </span>
+                  <span className="tabular-nums text-white">
+                    {formatBRL(f.valor)} <span className="text-white/40">· {formatPercent(f.valor / (folha + custoEquip), 0)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Mini rotulo="Custo por dia de descarrego" valor={x.mes.dias > 0 ? formatBRL(r.custoPeriodo / x.mes.dias) : "—"} sub={`${x.mes.dias} dias`} />
+              <Mini rotulo="Custo consome da receita" valor={r.receitaDescarrego > 0 ? formatPercent(r.custoPeriodo / r.receitaDescarrego) : "—"} sub="do descarrego do mês" />
+            </div>
+          </Bloco>
+          <div className="grid min-h-0 grid-rows-2 gap-4">
+            <Bloco titulo="Custo por mês">
+              <SerieMeses dados={dados} valor={(y) => y.equipe.custo} fmt={semCentavos} maiorEhBom={false} altura={150} />
+            </Bloco>
+            <Bloco titulo="Quanto o custo consome da receita · mês a mês">
+              <SerieMeses dados={dados} valor={(y) => y.custoSobreDescarrego} fmt={(v) => formatPercent(v)} maiorEhBom={false} altura={150} />
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "equipe" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <TabelaEquipe c={c} total={folha + custoEquip} />
+          <Bloco titulo="Por função">
+            <ul className="space-y-4">
+              {papeis.map((pp) => {
+                const g = c.pessoas.filter((y) => y.papel === pp);
+                const tot = g.reduce((t, y) => t + y.custo, 0);
+                return (
+                  <li key={pp}>
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="inline-flex items-center gap-2 font-bold text-white">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: PAPEL[pp].cor }} />
+                        {PAPEL[pp].plural} · {g.length}
+                      </span>
+                      <span className="font-bold tabular-nums text-white">{formatBRL(tot)}</span>
+                    </div>
+                    <div className="mt-1 h-2 rounded-full bg-white/10">
+                      <div className="h-full rounded-full" style={{ width: `${folha > 0 ? (tot / folha) * 100 : 0}%`, background: PAPEL[pp].cor }} />
+                    </div>
+                    <div className="mt-1 flex justify-between text-xs text-white/45">
+                      <span>{formatPercent(folha > 0 ? tot / folha : 0, 0)} da folha</span>
+                      <span>média {formatBRL(tot / g.length)} por pessoa</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </Bloco>
         </div>
+      )}
+
+      {sub === "folha" && <SubFolha c={c} />}
+
+      {sub === "equipamentos" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <ListaEquipamentos c={c} grande />
+          <div className="grid grid-cols-2 content-start gap-3">
+            <Mini rotulo="% do custo do recebimento" valor={folha + custoEquip > 0 ? formatPercent(custoEquip / (folha + custoEquip), 0) : "—"} />
+            <Mini rotulo={`Equipamentos por ${un}`} valor={carros > 0 ? formatBRL((custoEquip * (r.fracaoMes < 1 ? r.fracaoMes : 1)) / carros) : "—"} sub="custo dos equipamentos ÷ carros" />
+            <Mini rotulo="Equipamentos por tonelada" valor={sel.pesoKg > 0 ? formatBRL((custoEquip * (r.fracaoMes < 1 ? r.fracaoMes : 1)) / (sel.pesoKg / 1000)) : "—"} />
+            <Mini rotulo="Unidades" valor={inteiro.format(c.equipamentos.reduce((t, e) => t + e.quantidade, 0))} sub="cadastro em Custos › Equipamentos" />
+          </div>
+        </div>
+      )}
+
+      {sub === "porCarro" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <Bloco titulo={`Custo por ${un} · dia a dia`} direita={<Dica>forte = dia mais barato · clique filtra</Dica>}>
+            <Calendario mes={dados.mes} porDia={porCarroDia} fmt={semCentavos} filtro={filtro} onFiltro={onFiltro} menorEhMelhor />
+          </Bloco>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            {resumoDias(porCarroDia, semCentavos)}
+            <Bloco titulo={`Custo por ${un} · mês a mês`}>
+              <SerieMeses dados={dados} valor={(y) => (y.carros > 0 ? y.custoPeriodo / y.carros : null)} fmt={semCentavos} maiorEhBom={false} altura={170} />
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "porTonelada" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <Bloco titulo="Custo por tonelada · dia a dia" direita={<Dica>forte = dia mais barato · clique filtra</Dica>}>
+            <Calendario mes={dados.mes} porDia={porTonDia} fmt={semCentavos} filtro={filtro} onFiltro={onFiltro} menorEhMelhor />
+          </Bloco>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            {resumoDias(porTonDia, semCentavos)}
+            <Bloco titulo="Custo por tonelada · mês a mês">
+              <SerieMeses dados={dados} valor={(y) => y.custoPorTonelada} fmt={formatBRL} maiorEhBom={false} altura={170} />
+            </Bloco>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Equipe agrupada por função, com subtotal e % do custo, e filtro por função. */
+function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
+  const [papel, setPapel] = useState<PessoaRecebimento["papel"] | "todos">("todos");
+  const papeis = ORDEM_PAPEL.filter((pp) => c.pessoas.some((y) => y.papel === pp));
+  const lista = c.pessoas.filter((y) => papel === "todos" || y.papel === papel).sort((a, b) => ORDEM_PAPEL.indexOf(a.papel) - ORDEM_PAPEL.indexOf(b.papel) || b.custo - a.custo);
+  const subtotal = (pp: PessoaRecebimento["papel"]) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + y.custo, 0);
+  return (
+    <Bloco
+      titulo="Equipe e salários"
+      direita={
+        <div className="flex flex-wrap gap-1.5">
+          <ChipTV ativo={papel === "todos"} onClick={() => setPapel("todos")}>Todos {c.pessoas.length}</ChipTV>
+          {papeis.map((pp) => (
+            <ChipTV key={pp} ativo={papel === pp} onClick={() => setPapel(pp)}>
+              {PAPEL[pp].rotulo} {c.pessoas.filter((y) => y.papel === pp).length}
+            </ChipTV>
+          ))}
+        </div>
+      }
+    >
+      <div className="h-full overflow-auto pr-1">
+        <table className="w-full text-left text-sm">
+          <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+            <tr>
+              <th className="py-2 font-semibold">Nome</th>
+              <th className="py-2 font-semibold">Cargo</th>
+              <th className="py-2 text-right font-semibold">Custo / mês</th>
+              <th className="w-24 py-2 text-right font-semibold">% do custo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((y, i) => (
+              <Fragment key={y.id}>
+                {(i === 0 || lista[i - 1].papel !== y.papel) && (
+                  <tr className="border-t border-white/10">
+                    <td colSpan={2} className="pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em]" style={{ color: PAPEL[y.papel].cor }}>
+                      {PAPEL[y.papel].plural} · {lista.filter((z) => z.papel === y.papel).length}
+                    </td>
+                    <td className="pb-1 pt-3 text-right text-xs font-bold tabular-nums text-white/70">{formatBRL(subtotal(y.papel))}</td>
+                    <td className="pb-1 pt-3 text-right text-xs tabular-nums text-white/40">{total > 0 ? formatPercent(subtotal(y.papel) / total) : ""}</td>
+                  </tr>
+                )}
+                <tr className="border-t border-white/[0.06] hover:bg-white/[0.04]">
+                  <td className="py-2 font-semibold text-white">
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: PAPEL[y.papel].cor }} />
+                    {y.nome}
+                  </td>
+                  <td className="py-2 text-white/60">
+                    {y.cargo}
+                    {y.outroSetor && <span className="ml-1 text-xs text-amber-300">(outro setor)</span>}
+                  </td>
+                  <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/50">{total > 0 ? formatPercent(y.custo / total) : "—"}</td>
+                </tr>
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-2 text-xs text-white/35">Cadastro atual (custo mensal com encargos). Os filtros de dia/fornecedor/tipo dividem o custo, não mudam a lista.</p>
       </div>
+    </Bloco>
+  );
+}
+
+function ListaEquipamentos({ c, grande = false }: { c: DetalheCusto; grande?: boolean }) {
+  return (
+    <Bloco titulo="Equipamentos" direita={c.equipamentosPadrao ? <span className="text-xs text-amber-300">padrão — rode a migração 0023</span> : <Dica>Custos › Equipamentos</Dica>}>
+      <ul className={grande ? "space-y-3" : "space-y-2"}>
+        {c.equipamentos.map((e) => (
+          <li key={e.id} className={`flex items-baseline justify-between gap-3 ${grande ? "text-base" : "text-sm"}`}>
+            <span className="text-white">
+              {e.nome} <span className="text-white/45">· {e.quantidade} × {formatBRL(e.custoUnitario)}</span>
+            </span>
+            <span className="font-bold tabular-nums text-white">{formatBRL(e.quantidade * e.custoUnitario)}</span>
+          </li>
+        ))}
+        {c.equipamentos.length === 0 && <li className="text-sm text-white/40">Nenhum equipamento cadastrado.</li>}
+      </ul>
+    </Bloco>
+  );
+}
+
+/** Folha por rubrica (salário com encargos, benefícios…) e por pessoa. */
+function SubFolha({ c }: { c: DetalheCusto }) {
+  const temComposicao = (y: PessoaRecebimento) => RUBRICAS_FOLHA.some(([k]) => y.rubricas[k] !== null);
+  const com = c.pessoas.filter(temComposicao);
+  const sem = c.pessoas.filter((y) => !temComposicao(y));
+  const rubricas = RUBRICAS_FOLHA.map(([k, rotulo]) => ({
+    rotulo: k === "salarioBase" ? `${rotulo} + encargos (×${FATOR_ENCARGOS_SALARIO.toLocaleString("pt-BR")})` : rotulo,
+    valor: com.reduce((t, y) => t + (y.rubricas[k] ?? 0) * (k === "salarioBase" ? FATOR_ENCARGOS_SALARIO : 1), 0),
+  }));
+  if (sem.length) rubricas.push({ rotulo: `Sem composição cadastrada (${sem.length})`, valor: sem.reduce((t, y) => t + y.custo, 0) });
+  // O custo do cadastro é a verdade (é ele que entra no custo do recebimento):
+  // se não fecha com as rubricas (custo digitado à mão), a diferença aparece.
+  const pelasRubricas = com.reduce((t, y) => t + RUBRICAS_FOLHA.reduce((u, [k]) => u + (y.rubricas[k] ?? 0) * (k === "salarioBase" ? FATOR_ENCARGOS_SALARIO : 1), 0), 0);
+  const dif = com.reduce((t, y) => t + y.custo, 0) - pelasRubricas;
+  if (Math.abs(dif) >= 1) rubricas.push({ rotulo: "Ajuste: custo digitado ≠ rubricas", valor: dif });
+  const vis = rubricas.filter((x) => x.valor !== 0);
+  const total = vis.reduce((t, x) => t + x.valor, 0);
+  const max = Math.max(1e-9, ...vis.map((x) => Math.abs(x.valor)));
+  const beneficios = (y: PessoaRecebimento) => RUBRICAS_FOLHA.filter(([k]) => k !== "salarioBase").reduce((t, [k]) => t + (y.rubricas[k] ?? 0), 0);
+  return (
+    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+      <Bloco titulo="Folha por rubrica" direita={<span className="text-sm font-bold tabular-nums text-white">{formatBRL(total)}</span>}>
+        <ul className="space-y-3">
+          {vis.map((x) => (
+            <li key={x.rotulo}>
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-white">{x.rotulo}</span>
+                <span className="shrink-0 tabular-nums text-white">
+                  {formatBRL(x.valor)} <span className="text-white/40">· {formatPercent(x.valor / total, 0)}</span>
+                </span>
+              </div>
+              <div className="mt-1 h-2 rounded-full bg-white/10">
+                <div className={`h-full rounded-full ${x.valor < 0 ? "bg-white/30" : "bg-[#5b6fd6]"}`} style={{ width: `${(Math.abs(x.valor) / max) * 100}%` }} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Bloco>
+      <Bloco titulo="Por pessoa">
+        <div className="h-full overflow-auto pr-1">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+              <tr>
+                <th className="py-2 font-semibold">Nome</th>
+                <th className="py-2 text-right font-semibold">Salário base</th>
+                <th className="py-2 text-right font-semibold">Benefícios</th>
+                <th className="py-2 text-right font-semibold">Custo / mês</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...c.pessoas].sort((a, b) => b.custo - a.custo).map((y) => (
+                <tr key={y.id} className="border-t border-white/[0.06]">
+                  <td className="py-2">
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: PAPEL[y.papel].cor }} />
+                    <span className="font-semibold text-white">{y.nome}</span>
+                    <span className="ml-1 text-xs text-white/40">{PAPEL[y.papel].rotulo}</span>
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{y.rubricas.salarioBase === null ? "—" : formatBRL(y.rubricas.salarioBase)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{temComposicao(y) ? formatBRL(beneficios(y)) : "—"}</td>
+                  <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-white/35">
+            Custo = salário base × {FATOR_ENCARGOS_SALARIO.toLocaleString("pt-BR")} (encargos) + benefícios. Traço = rubrica não cadastrada; o custo dessa pessoa é o digitado no cadastro.
+          </p>
+        </div>
+      </Bloco>
     </div>
   );
 }
