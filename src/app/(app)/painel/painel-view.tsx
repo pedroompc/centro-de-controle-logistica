@@ -24,9 +24,8 @@ import {
   carregarSerieDescarrego,
   carregarRecebimento,
   carregarDetalheCusto,
-  carregarDetalheDescarrego,
+  carregarFatosDescarrego,
   type DetalheCusto,
-  type DetalheDescarrego,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
@@ -35,6 +34,7 @@ import {
 } from "./painel-actions";
 import Mapa from "./mapa";
 import { MenuBI, PalcoBI, VISOES_BI, type VisaoBI } from "./bi-recebimento";
+import type { FatoDescarrego, FiltroBI } from "@/domain/bi-recebimento";
 import MapaRMR from "./mapa-rmr";
 import {
   Kpi,
@@ -100,7 +100,7 @@ interface Dados {
   serieDescarrego: PontoDescarregoMensal[];
   recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
   custoDet: DetalheCusto | null; // BI: pessoas e equipamentos
-  descDet: DetalheDescarrego | null; // BI: fornecedores e receita por tipo do mês
+  fatos: FatoDescarrego[] | null; // BI: descarrego do mês (dia × fornecedor × tipo)
 }
 
 // Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
@@ -268,11 +268,13 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], custoDet: null, descDet: null,
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], custoDet: null, fatos: null,
   });
   // BI: o topo é o menu e o palco mostra a visão clicada. `null` = modo
   // apresentação (os slides antigos girando sozinhos).
   const [visao, setVisao] = useState<VisaoBI | null>("custo");
+  // Filtro cruzado do BI (dia, fornecedor, tipo) — vale para todos os quadros.
+  const [filtro, setFiltro] = useState<FiltroBI>({});
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [relogio, setRelogio] = useState("");
@@ -299,7 +301,7 @@ export default function PainelView({
     await passo("custo", async () => { const v = await carregarDetalheCusto(); setDados((d) => ({ ...d, custoDet: v })); });
     await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
     await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    await passo("fornecedores", async () => { const v = await carregarDetalheDescarrego(mes); setDados((d) => ({ ...d, descDet: v })); });
+    await passo("fornecedores", async () => { const v = await carregarFatosDescarrego(mes); setDados((d) => ({ ...d, fatos: v })); });
     await passo("mapa", async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
     await passo("motoristas", async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
     await passo("clientes", async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
@@ -336,7 +338,7 @@ export default function PainelView({
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
   const slides = construirSlides(dados, dev, mesLabel, recSerie);
-  const biDados = { mes: mesRef, serie: recSerie, custo: dados.custoDet, descarrego: dados.descDet, dias: dados.descarregos, pontos: dados.serieDescarrego };
+  const biDados = { mes: mesRef, serie: recSerie, custo: dados.custoDet, fatos: dados.fatos };
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
@@ -393,6 +395,7 @@ export default function PainelView({
       if (e.key === "ArrowRight") proximo();
       else if (e.key === "ArrowLeft") anterior();
       else if (e.key === " ") { e.preventDefault(); playPause(); }
+      else if (e.key === "Escape") setFiltro({});
       else if (e.key.toLowerCase() === "f") telaCheia();
     };
     window.addEventListener("keydown", onKey);
@@ -458,7 +461,7 @@ export default function PainelView({
             em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
         {visao ? (
           recSerie.length > 0 ? (
-            <MenuBI dados={biDados} visao={visao} onVisao={setVisao} />
+            <MenuBI dados={biDados} visao={visao} onVisao={setVisao} filtro={filtro} onFiltro={setFiltro} />
           ) : (
             <div className="mt-4 rounded-2xl bg-white/[0.06] px-5 py-6 text-center text-white/40 ring-1 ring-white/10">Carregando o recebimento…</div>
           )
@@ -497,7 +500,7 @@ export default function PainelView({
                 </div>
               </div>
               <div key={visao} className="tv-fade min-h-0 flex-1 overflow-hidden">
-                <PalcoBI dados={biDados} visao={visao} />
+                <PalcoBI dados={biDados} visao={visao} filtro={filtro} onFiltro={setFiltro} />
               </div>
             </>
           ) : atual ? (

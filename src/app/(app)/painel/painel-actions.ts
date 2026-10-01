@@ -18,6 +18,7 @@ import { listarSetores } from "@/data/setores";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
 import { vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import { listarEquipamentos } from "@/data/equipamentos";
+import { fatosDoMes, type FatoDescarrego } from "@/domain/bi-recebimento";
 import {
   linhasEquipePorCargo,
   equipeDasLinhas,
@@ -427,42 +428,13 @@ export async function carregarDetalheCusto(): Promise<DetalheCusto> {
   };
 }
 
-export interface FornecedorDescarrego {
-  nome: string;
-  notas: number;
-  pesoKg: number;
-  receita: number;
-  tipos: DescarregamentoTipo[];
-}
-
-export interface DetalheDescarrego {
-  porFornecedor: FornecedorDescarrego[]; // lançamentos por fornecedor do mês
-  receitaPorTipo: Record<DescarregamentoTipo, number>;
-  semFornecedor: { pesoKg: number; receita: number; carros: number }; // total do dia digitado
-}
-
-/** Descarrego do mês por fornecedor e receita por tipo (BI do recebimento). */
-export async function carregarDetalheDescarrego(mes: string): Promise<DetalheDescarrego> {
+/**
+ * Fatos do descarrego do mês (dia × fornecedor × tipo) para o filtro cruzado
+ * do BI. Somados sem filtro, batem com o agregado oficial do mês.
+ */
+export async function carregarFatosDescarrego(mes: string): Promise<FatoDescarrego[]> {
   const m = mesNorm(mes);
-  const [lancs, totais] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m)]);
-  const porForn = new Map<string, FornecedorDescarrego>();
-  const receitaPorTipo: Record<DescarregamentoTipo, number> = { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 };
-  for (const l of lancs) {
-    const f = porForn.get(l.fornecedorNome) ?? { nome: l.fornecedorNome, notas: 0, pesoKg: 0, receita: 0, tipos: [] };
-    f.notas += 1;
-    f.pesoKg += l.pesoKg;
-    f.receita += l.receita;
-    if (!f.tipos.includes(l.tipo)) f.tipos.push(l.tipo);
-    porForn.set(l.fornecedorNome, f);
-    receitaPorTipo[l.tipo] += l.receita;
-  }
-  return {
-    porFornecedor: [...porForn.values()].sort((a, b) => b.pesoKg - a.pesoKg),
-    receitaPorTipo,
-    semFornecedor: {
-      pesoKg: totais.reduce((t, d) => t + d.pesoKg, 0),
-      receita: totais.reduce((t, d) => t + d.receita, 0),
-      carros: totais.reduce((t, d) => t + d.descarregos, 0),
-    },
-  };
+  const { inicio, fim } = inicioFimDoMes(m);
+  const [lancs, totais, carros] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m), listarCarrosDia(inicio, fim)]);
+  return fatosDoMes(lancs, totais, carros);
 }
