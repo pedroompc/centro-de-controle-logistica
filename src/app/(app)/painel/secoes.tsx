@@ -447,7 +447,16 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
  * tipo, peso e diversas por material) — para explicar POR QUE um mês rendeu mais
  * que o outro. R$ da receita é mantido (exceção acordada do painel).
  */
-export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detalhe: MesReceitaDetalhe[] }) {
+export function SecaoReceitas({
+  dados,
+  detalhe,
+  recebimento = [],
+}: {
+  dados: ResumoReceitas;
+  detalhe: MesReceitaDetalhe[];
+  recebimento?: IndicadoresRecebimento[];
+}) {
+  const recPorMes = new Map(recebimento.map((r) => [r.mes, r]));
   const origens = [
     { rotulo: "Descarrego", valor: dados.descarregamento },
     { rotulo: "Totais diários", valor: dados.diarios },
@@ -532,6 +541,8 @@ export function SecaoReceitas({ dados, detalhe }: { dados: ResumoReceitas; detal
                   ) : (
                     <div className="mt-3 flex-1 text-xs font-semibold text-white/40">sem quebra por tipo</div>
                   )}
+
+                  <BlocoRecebimento r={recPorMes.get(m.mes)} />
 
                   <div className="pt-4">
                     <div className="flex items-baseline justify-between text-sm">
@@ -635,98 +646,60 @@ export function SecaoDescarregos({ dados, serie, mesLabel }: { dados: ResumoDesc
   );
 }
 
-// --- Recebimento -------------------------------------------------------------
+// --- Recebimento (dentro do card do mês, na tela de Receitas) ---------------
 
-type LinhaRecebimento = {
-  rotulo: string;
-  detalhe?: string;
-  valor: (r: IndicadoresRecebimento) => number | null;
-  fmt: (v: number) => string;
-  extra?: (r: IndicadoresRecebimento) => string | null; // número secundário, menor, ao lado
-  maiorEhBom?: boolean; // destaca o melhor mês da linha
-};
-
-const fmtInt = (v: number) => Math.round(v).toLocaleString("pt-BR");
 const fmtDec = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
-// Linhas que andam juntas dividem a mesma linha (valor + extra) — a tabela tem
-// que caber inteira no palco de uma TV 1080p.
-const LINHAS_RECEBIMENTO: LinhaRecebimento[] = [
-  { rotulo: "Kg por ajudante", detalhe: "e por dia de descarrego", valor: (r) => r.kgPorAjudante, fmt: (v) => formatKg(v), extra: (r) => (r.kgPorAjudanteDia === null ? null : `${formatKg(r.kgPorAjudanteDia)}/dia`), maiorEhBom: true },
-  { rotulo: "Por conferente", detalhe: "carros e kg conferidos", valor: (r) => r.carrosPorConferente, fmt: (v) => `${fmtInt(v)} carros`, extra: (r) => (r.kgPorConferente === null ? null : formatKg(r.kgPorConferente)), maiorEhBom: true },
-  { rotulo: "Custo / faturamento líquido", valor: (r) => r.custoSobreFaturamento, fmt: (v) => formatPercent(v, 2), maiorEhBom: false },
-  { rotulo: "Custo / receita de descarrego", valor: (r) => r.custoSobreDescarrego, fmt: (v) => formatPercent(v), maiorEhBom: false },
-  { rotulo: "Custo por tonelada", valor: (r) => r.custoPorTonelada, fmt: (v) => formatBRL(v), maiorEhBom: false },
-  { rotulo: "Resultado", detalhe: "descarrego − custo da equipe", valor: (r) => r.resultado, fmt: (v) => formatBRL(v), maiorEhBom: true },
-  { rotulo: "Dias de descarrego", detalhe: "e carros por dia", valor: (r) => r.diasDescarrego, fmt: fmtInt, extra: (r) => (r.carrosPorDia === null ? null : `${fmtDec(r.carrosPorDia)} carros/dia`) },
-  { rotulo: "Equipe", detalhe: "ajudantes · conferentes", valor: (r) => r.equipe.total, fmt: fmtInt, extra: (r) => `${r.equipe.ajudantes} · ${r.equipe.conferentes}` },
-  { rotulo: "Custo da equipe", detalhe: "folha do mês", valor: (r) => r.equipe.custo, fmt: (v) => formatBRL(v) },
-];
+function ItemRec({ rotulo, valor, extra, tom = "text-white" }: { rotulo: string; valor: string; extra?: string | null; tom?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="truncate text-[0.65rem] font-bold uppercase tracking-wide text-white/40">{rotulo}</div>
+      <div className="truncate tabular-nums">
+        <span className={`text-sm font-extrabold ${tom}`}>{valor}</span>
+        {extra && <span className="ml-1 text-xs font-semibold text-white/45">{extra}</span>}
+      </div>
+    </div>
+  );
+}
 
 /**
- * Recebimento mês a mês — uma tabela (linhas = indicadores, colunas = meses)
- * para a equipe comparar o mês na tela com os anteriores. O melhor mês de cada
- * linha fica em verde (só entre meses fechados — o corrente é parcial).
+ * Produtividade e custo da equipe de descarga no mês do card. Médias da EQUIPE
+ * (peso do mês ÷ pessoas do cargo), não por pessoa.
  */
-export function SecaoRecebimento({ serie }: { serie: IndicadoresRecebimento[] }) {
-  if (serie.length === 0 || serie.every((r) => r.equipe.total === 0))
+function BlocoRecebimento({ r }: { r?: IndicadoresRecebimento }) {
+  if (!r) return null;
+  const titulo = (
+    <div className="flex items-baseline justify-between text-sm">
+      <span className="font-bold uppercase tracking-wide text-white/60">Recebimento</span>
+      <span className="text-xs font-semibold tabular-nums text-white/50">
+        {r.equipe.total > 0
+          ? `${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf · ${formatBRL(r.equipe.custo)}${r.equipeEstimada ? " · estimativa" : ""}`
+          : ""}
+      </span>
+    </div>
+  );
+  if (r.equipe.total === 0)
     return (
-      <div className="flex h-full items-center justify-center text-center text-lg text-white/50">
-        Nenhum funcionário ativo num setor com &quot;Recebimento&quot; no nome.
-        <br />
-        Confira o setor e os cargos (Ajudante / Conferente) no cadastro de funcionários.
+      <div className="pt-4">
+        {titulo}
+        <div className="mt-1 text-xs font-semibold text-white/40">sem equipe no setor Recebimento do cadastro</div>
       </div>
     );
+  const kg = (v: number | null) => (v === null ? "—" : formatKg(v));
+  const pct = (v: number | null, casas = 1) => (v === null ? "—" : formatPercent(v, casas));
   return (
-    <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl ring-1 ring-white/10">
-        <table className="w-full table-fixed text-left">
-          <thead>
-            <tr className="bg-white/[0.06] text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">
-              <th className="w-[30%] px-5 py-3">Indicador</th>
-              {serie.map((r) => (
-                <th key={r.mes} className="px-5 py-3 text-right">
-                  {formatMesAno(r.mes)}
-                  {r.fracaoMes < 1 && <span className="ml-1 normal-case tracking-normal text-amber-300">em andamento</span>}
-                  {r.equipeEstimada && <span className="ml-1 normal-case tracking-normal text-white/35">· equipe estimada</span>}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {LINHAS_RECEBIMENTO.map((l) => {
-              const fechados = serie.filter((r) => r.fracaoMes >= 1).map(l.valor).filter((v): v is number => v !== null);
-              const melhor =
-                l.maiorEhBom === undefined || fechados.length < 2
-                  ? null
-                  : l.maiorEhBom ? Math.max(...fechados) : Math.min(...fechados);
-              return (
-                <tr key={l.rotulo} className="border-t border-white/[0.06]">
-                  <td className="px-5 py-1.5">
-                    <div className="font-semibold text-white/85">{l.rotulo}</div>
-                    {l.detalhe && <div className="text-xs text-white/35">{l.detalhe}</div>}
-                  </td>
-                  {serie.map((r) => {
-                    const v = l.valor(r);
-                    const destaque = melhor !== null && v === melhor && r.fracaoMes >= 1;
-                    const extra = v === null ? null : l.extra?.(r);
-                    return (
-                      <td key={r.mes} className={`px-5 py-1.5 text-right font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums xl:text-xl ${destaque ? "text-emerald-300" : "text-white"}`}>
-                        {v === null ? <span className="text-white/25">—</span> : l.fmt(v)}
-                        {extra && <span className="ml-2 font-sans text-sm font-medium text-white/40">{extra}</span>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <div className="pt-4">
+      {titulo}
+      <div className="mt-1.5 grid grid-cols-3 gap-x-3 gap-y-1">
+        <ItemRec rotulo="Kg por ajudante" valor={kg(r.kgPorAjudante)} tom="text-emerald-300" />
+        <ItemRec rotulo="Kg/ajudante por dia" valor={kg(r.kgPorAjudanteDia)} tom="text-emerald-300" />
+        <ItemRec rotulo="Por conferente" valor={r.carrosPorConferente === null ? "—" : `${Math.round(r.carrosPorConferente)} carros`} extra={r.kgPorConferente === null ? null : formatKg(r.kgPorConferente)} />
+        <ItemRec rotulo="Custo / fat. líquido" valor={pct(r.custoSobreFaturamento, 2)} />
+        <ItemRec rotulo="Custo / descarrego" valor={pct(r.custoSobreDescarrego)} tom="text-rose-300" />
+        <ItemRec rotulo="Custo por tonelada" valor={r.custoPorTonelada === null ? "—" : formatBRL(r.custoPorTonelada)} />
+        <ItemRec rotulo="Desc. − equipe" valor={formatBRL(r.resultado)} tom={r.resultado >= 0 ? "text-emerald-300" : "text-rose-300"} />
+        <ItemRec rotulo="Dias de descarrego" valor={String(r.diasDescarrego)} extra={r.carrosPorDia === null ? null : `${fmtDec(r.carrosPorDia)} carros/dia`} />
       </div>
-      <p className="mt-3 text-xs text-white/35">
-        Médias da equipe (peso do mês ÷ pessoas do cargo), não por pessoa. Peso = lançamentos de descarrego. Custo = folha
-        dos ativos do setor Recebimento; no mês em andamento entra proporcional aos dias corridos.
-      </p>
     </div>
   );
 }

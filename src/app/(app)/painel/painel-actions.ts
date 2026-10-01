@@ -319,7 +319,7 @@ export async function carregarDescarregos(mes: string): Promise<ResumoDescarrego
 // --- Recebimento (equipe × descarrego) ---------------------------------------
 
 /**
- * Indicadores do recebimento mês a mês, de julho/2026 até o mês pedido: kg por
+ * Indicadores do recebimento mês a mês, de julho/2026 até o mês corrente: kg por
  * ajudante, carros/kg por conferente, custo da equipe sobre o faturamento
  * líquido e sobre a receita de descarrego, dias de descarrego.
  *
@@ -331,11 +331,10 @@ export async function carregarDescarregos(mes: string): Promise<ResumoDescarrego
  * Faturamento líquido vem só das fotos (sem Oracle); o do mês na tela a view
  * troca pelo valor ao vivo que o placar já buscou.
  */
-export async function carregarRecebimento(mes: string): Promise<IndicadoresRecebimento[]> {
-  const m = mesNorm(mes);
+export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
-  for (let x = INICIO_HISTORICO; x <= m; x = mesProximo(x)) meses.push(x);
+  for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
 
   const [funcionarios, setores, fotosCargo, fotosSetor, descarrego, vendas] = await Promise.all([
     listarFuncionarios().catch(() => []),

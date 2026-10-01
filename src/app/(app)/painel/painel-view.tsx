@@ -40,7 +40,6 @@ import {
   SecaoAFaturar,
   SecaoReceitas,
   SecaoDescarregos,
-  SecaoRecebimento,
 } from "./secoes";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "../devolucoes/icons";
 
@@ -94,11 +93,11 @@ interface Dados {
   receitasDrivers: MesReceitaDetalhe[];
   descarregos: ResumoDescarregos | null;
   serieDescarrego: PontoDescarregoMensal[];
-  recebimento: IndicadoresRecebimento[]; // julho/2026 → mês na tela
+  recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
 }
 
 // Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
-const SLIDES_RECEBIMENTO = new Set(["recebimento", "receitas", "descarregos"]);
+const SLIDES_RECEBIMENTO = new Set(["receitas", "descarregos"]);
 
 interface Slide {
   id: string;
@@ -117,7 +116,7 @@ function Marca() {
   );
 }
 
-function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recAtual: IndicadoresRecebimento | null): Slide[] {
+function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[]): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
     s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} /> });
@@ -131,10 +130,8 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recAt
     s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "notas entregues / devolvidas e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
-  if (recAtual)
-    s.push({ id: "recebimento", titulo: "Recebimento", contexto: "produtividade da equipe de descarga e quanto ela custa, mês a mês", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoRecebimento serie={[...d.recebimento.slice(0, -1), recAtual].slice(-4)} /> });
   if (d.receitas)
-    s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} /> });
+    s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} recebimento={recSerie} /> });
   if (d.descarregos)
     s.push({ id: "descarregos", titulo: "Descarrego", contexto: "comparação com o mês anterior e o dia a dia do mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} serie={d.serieDescarrego} mesLabel={mesLabel} /> });
   return s;
@@ -270,7 +267,7 @@ export default function PainelView({
     await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
     await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
     await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    await passo("recebimento", async () => { const v = await carregarRecebimento(mes); setDados((d) => ({ ...d, recebimento: v })); });
+    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
     // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
     await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
@@ -290,17 +287,18 @@ export default function PainelView({
 
   // Recebimento do mês na tela: o faturamento líquido vem ao vivo do placar
   // (a série só tem as fotos dos meses fechados).
-  const recBase = dados.recebimento.at(-1) ?? null;
+  const mesRef = mes || primeiroDiaDoMes();
+  const recBase = dados.recebimento.find((r) => r.mes === mesRef) ?? null;
   const recAtual = recBase && dev.disponivel ? calcularIndicadores({ ...recBase, faturamentoLiquido: dev.vendaLiquida }) : recBase;
-  const recAnt = dados.recebimento.length > 1 ? dados.recebimento[dados.recebimento.length - 2] : undefined;
+  const recAnt = dados.recebimento.find((r) => r.mes === mesAnterior(mesRef));
+  const recSerie = dados.recebimento.map((r) => (r.mes === mesRef && recAtual ? recAtual : r));
 
-  const slides = construirSlides(dados, dev, mesLabel, recAtual);
+  const slides = construirSlides(dados, dev, mesLabel, recSerie);
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
 
   // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
-  const mesRef = mes || primeiroDiaDoMes();
   const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
   const antOk = devAnt?.disponivel ? devAnt : undefined;
   const receitaAnt = dados.receitas?.serie.find((p) => p.mes === mesAnterior(mesRef))?.valor;
