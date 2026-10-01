@@ -9,9 +9,46 @@ import { formatBRL } from "@/domain/format";
 import { inicioFimMesAtual } from "@/domain/periodo";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
+import { ehSetorRecebimento } from "@/domain/recebimento";
+import { baseDoRitmo } from "@/domain/recebimento-projecao";
+import { carregarAnaliseRecebimento } from "./recebimento-dados";
+import { RecebimentoDesempenho } from "./recebimento-desempenho";
+import { RecebimentoProjecoes } from "./recebimento-projecoes";
 
-export default async function SetorDetalhe({ params }: { params: Promise<{ id: string }> }) {
+const ABAS_RECEBIMENTO = [
+  { aba: "", label: "Visão geral" },
+  { aba: "desempenho", label: "Desempenho" },
+  { aba: "projecoes", label: "Projeções" },
+] as const;
+
+/** Abas do setor Recebimento (mesmo visual das abas de Tendências). */
+function AbasRecebimento({ id, ativa }: { id: string; ativa: string }) {
+  return (
+    <nav className="mb-6 inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+      {ABAS_RECEBIMENTO.map((a) => (
+        <Link
+          key={a.aba}
+          href={`/setores/${id}${a.aba ? `?aba=${a.aba}` : ""}`}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            ativa === a.aba ? "bg-white text-[#141a4d] shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-[#141a4d]"
+          }`}
+        >
+          {a.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+export default async function SetorDetalhe({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ aba?: string }>;
+}) {
   const { id } = await params;
+  const { aba: abaParam } = await searchParams;
   const [setores, funcionarios, faltas, admin] = await Promise.all([
     listarSetores(),
     listarFuncionarios(),
@@ -27,6 +64,25 @@ export default async function SetorDetalhe({ params }: { params: Promise<{ id: s
     redirect("/setores");
   }
 
+  // Recebimento ganha Desempenho e Projeções; os outros setores seguem iguais.
+  const recebimento = ehSetorRecebimento(setor.nome);
+  const aba = recebimento && (abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
+  if (aba) {
+    const analise = await carregarAnaliseRecebimento(funcionarios, setores);
+    return (
+      <div>
+        <BackLink href="/setores">Setores</BackLink>
+        <PageHeader title={setor.nome} subtitle={aba === "desempenho" ? "Desempenho mês a mês da equipe de descarga" : "Projeções e cenários"} />
+        <AbasRecebimento id={id} ativa={aba} />
+        {aba === "desempenho" ? (
+          <RecebimentoDesempenho dados={analise} />
+        ) : (
+          <RecebimentoProjecoes base={baseDoRitmo(analise.serie, analise.custoMedio)} perfil={analise.perfil} />
+        )}
+      </div>
+    );
+  }
+
   const doSetor = funcionarios.filter((f) => f.setorId === id);
   const head = headcountPorStatus(funcionarios, id);
   const { inicio, fim } = inicioFimMesAtual();
@@ -36,6 +92,7 @@ export default async function SetorDetalhe({ params }: { params: Promise<{ id: s
     <div>
       <BackLink href="/setores">Setores</BackLink>
       <PageHeader title={setor.nome} subtitle={`${doSetor.length} funcionários neste setor`} />
+      {recebimento && <AbasRecebimento id={id} ativa="" />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Custo mensal (ativos)" value={formatBRL(custoDoSetor(funcionarios, id))} accent="gold" />
