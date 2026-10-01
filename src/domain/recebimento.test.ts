@@ -146,7 +146,8 @@ describe("indicesMelhores", () => {
   });
   it("ignora mês aberto e nulo; exige 2 comparáveis; empate destaca todos", () => {
     expect([...indicesMelhores([{ valor: 5, fechado: true }, { valor: 99, fechado: false }, { valor: null, fechado: true }], true)]).toEqual([]);
-    expect([...indicesMelhores([{ valor: 5, fechado: true }, { valor: 5, fechado: true }], true)]).toEqual([0, 1]);
+    expect([...indicesMelhores([{ valor: 5, fechado: true }, { valor: 5, fechado: true }], true)]).toEqual([]);
+    expect([...indicesMelhores([5, 9, 9].map((valor) => ({ valor, fechado: true })), true)]).toEqual([1, 2]);
   });
 });
 

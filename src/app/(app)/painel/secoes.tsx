@@ -596,7 +596,7 @@ function Destacado({ melhor, className = "", children }: { melhor: boolean; clas
 
 /**
  * Linha de cima da tela de Receitas: o TRIMESTRE. Somas e razões do período
- * (receita, toneladas, R$ por tonelada, margem do recebimento), cada uma com uma
+ * (receita, toneladas, R$ por tonelada), cada uma com uma
  * mini barra por mês — a barra do melhor mês em verde.
  */
 function ResumoTrimestre({ meses, rec }: { meses: MesReceitaDetalhe[]; rec: IndicadoresRecebimento[] }) {
@@ -610,12 +610,11 @@ function ResumoTrimestre({ meses, rec }: { meses: MesReceitaDetalhe[]; rec: Indi
   const pesoRec = rec.reduce((t, r) => t + r.pesoKg, 0);
   const porT = pesoRec > 0 ? recDesc / (pesoRec / 1000) : null;
   const custoT = pesoRec > 0 ? custo / (pesoRec / 1000) : null;
-  const margem = recDesc > 0 ? (recDesc - custo) / recDesc : null;
   const fechado = (mes: string) => progressoDoMes(mes) >= 1;
   const temEquipe = rec.some((r) => r.equipe.total > 0);
 
   return (
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
       <TileTrimestre
         label={`Receita do trimestre · ${rotulo}`}
         valor={formatBRL(receita)}
@@ -633,12 +632,6 @@ function ResumoTrimestre({ meses, rec }: { meses: MesReceitaDetalhe[]; rec: Indi
         valor={porT === null ? "—" : formatBRL(porT)}
         sub={custoT === null || !temEquipe ? "só descarrego" : `custo da equipe: ${formatBRL(custoT)}/t`}
         barras={rec.map((r) => ({ mes: r.mes, valor: r.receitaPorTonelada, fechado: r.fracaoMes >= 1 }))}
-      />
-      <TileTrimestre
-        label="Margem do recebimento"
-        valor={margem === null || !temEquipe ? "—" : formatPercent(margem)}
-        sub={temEquipe ? `${formatBRL(recDesc - custo)} de descarrego − equipe` : "sem equipe no cadastro"}
-        barras={rec.map((r) => ({ mes: r.mes, valor: temEquipe ? r.margem : null, fechado: r.fracaoMes >= 1 }))}
       />
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, SectionTitle } from "@/components/ui";
+import { Chip, Segmentado, RotuloFiltro, GraficoLinhas } from "./bi";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import {
@@ -82,137 +83,170 @@ function CardCapacidade({ titulo, cap, pessoas }: { titulo: string; cap: Capacid
   );
 }
 
-function Linha({ rotulo, atual, cenario, melhorMaior = true, render }: { rotulo: string; atual: number | null; cenario: number | null; melhorMaior?: boolean; render: (v: number) => string }) {
-  const mudou = atual !== null && cenario !== null && Math.abs(cenario - atual) > 1e-9;
-  const melhor = mudou && (melhorMaior ? cenario! > atual! : cenario! < atual!);
+/** Card "atual → cenário" com a diferença colorida (verde = melhora). */
+function Comparativo({ rotulo, atual, cenario, fmt, maiorEhBom = true, destaque = false }: {
+  rotulo: string;
+  atual: number | null;
+  cenario: number | null;
+  fmt: (v: number) => string;
+  maiorEhBom?: boolean;
+  destaque?: boolean;
+}) {
+  const dif = atual !== null && cenario !== null ? cenario - atual : null;
+  const mudou = dif !== null && Math.abs(dif) > Math.abs(atual ?? 0) * 1e-6 + 1e-9;
+  const bom = mudou && (dif! > 0) === maiorEhBom;
   return (
-    <tr className="border-b border-slate-50 last:border-0">
-      <td className="py-2 text-slate-600">{rotulo}</td>
-      <td className="py-2 text-right tabular-nums text-slate-500">{atual === null ? "—" : render(atual)}</td>
-      <td className={`py-2 text-right font-bold tabular-nums ${!mudou ? "text-[#141a4d]" : melhor ? "text-emerald-600" : "text-rose-600"}`}>
-        {cenario === null ? "—" : render(cenario)}
-      </td>
-    </tr>
+    <div className={`@container rounded-2xl p-4 ${destaque ? "bg-[#141a4d] text-white" : "border border-slate-200/80 bg-white shadow-sm"}`}>
+      <div className={`text-[0.7rem] font-semibold uppercase tracking-wider ${destaque ? "text-white/60" : "text-slate-500"}`}>{rotulo}</div>
+      <div className={`mt-1.5 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.5rem)] font-extrabold tabular-nums ${destaque ? "text-amber-300" : "text-[#141a4d]"}`}>
+        {cenario === null ? "—" : fmt(cenario)}
+      </div>
+      <div className={`mt-1 text-xs ${destaque ? "text-white/60" : "text-slate-400"}`}>
+        hoje {atual === null ? "—" : fmt(atual)}
+        {mudou && (
+          <span className={`ml-2 font-bold ${bom ? (destaque ? "text-emerald-300" : "text-emerald-600") : destaque ? "text-rose-300" : "text-rose-600"}`}>
+            {dif! > 0 ? "▲" : "▼"} {fmt(Math.abs(dif!))}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
-/** Aba Projeções do setor Recebimento. */
+const iguais = (a: Cenario, b: Partial<Cenario>) =>
+  (b.deltaAjudantes ?? 0) === a.deltaAjudantes && (b.deltaConferentes ?? 0) === a.deltaConferentes && (b.carrosExtrasDia ?? 0) === a.carrosExtrasDia;
+
+/** Aba Projeções do setor Recebimento — simulador estilo BI. */
 export function RecebimentoProjecoes({ base, perfil }: { base: BaseRitmo | null; perfil: PerfilDiario }) {
   const [cen, setCen] = useState<Cenario>(CENARIO_ATUAL);
   const [crescimento, setCrescimento] = useState(0);
+  const [horizonte, setHorizonte] = useState(12);
+  const [serieGrafico, setSerieGrafico] = useState<"acumulado" | "mensal">("acumulado");
   const [faturamentoAno, setFaturamentoAno] = useState(base?.faturamentoMes ? Math.round((base.faturamentoMes * 12) / 1e6) : 50);
 
   if (!base) {
     return <Card className="p-8 text-center text-slate-400">Ainda não há mês fechado com descarrego para servir de base.</Card>;
   }
 
-  const ritmo = projetar(base, perfil, { ...CENARIO_ATUAL, crescimentoMensal: crescimento / 100 });
-  const atual = projetar(base, perfil, CENARIO_ATUAL);
-  const sim = projetar(base, perfil, { ...cen, crescimentoMensal: crescimento / 100 });
-  const maxRes = Math.max(1, ...ritmo.meses.map((m) => Math.abs(m.resultado)));
-  const baseMeses = base.meses.map((m) => formatMesAno(m).slice(0, 3)).join(", ");
+  const comum = { crescimentoMensal: crescimento / 100, meses: horizonte };
+  const atual = projetar(base, perfil, { ...CENARIO_ATUAL, ...comum });
+  const sim = projetar(base, perfil, { ...cen, ...comum });
+  const rotulos = sim.meses.map((x) => `M${x.m}`);
+  const acum = (p: Projecao) => p.meses.reduce<number[]>((acc, x) => [...acc, (acc.at(-1) ?? 0) + x.resultado], []);
+  const baseMeses = base.meses.map((x) => formatMesAno(x).slice(0, 3)).join(", ");
+  const aplicar = (c: Partial<Cenario>) => setCen({ ...CENARIO_ATUAL, ...c });
 
   return (
-    <div className="space-y-6">
-      {/* Premissas */}
-      <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl text-sm text-slate-600">
-            <strong className="text-[#141a4d]">Como lê isto:</strong> é simulação de cenário, não previsão. A base é a média de{" "}
-            <strong>{baseMeses}</strong>: {inteiro.format(Math.round(base.carrosMes))} carros/mês em {dec1(base.diasMes)} dias,{" "}
-            {formatBRL(base.receitaPorCarro)} e {formatKg(base.kgPorCarro)} por carro, equipe de {base.ajudantes} ajudantes e {base.conferentes} conferentes a{" "}
-            {formatBRL(base.custoMes)}/mês. Com {base.meses.length} meses de histórico não dá para medir sazonalidade.
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+        {/* Painel de controles */}
+        <Card className="space-y-6 self-start p-5 xl:sticky xl:top-4">
+          <div className="flex items-center justify-between">
+            <SectionTitle>Cenário</SectionTitle>
+            <button type="button" onClick={() => { setCen(CENARIO_ATUAL); setCrescimento(0); }} className="-mt-3 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+              Zerar
+            </button>
           </div>
-          <div className="w-72">
-            <div className="flex items-baseline justify-between gap-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">
-              <span>Crescimento de carros</span>
-              <span className="font-[family-name:var(--font-sora)] text-base font-extrabold normal-case tracking-normal text-[#141a4d]">
-                {crescimento > 0 ? "+" : ""}
-                {dec1(crescimento)}% ao mês
-              </span>
+
+          <div>
+            <RotuloFiltro>Horizonte</RotuloFiltro>
+            <div className="mt-2">
+              <Segmentado opcoes={[{ valor: 6, rotulo: "6 meses" }, { valor: 12, rotulo: "1 ano" }, { valor: 24, rotulo: "2 anos" }]} valor={horizonte} onChange={setHorizonte} />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-baseline justify-between">
+              <RotuloFiltro>Crescimento de carros</RotuloFiltro>
+              <span className="text-sm font-extrabold tabular-nums text-[#141a4d]">{crescimento > 0 ? "+" : ""}{dec1(crescimento)}% ao mês</span>
             </div>
             <input type="range" min={-5} max={5} step={0.5} value={crescimento} onChange={(e) => setCrescimento(Number(e.target.value))} className="mt-2 w-full accent-amber-500" />
-            <div className="text-xs text-slate-400">0% = o ritmo de hoje se mantém</div>
+            <div className="flex justify-between text-[0.65rem] text-slate-400"><span>−5%</span><span>ritmo de hoje</span><span>+5%</span></div>
           </div>
-        </div>
-      </Card>
 
-      {/* 1 ano no ritmo */}
-      <Card className="p-6">
-        <SectionTitle>Daqui a 1 ano, nesse ritmo</SectionTitle>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Numero rotulo="Receita de descarrego em 12 meses" valor={formatBRL(ritmo.anual.receita)} sub={`${inteiro.format(Math.round(ritmo.anual.carros))} carros · ${dec1(ritmo.anual.pesoKg / 1e6)} mil t`} />
-          <Numero rotulo="Custo do recebimento em 12 meses" valor={formatBRL(ritmo.anual.custo)} sub="sem reajuste salarial" />
-          <Numero rotulo="Resultado em 12 meses" valor={formatBRL(ritmo.anual.resultado)} sub={`margem ${formatPercent(ritmo.anual.receita > 0 ? ritmo.anual.resultado / ritmo.anual.receita : 0)}`} destaque />
-          <Numero
-            rotulo="No 12º mês"
-            valor={`${dec1(ritmo.mensal.carrosDia)} carros/dia`}
-            sub={`kg/ajudante/dia ${ritmo.mensal.kgPorAjudanteDia === null ? "—" : formatKg(ritmo.mensal.kgPorAjudanteDia)} · ajudantes: ${ritmo.ajudante.situacao}`}
-          />
-        </div>
-        <div className="mt-6 text-xs font-semibold uppercase tracking-wider text-slate-400">Resultado mês a mês (descarrego − custo)</div>
-        <div className="mt-2 flex h-32 items-end gap-2">
-          {ritmo.meses.map((m) => (
-            <div key={m.m} className="flex h-full flex-1 flex-col items-center justify-end gap-1" title={`Mês ${m.m}: ${formatBRL(m.resultado)}`}>
-              <div className={`w-full rounded-t ${m.resultado >= 0 ? "bg-[#2a327f]" : "bg-rose-500"}`} style={{ height: `${Math.max(3, (Math.abs(m.resultado) / maxRes) * 100)}%` }} />
-              <span className="text-[0.65rem] text-slate-400">{m.m}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Simulador */}
-      <Card className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SectionTitle>Simulador · e se eu mudar…</SectionTitle>
-          <button type="button" onClick={() => setCen(CENARIO_ATUAL)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            Voltar ao atual
-          </button>
-        </div>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-          <div className="grid grid-cols-2 gap-5 self-start">
-            <Stepper rotulo="Ajudantes" valor={cen.deltaAjudantes} min={-base.ajudantes} onChange={(v) => setCen({ ...cen, deltaAjudantes: v })} ajuda={`hoje ${base.ajudantes} · ${formatBRL(base.custoAjudante)} cada`} />
-            <Stepper rotulo="Conferentes" valor={cen.deltaConferentes} min={-base.conferentes} onChange={(v) => setCen({ ...cen, deltaConferentes: v })} ajuda={`hoje ${base.conferentes} · ${formatBRL(base.custoConferente)} cada`} />
-            <Stepper rotulo="Carros a mais por dia" valor={cen.carrosExtrasDia} passo={0.5} min={-5} max={20} fmt={(v) => `${v > 0 ? "+" : ""}${dec1(v)}`} onChange={(v) => setCen({ ...cen, carrosExtrasDia: v })} ajuda={`hoje ${dec1(base.diasMes > 0 ? base.carrosMes / base.diasMes : 0)}/dia em média`} />
-            <div className="col-span-2 space-y-3">
-              <CardCapacidade titulo="Ajudantes dão conta?" cap={sim.ajudante} pessoas={sim.ajudantes} />
-              <CardCapacidade titulo="Conferentes dão conta?" cap={sim.conferente} pessoas={sim.conferentes} />
-            </div>
-          </div>
           <div>
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase tracking-wider text-slate-400">
-                <tr>
-                  <th className="pb-2 text-left font-semibold">Por mês (12º mês)</th>
-                  <th className="pb-2 text-right font-semibold">Atual</th>
-                  <th className="pb-2 text-right font-semibold">Cenário</th>
-                </tr>
-              </thead>
-              <tbody>
-                <Linha rotulo="Carros" atual={atual.mensal.carros} cenario={sim.mensal.carros} render={(v) => inteiro.format(Math.round(v))} />
-                <Linha rotulo="Peso" atual={atual.mensal.pesoKg} cenario={sim.mensal.pesoKg} render={(v) => `${dec1(v / 1000)} t`} />
-                <Linha rotulo="Receita de descarrego" atual={atual.mensal.receita} cenario={sim.mensal.receita} render={formatBRL} />
-                <Linha rotulo="Custo do recebimento" atual={atual.mensal.custo} cenario={sim.mensal.custo} render={formatBRL} melhorMaior={false} />
-                <Linha rotulo="Resultado" atual={atual.mensal.resultado} cenario={sim.mensal.resultado} render={formatBRL} />
-                <Linha rotulo="Custo / descarrego" atual={atual.mensal.custoSobreDescarrego} cenario={sim.mensal.custoSobreDescarrego} render={(v) => formatPercent(v)} melhorMaior={false} />
-                <Linha rotulo="Custo / faturamento líquido" atual={atual.mensal.custoSobreFaturamento} cenario={sim.mensal.custoSobreFaturamento} render={(v) => formatPercent(v, 2)} melhorMaior={false} />
-                <Linha rotulo="Kg por ajudante por dia" atual={atual.mensal.kgPorAjudanteDia} cenario={sim.mensal.kgPorAjudanteDia} render={(v) => formatKg(v)} />
-                <Linha rotulo="Carros por conferente" atual={atual.mensal.carrosPorConferente} cenario={sim.mensal.carrosPorConferente} render={(v) => inteiro.format(Math.round(v))} />
-              </tbody>
-            </table>
-            <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-              Em 12 meses o cenário dá <strong className={sim.anual.resultado >= atual.anual.resultado ? "text-emerald-600" : "text-rose-600"}>{sinalBRL(sim.anual.resultado - atual.anual.resultado)}</strong> de resultado
-              em relação a ficar como está.
-              {sim.ajudante.situacao === "não dá conta" && " Mas a equipe de ajudantes não aguenta o dia forte — o ganho depende de hora extra ou contratação."}
+            <div className="flex items-baseline justify-between">
+              <RotuloFiltro>Carros a mais por dia</RotuloFiltro>
+              <span className="text-sm font-extrabold tabular-nums text-[#141a4d]">{cen.carrosExtrasDia > 0 ? "+" : ""}{dec1(cen.carrosExtrasDia)}</span>
+            </div>
+            <input type="range" min={-3} max={10} step={0.5} value={cen.carrosExtrasDia} onChange={(e) => setCen({ ...cen, carrosExtrasDia: Number(e.target.value) })} className="mt-2 w-full accent-amber-500" />
+            <div className="text-[0.65rem] text-slate-400">hoje {dec1(base.diasMes > 0 ? base.carrosMes / base.diasMes : 0)} carros por dia em média</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Stepper rotulo="Ajudantes" valor={cen.deltaAjudantes} min={-base.ajudantes} onChange={(v) => setCen({ ...cen, deltaAjudantes: v })} ajuda={`hoje ${base.ajudantes} · ${formatBRL(base.custoAjudante)}`} />
+            <Stepper rotulo="Conferentes" valor={cen.deltaConferentes} min={-base.conferentes} onChange={(v) => setCen({ ...cen, deltaConferentes: v })} ajuda={`hoje ${base.conferentes} · ${formatBRL(base.custoConferente)}`} />
+          </div>
+
+          <div>
+            <RotuloFiltro>Cenários prontos</RotuloFiltro>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {CENARIOS_RAPIDOS.map((c) => (
+                <Chip key={c.nome} ativo={iguais(cen, c.cenario)} onClick={() => aplicar(c.cenario)}>{c.nome}</Chip>
+              ))}
             </div>
           </div>
-        </div>
-      </Card>
 
-      {/* Cenários rápidos */}
+          <p className="border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-400">
+            Simulação, não previsão. Base: média de <strong className="text-slate-500">{baseMeses}</strong> — {inteiro.format(Math.round(base.carrosMes))} carros/mês,{" "}
+            {formatBRL(base.receitaPorCarro)} e {formatKg(base.kgPorCarro)} por carro, {formatBRL(base.custoMes)}/mês de custo. Sem reajuste salarial.
+          </p>
+        </Card>
+
+        {/* Resultado do cenário */}
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Comparativo destaque rotulo={`Resultado em ${horizonte} meses`} atual={atual.anual.resultado} cenario={sim.anual.resultado} fmt={formatBRL} />
+            <Comparativo rotulo="Receita por mês (fim)" atual={atual.mensal.receita} cenario={sim.mensal.receita} fmt={formatBRL} />
+            <Comparativo rotulo="Custo por mês" atual={atual.mensal.custo} cenario={sim.mensal.custo} fmt={formatBRL} maiorEhBom={false} />
+            <Comparativo rotulo="Custo / descarrego" atual={atual.mensal.custoSobreDescarrego} cenario={sim.mensal.custoSobreDescarrego} fmt={(v) => formatPercent(v)} maiorEhBom={false} />
+            <Comparativo rotulo="Carros por mês (fim)" atual={atual.mensal.carros} cenario={sim.mensal.carros} fmt={(v) => inteiro.format(Math.round(v))} />
+            <Comparativo rotulo="Kg por ajudante / dia" atual={atual.mensal.kgPorAjudanteDia} cenario={sim.mensal.kgPorAjudanteDia} fmt={(v) => formatKg(v)} />
+            <Comparativo rotulo="Carros por conferente" atual={atual.mensal.carrosPorConferente} cenario={sim.mensal.carrosPorConferente} fmt={(v) => inteiro.format(Math.round(v))} />
+            <Comparativo rotulo="Custo / faturamento líquido" atual={atual.mensal.custoSobreFaturamento} cenario={sim.mensal.custoSobreFaturamento} fmt={(v) => formatPercent(v, 2)} maiorEhBom={false} />
+          </div>
+
+          <Card className="p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <SectionTitle>{serieGrafico === "acumulado" ? "Resultado acumulado" : "Receita × custo por mês"}</SectionTitle>
+              <Segmentado
+                opcoes={[{ valor: "acumulado", rotulo: "Acumulado: hoje × cenário" }, { valor: "mensal", rotulo: "Receita × custo" }]}
+                valor={serieGrafico}
+                onChange={setSerieGrafico}
+              />
+            </div>
+            {serieGrafico === "acumulado" ? (
+              <GraficoLinhas
+                rotulos={rotulos}
+                fmt={(v) => formatBRL(v).replace(",00", "")}
+                series={[
+                  { nome: "Se nada mudar", cor: "#94a3b8", valores: acum(atual), tracejada: true },
+                  { nome: "Cenário", cor: "#2a327f", valores: acum(sim) },
+                ]}
+              />
+            ) : (
+              <GraficoLinhas
+                rotulos={rotulos}
+                fmt={(v) => formatBRL(v).replace(",00", "")}
+                series={[
+                  { nome: "Receita de descarrego", cor: "#2a327f", valores: sim.meses.map((x) => x.receita) },
+                  { nome: "Custo do recebimento", cor: "#c2820a", valores: sim.meses.map((x) => x.custo) },
+                ]}
+              />
+            )}
+          </Card>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <CardCapacidade titulo="Ajudantes dão conta?" cap={sim.ajudante} pessoas={sim.ajudantes} />
+            <CardCapacidade titulo="Conferentes dão conta?" cap={sim.conferente} pessoas={sim.conferentes} />
+          </div>
+        </div>
+      </div>
+
+      {/* Cenários prontos lado a lado — clique aplica */}
       <Card className="overflow-hidden">
         <div className="px-6 pt-6">
-          <SectionTitle>Cenários prontos</SectionTitle>
+          <SectionTitle>Comparar cenários · clique para aplicar</SectionTitle>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
@@ -228,11 +262,12 @@ export function RecebimentoProjecoes({ base, perfil }: { base: BaseRitmo | null;
             </thead>
             <tbody>
               {CENARIOS_RAPIDOS.map((c) => {
-                const p: Projecao = projetar(base, perfil, { ...CENARIO_ATUAL, ...c.cenario });
+                const p: Projecao = projetar(base, perfil, { ...CENARIO_ATUAL, ...comum, ...c.cenario });
                 const dif = p.mensal.resultado - atual.mensal.resultado;
+                const ativo = iguais(cen, c.cenario);
                 return (
-                  <tr key={c.nome} className="border-b border-slate-50 last:border-0">
-                    <td className="px-6 py-3 font-medium text-[#141a4d]">{c.nome}</td>
+                  <tr key={c.nome} onClick={() => aplicar(c.cenario)} className={`cursor-pointer border-b border-slate-50 transition last:border-0 hover:bg-amber-50/50 ${ativo ? "bg-amber-50" : ""}`}>
+                    <td className="px-6 py-3 font-medium text-[#141a4d]">{ativo && "▸ "}{c.nome}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-slate-700">{formatBRL(p.mensal.resultado)}</td>
                     <td className={`px-4 py-3 text-right font-bold tabular-nums ${dif >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{sinalBRL(dif)}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-slate-700">{p.mensal.custoSobreDescarrego === null ? "—" : formatPercent(p.mensal.custoSobreDescarrego)}</td>
@@ -252,16 +287,6 @@ export function RecebimentoProjecoes({ base, perfil }: { base: BaseRitmo | null;
       </Card>
 
       <Mercado base={base} faturamentoAno={faturamentoAno} setFaturamentoAno={setFaturamentoAno} />
-    </div>
-  );
-}
-
-function Numero({ rotulo, valor, sub, destaque = false }: { rotulo: string; valor: string; sub: string; destaque?: boolean }) {
-  return (
-    <div className={`rounded-xl p-4 ${destaque ? "bg-[#141a4d] text-white" : "bg-slate-50"}`}>
-      <div className={`text-xs font-semibold uppercase tracking-wider ${destaque ? "text-white/60" : "text-slate-500"}`}>{rotulo}</div>
-      <div className={`mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums ${destaque ? "text-amber-300" : "text-[#141a4d]"}`}>{valor}</div>
-      <div className={`mt-1 text-xs ${destaque ? "text-white/60" : "text-slate-400"}`}>{sub}</div>
     </div>
   );
 }

@@ -182,7 +182,6 @@ export interface IndicadoresRecebimento {
   carrosPorDia: number | null;
   receitaPorTonelada: number | null; // R$/t só de descarrego
   resultado: number; // receita de descarrego − custo do período
-  margem: number | null; // resultado ÷ receita de descarrego (0..1)
 }
 
 const div = (a: number, b: number): number | null => (b > 0 ? a / b : null);
@@ -214,7 +213,6 @@ export function calcularIndicadores(p: {
     carrosPorDia: div(p.carros, p.diasDescarrego),
     receitaPorTonelada: div(p.receitaDescarrego, p.pesoKg / 1000),
     resultado: p.receitaDescarrego - custoPeriodo,
-    margem: div(p.receitaDescarrego - custoPeriodo, p.receitaDescarrego),
   };
 }
 
@@ -224,7 +222,8 @@ export function calcularIndicadores(p: {
  * Compara valores de meses e diz quais são o MELHOR da janela (para pintar de
  * verde). `maiorEhBom` decide a direção (custo % baixo é bom). Só entra mês
  * FECHADO — o corrente é parcial e ganharia ou perderia por falta de dias — e
- * só há destaque com pelo menos 2 meses comparáveis. Empate destaca todos.
+ * só há destaque com pelo menos 2 meses comparáveis. Empate no topo destaca os
+ * empatados; todos iguais não destaca ninguém.
  */
 export function indicesMelhores(
   itens: { valor: number | null; fechado: boolean }[],
@@ -235,6 +234,8 @@ export function indicesMelhores(
     .filter((it): it is { valor: number; fechado: boolean; i: number } => it.fechado && it.valor !== null);
   if (validos.length < 2) return new Set();
   const alvo = maiorEhBom ? Math.max(...validos.map((v) => v.valor)) : Math.min(...validos.map((v) => v.valor));
+  // Todos iguais (ex.: custo fixo em meses estimados): não há "melhor".
+  if (validos.every((v) => v.valor === alvo)) return new Set();
   return new Set(validos.filter((v) => v.valor === alvo).map((v) => v.i));
 }
 
@@ -250,7 +251,6 @@ export const DIRECAO_INDICADOR = {
   carrosPorDia: true,
   receitaPorTonelada: true,
   resultado: true,
-  margem: true,
 } as const satisfies Partial<Record<keyof IndicadoresRecebimento, boolean>>;
 
 export type IndicadorComparavel = keyof typeof DIRECAO_INDICADOR;
