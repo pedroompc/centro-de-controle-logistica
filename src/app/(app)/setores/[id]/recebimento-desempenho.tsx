@@ -242,7 +242,7 @@ export function RecebimentoDesempenho({ dados }: { dados: AnaliseRecebimento }) 
               { rotulo: "Conferentes", valor: linhas.find((l) => l.grupo === "conferente")?.custoAtivos ?? 0, cor: "#5b6fd6" },
               { rotulo: "Outros do setor", valor: linhas.find((l) => l.grupo === "outros")?.custoAtivos ?? 0, cor: "#8b93e0" },
               { rotulo: "Empilhador", valor: serie.at(-1)?.equipe.custoEmpilhador ?? 0, cor: "#c2820a" },
-              { rotulo: "Empilhadeira", valor: serie.at(-1)?.equipe.custoEmpilhadeira ?? 0, cor: "#f5b301" },
+              { rotulo: "Equipamentos", valor: serie.at(-1)?.equipe.custoEquipamentos ?? 0, cor: "#f5b301" },
             ]}
           />
           {empilhador.candidatos === 0 && <p className="mt-3 text-xs text-amber-600">Nenhum funcionário ativo com cargo de máquina/empilhadeira — só a máquina entrou.</p>}

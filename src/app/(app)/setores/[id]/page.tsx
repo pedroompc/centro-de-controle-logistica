@@ -6,7 +6,9 @@ import { listarFaltas } from "@/data/faltas";
 import { isAdmin } from "@/data/auth";
 import { custoDoSetor, headcountPorStatus, faltasNoPeriodo } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
-import { inicioFimMesAtual } from "@/domain/periodo";
+import { inicioFimMesAtual, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
+import { carregarRecebimento, carregarDetalheCusto, carregarFatosDescarrego } from "../../painel/painel-actions";
+import { BIAba } from "./bi-aba";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
 import { ehSetorRecebimento } from "@/domain/recebimento";
@@ -16,6 +18,7 @@ import { RecebimentoProjecoes } from "./recebimento-projecoes";
 
 const ABAS_RECEBIMENTO = [
   { aba: "", label: "Visão geral" },
+  { aba: "bi", label: "BI" },
   { aba: "desempenho", label: "Desempenho" },
   { aba: "projecoes", label: "Projeções" },
 ] as const;
@@ -44,10 +47,10 @@ export default async function SetorDetalhe({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ aba?: string }>;
+  searchParams: Promise<{ aba?: string; mes?: string }>;
 }) {
   const { id } = await params;
-  const { aba: abaParam } = await searchParams;
+  const { aba: abaParam, mes: mesParam } = await searchParams;
   const [setores, funcionarios, faltas, admin] = await Promise.all([
     listarSetores(),
     listarFuncionarios(),
@@ -65,7 +68,34 @@ export default async function SetorDetalhe({
 
   // Recebimento ganha Desempenho e Projeções; os outros setores seguem iguais.
   const recebimento = ehSetorRecebimento(setor.nome);
-  const aba = recebimento && (abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
+  const aba = recebimento && (abaParam === "bi" || abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
+  if (aba === "bi") {
+    // BI: mês escolhido (?mes=), limitado ao histórico.
+    const mes = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
+    const atual = primeiroDiaDoMes();
+    const [serie, custo, fatos] = await Promise.all([
+      carregarRecebimento(),
+      carregarDetalheCusto().catch(() => null),
+      carregarFatosDescarrego(mes).catch(() => null),
+    ]);
+    const href = (m: string) => `/setores/${id}?aba=bi${m === atual ? "" : `&mes=${m}`}`;
+    return (
+      <div>
+        <BackLink href="/setores">Setores</BackLink>
+        <PageHeader title={setor.nome} subtitle="BI do recebimento — custo, descarrego, receita e eficiência" />
+        <AbasRecebimento id={id} ativa="bi" />
+        <BIAba
+          key={mes}
+          dados={{ mes, serie, custo, fatos }}
+          hrefMes={{
+            anterior: mes > INICIO_HISTORICO ? href(mesAnterior(mes)) : null,
+            proximo: mes < atual ? href(mesProximo(mes)) : null,
+            atual: mes < atual ? href(atual) : null,
+          }}
+        />
+      </div>
+    );
+  }
   if (aba) {
     const analise = await carregarAnaliseRecebimento(funcionarios, setores);
     return (

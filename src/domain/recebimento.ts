@@ -8,7 +8,7 @@
  * cadastro): "ajudante" e "conferente" são casados por trecho, sem acento e sem
  * diferenciar maiúsculas ("Aj." não casa — o cadastro tem que dizer "Ajudante").
  */
-import type { Funcionario } from "./types";
+import type { Equipamento, Funcionario } from "./types";
 
 export type GrupoCargo = "ajudante" | "conferente" | "outros";
 
@@ -45,7 +45,7 @@ export interface EquipeRecebimento {
   custo: number; // custo mensal TOTAL (folha + empilhador + empilhadeira) — base de todas as razões
   empilhadores?: number; // operador de empilhadeira somado à equipe (0 ou 1)
   custoEmpilhador?: number; // folha do operador somado (0 se já estava no setor)
-  custoEmpilhadeira?: number; // a máquina
+  custoEquipamentos?: number; // empilhadeira, patinhas… (cadastro de equipamentos)
 }
 
 export const EQUIPE_VAZIA: EquipeRecebimento = { setor: null, total: 0, ajudantes: 0, conferentes: 0, custo: 0 };
@@ -69,8 +69,17 @@ export function linhasEquipePorCargo(
 
 // --- Empilhador + empilhadeira ----------------------------------------------
 
-/** Custo mensal de 1 empilhadeira (informado pelo gestor em out/2026). */
+/**
+ * Custo mensal de 1 empilhadeira (informado pelo gestor em out/2026). Só vale
+ * enquanto o cadastro de equipamentos (migração 0023) não existe.
+ */
 export const CUSTO_EMPILHADEIRA_MENSAL = 6000;
+
+/** Custo mensal dos equipamentos; `null` (tabela ausente) = a empilhadeira padrão. */
+export function custoDosEquipamentos(lista: Equipamento[] | null): number {
+  if (lista === null) return CUSTO_EMPILHADEIRA_MENSAL;
+  return lista.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
+}
 
 /** Operador de empilhadeira: cargo com "máquina" ou "empilhad" (sem acento/caixa). */
 export function ehCargoEmpilhador(cargo: string): boolean {
@@ -102,8 +111,12 @@ export function empilhadorDoCadastro(
   };
 }
 
-/** Soma à equipe o empilhador (se ainda não está nela) e a empilhadeira. */
-export function comEmpilhador(e: EquipeRecebimento, op: EmpilhadorCadastro): EquipeRecebimento {
+/** Soma à equipe o empilhador (se ainda não está nela) e os equipamentos. */
+export function comEmpilhador(
+  e: EquipeRecebimento,
+  op: EmpilhadorCadastro,
+  custoEquipamentos = CUSTO_EMPILHADEIRA_MENSAL,
+): EquipeRecebimento {
   if (e.total === 0) return e; // sem setor Recebimento: não inventa equipe
   const somaOperador = op.candidatos > 0 && !op.jaNoSetor;
   const custoEmpilhador = somaOperador ? op.custo : 0;
@@ -112,8 +125,8 @@ export function comEmpilhador(e: EquipeRecebimento, op: EmpilhadorCadastro): Equ
     total: e.total + (somaOperador ? 1 : 0),
     empilhadores: op.candidatos > 0 ? 1 : 0,
     custoEmpilhador,
-    custoEmpilhadeira: CUSTO_EMPILHADEIRA_MENSAL,
-    custo: e.custo + custoEmpilhador + CUSTO_EMPILHADEIRA_MENSAL,
+    custoEquipamentos,
+    custo: e.custo + custoEmpilhador + custoEquipamentos,
   };
 }
 

@@ -10,13 +10,15 @@ import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
-import type { DescarregamentoTipo } from "@/domain/types";
+import type { DescarregamentoTipo, Equipamento, Funcionario } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
 import { vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
+import { listarEquipamentos } from "@/data/equipamentos";
+import { fatosDoMes, type FatoDescarrego } from "@/domain/bi-recebimento";
 import {
   linhasEquipePorCargo,
   equipeDasLinhas,
@@ -25,6 +27,11 @@ import {
   calcularIndicadores,
   empilhadorDoCadastro,
   comEmpilhador,
+  custoDosEquipamentos,
+  ehSetorRecebimento,
+  ehCargoEmpilhador,
+  grupoDoCargo,
+  CUSTO_EMPILHADEIRA_MENSAL,
   EQUIPE_VAZIA,
   type IndicadoresRecebimento,
 } from "@/domain/recebimento";
@@ -335,12 +342,13 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
 
-  const [funcionarios, setores, fotosCargo, descarrego, vendas] = await Promise.all([
+  const [funcionarios, setores, fotosCargo, descarrego, vendas, equipamentos] = await Promise.all([
     listarFuncionarios().catch(() => []),
     listarSetores().catch(() => []),
     listarFotosEquipeCargo(),
     serieDescarregoMensal(24),
     vendaLiquidaDasFotos(meses.filter((x) => x < atual)),
+    listarEquipamentos().catch(() => null),
   ]);
 
   const vivo = linhasEquipePorCargo(funcionarios, setores);
@@ -350,6 +358,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   // 1 empilhador + 1 empilhadeira entram em todo mês (a foto por cargo não os
   // guarda — o operador costuma estar em outro setor; usa o cadastro de hoje).
   const empilhador = empilhadorDoCadastro(funcionarios, setores);
+  const custoEquip = custoDosEquipamentos(equipamentos);
   const cargoPorMes = new Map(fotosCargo.map((f) => [f.mes, f]));
   const descPorMes = new Map(descarrego.map((d) => [d.mes, d]));
 
@@ -358,7 +367,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
     const d = descPorMes.get(x);
     return calcularIndicadores({
       mes: x,
-      equipe: comEmpilhador(equipe, empilhador),
+      equipe: comEmpilhador(equipe, empilhador, custoEquip),
       equipeEstimada,
       diasDescarrego: d?.dias ?? 0,
       carros: d?.carros ?? 0,
@@ -368,4 +377,76 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
       fracaoMes: fracaoDoMes(x),
     });
   });
+}
+
+// --- BI do recebimento: detalhes ao clicar nos quadros -----------------------
+
+export interface PessoaRecebimento {
+  id: string;
+  nome: string;
+  cargo: string;
+  papel: "ajudante" | "conferente" | "empilhador" | "outros";
+  custo: number;
+  outroSetor: boolean; // empilhador cadastrado fora do setor Recebimento
+  // Composição da folha (null = rubrica não cadastrada para a pessoa).
+  rubricas: Pick<Funcionario, "salarioBase" | "passagem" | "alimentacao" | "planoSaude" | "ajudaCusto" | "premiacao" | "adicionalNoturno">;
+}
+
+export interface DetalheCusto {
+  pessoas: PessoaRecebimento[]; // cadastro ATUAL (não há histórico por pessoa)
+  equipamentos: Equipamento[];
+  equipamentosPadrao: boolean; // true = tabela 0023 ausente, usando a empilhadeira padrão
+}
+
+/** Quem compõe o custo do recebimento hoje: pessoas (com salário) e equipamentos. */
+export async function carregarDetalheCusto(): Promise<DetalheCusto> {
+  const [funcionarios, setores, equipamentos] = await Promise.all([
+    listarFuncionarios(),
+    listarSetores(),
+    listarEquipamentos().catch(() => null),
+  ]);
+  const idsRec = new Set(setores.filter((s) => ehSetorRecebimento(s.nome)).map((s) => s.id));
+  const ativos = funcionarios.filter((f) => f.status === "ativo");
+  const doSetor = ativos.filter((f) => idsRec.has(f.setorId));
+  const opsFora = ativos.filter((f) => !idsRec.has(f.setorId) && ehCargoEmpilhador(f.cargo));
+  const rubricas = (f: Funcionario) => ({
+    salarioBase: f.salarioBase,
+    passagem: f.passagem,
+    alimentacao: f.alimentacao,
+    planoSaude: f.planoSaude,
+    ajudaCusto: f.ajudaCusto,
+    premiacao: f.premiacao,
+    adicionalNoturno: f.adicionalNoturno,
+  });
+  const pessoas: PessoaRecebimento[] = [
+    ...doSetor.map((f) => ({
+      rubricas: rubricas(f),
+      id: f.id,
+      nome: f.nome,
+      cargo: f.cargo,
+      papel: ehCargoEmpilhador(f.cargo) ? ("empilhador" as const) : grupoDoCargo(f.cargo),
+      custo: f.custoMensal,
+      outroSetor: false,
+    })),
+    // Operador de fora do setor só entra se não houver um no setor (mesma regra do custo).
+    ...(doSetor.some((f) => ehCargoEmpilhador(f.cargo))
+      ? []
+      : opsFora.map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, papel: "empilhador" as const, custo: f.custoMensal, outroSetor: true, rubricas: rubricas(f) }))),
+  ];
+  return {
+    pessoas,
+    equipamentos: equipamentos ?? [{ id: "padrao", nome: "Empilhadeira", tipo: "empilhadeira", quantidade: 1, custoUnitario: CUSTO_EMPILHADEIRA_MENSAL }],
+    equipamentosPadrao: equipamentos === null,
+  };
+}
+
+/**
+ * Fatos do descarrego do mês (dia × fornecedor × tipo) para o filtro cruzado
+ * do BI. Somados sem filtro, batem com o agregado oficial do mês.
+ */
+export async function carregarFatosDescarrego(mes: string): Promise<FatoDescarrego[]> {
+  const m = mesNorm(mes);
+  const { inicio, fim } = inicioFimDoMes(m);
+  const [lancs, totais, carros] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m), listarCarrosDia(inicio, fim)]);
+  return fatosDoMes(lancs, totais, carros);
 }
