@@ -231,14 +231,36 @@ function Bloco({ titulo, direita, children, className = "" }: { titulo: string; 
   );
 }
 
-function Mini({ rotulo, valor, sub }: { rotulo: string; valor: string; sub?: string }) {
-  return (
-    <div className="@container rounded-xl bg-white/[0.05] px-4 py-3 ring-1 ring-white/10">
-      <div className="truncate text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/45">{rotulo}</div>
+/** Card de número. Com `onClick` vira SUBSEÇÃO: clicar abre o detalhe dele (de novo, fecha). */
+function Mini({ rotulo, valor, sub, onClick, ativo = false }: { rotulo: string; valor: string; sub?: string; onClick?: () => void; ativo?: boolean }) {
+  const corpo = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/45">{rotulo}</span>
+        {onClick && <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>}
+      </div>
       <div className="mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1rem,9cqi,1.5rem)] font-extrabold tabular-nums text-white">{valor}</div>
       {sub && <div className="mt-0.5 truncate text-xs text-white/40">{sub}</div>}
-    </div>
+    </>
   );
+  if (!onClick) return <div className="@container rounded-xl bg-white/[0.05] px-4 py-3 ring-1 ring-white/10">{corpo}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={ativo}
+      className={`@container rounded-xl px-4 py-3 text-left ring-1 transition ${ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.05] ring-white/10 hover:bg-white/[0.09]"}`}
+    >
+      {corpo}
+    </button>
+  );
+}
+
+/** Estado da subseção aberta dentro de uma visão (clicar de novo fecha). */
+function useSub<T extends string>() {
+  const [sub, setSub] = useState<T | null>(null);
+  const abrir = (k: T) => () => setSub((atual) => (atual === k ? null : k));
+  return { sub, abrir, fechar: () => setSub(null) };
 }
 
 function ChipTV({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
@@ -352,9 +374,10 @@ function SerieMeses({ dados, valor, fmt, maiorEhBom, altura = 170 }: { dados: Da
 
 // --- Visuais ligados (filtro cruzado) ------------------------------------------
 
-type Medida = "carros" | "pesoKg" | "receita";
+type Medida = "carros" | "pesoKg" | "receita" | "caixas";
 // Contagem inteira sem casas; média (fracionária) com 1 casa.
-const FMT_MEDIDA: Record<Medida, (v: number) => string> = { carros: (v) => (Number.isInteger(v) ? inteiro.format(v) : dec1(v)), pesoKg: fmtPeso, receita: semCentavos };
+const contagem = (v: number) => (Number.isInteger(v) ? inteiro.format(v) : dec1(v));
+const FMT_MEDIDA: Record<Medida, (v: number) => string> = { carros: contagem, pesoKg: fmtPeso, receita: semCentavos, caixas: contagem };
 const valorMedida = (s: ResumoFatos, m: Medida, porNotas: boolean) => (m === "carros" && porNotas ? s.notas : s[m]);
 
 const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -380,7 +403,7 @@ function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medi
   const hv = hover ? porDia.get(hover) : undefined;
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="mb-1 flex items-center justify-between text-xs text-white/45">
         <span>
           {hover ? (
@@ -405,7 +428,8 @@ function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medi
           <span key={d}>{d}</span>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-7 gap-1" onMouseLeave={() => setHover(null)}>
+      {/* Linhas de mesma altura que se ajustam ao espaço do bloco (sem cortar a última semana). */}
+      <div className="mt-1 grid min-h-0 flex-1 auto-rows-fr grid-cols-7 gap-1" onMouseLeave={() => setHover(null)}>
         {celulas.map((dia, i) => {
           if (!dia) return <span key={`v${i}`} />;
           const v = porDia.get(dia) ?? 0;
@@ -419,7 +443,7 @@ function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medi
               onMouseEnter={() => setHover(dia)}
               onClick={() => onFiltro({ ...filtro, dia: sel ? null : dia })}
               title={`${ddmm(dia)} · ${v ? fmt(v) : "sem descarrego"}`}
-              className={`relative flex h-14 flex-col justify-between rounded-md px-1.5 py-1 text-left transition ${v ? "cursor-pointer hover:ring-2 hover:ring-white/50" : "cursor-default"} ${sel ? "ring-2 ring-amber-300" : ""} ${filtro.dia && !sel ? "opacity-45" : ""}`}
+              className={`relative flex min-h-[2.25rem] flex-col justify-between rounded-md px-1.5 py-1 text-left transition ${v ? "cursor-pointer hover:ring-2 hover:ring-white/50" : "cursor-default"} ${sel ? "ring-2 ring-amber-300" : ""} ${filtro.dia && !sel ? "opacity-45" : ""}`}
               style={{
                 background: sel ? "#f5b301" : v ? `rgba(91,111,214,${0.18 + 0.82 * (v / max)})` : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
               }}
@@ -714,35 +738,276 @@ function BarraComposicao({ fatias }: { fatias: { rotulo: string; valor: number; 
 
 // --- DESCARREGO ---------------------------------------------------------------
 
+/** Média por dia da semana (dias com descarrego do mês; ignora o filtro de dia). */
+function DiasDaSemana({ dados, x, filtro, medida, altura = 150 }: PropsVisao & { medida: Medida; altura?: number }) {
+  const dias = agrupar(filtrarFatos(dados.fatos ?? [], filtro, "dia"), (f) => f.data);
+  const soma = Array(7).fill(0);
+  const qtd = Array(7).fill(0);
+  for (const d of dias) {
+    const [a, m, dd] = d.chave.split("-").map(Number);
+    const w = new Date(a, m - 1, dd).getDay();
+    soma[w] += valorMedida(d.resumo, medida, x.porNotas);
+    qtd[w] += 1;
+  }
+  const medias = soma.map((v, w) => (qtd[w] ? v / qtd[w] : null));
+  const melhor = Math.max(...medias.map((v) => v ?? 0));
+  return (
+    <BarrasTV
+      altura={altura}
+      fmt={FMT_MEDIDA[medida]}
+      itens={SEMANA.map((d, w) => ({
+        chave: d,
+        rotulo: d,
+        valor: medias[w],
+        cor: medias[w] !== null && medias[w] === melhor ? "#10b981" : "#5b6fd6",
+        detalhe: `${d} · ${qtd[w]} ${qtd[w] === 1 ? "dia" : "dias"} com descarrego`,
+      }))}
+    />
+  );
+}
+
+/** Ranking de fornecedores por uma medida (barra + valor); clique filtra. */
+function RankingFornecedores({ dados, filtro, onFiltro, medida, limite = 12 }: PropsVisao & { medida: Medida; limite?: number }) {
+  const lista = agrupar(filtrarFatos(dados.fatos ?? [], filtro, "fornecedor"), (f) => f.fornecedor)
+    .map((g) => ({ nome: g.chave, v: g.resumo[medida === "carros" ? "notas" : medida] }))
+    .filter((g) => g.v > 0)
+    .sort((a, b) => b.v - a.v);
+  const total = lista.reduce((t, g) => t + g.v, 0);
+  if (lista.length === 0) return <p className="py-6 text-center text-sm text-white/40">Sem lançamentos por fornecedor.</p>;
+  return (
+    <ul className="h-full space-y-2 overflow-auto pr-1">
+      {lista.slice(0, limite).map((g) => {
+        const sel = filtro.fornecedor === g.nome;
+        return (
+          <li key={g.nome}>
+            <button
+              type="button"
+              onClick={() => onFiltro({ ...filtro, fornecedor: sel ? null : g.nome })}
+              className={`w-full rounded-lg px-2 py-1 text-left transition hover:bg-white/[0.06] ${sel ? "bg-amber-400/10 ring-1 ring-amber-400" : ""} ${filtro.fornecedor && !sel ? "opacity-40" : ""}`}
+            >
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className={`truncate font-semibold ${sel ? "text-amber-300" : "text-white"}`}>{g.nome}</span>
+                <span className="shrink-0 tabular-nums text-white">
+                  {FMT_MEDIDA[medida](g.v)} <span className="text-white/40">· {formatPercent(g.v / total, 0)}</span>
+                </span>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-white/10">
+                <div className={`h-full rounded-full ${sel ? "bg-amber-400" : "bg-[#5b6fd6]"}`} style={{ width: `${(g.v / lista[0].v) * 100}%` }} />
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+type SubDescarrego = "carros" | "fornecedores" | "peso" | "caixas" | "dias" | "receita";
+const TITULO_SUB: Record<SubDescarrego, string> = {
+  carros: "Carros",
+  fornecedores: "Fornecedores atendidos",
+  peso: "Peso",
+  caixas: "Caixas (volume)",
+  dias: "Dias com descarrego",
+  receita: "Receita do descarrego",
+};
+
 function VisaoDescarrego(p: PropsVisao) {
   const { x } = p;
   const { sel } = x;
+  const { sub, abrir, fechar } = useSub<SubDescarrego>();
   if (!x.temFatos) return <Vazio>Carregando o descarrego do mês…</Vazio>;
   const qtd = x.porNotas ? sel.notas : sel.carros;
+  const ajudantes = x.r.equipe.ajudantes;
+  const kgPorAjudante = ajudantes > 0 ? sel.pesoKg / ajudantes : null;
+  const un = x.porNotas ? "nota" : "carro";
+  const card = (k: SubDescarrego) => ({ onClick: abrir(k), ativo: sub === k });
+
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini rotulo={x.porNotas ? "Notas" : "Carros"} valor={inteiro.format(qtd)} sub={sel.dias > 0 ? `${dec1(qtd / sel.dias)} por dia` : undefined} />
-        <Mini rotulo="Fornecedores atendidos" valor={inteiro.format(sel.fornecedores)} sub={sel.notas > 0 ? `${inteiro.format(sel.notas)} notas descarregadas` : "com lançamento no recorte"} />
-        <Mini rotulo="Peso" valor={fmtPeso(sel.pesoKg)} sub={qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
-        <Mini rotulo="Caixas (volume)" valor={inteiro.format(sel.caixas)} sub={`${inteiro.format(sel.descargasVolume)} descargas`} />
-        <Mini rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={formatMesAno(x.r.mes)} />
-        <Mini rotulo="Receita" valor={formatBRL(sel.receita)} sub={qtd > 0 ? `${semCentavos(sel.receita / qtd)} por ${x.porNotas ? "nota" : "carro"}` : undefined} />
+        <Mini {...card("carros")} rotulo={x.porNotas ? "Notas" : "Carros"} valor={inteiro.format(qtd)} sub={sel.dias > 0 ? `${dec1(qtd / sel.dias)} por dia` : undefined} />
+        <Mini {...card("fornecedores")} rotulo="Fornecedores atendidos" valor={inteiro.format(sel.fornecedores)} sub={sel.notas > 0 ? `${inteiro.format(sel.notas)} notas descarregadas` : "com lançamento no recorte"} />
+        <Mini {...card("peso")} rotulo="Peso" valor={fmtPeso(sel.pesoKg)} sub={qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${un}` : undefined} />
+        <Mini {...card("caixas")} rotulo="Caixas (volume)" valor={inteiro.format(sel.caixas)} sub={`${inteiro.format(sel.descargasVolume)} descargas`} />
+        <Mini {...card("dias")} rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={formatMesAno(x.r.mes)} />
+        <Mini
+          {...card("receita")}
+          rotulo="Receita"
+          valor={formatBRL(sel.receita)}
+          sub={kgPorAjudante !== null ? `${formatKg(kgPorAjudante)} descarregados por ajudante` : qtd > 0 ? `${semCentavos(sel.receita / qtd)} por ${un}` : undefined}
+        />
       </div>
-      {/* Calendário sozinho à esquerda; tipos e fornecedores empilhados à direita. */}
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
-          <GraficoDias {...p} medida="carros" />
-        </Bloco>
-        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-          <Bloco titulo="Por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
-            <ListaTipos {...p} medida="carros" />
+      <div className="flex items-center gap-3 text-xs">
+        {sub ? (
+          <>
+            <button type="button" onClick={fechar} className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/20">
+              ◂ Voltar ao resumo
+            </button>
+            <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Descarrego › {TITULO_SUB[sub]}</span>
+          </>
+        ) : (
+          <span className="text-white/35">Clique num card para abrir o detalhe dele · clique num dia, tipo ou fornecedor para filtrar tudo</span>
+        )}
+      </div>
+
+      {sub === null && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
+            <GraficoDias {...p} medida="carros" />
           </Bloco>
-          <Bloco titulo="Fornecedores">
-            <TabelaFornecedores {...p} />
-          </Bloco>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <Bloco titulo="Por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
+              <ListaTipos {...p} medida="carros" />
+            </Bloco>
+            <Bloco titulo="Fornecedores">
+              <TabelaFornecedores {...p} />
+            </Bloco>
+          </div>
         </div>
+      )}
+
+      {sub === "carros" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
+            <GraficoDias {...p} medida="carros" />
+          </Bloco>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <Bloco titulo="Por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
+              <ListaTipos {...p} medida="carros" />
+            </Bloco>
+            <Bloco titulo={`Média de ${x.porNotas ? "notas" : "carros"} por dia da semana`} direita={<Dica>verde = dia mais forte</Dica>}>
+              <DiasDaSemana {...p} medida="carros" />
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "fornecedores" && <SubFornecedores {...p} />}
+
+      {sub === "peso" && (
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <Mini rotulo={`Peso por ${un}`} valor={qtd > 0 ? formatKg(sel.pesoKg / qtd) : "—"} />
+            <Mini rotulo="Peso por dia" valor={sel.dias > 0 ? formatKg(sel.pesoKg / sel.dias) : "—"} sub={`${sel.dias} dias com descarrego`} />
+            <Mini rotulo="Descarregado por ajudante" valor={kgPorAjudante !== null ? formatKg(kgPorAjudante) : "—"} sub={`${ajudantes} ajudantes · média da equipe`} />
+            <Mini rotulo="Por ajudante por dia" valor={kgPorAjudante !== null && sel.dias > 0 ? formatKg(kgPorAjudante / sel.dias) : "—"} />
+          </div>
+          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <Bloco titulo="Peso por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+              <GraficoDias {...p} medida="pesoKg" />
+            </Bloco>
+            <Bloco titulo="Peso por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
+              <ListaTipos {...p} medida="pesoKg" />
+            </Bloco>
+            <Bloco titulo="Peso por fornecedor" direita={<Dica>clique para filtrar</Dica>}>
+              <RankingFornecedores {...p} medida="pesoKg" />
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "caixas" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Bloco titulo="Caixas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+            <GraficoDias {...p} medida="caixas" />
+          </Bloco>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Mini rotulo="Caixas por descarga" valor={sel.descargasVolume > 0 ? contagem(Math.round(sel.caixas / sel.descargasVolume)) : "—"} sub={`${inteiro.format(sel.descargasVolume)} descargas de volume`} />
+              <Mini rotulo="Caixas por dia" valor={sel.dias > 0 ? contagem(Math.round(sel.caixas / sel.dias)) : "—"} />
+            </div>
+            <Bloco titulo="Caixas por fornecedor">
+              <RankingFornecedores {...p} medida="caixas" />
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "dias" && (
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
+            <GraficoDias {...p} medida="carros" />
+          </Bloco>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <DiasResumo {...p} />
+            <Bloco titulo="Média por dia da semana" direita={<Dica>verde = dia mais forte</Dica>}>
+              <DiasDaSemana {...p} medida="carros" />
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "receita" && (
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <Mini rotulo="Descarregado por ajudante" valor={kgPorAjudante !== null ? formatKg(kgPorAjudante) : "—"} sub={`${ajudantes} ajudantes · média da equipe`} />
+            <Mini rotulo={`Receita por ${un}`} valor={qtd > 0 ? formatBRL(sel.receita / qtd) : "—"} />
+            <Mini rotulo="Receita por tonelada" valor={sel.pesoKg > 0 ? formatBRL(sel.receita / (sel.pesoKg / 1000)) : "—"} />
+            <Mini rotulo="Receita por dia" valor={sel.dias > 0 ? formatBRL(sel.receita / sel.dias) : "—"} />
+          </div>
+          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <Bloco titulo="Receita por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+              <GraficoDias {...p} medida="receita" />
+            </Bloco>
+            <Bloco titulo="Receita por tipo" direita={<Dica>clique para filtrar</Dica>}>
+              <ListaTipos {...p} medida="receita" />
+            </Bloco>
+            <Bloco titulo="Receita por fornecedor" direita={<Dica>clique para filtrar</Dica>}>
+              <RankingFornecedores {...p} medida="receita" />
+            </Bloco>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Fornecedores: tabela + concentração (quanto depende dos maiores). */
+function SubFornecedores(p: PropsVisao) {
+  const lista = agrupar(filtrarFatos(p.dados.fatos ?? [], p.filtro, "fornecedor"), (f) => f.fornecedor).sort((a, b) => b.resumo.pesoKg - a.resumo.pesoKg);
+  const totP = lista.reduce((t, g) => t + g.resumo.pesoKg, 0);
+  const totR = lista.reduce((t, g) => t + g.resumo.receita, 0);
+  const top = (n: number, k: "pesoKg" | "receita") => {
+    const tot = k === "pesoKg" ? totP : totR;
+    const v = [...lista].sort((a, b) => b.resumo[k] - a.resumo[k]).slice(0, n).reduce((t, g) => t + g.resumo[k], 0);
+    return tot > 0 ? v / tot : 0;
+  };
+  return (
+    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <Bloco titulo="Fornecedores atendidos">
+        <TabelaFornecedores {...p} />
+      </Bloco>
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Mini rotulo="3 maiores · peso" valor={formatPercent(top(3, "pesoKg"), 0)} sub="do peso do recorte" />
+          <Mini rotulo="3 maiores · receita" valor={formatPercent(top(3, "receita"), 0)} sub="da receita do recorte" />
+          <Mini rotulo="Maior fornecedor" valor={lista[0] ? formatPercent(totP > 0 ? lista[0].resumo.pesoKg / totP : 0, 0) : "—"} sub={lista[0]?.chave ?? "—"} />
+          <Mini rotulo="Notas por fornecedor" valor={lista.length ? dec1(lista.reduce((t, g) => t + g.resumo.notas, 0) / lista.length) : "—"} sub="média do recorte" />
+        </div>
+        <Bloco titulo="Receita por fornecedor">
+          <RankingFornecedores {...p} medida="receita" />
+        </Bloco>
       </div>
+    </div>
+  );
+}
+
+/** Números dos dias: média, maior, menor e dias úteis sem descarrego. */
+function DiasResumo({ dados, x, filtro }: PropsVisao) {
+  const dias = agrupar(filtrarFatos(dados.fatos ?? [], filtro, "dia"), (f) => f.data).map((d) => ({ d: d.chave, v: valorMedida(d.resumo, "carros", x.porNotas) }));
+  const com = dias.filter((d) => d.v > 0).sort((a, b) => b.v - a.v);
+  const [ano, mes] = dados.mes.split("-").map(Number);
+  const ultimo = x.r.fracaoMes < 1 ? new Date().getDate() : new Date(ano, mes, 0).getDate();
+  let uteis = 0;
+  for (let d = 1; d <= ultimo; d++) if (new Date(ano, mes - 1, d).getDay() % 6 !== 0) uteis += 1;
+  const semDescarrego = Math.max(0, uteis - com.filter((c) => new Date(ano, mes - 1, Number(c.d.slice(8, 10))).getDay() % 6 !== 0).length);
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Mini rotulo="Média por dia" valor={com.length ? dec1(com.reduce((t, c) => t + c.v, 0) / com.length) : "—"} sub={x.porNotas ? "notas" : "carros"} />
+      <Mini rotulo="Maior dia" valor={com[0] ? contagem(com[0].v) : "—"} sub={com[0] ? ddmm(com[0].d) : undefined} />
+      <Mini rotulo="Menor dia" valor={com.length ? contagem(com[com.length - 1].v) : "—"} sub={com.length ? ddmm(com[com.length - 1].d) : undefined} />
+      <Mini rotulo="Dias úteis sem descarrego" valor={inteiro.format(semDescarrego)} sub={`de ${uteis} dias úteis (seg–sex)`} />
     </div>
   );
 }
