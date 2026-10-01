@@ -79,21 +79,18 @@ export default async function SetorDetalhe({
       carregarFatosDescarrego(mes).catch(() => null),
     ]);
     const href = (m: string) => `/setores/${id}?aba=bi${m === atual ? "" : `&mes=${m}`}`;
+    // Tela cheia (overlay como o Painel da Operação); "Sair" volta ao setor.
     return (
-      <div>
-        <BackLink href="/setores">Setores</BackLink>
-        <PageHeader title={setor.nome} subtitle="BI do recebimento — custo, descarrego, receita e eficiência" />
-        <AbasRecebimento id={id} ativa="bi" />
-        <BIAba
-          key={mes}
-          dados={{ mes, serie, custo, fatos }}
-          hrefMes={{
-            anterior: mes > INICIO_HISTORICO ? href(mesAnterior(mes)) : null,
-            proximo: mes < atual ? href(mesProximo(mes)) : null,
-            atual: mes < atual ? href(atual) : null,
-          }}
-        />
-      </div>
+      <BIAba
+        key={mes}
+        dados={{ mes, serie, custo, fatos }}
+        hrefSair={`/setores/${id}`}
+        hrefMes={{
+          anterior: mes > INICIO_HISTORICO ? href(mesAnterior(mes)) : null,
+          proximo: mes < atual ? href(mesProximo(mes)) : null,
+          atual: mes < atual ? href(atual) : null,
+        }}
+      />
     );
   }
   if (aba) {
