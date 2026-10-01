@@ -579,7 +579,7 @@ function TabelaFornecedores({ dados, filtro, onFiltro, ordemInicial = "pesoKg" }
             )}
             {lista.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-white/40">Sem lançamentos por fornecedor no recorte.</td>
+                <td colSpan={5} className="py-6 text-center text-white/40">Sem lançamentos por fornecedor no período.</td>
               </tr>
             )}
           </tbody>
@@ -610,7 +610,7 @@ function VisaoCusto({ dados, x }: PropsVisao) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini rotulo={x.criterioCusto ? "Custo no recorte" : "Custo do mês"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(r.mes))} />
+        <Mini rotulo={x.criterioCusto ? "Custo no filtro" : "Custo do mês"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(r.mes))} />
         <Mini
           rotulo="Equipe"
           valor={`${c.pessoas.length} pessoas`}
@@ -802,14 +802,13 @@ function RankingFornecedores({ dados, filtro, onFiltro, medida, limite = 12 }: P
   );
 }
 
-type SubDescarrego = "carros" | "fornecedores" | "peso" | "caixas" | "dias" | "receita";
+type SubDescarrego = "carros" | "fornecedores" | "peso" | "caixas" | "dias";
 const TITULO_SUB: Record<SubDescarrego, string> = {
   carros: "Carros",
   fornecedores: "Fornecedores atendidos",
   peso: "Peso",
   caixas: "Caixas (volume)",
   dias: "Dias com descarrego",
-  receita: "Receita do descarrego",
 };
 
 function VisaoDescarrego(p: PropsVisao) {
@@ -825,18 +824,18 @@ function VisaoDescarrego(p: PropsVisao) {
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
+      {/* Receita não entra aqui: tem o quadro próprio no topo. */}
+      <div className="grid grid-cols-3 gap-3 xl:grid-cols-5">
         <Mini {...card("carros")} rotulo={x.porNotas ? "Notas" : "Carros"} valor={inteiro.format(qtd)} sub={sel.dias > 0 ? `${dec1(qtd / sel.dias)} por dia` : undefined} />
-        <Mini {...card("fornecedores")} rotulo="Fornecedores atendidos" valor={inteiro.format(sel.fornecedores)} sub={sel.notas > 0 ? `${inteiro.format(sel.notas)} notas descarregadas` : "com lançamento no recorte"} />
-        <Mini {...card("peso")} rotulo="Peso" valor={fmtPeso(sel.pesoKg)} sub={qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${un}` : undefined} />
+        <Mini {...card("fornecedores")} rotulo="Fornecedores atendidos" valor={inteiro.format(sel.fornecedores)} sub={sel.notas > 0 ? `${inteiro.format(sel.notas)} notas descarregadas` : "com lançamento no mês"} />
+        <Mini
+          {...card("peso")}
+          rotulo="Peso"
+          valor={fmtPeso(sel.pesoKg)}
+          sub={kgPorAjudante !== null ? `${formatKg(kgPorAjudante)} por ajudante` : qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${un}` : undefined}
+        />
         <Mini {...card("caixas")} rotulo="Caixas (volume)" valor={inteiro.format(sel.caixas)} sub={`${inteiro.format(sel.descargasVolume)} descargas`} />
         <Mini {...card("dias")} rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={formatMesAno(x.r.mes)} />
-        <Mini
-          {...card("receita")}
-          rotulo="Receita"
-          valor={formatBRL(sel.receita)}
-          sub={kgPorAjudante !== null ? `${formatKg(kgPorAjudante)} descarregados por ajudante` : qtd > 0 ? `${semCentavos(sel.receita / qtd)} por ${un}` : undefined}
-        />
       </div>
       <div className="flex items-center gap-3 text-xs">
         {sub ? (
@@ -938,56 +937,121 @@ function VisaoDescarrego(p: PropsVisao) {
         </div>
       )}
 
-      {sub === "receita" && (
-        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Mini rotulo="Descarregado por ajudante" valor={kgPorAjudante !== null ? formatKg(kgPorAjudante) : "—"} sub={`${ajudantes} ajudantes · média da equipe`} />
-            <Mini rotulo={`Receita por ${un}`} valor={qtd > 0 ? formatBRL(sel.receita / qtd) : "—"} />
-            <Mini rotulo="Receita por tonelada" valor={sel.pesoKg > 0 ? formatBRL(sel.receita / (sel.pesoKg / 1000)) : "—"} />
-            <Mini rotulo="Receita por dia" valor={sel.dias > 0 ? formatBRL(sel.receita / sel.dias) : "—"} />
-          </div>
-          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <Bloco titulo="Receita por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
-              <GraficoDias {...p} medida="receita" />
-            </Bloco>
-            <Bloco titulo="Receita por tipo" direita={<Dica>clique para filtrar</Dica>}>
-              <ListaTipos {...p} medida="receita" />
-            </Bloco>
-            <Bloco titulo="Receita por fornecedor" direita={<Dica>clique para filtrar</Dica>}>
-              <RankingFornecedores {...p} medida="receita" />
-            </Bloco>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-/** Fornecedores: tabela + concentração (quanto depende dos maiores). */
+/** Card de destaque com a lista de quem compõe o número (clique no nome filtra). */
+function CardQuem({
+  titulo,
+  valor,
+  explicacao,
+  itens,
+  filtro,
+  onFiltro,
+}: {
+  titulo: string;
+  valor: string;
+  explicacao: string;
+  itens: { rotulo: string; fornecedor?: string; principal: string; detalhe: string }[]; // `fornecedor` = linha clicável (filtra)
+} & Filtro) {
+  return (
+    <div className="flex min-h-0 flex-col rounded-xl bg-white/[0.05] px-4 py-3 ring-1 ring-white/10">
+      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/45">{titulo}</div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-white">{valor}</span>
+        <span className="text-xs text-white/40">{explicacao}</span>
+      </div>
+      <ol className="mt-2 min-h-0 flex-1 space-y-1 overflow-auto">
+        {itens.map((it, i) => {
+          const sel = !!it.fornecedor && filtro.fornecedor === it.fornecedor;
+          const conteudo = (
+            <>
+              {it.fornecedor && <span className="w-4 shrink-0 text-xs font-bold text-amber-300">{i + 1}º</span>}
+              <span title={it.rotulo} className={`min-w-0 flex-1 truncate ${it.fornecedor ? "font-semibold" : ""} ${sel ? "text-amber-300" : it.fornecedor ? "text-white" : "text-white/55"}`}>{it.rotulo}</span>
+              <span className="shrink-0 font-bold tabular-nums text-white">{it.principal}</span>
+              <span className="w-24 shrink-0 text-right text-xs tabular-nums text-white/45">{it.detalhe}</span>
+            </>
+          );
+          return (
+            <li key={`${it.rotulo}-${i}`}>
+              {it.fornecedor ? (
+                <button
+                  type="button"
+                  onClick={() => onFiltro({ ...filtro, fornecedor: sel ? null : it.fornecedor })}
+                  className={`flex w-full items-baseline gap-2 rounded-md px-1.5 py-0.5 text-left text-sm transition hover:bg-white/[0.07] ${sel ? "bg-amber-400/15" : ""}`}
+                  title="Clique para filtrar este fornecedor"
+                >
+                  {conteudo}
+                </button>
+              ) : (
+                <div className="flex items-baseline gap-2 px-1.5 py-0.5 text-sm">{conteudo}</div>
+              )}
+            </li>
+          );
+        })}
+        {itens.length === 0 && <li className="text-sm text-white/40">Sem lançamentos por fornecedor.</li>}
+      </ol>
+    </div>
+  );
+}
+
+/** Fornecedores: tabela + dependência dos maiores (com nomes e números de cada um). */
 function SubFornecedores(p: PropsVisao) {
-  const lista = agrupar(filtrarFatos(p.dados.fatos ?? [], p.filtro, "fornecedor"), (f) => f.fornecedor).sort((a, b) => b.resumo.pesoKg - a.resumo.pesoKg);
+  const lista = agrupar(filtrarFatos(p.dados.fatos ?? [], p.filtro, "fornecedor"), (f) => f.fornecedor);
   const totP = lista.reduce((t, g) => t + g.resumo.pesoKg, 0);
   const totR = lista.reduce((t, g) => t + g.resumo.receita, 0);
-  const top = (n: number, k: "pesoKg" | "receita") => {
-    const tot = k === "pesoKg" ? totP : totR;
-    const v = [...lista].sort((a, b) => b.resumo[k] - a.resumo[k]).slice(0, n).reduce((t, g) => t + g.resumo[k], 0);
-    return tot > 0 ? v / tot : 0;
-  };
+  const totN = lista.reduce((t, g) => t + g.resumo.notas, 0);
+  const pct = (v: number, tot: number) => (tot > 0 ? formatPercent(v / tot, 0) : "—");
+  const porPeso = [...lista].sort((a, b) => b.resumo.pesoKg - a.resumo.pesoKg);
+  const porReceita = [...lista].sort((a, b) => b.resumo.receita - a.resumo.receita);
+  const porNotas = [...lista].sort((a, b) => b.resumo.notas - a.resumo.notas);
+  const top3P = porPeso.slice(0, 3);
+  const top3R = porReceita.slice(0, 3);
+  const maior = porPeso[0];
+  const doQue = filtroAtivo(p.filtro) ? "do filtro" : "do mês";
   return (
-    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <Bloco titulo="Fornecedores atendidos">
         <TabelaFornecedores {...p} />
       </Bloco>
-      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Mini rotulo="3 maiores · peso" valor={formatPercent(top(3, "pesoKg"), 0)} sub="do peso do recorte" />
-          <Mini rotulo="3 maiores · receita" valor={formatPercent(top(3, "receita"), 0)} sub="da receita do recorte" />
-          <Mini rotulo="Maior fornecedor" valor={lista[0] ? formatPercent(totP > 0 ? lista[0].resumo.pesoKg / totP : 0, 0) : "—"} sub={lista[0]?.chave ?? "—"} />
-          <Mini rotulo="Notas por fornecedor" valor={lista.length ? dec1(lista.reduce((t, g) => t + g.resumo.notas, 0) / lista.length) : "—"} sub="média do recorte" />
-        </div>
-        <Bloco titulo="Receita por fornecedor">
-          <RankingFornecedores {...p} medida="receita" />
-        </Bloco>
+      <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-3">
+        <CardQuem
+          {...p}
+          titulo="Peso que vem dos 3 maiores"
+          valor={pct(top3P.reduce((t, g) => t + g.resumo.pesoKg, 0), totP)}
+          explicacao={`do peso ${doQue}`}
+          itens={top3P.map((g) => ({ rotulo: g.chave, fornecedor: g.chave, principal: fmtPeso(g.resumo.pesoKg), detalhe: `${pct(g.resumo.pesoKg, totP)} do peso` }))}
+        />
+        <CardQuem
+          {...p}
+          titulo="Receita que vem dos 3 maiores"
+          valor={pct(top3R.reduce((t, g) => t + g.resumo.receita, 0), totR)}
+          explicacao={`da receita ${doQue}`}
+          itens={top3R.map((g) => ({ rotulo: g.chave, fornecedor: g.chave, principal: semCentavos(g.resumo.receita), detalhe: `${pct(g.resumo.receita, totR)} da receita` }))}
+        />
+        <CardQuem
+          {...p}
+          titulo="Maior fornecedor · % do peso"
+          valor={maior ? pct(maior.resumo.pesoKg, totP) : "—"}
+          explicacao={maior ? maior.chave : ""}
+          itens={
+            maior
+              ? [
+                  { rotulo: maior.chave, fornecedor: maior.chave, principal: fmtPeso(maior.resumo.pesoKg), detalhe: "de peso" },
+                  { rotulo: "Receita", principal: semCentavos(maior.resumo.receita), detalhe: `${pct(maior.resumo.receita, totR)} da receita` },
+                  { rotulo: "Notas", principal: `${maior.resumo.notas}`, detalhe: `em ${maior.resumo.dias} dias` },
+                ]
+              : []
+          }
+        />
+        <CardQuem
+          {...p}
+          titulo="Média de notas por fornecedor"
+          valor={lista.length ? dec1(totN / lista.length) : "—"}
+          explicacao={`${totN} notas · ${lista.length} fornecedores`}
+          itens={porNotas.slice(0, 3).map((g) => ({ rotulo: g.chave, fornecedor: g.chave, principal: `${g.resumo.notas} notas`, detalhe: `${dec1(g.resumo.notas / Math.max(1, g.resumo.dias))} por dia` }))}
+        />
       </div>
     </div>
   );
