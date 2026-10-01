@@ -15,19 +15,17 @@ import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
-import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
 import { vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import {
   linhasEquipePorCargo,
   equipeDasLinhas,
-  ehSetorRecebimento,
+  equipeDoMes,
   fracaoDoMes,
   calcularIndicadores,
   empilhadorDoCadastro,
   comEmpilhador,
   EQUIPE_VAZIA,
-  type EquipeRecebimento,
   type IndicadoresRecebimento,
 } from "@/domain/recebimento";
 import { classificarRegiao, ORDEM_REGIAO, type RegiaoPE } from "@/domain/pe-regioes";
@@ -326,9 +324,8 @@ export async function carregarDescarregos(mes: string): Promise<ResumoDescarrego
  * líquido e sobre a receita de descarrego, dias de descarrego.
  *
  * Equipe de cada mês: a foto por cargo (efetivo_mensal_cargo) quando existe; no
- * mês corrente, o cadastro vivo (e grava a foto). Mês passado sem foto usa os
- * cargos de hoje — `equipeEstimada` — mas, se houver a foto por SETOR daquele
- * mês, pega dela o total e a folha reais.
+ * mês corrente, o cadastro vivo (e grava a foto). Mês passado sem foto usa a
+ * equipe de hoje inteira — `equipeEstimada` (ver equipeDoMes).
  *
  * Faturamento líquido vem só das fotos (sem Oracle); o do mês na tela a view
  * troca pelo valor ao vivo que o placar já buscou.
@@ -338,11 +335,10 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
 
-  const [funcionarios, setores, fotosCargo, fotosSetor, descarrego, vendas] = await Promise.all([
+  const [funcionarios, setores, fotosCargo, descarrego, vendas] = await Promise.all([
     listarFuncionarios().catch(() => []),
     listarSetores().catch(() => []),
     listarFotosEquipeCargo(),
-    serieEfetivoSetorMensal(24),
     serieDescarregoMensal(24),
     vendaLiquidaDasFotos(meses.filter((x) => x < atual)),
   ]);
@@ -358,16 +354,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const descPorMes = new Map(descarrego.map((d) => [d.mes, d]));
 
   return meses.map((x) => {
-    let equipe: EquipeRecebimento = equipeHoje;
-    let equipeEstimada = false;
-    const foto = cargoPorMes.get(x);
-    if (foto && x !== atual) {
-      equipe = equipeDasLinhas(foto.setor, foto.linhas);
-    } else if (x !== atual) {
-      equipeEstimada = true;
-      const setor = fotosSetor.find((f) => f.mes === x && ehSetorRecebimento(f.setor));
-      if (setor) equipe = { ...equipeHoje, total: setor.ativos, custo: setor.custoAtivos };
-    }
+    const { equipe, estimada: equipeEstimada } = equipeDoMes(x, atual, cargoPorMes.get(x), equipeHoje);
     const d = descPorMes.get(x);
     return calcularIndicadores({
       mes: x,

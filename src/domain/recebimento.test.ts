@@ -12,6 +12,7 @@ import {
   empilhadorDoCadastro,
   comEmpilhador,
   CUSTO_EMPILHADEIRA_MENSAL,
+  equipeDoMes,
 } from "./recebimento";
 import type { Funcionario } from "./types";
 
@@ -191,5 +192,26 @@ describe("empilhador + empilhadeira", () => {
   it("sem equipe no setor, não soma nada", () => {
     const vazio = { setor: null, total: 0, ajudantes: 0, conferentes: 0, custo: 0 };
     expect(comEmpilhador(vazio, { candidatos: 1, custo: 3000, jaNoSetor: false })).toEqual(vazio);
+  });
+});
+
+describe("equipeDoMes", () => {
+  const hoje = { setor: "Recebimento", total: 8, ajudantes: 5, conferentes: 2, custo: 30_000 };
+  it("mês passado sem foto usa a equipe de hoje INTEIRA (soma dos cargos bate com o total)", () => {
+    const r = equipeDoMes("2026-09-01", "2026-10-01", undefined, hoje);
+    expect(r).toEqual({ equipe: hoje, estimada: true });
+  });
+  it("mês com foto por cargo usa só a foto; mês corrente usa o cadastro", () => {
+    const foto = { setor: "Recebimento", linhas: [{ grupo: "ajudante" as const, ativos: 4, custoAtivos: 12_000 }] };
+    expect(equipeDoMes("2026-10-01", "2026-11-01", foto, hoje)).toEqual({
+      equipe: { setor: "Recebimento", total: 4, ajudantes: 4, conferentes: 0, custo: 12_000 },
+      estimada: false,
+    });
+    expect(equipeDoMes("2026-11-01", "2026-11-01", foto, hoje)).toEqual({ equipe: hoje, estimada: false });
+  });
+  it("com o empilhador já no setor, o total fica 8 (5 + 2 + 1)", () => {
+    const e = comEmpilhador(hoje, { candidatos: 1, custo: 3000, jaNoSetor: true });
+    expect(e.total).toBe(8);
+    expect(e.ajudantes + e.conferentes + (e.empilhadores ?? 0)).toBe(8);
   });
 });

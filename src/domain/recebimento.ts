@@ -117,6 +117,22 @@ export function comEmpilhador(e: EquipeRecebimento, op: EmpilhadorCadastro): Equ
   };
 }
 
+/**
+ * Equipe de um mês: a foto por cargo, se o mês fechado tiver; senão a equipe de
+ * HOJE inteira (estimativa). Nunca mistura fontes — total, cargos e folha vêm
+ * da mesma foto, senão a soma dos cargos não bate com o total.
+ */
+export function equipeDoMes(
+  mes: string,
+  mesAtual: string,
+  fotoCargo: { setor: string; linhas: LinhaEquipeCargo[] } | undefined,
+  equipeHoje: EquipeRecebimento,
+): { equipe: EquipeRecebimento; estimada: boolean } {
+  if (mes === mesAtual) return { equipe: equipeHoje, estimada: false };
+  if (fotoCargo) return { equipe: equipeDasLinhas(fotoCargo.setor, fotoCargo.linhas), estimada: false };
+  return { equipe: equipeHoje, estimada: true };
+}
+
 /** Soma as linhas por cargo na equipe do mês. */
 export function equipeDasLinhas(setor: string | null, linhas: LinhaEquipeCargo[]): EquipeRecebimento {
   const de = (g: GrupoCargo) => linhas.filter((l) => l.grupo === g).reduce((t, l) => t + l.ativos, 0);
