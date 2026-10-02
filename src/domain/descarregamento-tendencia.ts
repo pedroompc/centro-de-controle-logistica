@@ -71,8 +71,10 @@ export function diariosDosLancamentos(
       d.porTipo!.volume += r.quantidade ?? 0;
       d.descargasVolume! += r.carros ?? 1; // carros informados no lançamento; sem, 1
     } else {
-      d.porTipo![r.tipo] += 1;
-      d.descarregos += 1;
+      // Carro com várias notas: só uma conta o carro (as outras vêm com 0).
+      const c = r.carros ?? 1;
+      d.porTipo![r.tipo] += c;
+      d.descarregos += c;
     }
     d.pesoKg += r.pesoKg;
     d.pesoPorTipo![r.tipo] += r.pesoKg;

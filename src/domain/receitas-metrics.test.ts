@@ -3,14 +3,15 @@ import {
   toneladas, calcularReceita, arredonda2, receitaTotal, toneladasTotal,
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
-  receitaPorDia, calcularReceitaVolume, carrosDoLancamento,
+  receitaPorDia, calcularReceitaVolume, carrosDoLancamento, liderDoCarro, valorDaNota,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 
 const r = (over: Partial<Receita>): Receita => ({
   id: "x", data: "2026-07-10", fornecedorId: "f1", fornecedorNome: "Forn 1",
   pesoKg: 1000, tipo: "batido", precoPorTonelada: 20, receita: 20,
-  minimoAplicado: 0, observacao: null, quantidade: null, precoPorUnidade: null, carros: null, ...over,
+  minimoAplicado: 0, observacao: null, quantidade: null, precoPorUnidade: null, carros: null,
+  carroId: null, isento: false, valorFechado: false, ...over,
 });
 
 const td = (over: Partial<TotalDiarioDescarregamento>): TotalDiarioDescarregamento => ({
@@ -325,10 +326,10 @@ describe("contagem real de carros do dia (lançamento é nota, não caminhão)",
 });
 
 describe("carros no lançamento de Volume", () => {
-  it("volume conta os carros informados; sem informar, 1; outros tipos sempre 1", () => {
+  it("conta os carros informados na nota; sem informar, 1", () => {
     expect(carrosDoLancamento({ tipo: "volume", carros: 3 })).toBe(3);
     expect(carrosDoLancamento({ tipo: "volume", carros: null })).toBe(1);
-    expect(carrosDoLancamento({ tipo: "batido", carros: 5 })).toBe(1);
+    expect(carrosDoLancamento({ tipo: "batido", carros: null })).toBe(1);
   });
 
   it("receitaPorDia e quantidadePorTipo somam os carros do volume, notas seguem por lançamento", () => {
@@ -340,5 +341,35 @@ describe("carros no lançamento de Volume", () => {
     expect(d.descarregos).toBe(3);
     expect(d.notas).toBe(2);
     expect(quantidadePorTipo(rs)).toEqual({ batido: 1, paletizado: 0, pal_rem: 0, volume: 2 });
+  });
+});
+
+describe("carro com várias notas, isento e valor fechado", () => {
+  it("liderDoCarro: a mais pesada de carro; Volume só se não houver outra", () => {
+    expect(liderDoCarro([{ tipo: "volume", pesoKg: 9000 }, { tipo: "pal_rem", pesoKg: 5000 }, { tipo: "pal_rem", pesoKg: 7000 }])).toBe(2);
+    expect(liderDoCarro([{ tipo: "volume", pesoKg: 1000 }, { tipo: "volume", pesoKg: 3000 }])).toBe(1);
+    expect(liderDoCarro([])).toBe(-1);
+  });
+  it("carrosDoLancamento: nota de carro já contado vale 0; antiga vale 1", () => {
+    expect(carrosDoLancamento({ tipo: "batido", carros: 0 })).toBe(0);
+    expect(carrosDoLancamento({ tipo: "batido", carros: null })).toBe(1);
+    expect(carrosDoLancamento({ tipo: "volume", carros: 2 })).toBe(2);
+  });
+  it("valorDaNota: isento 0; volume fechado sem mínimo; resto com mínimo", () => {
+    const base = { pesoKg: 202, precoPorTonelada: 30, quantidade: 0, precoPorUnidade: 0, isento: false, valorFechado: null };
+    expect(valorDaNota({ ...base, tipo: "paletizado" }, 25)).toBe(25);
+    expect(valorDaNota({ ...base, tipo: "paletizado", isento: true }, 25)).toBe(0);
+    expect(valorDaNota({ ...base, tipo: "volume", quantidade: 544, precoPorUnidade: 0.8 }, 25)).toBe(435.2);
+    expect(valorDaNota({ ...base, tipo: "volume", quantidade: 10, precoPorUnidade: 0.8, valorFechado: 15 }, 25)).toBe(15);
+  });
+  it("R$/ton médio ignora carga isenta", () => {
+    const rs = [r({ pesoKg: 10_000, receita: 500 }), r({ pesoKg: 10_000, receita: 0, isento: true })];
+    expect(resumoReceitas(rs, []).medioPorTonelada).toBe(50);
+    expect(resumoReceitas(rs, []).toneladas).toBe(20);
+  });
+  it("dia com carro de 3 notas conta 1 carro", () => {
+    const rs = [r({ carros: 1, carroId: "c" }), r({ carros: 0, carroId: "c" }), r({ carros: 0, carroId: "c", tipo: "volume", quantidade: 10 })];
+    expect(receitaPorDia(rs)[0].descarregos).toBe(1);
+    expect(quantidadePorTipo(rs).batido).toBe(1);
   });
 });

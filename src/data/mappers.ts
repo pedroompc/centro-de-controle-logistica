@@ -99,6 +99,7 @@ export function mapReceita(row: {
   minimo_aplicado: string | number; observacao: string | null;
   quantidade?: string | number | null; preco_por_unidade?: string | number | null;
   carros?: string | number | null;
+  carro_id?: string | null; isento?: boolean | null; valor_fechado?: boolean | null;
 }): Receita {
   const forn = Array.isArray(row.fornecedores) ? row.fornecedores[0] : row.fornecedores;
   return {
@@ -112,6 +113,9 @@ export function mapReceita(row: {
     quantidade: row.quantidade == null ? null : Number(row.quantidade),
     precoPorUnidade: row.preco_por_unidade == null ? null : Number(row.preco_por_unidade),
     carros: row.carros == null ? null : Number(row.carros),
+    carroId: row.carro_id ?? null,
+    isento: row.isento ?? false,
+    valorFechado: row.valor_fechado ?? false,
     receita: Number(row.receita),
     minimoAplicado: Number(row.minimo_aplicado),
     observacao: row.observacao,

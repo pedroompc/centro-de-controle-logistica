@@ -57,3 +57,20 @@ describe("custoNoRecorte", () => {
     expect(custoNoRecorte({ ...base, pesoRecorte: 50_000, filtro: { dia: "x", fornecedor: "X" } }).custo).toBe(750);
   });
 });
+
+describe("carro lançado com várias notas", () => {
+  // 3 notas no mesmo caminhão: a líder conta 1, as outras 0. Sem ajuste do dia.
+  const doCarro = [
+    lanc("2026-09-05", "DIAGEO", "pal_rem", 24_000, 1250, { carros: 1 }),
+    lanc("2026-09-05", "DIAGEO", "pal_rem", 16_000, 830, { carros: 0 }),
+    lanc("2026-09-05", "YPIOCA", "pal_rem", 8_000, 418, { carros: 0 }),
+  ];
+  it("conta 1 carro e bate com o agregado oficial", () => {
+    const f = fatosDoMes(doCarro, [], []);
+    const oficial = agregarPorMes(diariosDosLancamentos(doCarro, []))[0];
+    expect(resumir(f).carros).toBe(1);
+    expect(oficial.carros).toBe(1);
+    expect(resumir(f).notas).toBe(3);
+    expect(resumir(filtrarFatos(f, { fornecedor: "YPIOCA" })).carros).toBe(0);
+  });
+});

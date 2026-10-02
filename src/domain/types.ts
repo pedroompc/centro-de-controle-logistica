@@ -88,7 +88,10 @@ export interface Receita {
   precoPorTonelada: number;     // 0 no Volume (n/a)
   quantidade: number | null;    // só Volume: nº de caixas
   precoPorUnidade: number | null; // só Volume: R$/caixa
-  carros: number | null;        // só Volume: em quantos carros vieram as caixas (null = 1)
+  carros: number | null;        // carros que a nota conta (null = 1); no carro com várias notas, só uma conta 1
+  carroId: string | null;       // notas do mesmo caminhão compartilham o id (null = lançamento antigo)
+  isento: boolean;              // carga FOB sem cobrança: receita 0, conta peso e carro
+  valorFechado: boolean;        // Volume cobrado por valor total digitado
   receita: number;
   minimoAplicado: number; // SNAPSHOT do mínimo vigente no lançamento
   observacao: string | null;

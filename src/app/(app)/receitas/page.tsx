@@ -12,10 +12,11 @@ import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes } fr
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
 import { DescarregamentoForm } from "./descarregamento-form";
+import { CarroForm } from "./carro-form";
 import { ReceitaPorTipo } from "./receita-por-tipo";
 import { FornecedorRanking } from "./fornecedor-ranking";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
-import type { DescarregamentoTipo } from "@/domain/types";
+import type { DescarregamentoTipo, Receita } from "@/domain/types";
 import { listarDiversasDoMes, removerDiversa } from "@/data/receitas-diversas";
 import { ROTULO_CATEGORIA } from "@/domain/receitas-diversas";
 import { DiversaForm } from "./diversa-form";
@@ -94,6 +95,26 @@ function SeletorVista({ mes, filtros, vista }: { mes: string; filtros: FiltrosRe
   );
 }
 
+/** Coluna "Preço" da nota: base de cobrança, ou o motivo de não ter (isento / valor fechado). */
+function precoDaNota(r: Receita): string {
+  if (r.isento) return "FOB · sem cobrança";
+  if (r.tipo !== "volume") return formatBRL(r.precoPorTonelada);
+  if (r.valorFechado) return `${r.quantidade ?? 0} cx · valor fechado`;
+  const carros = r.carroId === null && (r.carros ?? 1) !== 1 ? ` · ${r.carros ?? 1} carros` : "";
+  return `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)}${carros}`;
+}
+
+/** Nota que veio no mesmo caminhão de outras. */
+function SeloCarro({ r, notasNoCarro }: { r: Receita; notasNoCarro: Map<string, number> }) {
+  const n = r.carroId ? (notasNoCarro.get(r.carroId) ?? 1) : 1;
+  if (n < 2) return null;
+  return (
+    <span className="mt-0.5 block text-xs font-normal text-slate-500" title="Notas do mesmo caminhão contam 1 carro">
+      🚚 mesmo carro de {n} notas
+    </span>
+  );
+}
+
 export default async function ReceitasPage({
   searchParams,
 }: {
@@ -153,6 +174,9 @@ export default async function ReceitasPage({
   const pesoTotalKg = porDia.reduce((t, d) => t + d.pesoKg, 0);
   // A contagem antiga `receitas.length` ignora os totais do dia lançados direto.
   const descarregosTotal = porDia.reduce((t, d) => t + d.descarregos, 0);
+  // Notas por carro: mostra "carro com N notas" nas notas que vieram juntas.
+  const notasNoCarro = new Map<string, number>();
+  for (const r of receitas) if (r.carroId) notasNoCarro.set(r.carroId, (notasNoCarro.get(r.carroId) ?? 0) + 1);
   // Só a tabela detalhada é recortada pelo dia; cards e gráficos seguem o mês.
   const receitasTabela = dia ? receitas.filter((r) => r.data === dia) : receitas;
 
@@ -223,7 +247,7 @@ export default async function ReceitasPage({
             className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Exportar CSV</Link>
           <Link href="/receitas/fornecedores" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Fornecedores</Link>
           {admin && <Link href="/receitas/precos" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Preços</Link>}
-          {admin && <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} />}
+          {admin && <CarroForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} />}
         </div>
       </div>
 
@@ -424,7 +448,10 @@ export default async function ReceitasPage({
                   {receitasTabela.map((r) => (
                     <tr key={r.id} className="border-b border-slate-50 last:border-0 align-top">
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(r.data)}</td>
-                      <td className="px-5 py-3 font-medium text-[#141a4d]">{r.fornecedorNome}</td>
+                      <td className="px-5 py-3 font-medium text-[#141a4d]">
+                        {r.fornecedorNome}
+                        <SeloCarro r={r} notasNoCarro={notasNoCarro} />
+                      </td>
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-600">
                         {formatKg(r.pesoKg)} <span className="text-slate-400">({fmtTon(toneladas(r.pesoKg))})</span>
                       </td>
@@ -434,16 +461,14 @@ export default async function ReceitasPage({
                         </Pill>
                       </td>
                       <td className="px-5 py-3 tabular-nums text-slate-600">
-                        {r.tipo === "volume"
-                          ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)} · ${r.carros ?? 1} ${(r.carros ?? 1) === 1 ? "carro" : "carros"}`
-                          : formatBRL(r.precoPorTonelada)}
+                        {precoDaNota(r)}
                       </td>
-                      <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{formatBRL(r.receita)}</td>
+                      <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{r.isento ? <Pill tone="slate">Isento</Pill> : formatBRL(r.receita)}</td>
                       <td className="px-5 py-3 max-w-[16rem] truncate text-slate-500" title={r.observacao ?? ""}>{r.observacao ?? "—"}</td>
                       {admin && (
                         <td className="px-5 py-3">
                           <div className="flex flex-col items-end gap-2">
-                            <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} receita={r} />
+                            <DescarregamentoForm fornecedores={fornecedores} precos={precos} valorMinimo={config.valorMinimo} receita={r} />
                             <form action={removerReceita.bind(null, r.id)}>
                               <button className="text-sm font-medium text-rose-600 hover:text-rose-700">remover</button>
                             </form>
@@ -463,26 +488,25 @@ export default async function ReceitasPage({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-[#141a4d]">{r.fornecedorNome}</p>
+                      <SeloCarro r={r} notasNoCarro={notasNoCarro} />
                       <p className="mt-0.5 text-xs tabular-nums text-slate-500">
                         {formatDataBR(r.data)} · {formatKg(r.pesoKg)}
                       </p>
                     </div>
-                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{formatBRL(r.receita)}</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{r.isento ? <Pill tone="slate">Isento</Pill> : formatBRL(r.receita)}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "navy" : "slate"}>
                       {ROTULO_TIPO[r.tipo] ?? r.tipo}
                     </Pill>
                     <span className="tabular-nums">
-                      {r.tipo === "volume"
-                        ? `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)} · ${r.carros ?? 1} ${(r.carros ?? 1) === 1 ? "carro" : "carros"}`
-                        : formatBRL(r.precoPorTonelada)}
+                      {precoDaNota(r)}
                     </span>
                   </div>
                   {r.observacao && <p className="mt-1.5 text-xs text-slate-500">{r.observacao}</p>}
                   {admin && (
                     <div className="mt-2.5 flex items-center gap-2">
-                      <DescarregamentoForm fornecedores={fornecedores} precos={precos} mes={mes} valorMinimo={config.valorMinimo} receita={r} />
+                      <DescarregamentoForm fornecedores={fornecedores} precos={precos} valorMinimo={config.valorMinimo} receita={r} />
                       <form action={removerReceita.bind(null, r.id)}>
                         <button className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 active:bg-rose-50">
                           Remover

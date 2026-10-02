@@ -101,11 +101,57 @@ export function quantidadePorTipo(
 }
 
 /**
- * Carros de um lançamento: o Volume diz em quantos carros vieram as caixas
- * (sem informar, 1); os outros tipos são sempre 1 por lançamento.
+ * Carros que um lançamento conta. Sem informar (lançamento antigo), 1 nota =
+ * 1 carro. No carro com várias notas só uma conta 1 e as outras 0; no Volume
+ * antigo, o lançamento diz em quantos carros vieram as caixas.
  */
 export function carrosDoLancamento(r: Pick<Receita, "tipo"> & { carros?: number | null }): number {
-  return r.tipo === "volume" ? (r.carros ?? 1) : 1;
+  return r.carros ?? 1;
+}
+
+/**
+ * Qual nota do carro conta o carro (e dá o tipo dele): a mais pesada entre as
+ * de carro (batido/paletizado/pal-rem); só Volume no carro, a mais pesada delas.
+ * Carro com pal-rem + caixas é um caminhão de pal-rem que trouxe caixas junto.
+ */
+export function liderDoCarro(notas: Pick<Receita, "tipo" | "pesoKg">[]): number {
+  let lider = -1;
+  for (let i = 0; i < notas.length; i++) {
+    const n = notas[i];
+    if (lider < 0) {
+      lider = i;
+      continue;
+    }
+    const l = notas[lider];
+    const nCarro = n.tipo !== "volume";
+    const lCarro = l.tipo !== "volume";
+    if ((nCarro && !lCarro) || (nCarro === lCarro && n.pesoKg > l.pesoKg)) lider = i;
+  }
+  return lider;
+}
+
+export interface EntradaNota {
+  tipo: DescarregamentoTipo;
+  pesoKg: number;
+  precoPorTonelada: number;
+  quantidade: number; // caixas (Volume)
+  precoPorUnidade: number; // R$/caixa (Volume)
+  isento: boolean;
+  valorFechado: number | null; // Volume: valor total digitado (sem mínimo)
+}
+
+/**
+ * Valor cobrado de uma nota. Isento (FOB) = 0. Volume com valor fechado = o
+ * valor digitado, sem mínimo (é o combinado). O resto segue preço × base com o
+ * mínimo do descarrego.
+ */
+export function valorDaNota(n: EntradaNota, valorMinimo: number): number {
+  if (n.isento) return 0;
+  if (n.tipo === "volume") {
+    if (n.valorFechado !== null) return arredonda2(Math.max(0, n.valorFechado));
+    return calcularReceitaVolume(n.quantidade, n.precoPorUnidade, valorMinimo);
+  }
+  return calcularReceita(n.pesoKg, n.precoPorTonelada, valorMinimo);
 }
 
 export interface DiaDescarregamento {
@@ -251,7 +297,8 @@ export function resumoReceitas(
   const tons = arredonda2(toneladasTotal(descarregamentos) + tonsTotaisDiarios);
 
   // R$/ton: só os tipos cobrados por tonelada (Volume fora), somando os totais do dia.
-  const porPeso = descarregamentos.filter((r) => r.tipo !== "volume");
+  // Carga isenta (FOB) fica fora: é preço médio cobrado, e ela não foi cobrada.
+  const porPeso = descarregamentos.filter((r) => r.tipo !== "volume" && !r.isento);
   const receitaPorPeso = arredonda2(receitaTotal(porPeso) + totalTotaisDiarios);
   const tonsPorPeso = arredonda2(toneladasTotal(porPeso) + tonsTotaisDiarios);
 

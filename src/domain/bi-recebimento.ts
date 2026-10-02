@@ -4,8 +4,8 @@
  *
  * As três formas de lançar viram fatos que, somados sem filtro, batem com o
  * agregado oficial do mês (`agregarPorMes`):
- *  - lançamento por fornecedor: 1 nota; carro conta 1 (Volume conta descargas
- *    e caixas, nunca carro);
+ *  - lançamento por fornecedor: 1 nota; carro conta o `carros` da nota (1; no
+ *    carro com várias notas só uma conta) — Volume conta descargas e caixas;
  *  - contagem real de carros do dia (`descarregos_carros_dia`): substitui a
  *    contagem de notas — vira um fato de AJUSTE (sem fornecedor) com a
  *    diferença, por tipo;
@@ -61,12 +61,12 @@ export function fatosDoMes(
       f.descargasVolume = l.carros ?? 1;
       f.caixas = l.quantidade ?? 0;
     } else {
-      f.carros = 1;
+      f.carros = l.carros ?? 1; // carro com várias notas: só uma conta o carro
     }
     fatos.push(f);
     const c = contados.get(l.data) ?? { batido: 0, paletizado: 0, pal_rem: 0, volume: 0 };
     if (l.tipo === "volume") c.volume += f.descargasVolume;
-    else c[l.tipo] += 1;
+    else c[l.tipo] += f.carros;
     contados.set(l.data, c);
   }
   for (const real of carrosDia) {
