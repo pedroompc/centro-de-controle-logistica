@@ -211,7 +211,7 @@ export function PlacarRecebimento({
       <Kpi
         label="Equipe do recebimento"
         value={inteiro.format(r.equipe.total)}
-        hint={`${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf${r.equipe.empilhadores ? ` · ${r.equipe.empilhadores} empilhador` : ""}${est}`}
+        hint={`${r.equipe.ajudantes} aj · ${r.equipe.conferentes} conf${r.equipe.empilhadores ? ` · ${r.equipe.empilhadores} puxador` : ""}${est}`}
       />
       <Kpi
         label="Custo do recebimento"

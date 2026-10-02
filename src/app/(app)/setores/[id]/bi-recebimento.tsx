@@ -50,7 +50,7 @@ const TIPO_COR: Record<DescarregamentoTipo, string> = { batido: "#5b6fd6", palet
 const PAPEL: Record<PessoaRecebimento["papel"], { rotulo: string; plural: string; cor: string }> = {
   ajudante: { rotulo: "Ajudante", plural: "Ajudantes", cor: "#5b6fd6" },
   conferente: { rotulo: "Conferente", plural: "Conferentes", cor: "#8b93e0" },
-  empilhador: { rotulo: "Empilhador", plural: "Empilhador", cor: "#c2820a" },
+  empilhador: { rotulo: "Puxador", plural: "Puxador", cor: "#c2820a" },
   outros: { rotulo: "Outros", plural: "Outros", cor: "#64748b" },
 };
 const ORDEM_PAPEL = ["ajudante", "conferente", "empilhador", "outros"] as const;
@@ -146,7 +146,7 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
           valor={formatBRL(x.custo)}
           sub={
             x.criterioCusto ??
-            `${pessoas.length ? `${cont("ajudante")} aj · ${cont("conferente")} conf · ${cont("empilhador")} emp` : `${r.equipe.total} pessoas`}${resumoEquip ? ` · ${resumoEquip}` : ""}`
+            `${pessoas.length ? `${cont("ajudante")} aj · ${cont("conferente")} conf · ${cont("empilhador")} pux` : `${r.equipe.total} pessoas`}${resumoEquip ? ` · ${resumoEquip}` : ""}`
           }
         />
         <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${fmtPeso(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}${usar ? ` · ${sel.fornecedores} fornecedores` : ""}`} verde={verde("carrosPorDia")} />

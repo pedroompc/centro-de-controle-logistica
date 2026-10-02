@@ -31,7 +31,7 @@ const soma = (sel: IndicadoresRecebimento[], f: (r: IndicadoresRecebimento) => n
 
 const METRICAS: Metrica[] = [
   { chave: "receita", rotulo: "Receita de descarrego", fmt: formatBRL, doMes: (r) => r.receitaDescarrego, doPeriodo: (s) => soma(s, (r) => r.receitaDescarrego), maiorEhBom: true, ajuda: "soma do período" },
-  { chave: "custo", rotulo: "Custo do recebimento", fmt: formatBRL, doMes: (r) => r.custoPeriodo, doPeriodo: (s) => soma(s, (r) => r.custoPeriodo), maiorEhBom: false, ajuda: "folha + empilhador + empilhadeira" },
+  { chave: "custo", rotulo: "Custo do recebimento", fmt: formatBRL, doMes: (r) => r.custoPeriodo, doPeriodo: (s) => soma(s, (r) => r.custoPeriodo), maiorEhBom: false, ajuda: "folha + puxador + empilhadeira" },
   { chave: "resultado", rotulo: "Resultado", fmt: formatBRL, doMes: (r) => r.resultado, doPeriodo: (s) => soma(s, (r) => r.resultado), maiorEhBom: true, ajuda: "descarrego − custo" },
   { chave: "custoDesc", rotulo: "Custo / descarrego", fmt: (v) => formatPercent(v), doMes: (r) => r.custoSobreDescarrego, doPeriodo: (s) => div(soma(s, (r) => r.custoPeriodo), soma(s, (r) => r.receitaDescarrego)), maiorEhBom: false, ajuda: "quanto da receita a equipe consome" },
   { chave: "custoT", rotulo: "Custo por tonelada", fmt: formatBRL, doMes: (r) => r.custoPorTonelada, doPeriodo: (s) => div(soma(s, (r) => r.custoPeriodo), soma(s, (r) => r.pesoKg) / 1000), maiorEhBom: false, ajuda: "custo ÷ toneladas" },
@@ -241,7 +241,7 @@ export function RecebimentoDesempenho({ dados }: { dados: AnaliseRecebimento }) 
               { rotulo: "Ajudantes", valor: linhas.find((l) => l.grupo === "ajudante")?.custoAtivos ?? 0, cor: "#2a327f" },
               { rotulo: "Conferentes", valor: linhas.find((l) => l.grupo === "conferente")?.custoAtivos ?? 0, cor: "#5b6fd6" },
               { rotulo: "Outros do setor", valor: linhas.find((l) => l.grupo === "outros")?.custoAtivos ?? 0, cor: "#8b93e0" },
-              { rotulo: "Empilhador", valor: serie.at(-1)?.equipe.custoEmpilhador ?? 0, cor: "#c2820a" },
+              { rotulo: "Puxador", valor: serie.at(-1)?.equipe.custoEmpilhador ?? 0, cor: "#c2820a" },
               { rotulo: "Equipamentos", valor: serie.at(-1)?.equipe.custoEquipamentos ?? 0, cor: "#f5b301" },
             ]}
           />
