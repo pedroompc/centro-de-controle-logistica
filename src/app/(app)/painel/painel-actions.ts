@@ -435,7 +435,7 @@ export async function carregarDetalheCusto(): Promise<DetalheCusto> {
   ];
   return {
     pessoas,
-    equipamentos: equipamentos ?? [{ id: "padrao", nome: "Empilhadeira", tipo: "empilhadeira", quantidade: 1, custoUnitario: CUSTO_EMPILHADEIRA_MENSAL }],
+    equipamentos: equipamentos ?? [{ id: "padrao", nome: "Empilhadeira", quantidade: 1, custoUnitario: CUSTO_EMPILHADEIRA_MENSAL }],
     equipamentosPadrao: equipamentos === null,
   };
 }

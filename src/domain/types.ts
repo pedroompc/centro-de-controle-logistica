@@ -148,13 +148,10 @@ export interface ReceitaDiversa {
   observacao: string | null;
 }
 
-export type TipoEquipamento = "empilhadeira" | "patinha" | "outro";
-
 /** Equipamento do recebimento: quantidade × custo mensal por unidade. */
 export interface Equipamento {
   id: string;
   nome: string;
-  tipo: TipoEquipamento;
   quantidade: number;
   custoUnitario: number; // R$/mês por unidade
 }

@@ -26,7 +26,7 @@ import {
   type FiltroBI,
   type ResumoFatos,
 } from "@/domain/bi-recebimento";
-import type { DescarregamentoTipo, TipoEquipamento } from "@/domain/types";
+import type { DescarregamentoTipo } from "@/domain/types";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import type { DetalheCusto, PessoaRecebimento } from "../../painel/painel-actions";
 
@@ -47,7 +47,6 @@ const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const semCentavos = (v: number) => formatBRL(v).replace(",00", "");
 
 const TIPO_COR: Record<DescarregamentoTipo, string> = { batido: "#5b6fd6", paletizado: "#8b93e0", pal_rem: "#f5b301", volume: "#38bdf8" };
-const ROTULO_EQUIP: Record<TipoEquipamento, string> = { empilhadeira: "empilhadeira", patinha: "patinha", outro: "equipamento" };
 const PAPEL: Record<PessoaRecebimento["papel"], { rotulo: string; plural: string; cor: string }> = {
   ajudante: { rotulo: "Ajudante", plural: "Ajudantes", cor: "#5b6fd6" },
   conferente: { rotulo: "Conferente", plural: "Conferentes", cor: "#8b93e0" },
@@ -129,7 +128,7 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
   const equip = dados.custo?.equipamentos ?? [];
   const resumoEquip = equip
     .filter((e) => e.quantidade > 0)
-    .map((e) => `${e.quantidade} ${ROTULO_EQUIP[e.tipo]}${e.quantidade > 1 ? "s" : ""}`)
+    .map((e) => `${e.quantidade} ${e.nome.toLowerCase()}`)
     .join(" · ");
   const q = (v: VisaoBI) => ({ ativo: visao === v, onClick: () => onVisao(v) });
   const usar = x.temFatos;

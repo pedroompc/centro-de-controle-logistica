@@ -4,7 +4,6 @@ import { formatBRL } from "@/domain/format";
 import { PageHeader, Card, BackLink, StatCard } from "@/components/ui";
 import { EquipamentoForm } from "./equipamento-form";
 
-const ROTULO_TIPO = { empilhadeira: "Empilhadeira", patinha: "Patinha elétrica", outro: "Outro" } as const;
 const editInput =
   "rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
 
@@ -38,11 +37,10 @@ export default async function EquipamentosPage() {
       </div>
 
       <Card className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-left text-sm">
+        <table className="w-full min-w-[480px] text-left text-sm">
           <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-5 py-3 font-semibold">Equipamento</th>
-              <th className="px-5 py-3 font-semibold">Tipo</th>
               <th className="px-5 py-3 font-semibold">Quantidade · custo por unidade</th>
               <th className="px-5 py-3 text-right font-semibold">Total/mês</th>
               <th className="px-5 py-3"></th>
@@ -52,7 +50,6 @@ export default async function EquipamentosPage() {
             {equipamentos.map((e) => (
               <tr key={e.id} className="border-b border-slate-50 last:border-0">
                 <td className="px-5 py-3 font-medium text-[#141a4d]">{e.nome}</td>
-                <td className="px-5 py-3 text-slate-500">{ROTULO_TIPO[e.tipo]}</td>
                 <td className="px-5 py-3">
                   {admin ? (
                     <form action={editarEquipamento} className="flex items-center gap-2">
@@ -80,7 +77,7 @@ export default async function EquipamentosPage() {
             ))}
             {equipamentos.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Nenhum equipamento cadastrado.</td>
+                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">Nenhum equipamento cadastrado.</td>
               </tr>
             )}
           </tbody>
