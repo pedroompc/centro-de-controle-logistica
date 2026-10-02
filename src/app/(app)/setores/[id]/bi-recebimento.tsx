@@ -1109,18 +1109,19 @@ function VisaoDescarrego(p: PropsVisao) {
       </div>
 
       {sub === null && (
-        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
-            <GraficoDias {...p} medida="carros" />
-          </Bloco>
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+        // Fornecedores com a coluna inteira (é a lista mais longa); calendário e tipos dividem a outra.
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4">
+            <Bloco titulo={x.porNotas ? "Notas por dia" : "Carros por dia"} direita={<Dica>clique num dia para filtrar</Dica>}>
+              <GraficoDias {...p} medida="carros" />
+            </Bloco>
             <Bloco titulo="Por tipo de carga" direita={<Dica>clique para filtrar</Dica>}>
               <ListaTipos {...p} medida="carros" />
             </Bloco>
-            <Bloco titulo="Fornecedores">
-              <TabelaFornecedores {...p} />
-            </Bloco>
           </div>
+          <Bloco titulo="Fornecedores">
+            <TabelaFornecedores {...p} />
+          </Bloco>
         </div>
       )}
 
