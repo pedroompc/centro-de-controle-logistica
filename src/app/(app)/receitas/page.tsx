@@ -98,8 +98,8 @@ function SeletorVista({ mes, filtros, vista }: { mes: string; filtros: FiltrosRe
 /** Coluna "Preço" da nota: base de cobrança, ou o motivo de não ter (isento / valor fechado). */
 function precoDaNota(r: Receita): string {
   if (r.isento) return "FOB · sem cobrança";
+  if (r.valorFechado) return r.tipo === "volume" ? `${r.quantidade ?? 0} cx · valor final` : "valor final";
   if (r.tipo !== "volume") return formatBRL(r.precoPorTonelada);
-  if (r.valorFechado) return `${r.quantidade ?? 0} cx · valor fechado`;
   const carros = r.carroId === null && (r.carros ?? 1) !== 1 ? ` · ${r.carros ?? 1} carros` : "";
   return `${r.quantidade ?? 0} cx × ${formatBRL(r.precoPorUnidade ?? 0)}${carros}`;
 }

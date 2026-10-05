@@ -119,7 +119,7 @@ type NotaForm = Omit<ReturnType<typeof parseForm>, "temCarros" | "carros">;
 /** Valor e colunas de preço/valor gravados, ramificando Volume × tipos por peso. */
 function colunasDoValor(f: NotaForm, valorMinimo: number) {
   const ehVolume = f.tipo === "volume";
-  const fechado = ehVolume && f.valorFechado !== null && Number.isFinite(f.valorFechado);
+  const fechado = f.valorFechado !== null && Number.isFinite(f.valorFechado);
   const receita = valorDaNota(
     {
       tipo: f.tipo,

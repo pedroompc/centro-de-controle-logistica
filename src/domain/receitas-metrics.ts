@@ -137,20 +137,18 @@ export interface EntradaNota {
   quantidade: number; // caixas (Volume)
   precoPorUnidade: number; // R$/caixa (Volume)
   isento: boolean;
-  valorFechado: number | null; // Volume: valor total digitado (sem mínimo)
+  valorFechado: number | null; // valor final digitado na nota (sem mínimo), qualquer tipo
 }
 
 /**
- * Valor cobrado de uma nota. Isento (FOB) = 0. Volume com valor fechado = o
- * valor digitado, sem mínimo (é o combinado). O resto segue preço × base com o
- * mínimo do descarrego.
+ * Valor cobrado de uma nota. Isento (FOB) = 0. Com valor final digitado = esse
+ * valor, sem mínimo (é o combinado). O resto segue preço × base (tonelada ou
+ * caixa) com o mínimo do descarrego.
  */
 export function valorDaNota(n: EntradaNota, valorMinimo: number): number {
   if (n.isento) return 0;
-  if (n.tipo === "volume") {
-    if (n.valorFechado !== null) return arredonda2(Math.max(0, n.valorFechado));
-    return calcularReceitaVolume(n.quantidade, n.precoPorUnidade, valorMinimo);
-  }
+  if (n.valorFechado !== null) return arredonda2(Math.max(0, n.valorFechado));
+  if (n.tipo === "volume") return calcularReceitaVolume(n.quantidade, n.precoPorUnidade, valorMinimo);
   return calcularReceita(n.pesoKg, n.precoPorTonelada, valorMinimo);
 }
 

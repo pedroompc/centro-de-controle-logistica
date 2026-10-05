@@ -361,6 +361,8 @@ describe("carro com várias notas, isento e valor fechado", () => {
     expect(valorDaNota({ ...base, tipo: "paletizado", isento: true }, 25)).toBe(0);
     expect(valorDaNota({ ...base, tipo: "volume", quantidade: 544, precoPorUnidade: 0.8 }, 25)).toBe(435.2);
     expect(valorDaNota({ ...base, tipo: "volume", quantidade: 10, precoPorUnidade: 0.8, valorFechado: 15 }, 25)).toBe(15);
+    expect(valorDaNota({ ...base, tipo: "pal_rem", pesoKg: 13_200, precoPorTonelada: 52, valorFechado: 2100 }, 25)).toBe(2100);
+    expect(valorDaNota({ ...base, tipo: "pal_rem", isento: true, valorFechado: 2100 }, 25)).toBe(0);
   });
   it("R$/ton médio ignora carga isenta", () => {
     const rs = [r({ pesoKg: 10_000, receita: 500 }), r({ pesoKg: 10_000, receita: 0, isento: true })];

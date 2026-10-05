@@ -76,7 +76,7 @@ export function CarroForm({
 
   const muda = (chave: number, p: Partial<NotaEditavel>) => setNotas((ns) => ns.map((n) => (n.chave === chave ? { ...n, ...p } : n)));
   const valor = (n: NotaEditavel) =>
-    valorDaNota({ ...n, valorFechado: n.tipo === "volume" && n.fechado ? n.valorFechado || 0 : null }, valorMinimo);
+    valorDaNota({ ...n, valorFechado: n.fechado ? n.valorFechado || 0 : null }, valorMinimo);
   const totalValor = notas.reduce((t, n) => t + valor(n), 0);
   const totalPeso = notas.reduce((t, n) => t + (n.pesoKg || 0), 0);
   const payload = JSON.stringify(
@@ -87,7 +87,7 @@ export function CarroForm({
       precoPorTonelada: n.precoPorTonelada,
       quantidade: n.quantidade,
       precoPorUnidade: n.precoPorUnidade,
-      valorFechado: n.tipo === "volume" && n.fechado ? n.valorFechado : null,
+      valorFechado: n.fechado ? n.valorFechado : null,
       isento: n.isento,
       observacao: n.observacao,
     })),
@@ -127,21 +127,19 @@ export function CarroForm({
                 ))}
               </select>
               <input type="number" step="0.001" min="0" required placeholder="Peso (kg)" value={n.pesoKg || ""} onChange={(e) => muda(n.chave, { pesoKg: Number(e.target.value) })} className={`${field} w-32`} />
-              {ehVolume ? (
-                <>
-                  <input type="number" step="1" min="1" required placeholder="Caixas" value={n.quantidade || ""} onChange={(e) => muda(n.chave, { quantidade: Number(e.target.value) })} className={`${field} w-24`} />
-                  {n.fechado ? (
-                    <input type="number" step="0.01" min="0" required placeholder="Valor total R$" value={n.valorFechado || ""} onChange={(e) => muda(n.chave, { valorFechado: Number(e.target.value) })} className={`${field} w-32`} />
-                  ) : (
-                    <input type="number" step="0.01" min="0" required placeholder="R$/caixa" value={n.precoPorUnidade || ""} onChange={(e) => muda(n.chave, { precoPorUnidade: Number(e.target.value) })} className={`${field} w-28`} />
-                  )}
-                  <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
-                    <input type="checkbox" checked={n.fechado} onChange={(e) => muda(n.chave, { fechado: e.target.checked })} /> valor fechado
-                  </label>
-                </>
+              {ehVolume && (
+                <input type="number" step="1" min="1" required placeholder="Caixas" value={n.quantidade || ""} onChange={(e) => muda(n.chave, { quantidade: Number(e.target.value) })} className={`${field} w-24`} />
+              )}
+              {n.fechado ? (
+                <input type="number" step="0.01" min="0" required placeholder="Valor final R$" value={n.valorFechado || ""} onChange={(e) => muda(n.chave, { valorFechado: Number(e.target.value) })} className={`${field} w-32`} />
+              ) : ehVolume ? (
+                <input type="number" step="0.01" min="0" required placeholder="R$/caixa" value={n.precoPorUnidade || ""} onChange={(e) => muda(n.chave, { precoPorUnidade: Number(e.target.value) })} className={`${field} w-28`} />
               ) : (
                 <input type="number" step="0.01" min="0" required placeholder="R$/ton" value={n.precoPorTonelada || ""} onChange={(e) => muda(n.chave, { precoPorTonelada: Number(e.target.value) })} className={`${field} w-28`} />
               )}
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-600" title="Digitar o valor final do descarrego desta nota (sem cálculo nem mínimo)">
+                <input type="checkbox" checked={n.fechado} onChange={(e) => muda(n.chave, { fechado: e.target.checked })} /> valor final
+              </label>
               <label className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600">
                 <input type="checkbox" checked={n.isento} onChange={(e) => muda(n.chave, { isento: e.target.checked })} /> Isento (FOB)
               </label>

@@ -39,7 +39,7 @@ export function DescarregamentoForm({
 
   const ehVolume = tipo === "volume";
   const previa = valorDaNota(
-    { tipo, pesoKg: peso || 0, precoPorTonelada: preco || 0, quantidade: quantidade || 0, precoPorUnidade: precoUnidade || 0, isento, valorFechado: ehVolume && fechado ? valorFechado || 0 : null },
+    { tipo, pesoKg: peso || 0, precoPorTonelada: preco || 0, quantidade: quantidade || 0, precoPorUnidade: precoUnidade || 0, isento, valorFechado: fechado ? valorFechado || 0 : null },
     valorMinimo,
   );
 
@@ -77,27 +77,25 @@ export function DescarregamentoForm({
           <option key={t} value={t}>{ROTULO_TIPO[t]}</option>
         ))}
       </select>
-      {ehVolume ? (
-        <>
-          <input name="quantidade" type="number" step="1" min="1" required placeholder="Caixas" value={quantidade || ""} onChange={(e) => setQuantidade(Number(e.target.value))} className={`${field} w-24`} />
-          {fechado ? (
-            <input name="valor_fechado" type="number" step="0.01" min="0" required placeholder="Valor total R$" value={valorFechado || ""} onChange={(e) => setValorFechado(Number(e.target.value))} className={`${field} w-32`} />
-          ) : (
-            <input name="preco_por_unidade" type="number" step="0.01" min="0" required placeholder="R$/caixa" value={precoUnidade || ""} onChange={(e) => setPrecoUnidade(Number(e.target.value))} className={`${field} w-28`} />
-          )}
-          <label className="inline-flex items-center gap-1.5 px-1 py-2 text-xs text-slate-600">
-            <input type="checkbox" checked={fechado} onChange={(e) => setFechado(e.target.checked)} /> valor fechado
-          </label>
-          {legado && (
-            <input name="carros" type="number" step="1" min="0" required title="Em quantos carros vieram essas caixas" value={carros} onChange={(e) => setCarros(e.target.value === "" ? "" : Number(e.target.value))} className={`${field} w-20`} />
-          )}
-        </>
-      ) : (
-        <>
-          <input name="preco_por_tonelada" type="number" step="0.01" min="0" required placeholder="R$/ton" value={preco || ""} onChange={(e) => setPreco(Number(e.target.value))} className={`${field} w-28`} />
-          {legado && <input type="hidden" name="carros" value="" />}
-        </>
+      {ehVolume && (
+        <input name="quantidade" type="number" step="1" min="1" required placeholder="Caixas" value={quantidade || ""} onChange={(e) => setQuantidade(Number(e.target.value))} className={`${field} w-24`} />
       )}
+      {fechado ? (
+        <input name="valor_fechado" type="number" step="0.01" min="0" required placeholder="Valor final R$" value={valorFechado || ""} onChange={(e) => setValorFechado(Number(e.target.value))} className={`${field} w-32`} />
+      ) : ehVolume ? (
+        <input name="preco_por_unidade" type="number" step="0.01" min="0" required placeholder="R$/caixa" value={precoUnidade || ""} onChange={(e) => setPrecoUnidade(Number(e.target.value))} className={`${field} w-28`} />
+      ) : (
+        <input name="preco_por_tonelada" type="number" step="0.01" min="0" required placeholder="R$/ton" value={preco || ""} onChange={(e) => setPreco(Number(e.target.value))} className={`${field} w-28`} />
+      )}
+      {/* Com valor final, o R$/ton da tabela fica guardado na nota (para voltar ao cálculo). */}
+      {fechado && !ehVolume && <input type="hidden" name="preco_por_tonelada" value={preco || 0} />}
+      <label className="inline-flex items-center gap-1.5 px-1 py-2 text-xs text-slate-600" title="Digitar o valor final do descarrego desta nota (sem cálculo nem mínimo)">
+        <input type="checkbox" checked={fechado} onChange={(e) => setFechado(e.target.checked)} /> valor final
+      </label>
+      {legado && ehVolume && (
+        <input name="carros" type="number" step="1" min="0" required title="Em quantos carros vieram essas caixas" value={carros} onChange={(e) => setCarros(e.target.value === "" ? "" : Number(e.target.value))} className={`${field} w-20`} />
+      )}
+      {legado && !ehVolume && <input type="hidden" name="carros" value="" />}
       <label className="inline-flex items-center gap-1.5 px-1 py-2 text-xs font-medium text-slate-600">
         <input type="checkbox" name="isento" checked={isento} onChange={(e) => setIsento(e.target.checked)} /> Isento (FOB)
       </label>
