@@ -2,8 +2,10 @@
 
 /**
  * BI da Separação em tela cheia — mesma moldura e peças do BI do Recebimento.
- * Por enquanto o quadro "Custo e equipe" é o único com dado; Produção,
- * Conferência e Qualidade vêm do Harpia (WMS) e entram depois.
+ * Custo e equipe vêm do cadastro; Produção, Conferência e Qualidade vêm do
+ * Harpia (WMS). Sem coletor, a produção é medida pela CONFERÊNCIA do mapa
+ * (tudo que foi conferido foi separado). Clicar num dia do calendário filtra
+ * as três visões do Harpia; Esc limpa.
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
@@ -12,17 +14,19 @@ import { variacaoPercentual } from "@/domain/tendencias";
 import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
-  TabelaEquipe, ListaEquipamentos, SubFolha, semCentavos, type PapelBI,
+  TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
+import { resumoProducao, porConferente, errosPorMilItens } from "@/domain/separacao";
+import type { DadosHarpiaSeparacao } from "@/data/harpia-separacao";
 import type { DadosBISeparacao } from "./separacao-dados";
 
 type VisaoSep = "custo" | "producao" | "conferencia" | "qualidade";
 
 const VISOES: { id: VisaoSep; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
-  { id: "producao", titulo: "Produção", contexto: "caixas, mapas e pedidos separados por dia" },
-  { id: "conferencia", titulo: "Conferência", contexto: "caixas conferidas por conferente e por hora" },
-  { id: "qualidade", titulo: "Qualidade", contexto: "divergências pegas na conferência" },
+  { id: "producao", titulo: "Produção", contexto: "o que foi separado e conferido, dia a dia · clique num dia para filtrar" },
+  { id: "conferencia", titulo: "Conferência", contexto: "caixas por conferente e por hora na doca · clique num dia para filtrar" },
+  { id: "qualidade", titulo: "Qualidade", contexto: "divergências pegas na conferência (bipado ≠ carga) · clique num dia para filtrar" },
 ];
 
 const PAPEIS: PapelBI[] = [
@@ -44,6 +48,7 @@ function custoDoMes(d: DadosBISeparacao, mes: string): number | null {
 
 export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string }) {
   const [visao, setVisao] = useState<VisaoSep | null>(null);
+  const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoSep) => setVisao((a) => (a === v ? null : v));
   const titulo = visao ? VISOES.find((v) => v.id === visao)! : null;
 
@@ -53,6 +58,14 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const delta = custo !== null && anterior ? variacaoPercentual(custo, anterior) : null;
   const conta = (id: string) => dados.pessoas.filter((y) => y.papel === id).length;
   const q = (v: VisaoSep) => ({ ativo: visao === v, onClick: () => abrir(v) });
+  const h = "dados" in dados.harpia ? dados.harpia.dados : null;
+  const diasH = h ? h.dias.filter((d) => !dia || d.dia === dia) : [];
+  const prod = resumoProducao(diasH);
+  const errosRec = h ? h.erros.filter((e) => !dia || e.dia === dia) : [];
+  const totErros = errosRec.reduce((t, e) => t + e.erros, 0);
+  const confs = h ? porConferente(h.conferentes, dia) : [];
+  const taxa = errosPorMilItens(totErros, prod.itens);
+  const semH = h ? null : "sem acesso ao Harpia";
 
   const menu = (
     <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -62,9 +75,24 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
         valor={custo === null ? "—" : semCentavos(custo)}
         sub={`${dados.pessoas.length} pessoas · ${conta("separador")} sep · ${conta("conferente")} conf${delta !== null ? ` · ${delta > 0 ? "+" : ""}${formatPercent(delta, 1)} vs mês anterior` : ""}`}
       />
-      <Quadro {...q("producao")} rotulo="Produção" valor="em breve" sub="caixas separadas por dia · Harpia" />
-      <Quadro {...q("conferencia")} rotulo="Conferência" valor="em breve" sub="caixas por conferente · Harpia" />
-      <Quadro {...q("qualidade")} rotulo="Qualidade" valor="em breve" sub="divergências na conferência · Harpia" />
+      <Quadro
+        {...q("producao")}
+        rotulo={dia ? `Produção · ${ddmm(dia)}` : "Produção"}
+        valor={h ? `${prod.caixas.toLocaleString("pt-BR")} cx` : "—"}
+        sub={semH ?? `${prod.unidades.toLocaleString("pt-BR")} un · ${prod.pedidos.toLocaleString("pt-BR")} pedidos · ${prod.dias} ${prod.dias === 1 ? "dia" : "dias"}`}
+      />
+      <Quadro
+        {...q("conferencia")}
+        rotulo="Conferência"
+        valor={h ? `${confs.length} conferentes` : "—"}
+        sub={semH ?? (prod.dias > 0 && confs.length ? `${Math.round(prod.caixas / prod.dias / confs.length).toLocaleString("pt-BR")} cx por conferente/dia` : "sem conferência no período")}
+      />
+      <Quadro
+        {...q("qualidade")}
+        rotulo="Qualidade"
+        valor={h ? `${totErros.toLocaleString("pt-BR")} erros` : "—"}
+        sub={semH ?? (taxa !== null ? `${taxa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} a cada 1.000 itens conferidos` : "sem itens conferidos")}
+      />
     </div>
   );
 
@@ -74,29 +102,54 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
       mes={dados.mes}
       hrefMes={hrefMes}
       hrefSair={hrefSair}
-      menu={menu}
+      menu={
+        <>
+          {menu}
+          {dia && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-white/50">
+              <span className="font-semibold uppercase tracking-[0.16em]">Filtro</span>
+              <ChipTV ativo onClick={() => setDia(null)}>
+                dia {ddmm(dia)} ✕
+              </ChipTV>
+              <span>Esc limpa</span>
+            </div>
+          )}
+        </>
+      }
+      onEsc={() => setDia(null)}
       palco={
         visao && titulo
-          ? { chave: visao, titulo: titulo.titulo, contexto: titulo.contexto, conteudo: visao === "custo" ? <VisaoCusto dados={dados} /> : <EmBreve visao={visao} /> }
+          ? { chave: visao, titulo: titulo.titulo, contexto: titulo.contexto, conteudo:
+                visao === "custo" ? (
+                  <VisaoCusto dados={dados} />
+                ) : !h ? (
+                  <SemHarpia erro={"erro" in dados.harpia ? dados.harpia.erro : ""} />
+                ) : visao === "producao" ? (
+                  <VisaoProducao h={h} mes={dados.mes} dia={dia} onDia={setDia} custoMes={custo} />
+                ) : visao === "conferencia" ? (
+                  <VisaoConferencia h={h} mes={dados.mes} dia={dia} onDia={setDia} />
+                ) : (
+                  <VisaoQualidade h={h} mes={dados.mes} dia={dia} onDia={setDia} />
+                ),
+            }
           : null
       }
     />
   );
 }
 
-function EmBreve({ visao }: { visao: VisaoSep }) {
-  const texto: Record<VisaoSep, string> = {
-    custo: "",
-    producao: "Caixas, unidades, mapas, pedidos e clientes separados por dia (calendário), vindos dos mapas de separação do Harpia.",
-    conferencia: "Caixas conferidas por conferente e por hora — o Harpia grava quem conferiu e quando, item a item.",
-    qualidade: "Divergências pegas na conferência (quantidade bipada ≠ carga), por dia, produto e endereço.",
-  };
+function SemHarpia({ erro }: { erro: string }) {
+  const permissao = /ORA-00942|ORA-01031|insufficient|does not exist/i.test(erro);
   return (
     <Vazio>
-      <div className="max-w-xl space-y-3">
-        <p className="text-xl font-semibold text-white/70">Em construção</p>
-        <p className="text-base text-white/50">{texto[visao]}</p>
-        <p className="text-sm text-white/35">Depende de o app ter leitura das tabelas do Harpia (esquema HARPIAW2) no Oracle.</p>
+      <div className="max-w-2xl space-y-3">
+        <p className="text-xl font-semibold text-white/70">Não consegui ler o Harpia</p>
+        <p className="text-base text-white/50">
+          {permissao
+            ? "O usuário de banco do app não tem leitura nas tabelas do Harpia (esquema HARPIAW2). Peça ao DBA: grant select em PLAN_SEP_MAPA_AVERIG_1197 e PLAN_SEP_MAPA_MERC_ERRO_1199 para esse usuário."
+            : "A consulta ao Oracle falhou. Confira se o banco está acessível de onde o app roda."}
+        </p>
+        {erro && <p className="font-mono text-xs text-white/35">{erro}</p>}
       </div>
     </Vazio>
   );
@@ -245,6 +298,179 @@ function VisaoCusto({ dados }: { dados: DadosBISeparacao }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// --- HARPIA -------------------------------------------------------------------
+
+const n0 = (v: number) => Math.round(v).toLocaleString("pt-BR");
+const n1 = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+type PropsHarpia = { h: DadosHarpiaSeparacao; mes: string; dia: string | null; onDia: (d: string | null) => void };
+
+/** Média de um valor por dia da semana (só dias com movimento). */
+function porDiaDaSemana(itens: { dia: string; valor: number }[]) {
+  const soma = Array(7).fill(0);
+  const qtd = Array(7).fill(0);
+  for (const it of itens) {
+    if (it.valor <= 0) continue;
+    const [a, m, d] = it.dia.split("-").map(Number);
+    const w = new Date(a, m - 1, d).getDay();
+    soma[w] += it.valor;
+    qtd[w] += 1;
+  }
+  return SEMANA.map((rotulo, w) => ({ chave: rotulo, rotulo, valor: qtd[w] ? soma[w] / qtd[w] : null, detalhe: `${rotulo} · ${qtd[w]} dias` }));
+}
+
+function VisaoProducao({ h, mes, dia, onDia, custoMes }: PropsHarpia & { custoMes: number | null }) {
+  const sel = h.dias.filter((d) => !dia || d.dia === dia);
+  const r = resumoProducao(sel);
+  const todos = resumoProducao(h.dias);
+  // Custo do recorte: o do mês ÷ dias trabalhados, vezes os dias do recorte.
+  const custo = custoMes !== null && todos.dias > 0 ? (custoMes / todos.dias) * r.dias : null;
+  const porDia = new Map(h.dias.map((d) => [d.dia, d.caixas]));
+  if (h.dias.length === 0) return <Vazio>Nenhuma conferência registrada no Harpia neste mês.</Vazio>;
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid grid-cols-3 gap-3 xl:grid-cols-7">
+        <Mini rotulo="Caixas" valor={n0(r.caixas)} sub={r.dias ? `${n0(r.caixas / r.dias)} por dia` : undefined} />
+        <Mini rotulo="Unidades" valor={n0(r.unidades)} sub={r.caixas ? `${n1(r.unidades / r.caixas)} un por caixa` : undefined} />
+        <Mini rotulo="Itens (linhas)" valor={n0(r.itens)} sub={r.pedidos ? `${n1(r.itens / r.pedidos)} por pedido` : undefined} />
+        <Mini rotulo="Pedidos" valor={n0(r.pedidos)} sub={r.pedidos ? `${n1(r.caixas / r.pedidos)} cx por pedido` : undefined} />
+        <Mini rotulo="Mapas" valor={n0(r.mapas)} sub={`${n0(r.clientes)} clientes`} />
+        <Mini rotulo="Dias trabalhados" valor={String(r.dias)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+        <Mini rotulo="Custo por caixa" valor={custo !== null && r.caixas > 0 ? formatBRL(custo / r.caixas) : "—"} sub="custo do setor ÷ caixas" />
+      </div>
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <Bloco titulo="Caixas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem conferência" />
+        </Bloco>
+        <div className="grid min-h-0 grid-rows-2 gap-4">
+          <Bloco titulo="Média de caixas por dia da semana">
+            <BarrasTV altura={150} fmt={n0} itens={porDiaDaSemana(h.dias.map((d) => ({ dia: d.dia, valor: d.caixas })))} />
+          </Bloco>
+          <Bloco titulo="Pedidos por dia">
+            <BarrasTV
+              altura={150}
+              fmt={n0}
+              onClick={(d) => onDia(dia === d ? null : d)}
+              itens={h.dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.pedidos, detalhe: ddmm(d.dia), selecionado: d.dia === dia }))}
+            />
+          </Bloco>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VisaoConferencia({ h, mes, dia, onDia }: PropsHarpia) {
+  const lista = porConferente(h.conferentes, dia);
+  const tot = lista.reduce((t, c) => t + c.caixas, 0);
+  const max = Math.max(1, ...lista.map((c) => c.caixas));
+  const porDia = new Map(h.dias.map((d) => [d.dia, d.caixas]));
+  // Taxa da equipe: só os dias com 1h+ de conferência de cada pessoa.
+  const diasLongos = h.conferentes.filter((c) => (!dia || c.dia === dia) && c.horas >= 1);
+  const horasLongas = diasLongos.reduce((t, c) => t + c.horas, 0);
+  const mediaHora = horasLongas > 0 ? diasLongos.reduce((t, c) => t + c.caixas, 0) / horasLongas : null;
+  if (lista.length === 0) return <Vazio>Nenhuma conferência registrada {dia ? `em ${ddmm(dia)}` : "neste mês"}.</Vazio>;
+  return (
+    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <Bloco titulo={`Conferentes${dia ? ` · ${ddmm(dia)}` : ""}`} direita={<Dica>usuário do Harpia · horas = 1ª à última conferência do dia</Dica>}>
+        <div className="h-full overflow-auto pr-1">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+              <tr>
+                <th className="py-2 font-semibold">Conferente</th>
+                <th className="py-2 text-right font-semibold">Caixas</th>
+                <th className="py-2 text-right font-semibold">Unidades</th>
+                <th className="py-2 text-right font-semibold">Pedidos</th>
+                <th className="py-2 text-right font-semibold">Dias</th>
+                <th className="py-2 text-right font-semibold">Horas</th>
+                <th className="py-2 text-right font-semibold">Cx / hora</th>
+                <th className="w-14 py-2 text-right font-semibold">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((c) => (
+                <tr key={c.usuario} className="border-t border-white/[0.06]">
+                  <td className="max-w-0 py-2">
+                    <div className="truncate font-semibold text-white">Usuário {c.usuario}</div>
+                    <div className="mt-1 h-1 rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(c.caixas / max) * 100}%` }} />
+                    </div>
+                  </td>
+                  <td className="py-2 text-right font-bold tabular-nums text-white">{n0(c.caixas)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{n0(c.unidades)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{n0(c.pedidos)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{c.dias}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{n1(c.horas)}</td>
+                  <td className="py-2 text-right font-bold tabular-nums text-white">{c.caixasPorHora === null ? "—" : n0(c.caixasPorHora)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/50">{tot > 0 ? formatPercent(c.caixas / tot, 0) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Bloco>
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Mini rotulo="Conferentes" valor={String(lista.length)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+          <Mini rotulo="Caixas por hora (equipe)" valor={mediaHora === null ? "—" : n0(mediaHora)} sub="só dias com 1h+ de conferência" />
+        </div>
+        <Bloco titulo="Caixas conferidas por dia" direita={<Dica>clique filtra</Dica>}>
+          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem conferência" />
+        </Bloco>
+      </div>
+    </div>
+  );
+}
+
+function VisaoQualidade({ h, mes, dia, onDia }: PropsHarpia) {
+  const sel = h.erros.filter((e) => !dia || e.dia === dia);
+  const erros = sel.reduce((t, e) => t + e.erros, 0);
+  const dif = sel.reduce((t, e) => t + e.unidadesDivergentes, 0);
+  const itens = resumoProducao(h.dias.filter((d) => !dia || d.dia === dia)).itens;
+  const taxa = errosPorMilItens(erros, itens);
+  const porDia = new Map(h.erros.map((e) => [e.dia, e.erros]));
+  const maxP = Math.max(1, ...h.produtosComErro.map((p) => p.erros));
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Mini rotulo="Divergências" valor={n0(erros)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+        <Mini rotulo="A cada 1.000 itens conferidos" valor={taxa === null ? "—" : n1(taxa)} sub={`${n0(itens)} itens conferidos`} />
+        <Mini rotulo="Unidades divergentes" valor={n0(dif)} sub="|carga − bipado| somado" />
+        <Mini rotulo="Dias com divergência" valor={String(sel.filter((e) => e.erros > 0).length)} />
+      </div>
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <Bloco titulo="Divergências por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem divergência" />
+        </Bloco>
+        <Bloco titulo="Produtos que mais dão divergência" direita={<Dica>no mês</Dica>}>
+          {h.produtosComErro.length === 0 ? (
+            <p className="py-6 text-center text-sm text-white/40">Nenhuma divergência no mês.</p>
+          ) : (
+            <ul className="h-full space-y-2 overflow-auto pr-1">
+              {h.produtosComErro.map((p) => (
+                <li key={p.produto}>
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="truncate text-white" title={p.descricao ?? undefined}>
+                      <span className="text-white/45">{p.produto}</span> {p.descricao ?? ""}
+                    </span>
+                    <span className="shrink-0 font-bold tabular-nums text-white">
+                      {p.erros} <span className="font-normal text-white/45">· {n0(p.unidadesDivergentes)} un</span>
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-rose-400/80" style={{ width: `${(p.erros / maxP) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Bloco>
+      </div>
     </div>
   );
 }

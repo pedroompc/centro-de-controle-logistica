@@ -376,3 +376,93 @@ export function SubFolha({ pessoas, papeis }: { pessoas: PessoaBI[]; papeis: Pap
     </div>
   );
 }
+
+const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+export const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
+/** Calendário do mês: intensidade = valor do dia; clique seleciona (de novo, tira). */
+export function CalendarioBI({
+  mes: mesISO,
+  porDia,
+  fmt,
+  selecionado,
+  onSelecionar,
+  vazio = "sem movimento",
+  menorEhMelhor = false,
+}: {
+  mes: string;
+  porDia: Map<string, number>;
+  fmt: (v: number) => string;
+  selecionado: string | null;
+  onSelecionar: (dia: string | null) => void;
+  vazio?: string;
+  menorEhMelhor?: boolean;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const [ano, mes] = mesISO.split("-").map(Number);
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  const primeiroDow = new Date(ano, mes - 1, 1).getDay(); // 0 = domingo
+  const vals = [...porDia.values()].filter((v) => v > 0);
+  const max = Math.max(1e-9, ...vals);
+  const min = vals.length ? Math.min(...vals) : 0;
+  const media = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  const forca = (v: number) => (menorEhMelhor ? (max > min ? (max - v) / (max - min) : 1) : v / max);
+  const celulas: (string | null)[] = [...Array(primeiroDow).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => `${mesISO.slice(0, 8)}${String(i + 1).padStart(2, "0")}`)];
+  while (celulas.length % 7) celulas.push(null);
+  const hv = hover ? porDia.get(hover) : undefined;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-1 flex items-center justify-between text-xs text-white/45">
+        <span>
+          {hover ? (
+            <>
+              <strong className="text-white">{ddmm(hover)}</strong> · {hv ? fmt(hv) : vazio}
+              {hv ? ` · ${hv >= media ? "acima" : "abaixo"} da média` : ""}
+            </>
+          ) : (
+            <>média {fmt(media)} por dia com movimento</>
+          )}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          {menorEhMelhor ? "pior" : "menos"}
+          {[0.15, 0.4, 0.7, 1].map((o) => (
+            <span key={o} className="h-2.5 w-2.5 rounded-sm" style={{ background: "#5b6fd6", opacity: o }} />
+          ))}
+          {menorEhMelhor ? "melhor" : "mais"}
+        </span>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[0.65rem] font-semibold uppercase tracking-wide text-white/35">
+        {SEMANA.map((d) => (
+          <span key={d}>{d}</span>
+        ))}
+      </div>
+      {/* Linhas de mesma altura que se ajustam ao espaço do bloco (sem cortar a última semana). */}
+      <div className="mt-1 grid min-h-0 flex-1 auto-rows-fr grid-cols-7 gap-1" onMouseLeave={() => setHover(null)}>
+        {celulas.map((dia, i) => {
+          if (!dia) return <span key={`v${i}`} />;
+          const v = porDia.get(dia) ?? 0;
+          const sel = selecionado === dia;
+          const fim = new Date(ano, mes - 1, Number(dia.slice(8, 10))).getDay() % 6 === 0;
+          return (
+            <button
+              key={dia}
+              type="button"
+              disabled={v === 0}
+              onMouseEnter={() => setHover(dia)}
+              onClick={() => onSelecionar(sel ? null : dia)}
+              title={`${ddmm(dia)} · ${v ? fmt(v) : vazio}`}
+              className={`relative flex min-h-[2.25rem] flex-col justify-between rounded-md px-1.5 py-1 text-left transition ${v ? "cursor-pointer hover:ring-2 hover:ring-white/50" : "cursor-default"} ${sel ? "ring-2 ring-amber-300" : ""} ${selecionado && !sel ? "opacity-45" : ""}`}
+              style={{
+                background: sel ? "#f5b301" : v ? `rgba(91,111,214,${0.18 + 0.82 * forca(v)})` : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
+              }}
+            >
+              <span className={`text-[0.65rem] font-bold leading-none ${sel ? "text-[#0a1650]" : v ? "text-white/70" : "text-white/25"}`}>{Number(dia.slice(8, 10))}</span>
+              {v > 0 && <span className={`self-end text-xs font-extrabold leading-none tabular-nums ${sel ? "text-[#0a1650]" : "text-white"}`}>{fmt(v)}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
