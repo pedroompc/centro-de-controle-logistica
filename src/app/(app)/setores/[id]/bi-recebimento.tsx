@@ -817,6 +817,8 @@ function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
   const papeis = ORDEM_PAPEL.filter((pp) => c.pessoas.some((y) => y.papel === pp));
   const lista = c.pessoas.filter((y) => papel === "todos" || y.papel === papel).sort((a, b) => ORDEM_PAPEL.indexOf(a.papel) - ORDEM_PAPEL.indexOf(b.papel) || b.custo - a.custo);
   const subtotal = (pp: PessoaRecebimento["papel"]) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + y.custo, 0);
+  // Salário base (sem encargos nem benefícios). Sem rubrica cadastrada, não entra na soma.
+  const salarios = (pp: PessoaRecebimento["papel"]) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + (y.rubricas.salarioBase ?? 0), 0);
   return (
     <Bloco
       titulo="Equipe e salários"
@@ -837,6 +839,7 @@ function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
             <tr>
               <th className="py-2 font-semibold">Nome</th>
               <th className="py-2 font-semibold">Cargo</th>
+              <th className="py-2 pr-6 text-right font-semibold">Salário</th>
               <th className="py-2 text-right font-semibold">Custo / mês</th>
               <th className="w-24 py-2 text-right font-semibold">% do custo</th>
             </tr>
@@ -849,6 +852,7 @@ function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
                     <td colSpan={2} className="pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em]" style={{ color: PAPEL[y.papel].cor }}>
                       {PAPEL[y.papel].plural} · {lista.filter((z) => z.papel === y.papel).length}
                     </td>
+                    <td className="pb-1 pr-6 pt-3 text-right text-xs tabular-nums text-white/50">{salarios(y.papel) > 0 ? formatBRL(salarios(y.papel)) : ""}</td>
                     <td className="pb-1 pt-3 text-right text-xs font-bold tabular-nums text-white/70">{formatBRL(subtotal(y.papel))}</td>
                     <td className="pb-1 pt-3 text-right text-xs tabular-nums text-white/40">{total > 0 ? formatPercent(subtotal(y.papel) / total) : ""}</td>
                   </tr>
@@ -862,6 +866,7 @@ function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
                     {y.cargo}
                     {y.outroSetor && <span className="ml-1 text-xs text-amber-300">(outro setor)</span>}
                   </td>
+                  <td className="py-2 pr-6 text-right tabular-nums text-white/70">{y.rubricas.salarioBase === null ? "—" : formatBRL(y.rubricas.salarioBase)}</td>
                   <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
                   <td className="py-2 text-right tabular-nums text-white/50">{total > 0 ? formatPercent(y.custo / total) : "—"}</td>
                 </tr>
@@ -869,7 +874,7 @@ function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
             ))}
           </tbody>
         </table>
-        <p className="mt-2 text-xs text-white/35">Cadastro atual (custo mensal com encargos). Os filtros de dia/fornecedor/tipo dividem o custo, não mudam a lista.</p>
+        <p className="mt-2 text-xs text-white/35">Cadastro atual. Salário = salário base, sem encargos nem benefícios (— = não cadastrado); custo/mês = com encargos e benefícios. Os filtros de dia/fornecedor/tipo dividem o custo, não mudam a lista.</p>
       </div>
     </Bloco>
   );
