@@ -17,17 +17,19 @@ import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
-import { resumoProducao, porConferente, errosPorMilItens, resumoPedidos } from "@/domain/separacao";
+import { resumoProducao, porConferente, errosPorMilItens, resumoPedidos, rendimentoMensal, capacidadeSeparacao, mediaPorHora, type RendimentoMes } from "@/domain/separacao";
+import { indicesMelhores } from "@/domain/recebimento";
 import type { DiaProducaoSep } from "@/data/winthor-separacao";
 import { formatKg } from "@/domain/format";
 import type { DadosHarpiaSeparacao } from "@/data/harpia-separacao";
 import type { DadosBISeparacao } from "./separacao-dados";
 
-type VisaoSep = "custo" | "producao" | "conferencia" | "qualidade";
+type VisaoSep = "custo" | "producao" | "rendimento" | "conferencia" | "qualidade";
 
 const VISOES: { id: VisaoSep; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "producao", titulo: "Produção", contexto: "pedidos separados (fim da separação no Winthor), dia a dia · clique num dia para filtrar" },
+  { id: "rendimento", titulo: "Rendimento da equipe", contexto: "quanto cada pessoa rende por dia, mês a mês · horários de pico · quantos separadores você precisa" },
   { id: "conferencia", titulo: "Conferência", contexto: "itens (linhas) conferidos por conferente e por hora na doca · clique num dia para filtrar" },
   { id: "qualidade", titulo: "Qualidade", contexto: "divergências pegas na conferência (bipado ≠ carga) · clique num dia para filtrar" },
 ];
@@ -71,9 +73,13 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const semH = h ? null : "sem acesso ao Harpia";
   const pw = "dias" in dados.producao ? dados.producao.dias : null;
   const ped = resumoPedidos(pw ? pw.filter((d) => !dia || d.dia === dia) : []);
+  const rend = "meses" in dados.producao ? rendimentoDoSetor(dados) : [];
+  const iRend = rend.findIndex((x) => x.mes === dados.mes);
+  const rendAtual = iRend >= 0 ? rend[iRend] : null;
+  const verdeRend = iRend >= 0 && melhoresDoTrimestre(rend, dados, (x) => x.pedidosPorPessoaDia).has(iRend);
 
   const menu = (
-    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Quadro
         {...q("custo")}
         rotulo="Custo e equipe"
@@ -89,6 +95,13 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
             ? `${formatKg(ped.kg)} · ${ped.carregamentos.toLocaleString("pt-BR")} carreg. · ${ped.skuPorPedido === null ? "—" : ped.skuPorPedido.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} SKU/pedido`
             : "sem acesso ao Winthor"
         }
+      />
+      <Quadro
+        {...q("rendimento")}
+        rotulo="Rendimento"
+        valor={rendAtual?.pedidosPorPessoaDia != null ? `${n1(rendAtual.pedidosPorPessoaDia)} ped/pessoa` : "—"}
+        sub={pw ? (rendAtual?.kgPorPessoaDia != null ? `${formatKg(rendAtual.kgPorPessoaDia)} por pessoa/dia${verdeRend ? " · melhor do trimestre" : ""}` : "sem equipe no mês") : "sem acesso ao Winthor"}
+        verde={verdeRend}
       />
       <Quadro
         {...q("conferencia")}
@@ -134,6 +147,12 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                 ) : visao === "producao" ? (
                   pw ? (
                     <VisaoProducao dias={pw} mes={dados.mes} dia={dia} onDia={setDia} custoMes={custo} />
+                  ) : (
+                    <SemHarpia erro={"erro" in dados.producao ? dados.producao.erro : ""} fonte="Winthor" />
+                  )
+                ) : visao === "rendimento" ? (
+                  "meses" in dados.producao ? (
+                    <VisaoRendimento dados={dados} />
                   ) : (
                     <SemHarpia erro={"erro" in dados.producao ? dados.producao.erro : ""} fonte="Winthor" />
                   )
@@ -524,6 +543,133 @@ function VisaoQualidade({ h, mes, dia, onDia }: PropsHarpia) {
                 </li>
               ))}
             </ul>
+          )}
+        </Bloco>
+      </div>
+    </div>
+  );
+}
+
+// --- RENDIMENTO ---------------------------------------------------------------
+
+/** Rendimento mês a mês: produção do Winthor ÷ pessoas do setor (foto do mês; no corrente, o cadastro). */
+function rendimentoDoSetor(d: DadosBISeparacao): RendimentoMes[] {
+  if (!("meses" in d.producao)) return [];
+  const pessoas = new Map(d.serie.map((x) => [x.mes, x.pessoas]));
+  return rendimentoMensal(d.producao.meses, pessoas);
+}
+
+/** Melhor mês fechado do trimestre (o mês na tela e os 2 anteriores). */
+function melhoresDoTrimestre(rend: RendimentoMes[], d: DadosBISeparacao, valor: (x: RendimentoMes) => number | null): Set<number> {
+  const i = rend.findIndex((x) => x.mes === d.mes);
+  if (i < 0) return new Set();
+  const ini = Math.max(0, i - 2);
+  const janela = rend.slice(ini, i + 1).map((x) => ({ valor: valor(x), fechado: x.mes < d.atual }));
+  return new Set([...indicesMelhores(janela, true)].map((k) => k + ini));
+}
+
+type MedidaRend = "pedidos" | "kg" | "skus";
+const MEDIDA_REND: Record<MedidaRend, { rotulo: string; valor: (x: RendimentoMes) => number | null; fmt: (v: number) => string }> = {
+  pedidos: { rotulo: "Pedidos", valor: (x) => x.pedidosPorPessoaDia, fmt: n1 },
+  kg: { rotulo: "Kg", valor: (x) => x.kgPorPessoaDia, fmt: (v) => formatKg(v) },
+  skus: { rotulo: "SKUs (linhas)", valor: (x) => x.skusPorPessoaDia, fmt: n0 },
+};
+
+function VisaoRendimento({ dados }: { dados: DadosBISeparacao }) {
+  const [medida, setMedida] = useState<MedidaRend>("pedidos");
+  if (!("meses" in dados.producao)) return null;
+  const { dias, horas } = dados.producao;
+  const rend = rendimentoDoSetor(dados).filter((x) => x.mes <= dados.mes);
+  const atual = rend.find((x) => x.mes === dados.mes) ?? null;
+  const m = MEDIDA_REND[medida];
+  const verdes = melhoresDoTrimestre(rend, dados, m.valor);
+  const separadores = dados.pessoas.filter((y) => y.papel === "separador").length;
+  const base = separadores || dados.pessoas.length;
+  const diasMes = dias.filter((d) => d.pedidos > 0);
+  const cap = capacidadeSeparacao(diasMes.map((d) => d.pedidos), base);
+  const porHora = mediaPorHora(horas, diasMes.length);
+  const pico = porHora.reduce((a, b) => (b.media > a.media ? b : a), { hora: -1, media: 0 });
+  const pedidosSepDia = separadores && diasMes.length ? diasMes.reduce((t, d) => t + d.pedidos, 0) / diasMes.length / separadores : null;
+
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
+        <Mini rotulo="Pedidos por pessoa/dia" valor={atual?.pedidosPorPessoaDia != null ? n1(atual.pedidosPorPessoaDia) : "—"} sub={atual?.pessoas ? `${atual.pessoas} pessoas no setor` : "mês sem foto do efetivo"} />
+        <Mini rotulo="Kg por pessoa/dia" valor={atual?.kgPorPessoaDia != null ? formatKg(atual.kgPorPessoaDia) : "—"} />
+        <Mini rotulo="SKUs por pessoa/dia" valor={atual?.skusPorPessoaDia != null ? n0(atual.skusPorPessoaDia) : "—"} sub="linhas de pedido" />
+        <Mini rotulo="Pedidos por separador/dia" valor={pedidosSepDia !== null ? n1(pedidosSepDia) : "—"} sub={separadores ? `${separadores} separadores (cadastro atual)` : "nenhum cargo de separador"} />
+        <Mini rotulo="Pedidos por dia" valor={atual?.pedidosPorDia != null ? n0(atual.pedidosPorDia) : "—"} sub={`${diasMes.length} dias com separação`} />
+        <Mini rotulo="Horário de pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.media)} pedidos/dia nessa hora` : undefined} />
+      </div>
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid min-h-0 grid-rows-2 gap-4">
+          <Bloco
+            titulo={`${m.rotulo} por pessoa por dia · mês a mês`}
+            direita={
+              <div className="flex gap-1.5">
+                {(Object.keys(MEDIDA_REND) as MedidaRend[]).map((k) => (
+                  <ChipTV key={k} ativo={medida === k} onClick={() => setMedida(k)}>
+                    {MEDIDA_REND[k].rotulo}
+                  </ChipTV>
+                ))}
+              </div>
+            }
+          >
+            <BarrasTV
+              altura={170}
+              fmt={m.fmt}
+              itens={rend.map((x, i) => ({
+                chave: x.mes,
+                rotulo: mesCurto(x.mes) + (x.mes === dados.atual ? "*" : ""),
+                valor: m.valor(x),
+                cor: verdes.has(i) ? "#10b981" : x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+                detalhe: `${formatMesAno(x.mes)} · ${x.pessoas ?? "?"} pessoas${x.mes === dados.atual ? " (em andamento)" : ""}`,
+              }))}
+            />
+            <p className="mt-2 text-xs text-white/35">Verde = melhor mês fechado do trimestre. Média da equipe inteira do setor (sem o separador registrado não há número por pessoa).</p>
+          </Bloco>
+          <Bloco titulo="Pedidos finalizados por hora do dia" direita={<Dica>média por dia · âmbar = pico</Dica>}>
+            <BarrasTV
+              altura={170}
+              fmt={n0}
+              itens={porHora.map((x) => ({ chave: String(x.hora), rotulo: `${x.hora}h`, valor: x.media, cor: x.hora === pico.hora ? "#f5b301" : "#5b6fd6", detalhe: `${String(x.hora).padStart(2, "0")}:00–${String(x.hora).padStart(2, "0")}:59` }))}
+            />
+          </Bloco>
+        </div>
+        <Bloco titulo="Capacidade da equipe" direita={<Dica>no ritmo do dia de pico</Dica>}>
+          {!cap ? (
+            <p className="py-6 text-center text-sm text-white/40">Sem dias de separação no mês.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Mini rotulo="Dia de pico" valor={`${n0(cap.pico)} pedidos`} sub="o que a equipe já provou que faz" />
+                <Mini rotulo="Dia forte (p90)" valor={`${n0(cap.p90)} pedidos`} sub={`média ${n0(cap.media)} por dia`} />
+                <Mini rotulo={`Ritmo máximo por ${separadores ? "separador" : "pessoa"}`} valor={`${n0(cap.porSeparador)} ped/dia`} />
+                <Mini rotulo={`${separadores ? "Separadores" : "Pessoas"} para o dia forte`} valor={`${cap.ideal} de ${cap.separadores}`} sub={cap.ideal < cap.separadores ? "no ritmo do pico, sobra gente no dia forte" : "equipe no limite no dia forte"} />
+              </div>
+              <div>
+                <div className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">E se a equipe mudar?</div>
+                <ul className="space-y-2">
+                  {cap.cenarios.map((c) => (
+                    <li key={c.separadores} className={`flex items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-sm ${c.separadores === cap.separadores ? "bg-white/[0.08] ring-1 ring-white/15" : ""}`}>
+                      <span className="text-white">
+                        <strong>{c.separadores}</strong> {separadores ? "separadores" : "pessoas"}
+                        {c.separadores === cap.separadores ? " (hoje)" : c.separadores > cap.separadores ? ` (+${c.separadores - cap.separadores})` : ` (${c.separadores - cap.separadores})`}
+                      </span>
+                      <span className="tabular-nums text-white/70">
+                        até {n0(c.capacidade)} ped/dia ·{" "}
+                        <span className={c.diasAcima > 0 ? "font-bold text-rose-300" : "text-emerald-300"}>
+                          {c.diasAcima > 0 ? `${c.diasAcima} ${c.diasAcima === 1 ? "dia" : "dias"} acima` : "nenhum dia acima"}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-white/35">
+                  &quot;Dias acima&quot; = dias do mês em que a demanda passaria do que essa equipe separa no ritmo do pico (precisaria hora extra ou atrasaria carga).
+                </p>
+              </div>
+            </div>
           )}
         </Bloco>
       </div>

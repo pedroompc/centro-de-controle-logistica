@@ -75,3 +75,36 @@ describe("produção pelos pedidos (Winthor)", () => {
     expect(resumoPedidos([]).skuPorPedido).toBeNull();
   });
 });
+
+import { rendimentoMensal, capacidadeSeparacao, mediaPorHora } from "./separacao";
+
+describe("visão do gestor", () => {
+  it("rendimento por pessoa por dia, mês a mês", () => {
+    const r = rendimentoMensal(
+      [
+        { mes: "2026-09-01", pedidos: 20_000, kg: 1_000_000, skus: 200_000, dias: 25 },
+        { mes: "2026-10-01", pedidos: 4_000, kg: 200_000, skus: 40_000, dias: 5 },
+      ],
+      new Map([["2026-09-01", 10], ["2026-10-01", null]]),
+    );
+    expect(r[0]).toMatchObject({ pedidosPorPessoaDia: 80, kgPorPessoaDia: 4000, skusPorPessoaDia: 800, pedidosPorDia: 800 });
+    expect(r[1]).toMatchObject({ pedidosPorPessoaDia: null, pedidosPorDia: 800 });
+  });
+  it("capacidade: ritmo do pico, ideal para o dia forte e cenários", () => {
+    const c = capacidadeSeparacao([800, 900, 1000, 700, 0, 950], 10)!;
+    expect(c.pico).toBe(1000);
+    expect(c.porSeparador).toBe(100);
+    expect(c.ideal).toBe(Math.ceil(c.p90 / 100));
+    const menos1 = c.cenarios.find((x) => x.separadores === 9)!;
+    expect(menos1.capacidade).toBe(900);
+    expect(menos1.diasAcima).toBe(2); // 1000 e 950
+    expect(capacidadeSeparacao([], 10)).toBeNull();
+  });
+  it("média por hora preenche as horas vazias do turno", () => {
+    expect(mediaPorHora([{ hora: 8, pedidos: 100 }, { hora: 10, pedidos: 50 }], 5)).toEqual([
+      { hora: 8, media: 20 },
+      { hora: 9, media: 0 },
+      { hora: 10, media: 10 },
+    ]);
+  });
+});

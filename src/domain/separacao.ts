@@ -167,3 +167,103 @@ export function resumoPedidos(dias: LinhaProducaoSep[]) {
     pedidosPorDia: r.dias > 0 ? r.pedidos / r.dias : null,
   };
 }
+
+// --- Rendimento, capacidade e horário (visão do gestor) -----------------------
+
+export interface MesProducaoSep {
+  mes: string; // "yyyy-mm-01"
+  pedidos: number;
+  kg: number;
+  skus: number;
+  dias: number; // dias com separação
+}
+
+export interface RendimentoMes {
+  mes: string;
+  pessoas: number | null; // equipe do setor no mês (foto do efetivo)
+  pedidosPorPessoaDia: number | null;
+  kgPorPessoaDia: number | null;
+  skusPorPessoaDia: number | null;
+  pedidosPorDia: number | null;
+}
+
+/**
+ * Rendimento da EQUIPE por mês: produção ÷ dias trabalhados ÷ pessoas do setor.
+ * Sem o separador registrado por mapa, é a média da equipe (não por pessoa).
+ */
+export function rendimentoMensal(producao: MesProducaoSep[], pessoasPorMes: Map<string, number | null>): RendimentoMes[] {
+  return producao.map((p) => {
+    const pessoas = pessoasPorMes.get(p.mes) ?? null;
+    const base = p.dias > 0 && pessoas ? p.dias * pessoas : 0;
+    return {
+      mes: p.mes,
+      pessoas,
+      pedidosPorPessoaDia: base ? p.pedidos / base : null,
+      kgPorPessoaDia: base ? p.kg / base : null,
+      skusPorPessoaDia: base ? p.skus / base : null,
+      pedidosPorDia: p.dias > 0 ? p.pedidos / p.dias : null,
+    };
+  });
+}
+
+function percentil(valores: number[], p: number): number {
+  if (valores.length === 0) return 0;
+  const v = [...valores].sort((a, b) => a - b);
+  const pos = (v.length - 1) * p;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return v[lo] + (v[hi] - v[lo]) * (pos - lo);
+}
+
+export interface CapacidadeSep {
+  separadores: number;
+  media: number; // pedidos por dia (dias com separação)
+  p90: number; // dia forte: 9 em cada 10 dias ficam abaixo
+  pico: number; // o dia de mais pedidos — o que a equipe já provou que dá conta
+  porSeparador: number; // pico ÷ separadores: o ritmo máximo comprovado por pessoa
+  ideal: number; // separadores para o dia forte (p90) no ritmo máximo
+  cenarios: { separadores: number; capacidade: number; diasAcima: number; folga: number }[];
+}
+
+/**
+ * Capacidade da separação: o dia de pico mostra quantos pedidos a equipe atual
+ * consegue separar; dividido pelas pessoas, é o ritmo máximo por separador.
+ * Cada cenário (−2…+1 pessoa) diz quantos dias do período teriam passado da
+ * capacidade e a folga contra o dia forte (p90).
+ */
+export function capacidadeSeparacao(pedidosPorDia: number[], separadores: number): CapacidadeSep | null {
+  const dias = pedidosPorDia.filter((v) => v > 0);
+  if (dias.length === 0 || separadores <= 0) return null;
+  const pico = Math.max(...dias);
+  const p90 = percentil(dias, 0.9);
+  const porSeparador = pico / separadores;
+  const cenarios = [-2, -1, 0, 1]
+    .map((d) => separadores + d)
+    .filter((n) => n > 0)
+    .map((n) => {
+      const capacidade = porSeparador * n;
+      return { separadores: n, capacidade, diasAcima: dias.filter((v) => v > capacidade + 1e-9).length, folga: capacidade > 0 ? (capacidade - p90) / capacidade : 0 };
+    });
+  return {
+    separadores,
+    media: dias.reduce((a, b) => a + b, 0) / dias.length,
+    p90,
+    pico,
+    porSeparador,
+    ideal: Math.ceil(p90 / porSeparador - 1e-9),
+    cenarios,
+  };
+}
+
+/** Média de pedidos finalizados por hora do dia (só dias com separação). */
+export function mediaPorHora(linhas: { hora: number; pedidos: number }[], diasComSeparacao: number): { hora: number; media: number }[] {
+  const porHora = new Map<number, number>();
+  for (const l of linhas) porHora.set(l.hora, (porHora.get(l.hora) ?? 0) + l.pedidos);
+  const horas = [...porHora.keys()];
+  if (!horas.length || diasComSeparacao <= 0) return [];
+  const ini = Math.min(...horas);
+  const fim = Math.max(...horas);
+  const out: { hora: number; media: number }[] = [];
+  for (let h = ini; h <= fim; h++) out.push({ hora: h, media: (porHora.get(h) ?? 0) / diasComSeparacao });
+  return out;
+}

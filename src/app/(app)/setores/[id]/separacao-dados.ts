@@ -1,7 +1,7 @@
 import { listarEquipamentos } from "@/data/equipamentos";
 import { lerSeparacaoHarpia, type DadosHarpiaSeparacao } from "@/data/harpia-separacao";
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
-import { lerProducaoSeparacao, type DiaProducaoSep } from "@/data/winthor-separacao";
+import { lerProducaoSeparacao, lerMesesSeparacao, lerHorasSeparacao, type DiaProducaoSep, type MesSeparacao } from "@/data/winthor-separacao";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
@@ -19,7 +19,7 @@ export interface DadosBISeparacao {
   /** Produção/conferência/erros do Harpia; `erro` = não conseguiu ler (permissão, rede…). */
   harpia: { dados: DadosHarpiaSeparacao } | { erro: string };
   /** Pedidos separados por dia (Winthor, PCPEDC.DTFINALSEP). */
-  producao: { dias: DiaProducaoSep[] } | { erro: string };
+  producao: { dias: DiaProducaoSep[]; meses: MesSeparacao[]; horas: { hora: number; pedidos: number }[] } | { erro: string };
   /** Usuário do Harpia → id do funcionário. `null` = tabela 0025 ausente. */
   ligacoes: Record<number, string> | null;
   /** Funcionários ativos para ligar aos usuários (o do setor primeiro). */
@@ -29,7 +29,8 @@ export interface DadosBISeparacao {
 
 async function producaoDoMes(mes: string): Promise<DadosBISeparacao["producao"]> {
   try {
-    return { dias: await lerProducaoSeparacao(mes) };
+    const [dias, meses, horas] = await Promise.all([lerProducaoSeparacao(mes), lerMesesSeparacao(INICIO_HISTORICO, mes), lerHorasSeparacao(mes)]);
+    return { dias, meses, horas };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[winthor-separacao]", msg);
