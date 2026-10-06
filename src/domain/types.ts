@@ -155,6 +155,7 @@ export interface ReceitaDiversa {
 export interface Equipamento {
   id: string;
   nome: string;
+  setor: string; // NOME do setor que usa o equipamento (custo entra nele)
   quantidade: number;
   custoUnitario: number; // R$/mês por unidade
 }

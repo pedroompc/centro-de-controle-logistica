@@ -15,6 +15,9 @@ import { ehSetorRecebimento } from "@/domain/recebimento";
 import { carregarAnaliseRecebimento } from "./recebimento-dados";
 import { RecebimentoDesempenho } from "./recebimento-desempenho";
 import { RecebimentoProjecoes } from "./recebimento-projecoes";
+import { ehSetorSeparacao } from "@/domain/separacao";
+import { carregarBISeparacao } from "./separacao-dados";
+import { BISeparacao } from "./bi-separacao";
 
 const ABAS_RECEBIMENTO = [
   { aba: "", label: "Visão geral" },
@@ -23,11 +26,16 @@ const ABAS_RECEBIMENTO = [
   { aba: "projecoes", label: "Projeções" },
 ] as const;
 
-/** Abas do setor Recebimento (mesmo visual das abas de Tendências). */
-function AbasRecebimento({ id, ativa }: { id: string; ativa: string }) {
+const ABAS_SEPARACAO = [
+  { aba: "", label: "Visão geral" },
+  { aba: "bi", label: "BI" },
+] as const;
+
+/** Abas do setor (mesmo visual das abas de Tendências). */
+function AbasSetor({ id, ativa, abas }: { id: string; ativa: string; abas: readonly { aba: string; label: string }[] }) {
   return (
     <nav className="mb-6 inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
-      {ABAS_RECEBIMENTO.map((a) => (
+      {abas.map((a) => (
         <Link
           key={a.aba}
           href={`/setores/${id}${a.aba ? `?aba=${a.aba}` : ""}`}
@@ -68,28 +76,35 @@ export default async function SetorDetalhe({
 
   // Recebimento ganha Desempenho e Projeções; os outros setores seguem iguais.
   const recebimento = ehSetorRecebimento(setor.nome);
+  const separacao = !recebimento && ehSetorSeparacao(setor.nome);
+  // Mês do BI (?mes=), limitado ao histórico, e a navegação ‹ mês ›.
+  const mesBI = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
+  const mesAtual = primeiroDiaDoMes();
+  const hrefBI = (m: string) => `/setores/${id}?aba=bi${m === mesAtual ? "" : `&mes=${m}`}`;
+  const hrefMes = {
+    anterior: mesBI > INICIO_HISTORICO ? hrefBI(mesAnterior(mesBI)) : null,
+    proximo: mesBI < mesAtual ? hrefBI(mesProximo(mesBI)) : null,
+    atual: mesBI < mesAtual ? hrefBI(mesAtual) : null,
+  };
+  if (separacao && abaParam === "bi") {
+    const dados = await carregarBISeparacao(setor, funcionarios, mesBI);
+    return <BISeparacao key={mesBI} dados={dados} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
+  }
   const aba = recebimento && (abaParam === "bi" || abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
   if (aba === "bi") {
-    // BI: mês escolhido (?mes=), limitado ao histórico.
-    const mes = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
-    const atual = primeiroDiaDoMes();
+    const mes = mesBI;
     const [serie, custo, fatos] = await Promise.all([
       carregarRecebimento(),
       carregarDetalheCusto().catch(() => null),
       carregarFatosDescarrego(mes).catch(() => null),
     ]);
-    const href = (m: string) => `/setores/${id}?aba=bi${m === atual ? "" : `&mes=${m}`}`;
     // Tela cheia (overlay como o Painel da Operação); "Sair" volta ao setor.
     return (
       <BIAba
         key={mes}
         dados={{ mes, serie, custo, fatos }}
         hrefSair={`/setores/${id}`}
-        hrefMes={{
-          anterior: mes > INICIO_HISTORICO ? href(mesAnterior(mes)) : null,
-          proximo: mes < atual ? href(mesProximo(mes)) : null,
-          atual: mes < atual ? href(atual) : null,
-        }}
+        hrefMes={hrefMes}
       />
     );
   }
@@ -99,7 +114,7 @@ export default async function SetorDetalhe({
       <div>
         <BackLink href="/setores">Setores</BackLink>
         <PageHeader title={setor.nome} subtitle={aba === "desempenho" ? "Desempenho mês a mês da equipe de descarga" : "Projeções e cenários"} />
-        <AbasRecebimento id={id} ativa={aba} />
+        <AbasSetor id={id} ativa={aba} abas={ABAS_RECEBIMENTO} />
         {aba === "desempenho" ? (
           <RecebimentoDesempenho dados={analise} />
         ) : (
@@ -118,7 +133,8 @@ export default async function SetorDetalhe({
     <div>
       <BackLink href="/setores">Setores</BackLink>
       <PageHeader title={setor.nome} subtitle={`${doSetor.length} funcionários neste setor`} />
-      {recebimento && <AbasRecebimento id={id} ativa="" />}
+      {recebimento && <AbasSetor id={id} ativa="" abas={ABAS_RECEBIMENTO} />}
+      {separacao && <AbasSetor id={id} ativa="" abas={ABAS_SEPARACAO} />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Custo mensal (ativos)" value={formatBRL(custoDoSetor(funcionarios, id))} accent="gold" />

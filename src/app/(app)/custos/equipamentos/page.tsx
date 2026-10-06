@@ -1,5 +1,6 @@
 import { listarEquipamentos, editarEquipamento, encerrarEquipamento } from "@/data/equipamentos";
 import { isAdmin } from "@/data/auth";
+import { listarSetores } from "@/data/setores";
 import { formatBRL } from "@/domain/format";
 import { PageHeader, Card, BackLink, StatCard } from "@/components/ui";
 import { EquipamentoForm } from "./equipamento-form";
@@ -8,21 +9,20 @@ const editInput =
   "rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
 
 /**
- * Equipamentos do recebimento (empilhadeira, patinha elétrica…). Quantidade ×
- * custo mensal por unidade entra no custo do recebimento do Painel e de
- * Setores › Recebimento.
+ * Equipamentos por setor (empilhadeira, patinha elétrica…). Quantidade × custo
+ * mensal por unidade entra no custo do setor que usa o equipamento (BI do setor).
  */
 export default async function EquipamentosPage() {
-  const [lista, admin] = await Promise.all([listarEquipamentos(), isAdmin()]);
-  const equipamentos = lista ?? [];
+  const [lista, admin, setores] = await Promise.all([listarEquipamentos(), isAdmin(), listarSetores()]);
+  const equipamentos = [...(lista ?? [])].sort((a, b) => a.setor.localeCompare(b.setor) || a.nome.localeCompare(b.nome));
   const total = equipamentos.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
   const unidades = equipamentos.reduce((t, e) => t + e.quantidade, 0);
 
   return (
     <div>
       <BackLink href="/custos">Custos</BackLink>
-      <PageHeader title="Equipamentos do recebimento" subtitle="Quantidade × custo mensal por unidade — entra no custo do recebimento">
-        {admin && <EquipamentoForm />}
+      <PageHeader title="Equipamentos" subtitle="Quantidade × custo mensal por unidade — entra no custo do setor que usa">
+        {admin && <EquipamentoForm setores={setores.map((s) => s.nome)} />}
       </PageHeader>
 
       {lista === null && (
@@ -37,10 +37,11 @@ export default async function EquipamentosPage() {
       </div>
 
       <Card className="overflow-x-auto">
-        <table className="w-full min-w-[480px] text-left text-sm">
+        <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-5 py-3 font-semibold">Equipamento</th>
+              <th className="px-5 py-3 font-semibold">Setor</th>
               <th className="px-5 py-3 font-semibold">Quantidade · custo por unidade</th>
               <th className="px-5 py-3 text-right font-semibold">Total/mês</th>
               <th className="px-5 py-3"></th>
@@ -50,6 +51,7 @@ export default async function EquipamentosPage() {
             {equipamentos.map((e) => (
               <tr key={e.id} className="border-b border-slate-50 last:border-0">
                 <td className="px-5 py-3 font-medium text-[#141a4d]">{e.nome}</td>
+                <td className="px-5 py-3 text-slate-500">{e.setor}</td>
                 <td className="px-5 py-3">
                   {admin ? (
                     <form action={editarEquipamento} className="flex items-center gap-2">
@@ -77,7 +79,7 @@ export default async function EquipamentosPage() {
             ))}
             {equipamentos.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">Nenhum equipamento cadastrado.</td>
+                <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Nenhum equipamento cadastrado.</td>
               </tr>
             )}
           </tbody>

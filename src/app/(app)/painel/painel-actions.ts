@@ -337,6 +337,12 @@ export async function carregarDescarregos(mes: string): Promise<ResumoDescarrego
  * Faturamento líquido vem só das fotos (sem Oracle); o do mês na tela a view
  * troca pelo valor ao vivo que o placar já buscou.
  */
+/** Equipamentos do setor Recebimento; `null` = tabela ainda não migrada (usa o padrão). */
+async function listarEquipamentosDoRecebimento() {
+  const todos = await listarEquipamentos().catch(() => null);
+  return todos === null ? null : todos.filter((e) => ehSetorRecebimento(e.setor));
+}
+
 export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
@@ -348,7 +354,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
     listarFotosEquipeCargo(),
     serieDescarregoMensal(24),
     vendaLiquidaDasFotos(meses.filter((x) => x < atual)),
-    listarEquipamentos().catch(() => null),
+    listarEquipamentosDoRecebimento(),
   ]);
 
   const vivo = linhasEquipePorCargo(funcionarios, setores);
@@ -403,7 +409,7 @@ export async function carregarDetalheCusto(): Promise<DetalheCusto> {
   const [funcionarios, setores, equipamentos] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
-    listarEquipamentos().catch(() => null),
+    listarEquipamentosDoRecebimento(),
   ]);
   const idsRec = new Set(setores.filter((s) => ehSetorRecebimento(s.nome)).map((s) => s.id));
   const ativos = funcionarios.filter((f) => f.status === "ativo");
@@ -435,7 +441,7 @@ export async function carregarDetalheCusto(): Promise<DetalheCusto> {
   ];
   return {
     pessoas,
-    equipamentos: equipamentos ?? [{ id: "padrao", nome: "Empilhadeira", quantidade: 1, custoUnitario: CUSTO_EMPILHADEIRA_MENSAL }],
+    equipamentos: equipamentos ?? [{ id: "padrao", nome: "Empilhadeira", setor: "Recebimento", quantidade: 1, custoUnitario: CUSTO_EMPILHADEIRA_MENSAL }],
     equipamentosPadrao: equipamentos === null,
   };
 }

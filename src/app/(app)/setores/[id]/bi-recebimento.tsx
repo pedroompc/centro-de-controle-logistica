@@ -11,7 +11,7 @@
  * Tudo em TOTAL do recorte (nada por pessoa). O custo é do mês: no recorte ele
  * é rateado (por dia de descarrego e pelo peso) — o critério aparece na tela.
  */
-import { Fragment, useState, type ReactNode } from "react";
+import { useState } from "react";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
@@ -27,8 +27,11 @@ import {
   type ResumoFatos,
 } from "@/domain/bi-recebimento";
 import type { DescarregamentoTipo } from "@/domain/types";
-import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import type { DetalheCusto, PessoaRecebimento } from "../../painel/painel-actions";
+import {
+  Quadro, Vazio, Bloco, Mini, useSub, ChipTV, Dica, BarrasTV, BarraComposicao,
+  TabelaEquipe, ListaEquipamentos, SubFolha, semCentavos, type PapelBI,
+} from "./bi-ui";
 
 export type VisaoBI = "custo" | "descarrego" | "receita" | "eficiencia";
 
@@ -44,7 +47,6 @@ const dec1 = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1
 const fmtPeso = (kg: number) => formatKg(kg); // peso sempre em kg (pedido do gestor)
 const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
 const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-const semCentavos = (v: number) => formatBRL(v).replace(",00", "");
 
 const TIPO_COR: Record<DescarregamentoTipo, string> = { batido: "#5b6fd6", paletizado: "#8b93e0", pal_rem: "#f5b301", volume: "#38bdf8" };
 const PAPEL: Record<PessoaRecebimento["papel"], { rotulo: string; plural: string; cor: string }> = {
@@ -54,6 +56,7 @@ const PAPEL: Record<PessoaRecebimento["papel"], { rotulo: string; plural: string
   outros: { rotulo: "Outros", plural: "Outros", cor: "#64748b" },
 };
 const ORDEM_PAPEL = ["ajudante", "conferente", "empilhador", "outros"] as const;
+const PAPEIS: PapelBI[] = ORDEM_PAPEL.map((id) => ({ id, ...PAPEL[id] }));
 
 export interface DadosBI {
   mes: string; // mês filtrado "yyyy-mm-01"
@@ -94,27 +97,6 @@ const carrosOuNotas = (x: Recorte, s: ResumoFatos = x.sel) => (x.porNotas ? `${i
 
 // --- Menu (topo) -------------------------------------------------------------
 
-function Quadro({ ativo, onClick, rotulo, valor, sub, verde }: { ativo: boolean; onClick: () => void; rotulo: string; valor: string; sub: ReactNode; verde?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={ativo}
-      className={`@container rounded-2xl px-5 py-4 text-left ring-1 transition ${
-        ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.06] ring-white/10 hover:bg-white/[0.1]"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/50">{rotulo}</span>
-        <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>
-      </div>
-      <div className={`mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1.25rem,10cqi,2rem)] font-extrabold leading-none tabular-nums ${verde ? "text-emerald-300" : "text-white"}`}>
-        {valor}
-      </div>
-      <div className="mt-2 truncate text-xs text-white/45">{sub}</div>
-    </button>
-  );
-}
 
 /** O topo do BI: 6 quadros (menu) + a barra de filtros ativos. */
 export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: DadosBI; visao: VisaoBI | null; onVisao: (v: VisaoBI) => void } & Filtro) {
@@ -215,137 +197,12 @@ type PropsVisao = { dados: DadosBI; x: Recorte } & Filtro;
 
 // --- Peças --------------------------------------------------------------------
 
-function Vazio({ children }: { children: ReactNode }) {
-  return <div className="flex h-full items-center justify-center text-center text-lg text-white/40">{children}</div>;
-}
 
-function Bloco({ titulo, direita, children, className = "" }: { titulo: string; direita?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <div className={`flex min-h-0 flex-col rounded-2xl bg-white/[0.05] p-4 ring-1 ring-white/10 ${className}`}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">{titulo}</span>
-        {direita}
-      </div>
-      <div className="min-h-0 flex-1">{children}</div>
-    </div>
-  );
-}
 
-/** Card de número. Com `onClick` vira SUBSEÇÃO: clicar abre o detalhe dele (de novo, fecha). */
-function Mini({ rotulo, valor, sub, onClick, ativo = false }: { rotulo: string; valor: string; sub?: string; onClick?: () => void; ativo?: boolean }) {
-  const corpo = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/45">{rotulo}</span>
-        {onClick && <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>}
-      </div>
-      <div className="mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1rem,9cqi,1.5rem)] font-extrabold tabular-nums text-white">{valor}</div>
-      {sub && <div className="mt-0.5 truncate text-xs text-white/40">{sub}</div>}
-    </>
-  );
-  if (!onClick) return <div className="@container rounded-xl bg-white/[0.05] px-4 py-3 ring-1 ring-white/10">{corpo}</div>;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={ativo}
-      className={`@container rounded-xl px-4 py-3 text-left ring-1 transition ${ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.05] ring-white/10 hover:bg-white/[0.09]"}`}
-    >
-      {corpo}
-    </button>
-  );
-}
 
-/** Estado da subseção aberta dentro de uma visão (clicar de novo fecha). */
-function useSub<T extends string>() {
-  const [sub, setSub] = useState<T | null>(null);
-  const abrir = (k: T) => () => setSub((atual) => (atual === k ? null : k));
-  return { sub, abrir, fechar: () => setSub(null) };
-}
 
-function ChipTV({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${ativo ? "bg-amber-400 text-[#0a1650]" : "bg-white/10 text-white/70 hover:bg-white/20"}`}
-    >
-      {children}
-    </button>
-  );
-}
 
-const Dica = ({ children }: { children: ReactNode }) => <span className="text-[0.65rem] text-white/35">{children}</span>;
 
-/** Barras verticais no escuro: tooltip no hover, clique opcional, item selecionado em âmbar. */
-function BarrasTV({
-  itens,
-  fmt,
-  altura = 180,
-  referencia,
-  onClick,
-}: {
-  itens: { chave: string; rotulo: string; valor: number | null; cor?: string; detalhe?: string; selecionado?: boolean }[];
-  fmt: (v: number) => string;
-  altura?: number;
-  referencia?: { valor: number; rotulo: string };
-  onClick?: (chave: string) => void;
-}) {
-  const [hover, setHover] = useState<number | null>(null);
-  const max = Math.max(1e-9, ...itens.map((i) => Math.abs(i.valor ?? 0)), referencia?.valor ?? 0) * 1.1;
-  const denso = itens.length > 14;
-  const algumSel = itens.some((i) => i.selecionado);
-  if (itens.length === 0) return <p className="py-8 text-center text-sm text-white/40">Sem lançamentos.</p>;
-  return (
-    <div className="relative" style={{ height: altura }} onMouseLeave={() => setHover(null)}>
-      {hover !== null && (
-        <div
-          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 -translate-y-[calc(100%+4px)] whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-xs text-[#0a1650] shadow-lg"
-          style={{ left: `${Math.min(90, Math.max(10, ((hover + 0.5) / itens.length) * 100))}%` }}
-        >
-          <span className="font-bold">{itens[hover].detalhe ?? itens[hover].rotulo}</span> · {itens[hover].valor === null ? "sem dado" : fmt(itens[hover].valor!)}
-          {onClick && <span className="text-slate-400"> · clique para {itens[hover].selecionado ? "tirar o filtro" : "filtrar"}</span>}
-        </div>
-      )}
-      <div className="absolute inset-x-0 bottom-5 top-0">
-        {referencia && referencia.valor > 0 && (
-          <div className="pointer-events-none absolute inset-x-0 border-t-2 border-dashed border-white/30" style={{ bottom: `${(referencia.valor / max) * 100}%` }}>
-            <span className="absolute -top-5 right-0 text-[0.65rem] font-semibold text-white/50">
-              {referencia.rotulo} {fmt(referencia.valor)}
-            </span>
-          </div>
-        )}
-        <div className={`flex h-full items-end ${denso ? "gap-[3px]" : "gap-2"}`}>
-          {itens.map((it, i) => (
-            <div
-              key={it.chave}
-              className={`flex h-full flex-1 flex-col items-center justify-end ${onClick ? "cursor-pointer" : ""}`}
-              onMouseEnter={() => setHover(i)}
-              onClick={() => onClick?.(it.chave)}
-            >
-              {!denso && it.valor !== null && <span className={`mb-1 text-xs font-bold tabular-nums ${it.selecionado ? "text-amber-300" : "text-white/85"}`}>{fmt(it.valor)}</span>}
-              <div
-                className={`w-full rounded-t-md transition ${hover === i ? "brightness-125" : ""}`}
-                style={{
-                  height: `${Math.max(2, (Math.abs(it.valor ?? 0) / max) * 100)}%`,
-                  background: it.selecionado ? "#f5b301" : (it.cor ?? "#5b6fd6"),
-                  opacity: algumSel && !it.selecionado ? 0.35 : 1,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className={`absolute inset-x-0 bottom-0 flex h-4 ${denso ? "gap-[3px]" : "gap-2"}`}>
-        {itens.map((it, i) => (
-          <span key={it.chave} className={`flex-1 whitespace-nowrap text-center text-[0.65rem] font-semibold ${it.selecionado ? "text-amber-300" : "text-white/45"}`}>
-            {denso && i % Math.ceil(itens.length / 12) !== 0 && !it.selecionado ? "" : it.rotulo}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** O mês filtrado e os 2 anteriores (a janela do "melhor do trimestre"). */
 function trimestre(serie: IndicadoresRecebimento[], mes: string) {
@@ -689,9 +546,9 @@ function VisaoCusto(p: PropsVisao) {
 
       {sub === null && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <TabelaEquipe c={c} total={folha + custoEquip} />
+          <TabelaEquipe pessoas={c.pessoas} papeis={PAPEIS} total={folha + custoEquip} />
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-            <ListaEquipamentos c={c} />
+            <ListaEquipamentos equipamentos={c.equipamentos} padrao={c.equipamentosPadrao} />
             <Bloco titulo="Do que é feito o custo">
               <BarraComposicao fatias={fatias} />
               <div className="mt-4 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">Custo por mês</div>
@@ -736,7 +593,7 @@ function VisaoCusto(p: PropsVisao) {
 
       {sub === "equipe" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <TabelaEquipe c={c} total={folha + custoEquip} />
+          <TabelaEquipe pessoas={c.pessoas} papeis={PAPEIS} total={folha + custoEquip} />
           <Bloco titulo="Por função">
             <ul className="space-y-4">
               {papeis.map((pp) => {
@@ -766,11 +623,11 @@ function VisaoCusto(p: PropsVisao) {
         </div>
       )}
 
-      {sub === "folha" && <SubFolha c={c} />}
+      {sub === "folha" && <SubFolha pessoas={c.pessoas} papeis={PAPEIS} />}
 
       {sub === "equipamentos" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <ListaEquipamentos c={c} grande />
+          <ListaEquipamentos equipamentos={c.equipamentos} padrao={c.equipamentosPadrao} grande />
           <div className="grid grid-cols-2 content-start gap-3">
             <Mini rotulo="% do custo do recebimento" valor={folha + custoEquip > 0 ? formatPercent(custoEquip / (folha + custoEquip), 0) : "—"} />
             <Mini rotulo={`Equipamentos por ${un}`} valor={carros > 0 ? formatBRL((custoEquip * (r.fracaoMes < 1 ? r.fracaoMes : 1)) / carros) : "—"} sub="custo dos equipamentos ÷ carros" />
@@ -811,193 +668,9 @@ function VisaoCusto(p: PropsVisao) {
   );
 }
 
-/** Equipe agrupada por função, com subtotal e % do custo, e filtro por função. */
-function TabelaEquipe({ c, total }: { c: DetalheCusto; total: number }) {
-  const [papel, setPapel] = useState<PessoaRecebimento["papel"] | "todos">("todos");
-  const papeis = ORDEM_PAPEL.filter((pp) => c.pessoas.some((y) => y.papel === pp));
-  const lista = c.pessoas.filter((y) => papel === "todos" || y.papel === papel).sort((a, b) => ORDEM_PAPEL.indexOf(a.papel) - ORDEM_PAPEL.indexOf(b.papel) || b.custo - a.custo);
-  const subtotal = (pp: PessoaRecebimento["papel"]) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + y.custo, 0);
-  // Salário base (sem encargos nem benefícios). Sem rubrica cadastrada, não entra na soma.
-  const salarios = (pp: PessoaRecebimento["papel"]) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + (y.rubricas.salarioBase ?? 0), 0);
-  return (
-    <Bloco
-      titulo="Equipe e salários"
-      direita={
-        <div className="flex flex-wrap gap-1.5">
-          <ChipTV ativo={papel === "todos"} onClick={() => setPapel("todos")}>Todos {c.pessoas.length}</ChipTV>
-          {papeis.map((pp) => (
-            <ChipTV key={pp} ativo={papel === pp} onClick={() => setPapel(pp)}>
-              {PAPEL[pp].rotulo} {c.pessoas.filter((y) => y.papel === pp).length}
-            </ChipTV>
-          ))}
-        </div>
-      }
-    >
-      <div className="h-full overflow-auto pr-1">
-        <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-            <tr>
-              <th className="py-2 font-semibold">Nome</th>
-              <th className="py-2 font-semibold">Cargo</th>
-              <th className="py-2 pr-6 text-right font-semibold">Salário</th>
-              <th className="py-2 text-right font-semibold">Custo / mês</th>
-              <th className="w-24 py-2 text-right font-semibold">% do custo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lista.map((y, i) => (
-              <Fragment key={y.id}>
-                {(i === 0 || lista[i - 1].papel !== y.papel) && (
-                  <tr className="border-t border-white/10">
-                    <td colSpan={2} className="pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em]" style={{ color: PAPEL[y.papel].cor }}>
-                      {PAPEL[y.papel].plural} · {lista.filter((z) => z.papel === y.papel).length}
-                    </td>
-                    <td className="pb-1 pr-6 pt-3 text-right text-xs tabular-nums text-white/50">{salarios(y.papel) > 0 ? formatBRL(salarios(y.papel)) : ""}</td>
-                    <td className="pb-1 pt-3 text-right text-xs font-bold tabular-nums text-white/70">{formatBRL(subtotal(y.papel))}</td>
-                    <td className="pb-1 pt-3 text-right text-xs tabular-nums text-white/40">{total > 0 ? formatPercent(subtotal(y.papel) / total) : ""}</td>
-                  </tr>
-                )}
-                <tr className="border-t border-white/[0.06] hover:bg-white/[0.04]">
-                  <td className="py-2 font-semibold text-white">
-                    <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: PAPEL[y.papel].cor }} />
-                    {y.nome}
-                  </td>
-                  <td className="py-2 text-white/60">
-                    {y.cargo}
-                    {y.outroSetor && <span className="ml-1 text-xs text-amber-300">(outro setor)</span>}
-                  </td>
-                  <td className="py-2 pr-6 text-right tabular-nums text-white/70">{y.rubricas.salarioBase === null ? "—" : formatBRL(y.rubricas.salarioBase)}</td>
-                  <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
-                  <td className="py-2 text-right tabular-nums text-white/50">{total > 0 ? formatPercent(y.custo / total) : "—"}</td>
-                </tr>
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-2 text-xs text-white/35">Cadastro atual. Salário = salário base, sem encargos nem benefícios (— = não cadastrado); custo/mês = com encargos e benefícios. Os filtros de dia/fornecedor/tipo dividem o custo, não mudam a lista.</p>
-      </div>
-    </Bloco>
-  );
-}
 
-function ListaEquipamentos({ c, grande = false }: { c: DetalheCusto; grande?: boolean }) {
-  return (
-    <Bloco titulo="Equipamentos" direita={c.equipamentosPadrao ? <span className="text-xs text-amber-300">padrão — rode a migração 0023</span> : <Dica>Custos › Equipamentos</Dica>}>
-      <ul className={grande ? "space-y-3" : "space-y-2"}>
-        {c.equipamentos.map((e) => (
-          <li key={e.id} className={`flex items-baseline justify-between gap-3 ${grande ? "text-base" : "text-sm"}`}>
-            <span className="text-white">
-              {e.nome} <span className="text-white/45">· {e.quantidade} × {formatBRL(e.custoUnitario)}</span>
-            </span>
-            <span className="font-bold tabular-nums text-white">{formatBRL(e.quantidade * e.custoUnitario)}</span>
-          </li>
-        ))}
-        {c.equipamentos.length === 0 && <li className="text-sm text-white/40">Nenhum equipamento cadastrado.</li>}
-      </ul>
-    </Bloco>
-  );
-}
 
-/** Folha por rubrica (salário com encargos, benefícios…) e por pessoa. */
-function SubFolha({ c }: { c: DetalheCusto }) {
-  const temComposicao = (y: PessoaRecebimento) => RUBRICAS_FOLHA.some(([k]) => y.rubricas[k] !== null);
-  const com = c.pessoas.filter(temComposicao);
-  const sem = c.pessoas.filter((y) => !temComposicao(y));
-  const rubricas = RUBRICAS_FOLHA.map(([k, rotulo]) => ({
-    rotulo: k === "salarioBase" ? `${rotulo} + encargos (×${FATOR_ENCARGOS_SALARIO.toLocaleString("pt-BR")})` : rotulo,
-    valor: com.reduce((t, y) => t + (y.rubricas[k] ?? 0) * (k === "salarioBase" ? FATOR_ENCARGOS_SALARIO : 1), 0),
-  }));
-  if (sem.length) rubricas.push({ rotulo: `Sem composição cadastrada (${sem.length})`, valor: sem.reduce((t, y) => t + y.custo, 0) });
-  // O custo do cadastro é a verdade (é ele que entra no custo do recebimento):
-  // se não fecha com as rubricas (custo digitado à mão), a diferença aparece.
-  const pelasRubricas = com.reduce((t, y) => t + RUBRICAS_FOLHA.reduce((u, [k]) => u + (y.rubricas[k] ?? 0) * (k === "salarioBase" ? FATOR_ENCARGOS_SALARIO : 1), 0), 0);
-  const dif = com.reduce((t, y) => t + y.custo, 0) - pelasRubricas;
-  if (Math.abs(dif) >= 1) rubricas.push({ rotulo: "Ajuste: custo digitado ≠ rubricas", valor: dif });
-  const vis = rubricas.filter((x) => x.valor !== 0);
-  const total = vis.reduce((t, x) => t + x.valor, 0);
-  const max = Math.max(1e-9, ...vis.map((x) => Math.abs(x.valor)));
-  const beneficios = (y: PessoaRecebimento) => RUBRICAS_FOLHA.filter(([k]) => k !== "salarioBase").reduce((t, [k]) => t + (y.rubricas[k] ?? 0), 0);
-  return (
-    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
-      <Bloco titulo="Folha por rubrica" direita={<span className="text-sm font-bold tabular-nums text-white">{formatBRL(total)}</span>}>
-        <ul className="space-y-3">
-          {vis.map((x) => (
-            <li key={x.rotulo}>
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-white">{x.rotulo}</span>
-                <span className="shrink-0 tabular-nums text-white">
-                  {formatBRL(x.valor)} <span className="text-white/40">· {formatPercent(x.valor / total, 0)}</span>
-                </span>
-              </div>
-              <div className="mt-1 h-2 rounded-full bg-white/10">
-                <div className={`h-full rounded-full ${x.valor < 0 ? "bg-white/30" : "bg-[#5b6fd6]"}`} style={{ width: `${(Math.abs(x.valor) / max) * 100}%` }} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Bloco>
-      <Bloco titulo="Por pessoa">
-        <div className="h-full overflow-auto pr-1">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-              <tr>
-                <th className="py-2 font-semibold">Nome</th>
-                <th className="py-2 text-right font-semibold">Salário base</th>
-                <th className="py-2 text-right font-semibold">Benefícios</th>
-                <th className="py-2 text-right font-semibold">Custo / mês</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...c.pessoas].sort((a, b) => b.custo - a.custo).map((y) => (
-                <tr key={y.id} className="border-t border-white/[0.06]">
-                  <td className="py-2">
-                    <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: PAPEL[y.papel].cor }} />
-                    <span className="font-semibold text-white">{y.nome}</span>
-                    <span className="ml-1 text-xs text-white/40">{PAPEL[y.papel].rotulo}</span>
-                  </td>
-                  <td className="py-2 text-right tabular-nums text-white/70">{y.rubricas.salarioBase === null ? "—" : formatBRL(y.rubricas.salarioBase)}</td>
-                  <td className="py-2 text-right tabular-nums text-white/70">{temComposicao(y) ? formatBRL(beneficios(y)) : "—"}</td>
-                  <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-2 text-xs text-white/35">
-            Custo = salário base × {FATOR_ENCARGOS_SALARIO.toLocaleString("pt-BR")} (encargos) + benefícios. Traço = rubrica não cadastrada; o custo dessa pessoa é o digitado no cadastro.
-          </p>
-        </div>
-      </Bloco>
-    </div>
-  );
-}
 
-function BarraComposicao({ fatias }: { fatias: { rotulo: string; valor: number; cor: string }[] }) {
-  const [hover, setHover] = useState<string | null>(null);
-  const total = fatias.reduce((t, f) => t + f.valor, 0);
-  if (total === 0) return null;
-  return (
-    <div onMouseLeave={() => setHover(null)}>
-      <div className="flex h-4 overflow-hidden rounded-full">
-        {fatias.map((f) => (
-          <div
-            key={f.rotulo}
-            onMouseEnter={() => setHover(f.rotulo)}
-            className="h-full border-r-2 border-[#0d1550] last:border-0"
-            style={{ width: `${(f.valor / total) * 100}%`, background: f.cor, opacity: hover && hover !== f.rotulo ? 0.35 : 1 }}
-          />
-        ))}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-        {fatias.map((f) => (
-          <span key={f.rotulo} onMouseEnter={() => setHover(f.rotulo)} className={`inline-flex items-center gap-1.5 text-xs ${hover === f.rotulo ? "text-white" : "text-white/60"}`}>
-            <span className="h-2 w-2 rounded-sm" style={{ background: f.cor }} />
-            {f.rotulo} {formatPercent(f.valor / total, 0)} · {semCentavos(f.valor)}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // --- DESCARREGO ---------------------------------------------------------------
 

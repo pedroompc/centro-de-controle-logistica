@@ -6,14 +6,14 @@ import { assertAdmin } from "./auth";
 import type { Equipamento } from "@/domain/types";
 
 /**
- * Equipamentos ativos do recebimento. `null` = tabela ainda não migrada (0023)
+ * Equipamentos ativos de todos os setores (cada um diz o seu `setor`). `null` = tabela ainda não migrada (0023)
  * — quem chama usa o valor padrão antigo em vez de zerar o custo.
  */
 export async function listarEquipamentos(): Promise<Equipamento[] | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("equipamentos")
-    .select("id, nome, quantidade, custo_unitario")
+    .select("id, nome, setor, quantidade, custo_unitario")
     .eq("ativo", true)
     .order("nome");
   if (error) {
@@ -24,6 +24,7 @@ export async function listarEquipamentos(): Promise<Equipamento[] | null> {
   return (data ?? []).map((r) => ({
     id: String(r.id),
     nome: String(r.nome),
+    setor: String(r.setor ?? "Recebimento"),
     quantidade: Number(r.quantidade) || 0,
     custoUnitario: Number(r.custo_unitario) || 0,
   }));
@@ -32,6 +33,7 @@ export async function listarEquipamentos(): Promise<Equipamento[] | null> {
 function lerForm(formData: FormData) {
   return {
     nome: String(formData.get("nome") ?? "").trim(),
+    setor: String(formData.get("setor") ?? "").trim() || "Recebimento",
     quantidade: Math.max(0, Math.round(Number(formData.get("quantidade") ?? 0))),
     custo_unitario: Math.max(0, Number(formData.get("custo_unitario") ?? 0)),
   };

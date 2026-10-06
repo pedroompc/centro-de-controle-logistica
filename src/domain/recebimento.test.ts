@@ -222,8 +222,8 @@ describe("custoDosEquipamentos", () => {
   it("soma quantidade × custo; sem tabela usa a empilhadeira padrão", () => {
     expect(
       custoDosEquipamentos([
-        { id: "1", nome: "Empilhadeira", quantidade: 1, custoUnitario: 6000 },
-        { id: "2", nome: "Patinha elétrica", quantidade: 2, custoUnitario: 1200 },
+        { id: "1", nome: "Empilhadeira", setor: "Recebimento", quantidade: 1, custoUnitario: 6000 },
+        { id: "2", nome: "Patinha elétrica", setor: "Recebimento", quantidade: 2, custoUnitario: 1200 },
       ]),
     ).toBe(8400);
     expect(custoDosEquipamentos([])).toBe(0);
