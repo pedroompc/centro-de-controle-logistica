@@ -7,7 +7,8 @@
  * (tudo que foi conferido foi separado). Clicar num dia do calendário filtra
  * as três visões do Harpia; Esc limpa.
  */
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { ligarUsuarioHarpia } from "@/data/harpia-usuarios";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -127,7 +128,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                 ) : visao === "producao" ? (
                   <VisaoProducao h={h} mes={dados.mes} dia={dia} onDia={setDia} custoMes={custo} />
                 ) : visao === "conferencia" ? (
-                  <VisaoConferencia h={h} mes={dados.mes} dia={dia} onDia={setDia} />
+                  <VisaoConferencia h={h} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados} />
                 ) : (
                   <VisaoQualidade h={h} mes={dados.mes} dia={dia} onDia={setDia} />
                 ),
@@ -365,7 +366,47 @@ function VisaoProducao({ h, mes, dia, onDia, custoMes }: PropsHarpia & { custoMe
   );
 }
 
-function VisaoConferencia({ h, mes, dia, onDia }: PropsHarpia) {
+type Nomes = Pick<DadosBISeparacao, "ligacoes" | "funcionarios" | "admin">;
+
+/** Nome do conferente: o funcionário ligado ao usuário do Harpia; o admin liga/troca ali mesmo. */
+function NomeUsuario({ usuario, nomes }: { usuario: number; nomes: Nomes }) {
+  const [pendente, iniciar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
+  const funcId = nomes.ligacoes?.[usuario] ?? null;
+  const func = funcId ? nomes.funcionarios.find((f) => f.id === funcId) : null;
+  const ligar = (id: string) =>
+    iniciar(async () => {
+      const r = await ligarUsuarioHarpia(usuario, id || null);
+      setErro(r.erro ?? null);
+    });
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline gap-2">
+        <span className="truncate font-semibold text-white">{func ? func.nome : `Usuário ${usuario}`}</span>
+        {func && <span className="shrink-0 text-[0.65rem] text-white/35">usuário {usuario}</span>}
+      </div>
+      {nomes.admin && nomes.ligacoes !== null && (
+        <select
+          value={funcId ?? ""}
+          disabled={pendente}
+          onChange={(e) => ligar(e.target.value)}
+          className={`mt-1 w-full max-w-[16rem] rounded-md border-0 bg-white/10 px-2 py-0.5 text-xs outline-none ring-1 ring-white/15 ${func ? "text-white/50" : "text-amber-300"}`}
+          aria-label={`Funcionário do usuário ${usuario} do Harpia`}
+        >
+          <option value="" className="text-slate-900">{func ? "— desligar —" : "ligar a um funcionário…"}</option>
+          {nomes.funcionarios.map((f) => (
+            <option key={f.id} value={f.id} className="text-slate-900">
+              {f.nome} · {f.cargo}{f.doSetor ? "" : " (outro setor)"}
+            </option>
+          ))}
+        </select>
+      )}
+      {erro && <div className="mt-0.5 text-xs text-rose-300">{erro}</div>}
+    </div>
+  );
+}
+
+function VisaoConferencia({ h, mes, dia, onDia, nomes }: PropsHarpia & { nomes: Nomes }) {
   const lista = porConferente(h.conferentes, dia);
   const tot = lista.reduce((t, c) => t + c.caixas, 0);
   const max = Math.max(1, ...lista.map((c) => c.caixas));
@@ -377,12 +418,16 @@ function VisaoConferencia({ h, mes, dia, onDia }: PropsHarpia) {
   if (lista.length === 0) return <Vazio>Nenhuma conferência registrada {dia ? `em ${ddmm(dia)}` : "neste mês"}.</Vazio>;
   return (
     <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-      <Bloco titulo={`Conferentes${dia ? ` · ${ddmm(dia)}` : ""}`} direita={<Dica>usuário do Harpia · horas = 1ª à última conferência do dia</Dica>}>
+      <Bloco titulo={`Conferentes${dia ? ` · ${ddmm(dia)}` : ""}`} direita={<Dica>
+            {nomes.ligacoes === null
+              ? "rode a migração 0025 para ligar usuário → funcionário"
+              : `${lista.filter((c) => !nomes.ligacoes?.[c.usuario]).length} sem funcionário ligado · horas = 1ª à última conferência do dia`}
+          </Dica>}>
         <div className="h-full overflow-auto pr-1">
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
               <tr>
-                <th className="py-2 font-semibold">Conferente</th>
+                <th className="w-[36%] py-2 font-semibold">Conferente</th>
                 <th className="py-2 text-right font-semibold">Caixas</th>
                 <th className="py-2 text-right font-semibold">Unidades</th>
                 <th className="py-2 text-right font-semibold">Pedidos</th>
@@ -396,7 +441,7 @@ function VisaoConferencia({ h, mes, dia, onDia }: PropsHarpia) {
               {lista.map((c) => (
                 <tr key={c.usuario} className="border-t border-white/[0.06]">
                   <td className="max-w-0 py-2">
-                    <div className="truncate font-semibold text-white">Usuário {c.usuario}</div>
+                    <NomeUsuario usuario={c.usuario} nomes={nomes} />
                     <div className="mt-1 h-1 rounded-full bg-white/10">
                       <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(c.caixas / max) * 100}%` }} />
                     </div>

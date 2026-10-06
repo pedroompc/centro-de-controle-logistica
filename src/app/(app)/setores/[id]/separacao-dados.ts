@@ -1,5 +1,7 @@
 import { listarEquipamentos } from "@/data/equipamentos";
 import { lerSeparacaoHarpia, type DadosHarpiaSeparacao } from "@/data/harpia-separacao";
+import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
+import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { mesmoSetor, papelSeparacao, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
@@ -15,6 +17,11 @@ export interface DadosBISeparacao {
   serie: PontoCustoSetor[]; // julho/2026 → mês corrente
   /** Produção/conferência/erros do Harpia; `erro` = não conseguiu ler (permissão, rede…). */
   harpia: { dados: DadosHarpiaSeparacao } | { erro: string };
+  /** Usuário do Harpia → id do funcionário. `null` = tabela 0025 ausente. */
+  ligacoes: Record<number, string> | null;
+  /** Funcionários ativos para ligar aos usuários (o do setor primeiro). */
+  funcionarios: { id: string; nome: string; cargo: string; doSetor: boolean }[];
+  admin: boolean;
 }
 
 async function harpiaDoMes(mes: string): Promise<DadosBISeparacao["harpia"]> {
@@ -32,7 +39,13 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const [equipamentos, fotos, harpia] = await Promise.all([listarEquipamentos().catch(() => null), serieEfetivoSetorMensal(24), harpiaDoMes(mes)]);
+  const [equipamentos, fotos, harpia, ligacoes, admin] = await Promise.all([
+    listarEquipamentos().catch(() => null),
+    serieEfetivoSetorMensal(24),
+    harpiaDoMes(mes),
+    listarUsuariosHarpia().catch(() => null),
+    isAdmin(),
+  ]);
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
   const pessoas: PessoaBI[] = ativos.map((f) => ({
     id: f.id,
@@ -59,6 +72,12 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     pessoas,
     equipamentos: (equipamentos ?? []).filter((e) => mesmoSetor(e.setor, setor.nome)),
     harpia,
+    ligacoes: ligacoes ? Object.fromEntries(ligacoes) : null,
+    funcionarios: funcionarios
+      .filter((f) => f.status === "ativo")
+      .map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, doSetor: f.setorId === setor.id }))
+      .sort((a, b) => Number(b.doSetor) - Number(a.doSetor) || a.nome.localeCompare(b.nome)),
+    admin,
     serie: serieCustoSetor(meses, fotosSetor, atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) }),
   };
 }
