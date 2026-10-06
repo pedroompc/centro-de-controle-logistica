@@ -1,6 +1,7 @@
 import { listarEquipamentos } from "@/data/equipamentos";
 import { lerSeparacaoHarpia, type DadosHarpiaSeparacao } from "@/data/harpia-separacao";
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
+import { lerProducaoSeparacao, type DiaProducaoSep } from "@/data/winthor-separacao";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
@@ -17,11 +18,23 @@ export interface DadosBISeparacao {
   serie: PontoCustoSetor[]; // julho/2026 → mês corrente
   /** Produção/conferência/erros do Harpia; `erro` = não conseguiu ler (permissão, rede…). */
   harpia: { dados: DadosHarpiaSeparacao } | { erro: string };
+  /** Pedidos separados por dia (Winthor, PCPEDC.DTFINALSEP). */
+  producao: { dias: DiaProducaoSep[] } | { erro: string };
   /** Usuário do Harpia → id do funcionário. `null` = tabela 0025 ausente. */
   ligacoes: Record<number, string> | null;
   /** Funcionários ativos para ligar aos usuários (o do setor primeiro). */
   funcionarios: { id: string; nome: string; cargo: string; doSetor: boolean }[];
   admin: boolean;
+}
+
+async function producaoDoMes(mes: string): Promise<DadosBISeparacao["producao"]> {
+  try {
+    return { dias: await lerProducaoSeparacao(mes) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[winthor-separacao]", msg);
+    return { erro: msg };
+  }
 }
 
 async function harpiaDoMes(mes: string): Promise<DadosBISeparacao["harpia"]> {
@@ -39,10 +52,11 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const [equipamentos, fotos, harpia, ligacoes, admin] = await Promise.all([
+  const [equipamentos, fotos, harpia, producao, ligacoes, admin] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     harpiaDoMes(mes),
+    producaoDoMes(mes),
     listarUsuariosHarpia().catch(() => null),
     isAdmin(),
   ]);
@@ -72,6 +86,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     pessoas,
     equipamentos: (equipamentos ?? []).filter((e) => mesmoSetor(e.setor, setor.nome)),
     harpia,
+    producao,
     ligacoes: ligacoes ? Object.fromEntries(ligacoes) : null,
     funcionarios: funcionarios
       .filter((f) => f.status === "ativo")

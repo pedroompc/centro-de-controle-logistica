@@ -93,7 +93,7 @@ export interface ResumoConferente {
   pedidos: number;
   dias: number;
   horas: number;
-  caixasPorHora: number | null; // só dos dias com 1h+ conferindo (dia curto engana a taxa)
+  itensPorHora: number | null; // itens (linhas) por hora, só dos dias com 1h+ conferindo (dia curto engana a taxa)
 }
 
 /**
@@ -102,10 +102,10 @@ export interface ResumoConferente {
  */
 export function porConferente(linhas: LinhaConferenteDia[], dia: string | null = null): ResumoConferente[] {
   const m = new Map<number, ResumoConferente>();
-  const taxa = new Map<number, { cx: number; h: number }>();
+  const taxa = new Map<number, { it: number; h: number }>();
   for (const l of linhas) {
     if (dia && l.dia !== dia) continue;
-    const r = m.get(l.usuario) ?? { usuario: l.usuario, caixas: 0, unidades: 0, itens: 0, pedidos: 0, dias: 0, horas: 0, caixasPorHora: null };
+    const r = m.get(l.usuario) ?? { usuario: l.usuario, caixas: 0, unidades: 0, itens: 0, pedidos: 0, dias: 0, horas: 0, itensPorHora: null };
     r.caixas += l.caixas;
     r.unidades += l.unidades;
     r.itens += l.itens;
@@ -114,8 +114,8 @@ export function porConferente(linhas: LinhaConferenteDia[], dia: string | null =
     r.dias += 1;
     m.set(l.usuario, r);
     if (l.horas >= 1) {
-      const t = taxa.get(l.usuario) ?? { cx: 0, h: 0 };
-      t.cx += l.caixas;
+      const t = taxa.get(l.usuario) ?? { it: 0, h: 0 };
+      t.it += l.itens;
       t.h += l.horas;
       taxa.set(l.usuario, t);
     }
@@ -123,12 +123,47 @@ export function porConferente(linhas: LinhaConferenteDia[], dia: string | null =
   return [...m.values()]
     .map((r) => {
       const t = taxa.get(r.usuario);
-      return { ...r, caixasPorHora: t ? t.cx / t.h : null };
+      return { ...r, itensPorHora: t ? t.it / t.h : null };
     })
-    .sort((a, b) => b.caixas - a.caixas);
+    .sort((a, b) => b.itens - a.itens);
 }
 
 /** Erros a cada 1.000 itens conferidos (taxa comparável entre dias de volume diferente). */
 export function errosPorMilItens(erros: number, itens: number): number | null {
   return itens > 0 ? (erros / itens) * 1000 : null;
+}
+
+// --- Winthor: produção pelos pedidos separados --------------------------------
+
+export interface LinhaProducaoSep {
+  dia: string;
+  pedidos: number;
+  kg: number;
+  valor: number;
+  carregamentos: number;
+  clientes: number;
+  skus: number;
+}
+
+/**
+ * Totais do recorte. Carregamentos e clientes somam por dia (o mesmo
+ * carregamento separado em 2 dias conta 2) — é "carregamentos atendidos por dia".
+ */
+export function resumoPedidos(dias: LinhaProducaoSep[]) {
+  const r = { pedidos: 0, kg: 0, valor: 0, carregamentos: 0, clientes: 0, skus: 0, dias: 0 };
+  for (const d of dias) {
+    r.pedidos += d.pedidos;
+    r.kg += d.kg;
+    r.valor += d.valor;
+    r.carregamentos += d.carregamentos;
+    r.clientes += d.clientes;
+    r.skus += d.skus;
+    if (d.pedidos > 0) r.dias += 1;
+  }
+  return {
+    ...r,
+    skuPorPedido: r.pedidos > 0 ? r.skus / r.pedidos : null,
+    kgPorPedido: r.pedidos > 0 ? r.kg / r.pedidos : null,
+    pedidosPorDia: r.dias > 0 ? r.pedidos / r.dias : null,
+  };
 }
