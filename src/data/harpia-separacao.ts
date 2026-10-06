@@ -45,8 +45,18 @@ export interface ErroProduto {
   unidadesDivergentes: number;
 }
 
+export interface MapaConferido {
+  mapa: string; // SEQ_PLANILHA (nº do mapa de separação)
+  dia: string; // dia da 1ª conferência do mapa
+  itens: number;
+  pedidos: number;
+  unidades: number;
+  erros: number;
+}
+
 export interface DadosHarpiaSeparacao {
   dias: DiaSeparacao[];
+  mapas: MapaConferido[];
   conferentes: ConferenteDia[];
   erros: ErroDia[];
   produtosComErro: ErroProduto[];
@@ -101,18 +111,37 @@ SELECT * FROM (
    ORDER BY COUNT(*) DESC
 ) WHERE ROWNUM <= 15`;
 
+const SQL_MAPAS = `
+SELECT TO_CHAR(a.SEQ_PLANILHA_PF_1197) AS MAPA,
+       TO_CHAR(TRUNC(MIN(a.DTHR_AVERIG_1197)), 'YYYY-MM-DD') AS DIA,
+       COUNT(*) AS ITENS,
+       COUNT(DISTINCT a.NUM_PEDCONF_FK_1197) AS PEDIDOS,
+       SUM(NVL(a.QTD_AVERIG_TOTAL_UN_1197, 0)) AS UN
+  FROM ${AVERIG} a
+ WHERE ${JANELA("a.DTHR_AVERIG_1197")}
+ GROUP BY a.SEQ_PLANILHA_PF_1197`;
+
+const SQL_ERROS_MAPA = `
+SELECT TO_CHAR(e.SEQ_PLANILHA_PF_1199) AS MAPA, COUNT(*) AS ERROS
+  FROM ${ERRO} e
+ WHERE ${JANELA("e.DT_HR_BLOQUEIO_1199")}
+ GROUP BY e.SEQ_PLANILHA_PF_1199`;
+
 const num = (v: unknown) => Number(v) || 0;
 
 /** Lê a separação do mês no Harpia. Lança erro (ex.: sem permissão) — quem chama mostra. */
 export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSeparacao> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, conf, erros, prods] = await Promise.all([
+  const [dias, conf, erros, prods, mapas, errosMapa] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_CONFERENTES, binds),
     queryWinthor<Record<string, unknown>>(SQL_ERROS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
+    queryWinthor<Record<string, unknown>>(SQL_MAPAS, binds),
+    queryWinthor<Record<string, unknown>>(SQL_ERROS_MAPA, binds),
   ]);
+  const errosPorMapa = new Map(errosMapa.map((r) => [String(r.MAPA), num(r.ERROS)]));
   // Descrição dos produtos com erro: tenta o cadastro do Winthor (o código do
   // Harpia costuma ser o CODPROD). Se não bater, fica só o código.
   const codigos = prods.map((r) => num(r.PRODUTO)).filter((c) => c > 0);
@@ -140,6 +169,14 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
         mapas: num(r.MAPAS),
       }))
       .sort((a, b) => a.dia.localeCompare(b.dia)),
+    mapas: mapas.map((r) => ({
+      mapa: String(r.MAPA),
+      dia: String(r.DIA),
+      itens: num(r.ITENS),
+      pedidos: num(r.PEDIDOS),
+      unidades: num(r.UN),
+      erros: errosPorMapa.get(String(r.MAPA)) ?? 0,
+    })),
     conferentes: conf.map((r) => ({
       dia: String(r.DIA),
       usuario: num(r.USU),
@@ -157,4 +194,11 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
       unidadesDivergentes: num(r.DIF),
     })),
   };
+}
+
+/** Só os mapas conferidos no mês (nº, dia, itens) — para a tela "Quem separou". */
+export async function lerMapasConferidos(mes: string): Promise<{ mapa: string; dia: string; itens: number }[]> {
+  const { inicio, fim } = inicioFimDoMes(mes);
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_MAPAS, { ini: inicio, fim });
+  return rows.map((r) => ({ mapa: String(r.MAPA), dia: String(r.DIA), itens: num(r.ITENS) }));
 }

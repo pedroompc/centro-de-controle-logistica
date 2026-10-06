@@ -108,3 +108,34 @@ describe("visão do gestor", () => {
     ]);
   });
 });
+
+import { chaveMapa, rankingSeparadores } from "./separacao";
+
+describe("quem separou o mapa", () => {
+  it("normaliza o nº do mapa", () => {
+    expect(chaveMapa(" 0001155 ")).toBe("1155");
+    expect(chaveMapa("a12")).toBe("A12");
+  });
+  it("divide mapa com 2 separadores e mede cobertura", () => {
+    const mapas = [
+      { mapa: "1", dia: "2026-10-01", itens: 100, pedidos: 10, unidades: 1000, erros: 2 },
+      { mapa: "2", dia: "2026-10-01", itens: 60, pedidos: 6, unidades: 600, erros: 0 },
+      { mapa: "3", dia: "2026-10-02", itens: 40, pedidos: 4, unidades: 400, erros: 1 },
+    ];
+    const r = rankingSeparadores(
+      [
+        { mapa: "001", funcionarioId: "ana" },
+        { mapa: "2", funcionarioId: "ana" },
+        { mapa: "2", funcionarioId: "bia" },
+        { mapa: "99", funcionarioId: "bia" },
+      ],
+      mapas,
+    );
+    const ana = r.ranking.find((x) => x.funcionarioId === "ana")!;
+    expect(ana).toMatchObject({ mapas: 2, itens: 130, erros: 2, dias: 1 });
+    expect(ana.errosPorMil).toBeCloseTo((2 / 130) * 1000);
+    expect(r.ranking.find((x) => x.funcionarioId === "bia")).toMatchObject({ mapas: 2, itens: 30 });
+    expect(r).toMatchObject({ mapasNoHarpia: 3, mapasComSeparador: 2, informadosSemHarpia: 1 });
+    expect(r.cobertura).toBeCloseTo(2 / 3);
+  });
+});
