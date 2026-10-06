@@ -18,7 +18,6 @@ import { RecebimentoProjecoes } from "./recebimento-projecoes";
 import { ehSetorSeparacao } from "@/domain/separacao";
 import { carregarBISeparacao } from "./separacao-dados";
 import { BISeparacao } from "./bi-separacao";
-import { MapasAba } from "./mapas-aba";
 
 const ABAS_RECEBIMENTO = [
   { aba: "", label: "Visão geral" },
@@ -30,7 +29,6 @@ const ABAS_RECEBIMENTO = [
 const ABAS_SEPARACAO = [
   { aba: "", label: "Visão geral" },
   { aba: "bi", label: "BI" },
-  { aba: "mapas", label: "Quem separou" },
 ] as const;
 
 /** Abas do setor (mesmo visual das abas de Tendências). */
@@ -92,16 +90,7 @@ export default async function SetorDetalhe({
     const dados = await carregarBISeparacao(setor, funcionarios, mesBI);
     return <BISeparacao key={mesBI} dados={dados} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
   }
-  if (separacao && abaParam === "mapas") {
-    return (
-      <div>
-        <BackLink href="/setores">Setores</BackLink>
-        <PageHeader title={setor.nome} subtitle="Quem separou cada mapa — liga o separador à conferência e aos erros do Harpia" />
-        <AbasSetor id={id} ativa="mapas" abas={ABAS_SEPARACAO} />
-        <MapasAba setorId={id} funcionarios={funcionarios} />
-      </div>
-    );
-  }
+
   const aba = recebimento && (abaParam === "bi" || abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
   if (aba === "bi") {
     const mes = mesBI;

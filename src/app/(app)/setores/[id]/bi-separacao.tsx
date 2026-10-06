@@ -17,20 +17,19 @@ import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
-import { resumoProducao, porConferente, errosPorMilItens, resumoPedidos, rendimentoMensal, capacidadeSeparacao, mediaPorHora, rankingSeparadores, type RendimentoMes } from "@/domain/separacao";
+import { resumoProducao, porConferente, errosPorMilItens, resumoPedidos, rendimentoMensal, capacidadeSeparacao, mediaPorHora, type RendimentoMes } from "@/domain/separacao";
 import { indicesMelhores } from "@/domain/recebimento";
 import type { DiaProducaoSep } from "@/data/winthor-separacao";
 import { formatKg } from "@/domain/format";
 import type { DadosHarpiaSeparacao } from "@/data/harpia-separacao";
 import type { DadosBISeparacao } from "./separacao-dados";
 
-type VisaoSep = "custo" | "producao" | "rendimento" | "separadores" | "conferencia" | "qualidade";
+type VisaoSep = "custo" | "producao" | "rendimento" | "conferencia" | "qualidade";
 
 const VISOES: { id: VisaoSep; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "producao", titulo: "Produção", contexto: "pedidos separados (fim da separação no Winthor), dia a dia · clique num dia para filtrar" },
   { id: "rendimento", titulo: "Rendimento da equipe", contexto: "quanto cada pessoa rende por dia, mês a mês · horários de pico · quantos separadores você precisa" },
-  { id: "separadores", titulo: "Por separador", contexto: "produção e erros de cada separador — vem do \"Quem separou\" cruzado com a conferência do Harpia" },
   { id: "conferencia", titulo: "Conferência", contexto: "itens (linhas) conferidos por conferente e por hora na doca · clique num dia para filtrar" },
   { id: "qualidade", titulo: "Qualidade", contexto: "divergências pegas na conferência (bipado ≠ carga) · clique num dia para filtrar" },
 ];
@@ -77,11 +76,10 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const rend = "meses" in dados.producao ? rendimentoDoSetor(dados) : [];
   const iRend = rend.findIndex((x) => x.mes === dados.mes);
   const rendAtual = iRend >= 0 ? rend[iRend] : null;
-  const rank = h && dados.mapasSeparados ? rankingSeparadores(dados.mapasSeparados, h.mapas) : null;
   const verdeRend = iRend >= 0 && melhoresDoTrimestre(rend, dados, (x) => x.pedidosPorPessoaDia).has(iRend);
 
   const menu = (
-    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Quadro
         {...q("custo")}
         rotulo="Custo e equipe"
@@ -104,14 +102,6 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
         valor={rendAtual?.pedidosPorPessoaDia != null ? `${n1(rendAtual.pedidosPorPessoaDia)} ped/pessoa` : "—"}
         sub={pw ? (rendAtual?.kgPorPessoaDia != null ? `${formatKg(rendAtual.kgPorPessoaDia)} por pessoa/dia${verdeRend ? " · melhor do trimestre" : ""}` : "sem equipe no mês") : "sem acesso ao Winthor"}
         verde={verdeRend}
-      />
-      <Quadro
-        {...q("separadores")}
-        rotulo="Por separador"
-        valor={rank ? `${rank.ranking.length} separadores` : "—"}
-        sub={
-          !h ? "sem acesso ao Harpia" : dados.mapasSeparados === null ? "rode a migração 0026" : rank && rank.cobertura !== null ? `${formatPercent(rank.cobertura, 0)} dos mapas com separador` : "nenhum mapa conferido"
-        }
       />
       <Quadro
         {...q("conferencia")}
@@ -168,8 +158,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                   )
                 ) : !h ? (
                   <SemHarpia erro={"erro" in dados.harpia ? dados.harpia.erro : ""} />
-                ) : visao === "separadores" ? (
-                  <VisaoSeparadores dados={dados} h={h} />
+
                 ) : visao === "conferencia" ? (
                   <VisaoConferencia h={h} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados} />
                 ) : (
@@ -685,81 +674,6 @@ function VisaoRendimento({ dados }: { dados: DadosBISeparacao }) {
           )}
         </Bloco>
       </div>
-    </div>
-  );
-}
-
-// --- POR SEPARADOR ------------------------------------------------------------
-
-function VisaoSeparadores({ dados, h }: { dados: DadosBISeparacao; h: DadosHarpiaSeparacao }) {
-  if (dados.mapasSeparados === null) return <Vazio>Rode a migração 0026_separacao_mapas.sql no Supabase e registre os mapas em Setores › Separação › Quem separou.</Vazio>;
-  const r = rankingSeparadores(dados.mapasSeparados, h.mapas);
-  const nome = (id: string) => dados.funcionarios.find((f) => f.id === id)?.nome ?? dados.pessoas.find((p) => p.id === id)?.nome ?? "—";
-  const max = Math.max(1, ...r.ranking.map((x) => x.itens));
-  const comTaxa = r.ranking.filter((x) => x.errosPorMil !== null && x.itens >= 200);
-  const melhorErro = comTaxa.length ? Math.min(...comTaxa.map((x) => x.errosPorMil!)) : null;
-  const piorErro = comTaxa.length > 1 ? Math.max(...comTaxa.map((x) => x.errosPorMil!)) : null;
-  if (r.ranking.length === 0)
-    return <Vazio>Nenhum mapa com separador neste mês. Registre em Setores › Separação › aba &quot;Quem separou&quot;.</Vazio>;
-  return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Mini rotulo="Cobertura" valor={r.cobertura === null ? "—" : formatPercent(r.cobertura, 0)} sub={`${r.mapasComSeparador} de ${r.mapasNoHarpia} mapas conferidos`} />
-        <Mini rotulo="Separadores com mapa" valor={String(r.ranking.length)} />
-        <Mini rotulo="Mapas sem separador" valor={n0(r.mapasNoHarpia - r.mapasComSeparador)} sub="conferidos no Harpia" />
-        <Mini rotulo="Informados fora do Harpia" valor={String(r.informadosSemHarpia)} sub="nº errado ou ainda não conferido" />
-      </div>
-      <Bloco titulo="Produção e erros por separador" direita={<Dica>mapa dividido entre 2 = metade para cada · erros só com 200+ itens</Dica>}>
-        <div className="h-full overflow-auto pr-1">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-              <tr>
-                <th className="w-[30%] py-2 font-semibold">Separador</th>
-                <th className="py-2 text-right font-semibold">Mapas</th>
-                <th className="py-2 text-right font-semibold">Itens</th>
-                <th className="py-2 text-right font-semibold">Pedidos</th>
-                <th className="py-2 text-right font-semibold">Unidades</th>
-                <th className="py-2 text-right font-semibold">Dias</th>
-                <th className="py-2 text-right font-semibold">Itens / dia</th>
-                <th className="py-2 text-right font-semibold">Erros</th>
-                <th className="py-2 text-right font-semibold">Erros / 1.000 itens</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.ranking.map((x, i) => {
-                const taxa = x.itens >= 200 ? x.errosPorMil : null;
-                const cor = taxa === null ? "text-white/50" : taxa === melhorErro ? "text-emerald-300" : taxa === piorErro ? "text-rose-300" : "text-white";
-                return (
-                  <tr key={x.funcionarioId} className="border-t border-white/[0.06]">
-                    <td className="max-w-0 py-2">
-                      <div className="truncate font-semibold text-white">
-                        <span className="mr-2 text-white/35">{i + 1}º</span>
-                        {nome(x.funcionarioId)}
-                      </div>
-                      <div className="mt-1 h-1 rounded-full bg-white/10">
-                        <div className={`h-full rounded-full ${i === 0 ? "bg-emerald-400" : "bg-[#5b6fd6]"}`} style={{ width: `${(x.itens / max) * 100}%` }} />
-                      </div>
-                    </td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{x.mapas}</td>
-                    <td className="py-2 text-right font-bold tabular-nums text-white">{n0(x.itens)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{n0(x.pedidos)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{n0(x.unidades)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{x.dias}</td>
-                    <td className="py-2 text-right font-bold tabular-nums text-white">{x.itensPorDia === null ? "—" : n0(x.itensPorDia)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{n1(x.erros)}</td>
-                    <td className={`py-2 text-right font-bold tabular-nums ${cor}`}>{taxa === null ? "—" : n1(taxa)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {r.cobertura !== null && r.cobertura < 0.8 && (
-            <p className="mt-3 text-xs text-amber-300">
-              Só {formatPercent(r.cobertura, 0)} dos mapas têm separador informado — o ranking ainda não representa a equipe. Cobre o registro em &quot;Quem separou&quot;.
-            </p>
-          )}
-        </div>
-      </Bloco>
     </div>
   );
 }

@@ -3,7 +3,6 @@ import { lerSeparacaoHarpia, type DadosHarpiaSeparacao } from "@/data/harpia-sep
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
 import { lerProducaoSeparacao, lerMesesSeparacao, lerHorasSeparacao, type DiaProducaoSep, type MesSeparacao } from "@/data/winthor-separacao";
 import { isAdmin } from "@/data/auth";
-import { listarMapasSeparados } from "@/data/separacao-mapas";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { mesmoSetor, papelSeparacao, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
@@ -26,8 +25,6 @@ export interface DadosBISeparacao {
   /** Funcionários ativos para ligar aos usuários (o do setor primeiro). */
   funcionarios: { id: string; nome: string; cargo: string; doSetor: boolean }[];
   admin: boolean;
-  /** "Quem separou o mapa" do mês; `null` = tabela 0026 ausente. */
-  mapasSeparados: { mapa: string; funcionarioId: string }[] | null;
 }
 
 async function producaoDoMes(mes: string): Promise<DadosBISeparacao["producao"]> {
@@ -56,14 +53,13 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const [equipamentos, fotos, harpia, producao, ligacoes, admin, registros] = await Promise.all([
+  const [equipamentos, fotos, harpia, producao, ligacoes, admin] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     harpiaDoMes(mes),
     producaoDoMes(mes),
     listarUsuariosHarpia().catch(() => null),
     isAdmin(),
-    listarMapasSeparados(mes).catch(() => null),
   ]);
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
   const pessoas: PessoaBI[] = ativos.map((f) => ({
@@ -98,7 +94,6 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       .map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, doSetor: f.setorId === setor.id }))
       .sort((a, b) => Number(b.doSetor) - Number(a.doSetor) || a.nome.localeCompare(b.nome)),
     admin,
-    mapasSeparados: registros ? registros.map((x) => ({ mapa: x.mapa, funcionarioId: x.funcionarioId })) : null,
     serie: serieCustoSetor(meses, fotosSetor, atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) }),
   };
 }
