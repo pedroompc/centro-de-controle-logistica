@@ -18,6 +18,9 @@ import { RecebimentoProjecoes } from "./recebimento-projecoes";
 import { ehSetorSeparacao } from "@/domain/separacao";
 import { carregarBISeparacao } from "./separacao-dados";
 import { BISeparacao } from "./bi-separacao";
+import { ehSetorAbastecimento } from "@/domain/abastecimento";
+import { carregarBIAbastecimento } from "./abastecimento-dados";
+import { BIAbastecimento } from "./bi-abastecimento";
 
 const ABAS_RECEBIMENTO = [
   { aba: "", label: "Visão geral" },
@@ -30,6 +33,8 @@ const ABAS_SEPARACAO = [
   { aba: "", label: "Visão geral" },
   { aba: "bi", label: "BI" },
 ] as const;
+
+const ABAS_ABASTECIMENTO = ABAS_SEPARACAO;
 
 /** Abas do setor (mesmo visual das abas de Tendências). */
 function AbasSetor({ id, ativa, abas }: { id: string; ativa: string; abas: readonly { aba: string; label: string }[] }) {
@@ -77,6 +82,7 @@ export default async function SetorDetalhe({
   // Recebimento ganha Desempenho e Projeções; os outros setores seguem iguais.
   const recebimento = ehSetorRecebimento(setor.nome);
   const separacao = !recebimento && ehSetorSeparacao(setor.nome);
+  const abastecimento = !recebimento && !separacao && ehSetorAbastecimento(setor.nome);
   // Mês do BI (?mes=), limitado ao histórico, e a navegação ‹ mês ›.
   const mesBI = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
   const mesAtual = primeiroDiaDoMes();
@@ -89,6 +95,10 @@ export default async function SetorDetalhe({
   if (separacao && abaParam === "bi") {
     const dados = await carregarBISeparacao(setor, funcionarios, mesBI);
     return <BISeparacao key={mesBI} dados={dados} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
+  }
+  if (abastecimento && abaParam === "bi") {
+    const dados = await carregarBIAbastecimento(setor, funcionarios, mesBI);
+    return <BIAbastecimento key={mesBI} dados={dados} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
   }
 
   const aba = recebimento && (abaParam === "bi" || abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
@@ -136,6 +146,7 @@ export default async function SetorDetalhe({
       <PageHeader title={setor.nome} subtitle={`${doSetor.length} funcionários neste setor`} />
       {recebimento && <AbasSetor id={id} ativa="" abas={ABAS_RECEBIMENTO} />}
       {separacao && <AbasSetor id={id} ativa="" abas={ABAS_SEPARACAO} />}
+      {abastecimento && <AbasSetor id={id} ativa="" abas={ABAS_ABASTECIMENTO} />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Custo mensal (ativos)" value={formatBRL(custoDoSetor(funcionarios, id))} accent="gold" />
