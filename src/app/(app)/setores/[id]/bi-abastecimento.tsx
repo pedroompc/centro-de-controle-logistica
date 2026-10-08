@@ -18,16 +18,17 @@ import {
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
 import { resumoVolume, resumoAntecedencia } from "@/domain/abastecimento";
-import type { DadosHarpiaAbastecimento } from "@/data/harpia-abastecimento";
+import type { DadosHarpiaAbastecimento, MovimentoEndereco } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
-type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "rupturas";
+type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "rupturas";
 
 const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "volume", titulo: "Volume", contexto: "caixas e unidades abastecidas por dia · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga" },
   { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês" },
+  { id: "movimento", titulo: "Movimentação", contexto: "vertical (mudou de nível) × horizontal (mesmo nível, outra posição) — só na amostra que registra endereço" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
 
@@ -66,7 +67,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const pctAntes = ant && ant.antes + ant.depoisOuJunto > 0 ? ant.antes / (ant.antes + ant.depoisOuJunto) : null;
 
   const menu = (
-    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-5">
+    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
       <Quadro
         {...q("custo")}
         rotulo="Custo e equipe"
@@ -90,6 +91,12 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
         rotulo="Giro de picking"
         valor={h ? `${h.produtos.length} produtos` : "—"}
         sub={semH ?? (resumo ? `${n0(resumo.abastecimentos)} abastecimentos · ${resumo.dias} dias` : "sem abastecimento no mês")}
+      />
+      <Quadro
+        {...q("movimento")}
+        rotulo="Movimentação"
+        valor={h ? `${n0(h.movimento.vertical)} vert.` : "—"}
+        sub={semH ?? (h ? `${n0(h.movimento.horizontal)} horiz. · amostra de ${h.movimento.total}` : "sem dado no mês")}
       />
       <Quadro
         {...q("rupturas")}
@@ -124,6 +131,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                   <VisaoAntecedencia ant={ant!} />
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
+                ) : visao === "movimento" ? (
+                  <VisaoMovimento movimento={h.movimento} abastecimentos={resumo?.abastecimentos ?? 0} />
                 ) : (
                   <VisaoRupturas h={h} mes={dados.mes} />
                 ),
@@ -402,6 +411,36 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
             </li>
           ))}
         </ul>
+      </Bloco>
+    </div>
+  );
+}
+
+// --- MOVIMENTAÇÃO DE ENDEREÇO -----------------------------------------------------
+
+function VisaoMovimento({ movimento, abastecimentos }: { movimento: MovimentoEndereco; abastecimentos: number }) {
+  if (movimento.total === 0) return <Vazio>Nenhuma movimentação de endereço registrada neste mês (ver nota sobre a rotina 3411 abaixo).</Vazio>;
+  const cobertura = abastecimentos > 0 ? movimento.total / abastecimentos : null;
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Mini rotulo="Vertical" valor={n0(movimento.vertical)} sub="mudou de nível (altura) no rack" />
+        <Mini rotulo="Horizontal" valor={n0(movimento.horizontal)} sub="mesmo nível, outra posição" />
+        <Mini rotulo="Analisado" valor={n0(movimento.total)} sub="só quem tem endereço de origem e destino" />
+        <Mini rotulo="Cobertura" valor={cobertura !== null ? formatPercent(cobertura, 0) : "—"} sub="dos abastecimentos do mês" />
+      </div>
+      <Bloco titulo="Vertical × horizontal">
+        <BarrasTV
+          altura={200}
+          fmt={n0}
+          itens={[
+            { chave: "vertical", rotulo: "Vertical", valor: movimento.vertical, cor: "#c2820a", detalhe: `Vertical · ${n0(movimento.vertical)}` },
+            { chave: "horizontal", rotulo: "Horizontal", valor: movimento.horizontal, cor: "#5b6fd6", detalhe: `Horizontal · ${n0(movimento.horizontal)}` },
+          ]}
+        />
+        <p className="mt-3 text-xs text-white/35">
+          Só a rotina <strong className="text-white/60">3411</strong> (transferência manual de endereço) grava de onde pra onde foi a mercadoria — é por isso que a amostra é pequena ({movimento.total} de {abastecimentos} abastecimentos do mês). Pra medir isso em todo abastecimento, pergunte ao suporte Harpia como fazer a rotina 3411 rodar sempre, não só quando alguém abre essa tela manualmente.
+        </p>
       </Bloco>
     </div>
   );

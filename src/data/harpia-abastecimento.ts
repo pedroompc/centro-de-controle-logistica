@@ -40,11 +40,19 @@ export interface RupturaAbastecimento {
   unidades: number;
 }
 
+export interface MovimentoEndereco {
+  total: number;
+  vertical: number; // mudou de nível (altura) no rack
+  horizontal: number; // mesmo nível, outra posição
+}
+
 export interface DadosHarpiaAbastecimento {
   dias: DiaAbastecimento[];
   produtos: ProdutoGiro[];
   cargas: CargaAntecedencia[];
   rupturas: RupturaAbastecimento[];
+  /** Vertical/horizontal só é registrado pela rotina 3411 (transferência manual de endereço) — a maioria dos abastecimentos não passa por ela. */
+  movimento: MovimentoEndereco;
 }
 
 const num = (v: unknown) => Number(v) || 0;
@@ -92,6 +100,18 @@ SELECT a.NUMCAR, (s.DT_SEP - a.DT_ABAST) * 24 AS HORAS_FOLGA
   FROM abast a
   LEFT JOIN sep s ON s.NUMCAR = a.NUMCAR`;
 
+// Movimentação de endereço: só a rotina 3411 (transferência manual) grava
+// origem/destino — a maioria dos abastecimentos não passa por ela (ver nota
+// em MovimentoEndereco). Endereço = RUA(2)+PREDIO(2)+NIVEL(2)+APTO(3);
+// nível em SUBSTR(col,5,2), validado contra a faixa real de uso (00-05).
+const SQL_MOVIMENTO = `
+SELECT COUNT(*) AS TOTAL,
+       SUM(CASE WHEN SUBSTR(END_PF_502, 5, 2) <> SUBSTR(END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END) AS VERTICAL
+  FROM HARPIAW2.MOVIMENT_END_502
+ WHERE NUM_ABAST_FK_502 IS NOT NULL
+   AND DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND LENGTH(END_PF_502) = 9 AND LENGTH(END_DESTINO_FK_502) = 9`;
+
 const SQL_RUPTURAS = `
 SELECT TO_CHAR(h.DT_HIST_PK_848, 'YYYY-MM-DD HH24:MI') AS DT, h.MERC_PF_848 AS PRODUTO,
        h.TOTAL_CX_848 AS CX, h.TOTAL_UN_848 AS UN
@@ -120,11 +140,12 @@ async function descricoesProdutos(codigos: number[]): Promise<Map<number, string
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, cargas, rupturas] = await Promise.all([
+  const [dias, prods, cargas, rupturas, movimento] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ NUMCAR: number; HORAS_FOLGA: number | null }>(SQL_CARGAS, binds),
     queryWinthor<{ DT: string; PRODUTO: number; CX: number; UN: number }>(SQL_RUPTURAS, binds),
+    queryWinthor<{ TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO, binds),
   ]);
   const descricoes = await descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO)]);
   return {
@@ -149,5 +170,10 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
       caixas: num(r.CX),
       unidades: num(r.UN),
     })),
+    movimento: {
+      total: num(movimento[0]?.TOTAL),
+      vertical: num(movimento[0]?.VERTICAL),
+      horizontal: num(movimento[0]?.TOTAL) - num(movimento[0]?.VERTICAL),
+    },
   };
 }
