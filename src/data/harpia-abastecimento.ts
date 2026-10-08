@@ -15,6 +15,7 @@ export interface DiaAbastecimento {
   abastecimentos: number;
   caixas: number;
   unidades: number;
+  skus: number; // produtos distintos abastecidos no dia
 }
 
 export interface ProdutoGiro {
@@ -52,7 +53,8 @@ const SQL_DIAS = `
 SELECT TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA,
        COUNT(DISTINCT p.ID_NUM_ABAST_PK_809) AS ABASTS,
        SUM(m.QTD_SEP_CX_1361) AS CX,
-       SUM(m.QTD_SEP_UN_1361) AS UN
+       SUM(m.QTD_SEP_UN_1361) AS UN,
+       COUNT(DISTINCT m.MERC_FK_1361) AS SKUS
   FROM HARPIAW2.PREPARA_ABAST_809 p
   JOIN HARPIAW2.PREPARA_ABAST_MERC_1361 m ON m.NUM_ABAST_FK_1361 = p.ID_NUM_ABAST_PK_809
  WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
@@ -127,7 +129,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
   const descricoes = await descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO)]);
   return {
     dias: dias
-      .map((r) => ({ dia: String(r.DIA), abastecimentos: num(r.ABASTS), caixas: num(r.CX), unidades: num(r.UN) }))
+      .map((r) => ({ dia: String(r.DIA), abastecimentos: num(r.ABASTS), caixas: num(r.CX), unidades: num(r.UN), skus: num(r.SKUS) }))
       .sort((a, b) => a.dia.localeCompare(b.dia)),
     produtos: prods.map((r) => ({
       produto: num(r.PRODUTO),

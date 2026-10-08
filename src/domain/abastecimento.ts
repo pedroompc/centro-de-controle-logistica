@@ -23,17 +23,22 @@ export interface ResumoVolumeAbast {
   caixas: number;
   unidades: number;
   dias: number; // dias do recorte com abastecimento
+  skusMedioDia: number | null; // média de SKUs distintos abastecidos por dia (não soma — o mesmo SKU se repete em vários dias)
 }
 
-export function resumoVolume(dias: { abastecimentos: number; caixas: number; unidades: number }[]): ResumoVolumeAbast {
+export function resumoVolume(dias: { abastecimentos: number; caixas: number; unidades: number; skus: number }[]): ResumoVolumeAbast {
   const r = { abastecimentos: 0, caixas: 0, unidades: 0, dias: 0 };
+  let somaSkus = 0;
   for (const d of dias) {
     r.abastecimentos += d.abastecimentos;
     r.caixas += d.caixas;
     r.unidades += d.unidades;
-    if (d.abastecimentos > 0) r.dias += 1;
+    if (d.abastecimentos > 0) {
+      r.dias += 1;
+      somaSkus += d.skus;
+    }
   }
-  return r;
+  return { ...r, skusMedioDia: r.dias > 0 ? somaSkus / r.dias : null };
 }
 
 function mediana(valores: number[]): number | null {
