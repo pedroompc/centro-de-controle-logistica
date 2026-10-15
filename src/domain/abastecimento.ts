@@ -126,3 +126,59 @@ export function historicoPessoa(linhas: { dia: string; usuario: number; total: n
 export function historicoProduto(linhas: { produto: number; dia: string; abastecimentos: number }[], produto: number): { dia: string; abastecimentos: number }[] {
   return linhas.filter((l) => l.produto === produto).sort((a, b) => a.dia.localeCompare(b.dia));
 }
+
+// --- Convocação Ativa: tempo de resposta e execução (ligada em 2026-10-13) ----
+
+interface LinhaConvocacao {
+  dia: string;
+  operador: number;
+  nome: string | null;
+  minutosResposta: number | null; // aceite − solicitação
+  minutosExecucao: number | null; // finalização − aceite
+  finalizada: boolean;
+  rejeitada: boolean;
+}
+
+export interface ResumoConvocacoes {
+  total: number;
+  finalizadas: number;
+  rejeitadas: number;
+  medianaRespostaMin: number | null;
+  medianaExecucaoMin: number | null;
+}
+
+/** Mediana (não média) — um teste isolado pode levar dias pra ser aceito e distorce a média. `dia` filtra (`null` = mês inteiro). */
+export function resumoConvocacoes(linhas: LinhaConvocacao[], dia: string | null): ResumoConvocacoes {
+  const sel = dia ? linhas.filter((l) => l.dia === dia) : linhas;
+  const respostas = sel.filter((l) => l.minutosResposta !== null && l.minutosResposta >= 0).map((l) => l.minutosResposta!);
+  const execucoes = sel.filter((l) => l.finalizada && l.minutosExecucao !== null && l.minutosExecucao >= 0).map((l) => l.minutosExecucao!);
+  return {
+    total: sel.length,
+    finalizadas: sel.filter((l) => l.finalizada).length,
+    rejeitadas: sel.filter((l) => l.rejeitada).length,
+    medianaRespostaMin: mediana(respostas),
+    medianaExecucaoMin: mediana(execucoes),
+  };
+}
+
+export interface OperadorConvocacoes {
+  operador: number;
+  nome: string | null;
+  total: number;
+  finalizadas: number;
+  medianaRespostaMin: number | null;
+  medianaExecucaoMin: number | null;
+}
+
+/** Agrega convocações por operador; `dia` filtra (`null` = mês inteiro). */
+export function porOperadorConvocacoes(linhas: LinhaConvocacao[], dia: string | null): OperadorConvocacoes[] {
+  const sel = dia ? linhas.filter((l) => l.dia === dia) : linhas;
+  const m = new Map<number, LinhaConvocacao[]>();
+  for (const l of sel) m.set(l.operador, [...(m.get(l.operador) ?? []), l]);
+  return [...m.entries()]
+    .map(([operador, ls]) => {
+      const r = resumoConvocacoes(ls, null);
+      return { operador, nome: ls[0].nome, total: r.total, finalizadas: r.finalizadas, medianaRespostaMin: r.medianaRespostaMin, medianaExecucaoMin: r.medianaExecucaoMin };
+    })
+    .sort((a, b) => b.total - a.total);
+}

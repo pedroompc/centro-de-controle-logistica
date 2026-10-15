@@ -100,7 +100,17 @@ export interface MovimentoPiso {
   dias: DiaMovimentoPiso[]; // pro calendário
   porPessoaDia: LinhaPessoaDia[]; // agregação/filtro por dia é no domínio
   porHoraDia: LinhaHoraDia[]; // idem
-  produtosTop: ProdutoMovimentoPiso[]; // top 5 do mês inteiro
+  produtosTop: ProdutoMovimentoPiso[]; // top 50 do mês inteiro
+}
+
+export interface LinhaConvocacao {
+  dia: string;
+  operador: number;
+  nome: string | null;
+  minutosResposta: number | null; // aceite − solicitação
+  minutosExecucao: number | null; // finalização − aceite
+  finalizada: boolean;
+  rejeitada: boolean;
 }
 
 export interface DadosHarpiaAbastecimento {
@@ -114,6 +124,8 @@ export interface DadosHarpiaAbastecimento {
   abastecimentosReativos: number;
   /** Movimentação física de endereço (reserva → picking), pela equipe de piso. */
   movimentoPiso: MovimentoPiso;
+  /** Convocação Ativa: solicitação→aceite→finalização por operador. Módulo ligado em 2026-10-13 — ainda com poucos dados. */
+  convocacoes: LinhaConvocacao[];
 }
 
 const num = (v: unknown) => Number(v) || 0;
@@ -234,6 +246,23 @@ SELECT * FROM (
    ORDER BY COUNT(*) DESC
 ) WHERE ROWNUM <= 50`;
 
+// Convocação Ativa: solicitação→aceite→finalização de cada tarefa de
+// movimentação. Tempos em minutos ((data2-data1)*1440), calculados no Oracle.
+// Nome do operador resolvido até o funcionário real (USUARIO_754), com
+// fallback pro nome cadastrado só na Convocação Ativa.
+const SQL_CONVOCACOES = `
+SELECT TO_CHAR(TRUNC(c.DT_HR_SOLICITACAO_1028), 'YYYY-MM-DD') AS DIA,
+       c.OPERADOR_FK_1028 AS OPERADOR,
+       NVL(u.DESCR_COMPLETO_754, op.DESCRICAO_1023) AS NOME,
+       (c.DT_HR_ACEITE_1028 - c.DT_HR_SOLICITACAO_1028) * 1440 AS MIN_RESPOSTA,
+       (c.DT_HR_FINALIZACAO_1028 - c.DT_HR_ACEITE_1028) * 1440 AS MIN_EXECUCAO,
+       CASE WHEN c.DT_HR_FINALIZACAO_1028 IS NOT NULL THEN 1 ELSE 0 END AS FINALIZADA,
+       CASE WHEN c.DT_HR_REJEICAO_1028 IS NOT NULL THEN 1 ELSE 0 END AS REJEITADA
+  FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c
+  LEFT JOIN HARPIAW2.CONV_ATIVA_OPERADORES_1023 op ON op.OPERADOR_PK_1023 = c.OPERADOR_FK_1028 AND op.EMPRESA_PF_1023 = c.EMPRESA_PF_1028
+  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = op.USU_FK_1023
+ WHERE c.DT_HR_SOLICITACAO_1028 >= TO_DATE(:ini, 'YYYY-MM-DD') AND c.DT_HR_SOLICITACAO_1028 < TO_DATE(:fim, 'YYYY-MM-DD') + 1`;
+
 /** Descrição do produto pelo cadastro do Winthor (o código do Harpia costuma ser o CODPROD). */
 async function descricoesProdutos(codigos: number[]): Promise<Map<number, string>> {
   const unicos = [...new Set(codigos.filter((c) => c > 0))];
@@ -273,7 +302,7 @@ SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') 
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -285,6 +314,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ DIA: string; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_DIAS, binds),
     queryWinthor<{ DIA: string; HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA_DIA, binds),
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
+    queryWinthor<{ DIA: string; OPERADOR: number; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -343,5 +373,14 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         total: num(r.TOTAL),
       })),
     },
+    convocacoes: convocacoesRaw.map((r) => ({
+      dia: String(r.DIA),
+      operador: num(r.OPERADOR),
+      nome: r.NOME ?? null,
+      minutosResposta: r.MIN_RESPOSTA == null ? null : Number(r.MIN_RESPOSTA),
+      minutosExecucao: r.MIN_EXECUCAO == null ? null : Number(r.MIN_EXECUCAO),
+      finalizada: num(r.FINALIZADA) === 1,
+      rejeitada: num(r.REJEITADA) === 1,
+    })),
   };
 }

@@ -22,8 +22,8 @@ import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
-import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto } from "@/domain/abastecimento";
-import type { DadosHarpiaAbastecimento, MovimentoPiso } from "@/data/harpia-abastecimento";
+import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes } from "@/domain/abastecimento";
+import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
 const CURVA_COR: Record<string, string> = { A: "#10b981", B: "#5b6fd6", C: "#c2820a" };
@@ -153,7 +153,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
                 ) : visao === "movimento" ? (
-                  <VisaoMovimento movimento={h.movimentoPiso} mes={dados.mes} dia={dia} onDia={setDia} />
+                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} mes={dados.mes} dia={dia} onDia={setDia} />
                 ) : (
                   <VisaoRupturas h={h} mes={dados.mes} />
                 ),
@@ -514,36 +514,42 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 // --- MOVIMENTAÇÃO DE ENDEREÇO (equipe real de piso) -------------------------------
 
 function VisaoMovimento({
-  movimento, mes, dia, onDia,
+  movimento, convocacoes, mes, dia, onDia,
 }: {
-  movimento: MovimentoPiso; mes: string; dia: string | null; onDia: (d: string | null) => void;
+  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; mes: string; dia: string | null; onDia: (d: string | null) => void;
 }) {
-  const { sub, abrir, fechar } = useSub<"equipe" | "horario">();
+  const { sub, abrir, fechar } = useSub<"equipe" | "horario" | "tempo">();
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
   if (movimento.total === 0) return <Vazio>Nenhuma movimentação de endereço (reserva → picking) registrada em {formatMesAno(mes)}.</Vazio>;
   const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
   const pessoas = pessoasMovimento(movimento.porPessoaDia, dia);
   const porHora = horaMovimento(movimento.porHoraDia, dia);
+  const resumoConv = resumoConvocacoes(convocacoes, dia);
+  const porOperador = porOperadorConvocacoes(convocacoes, dia);
   const diaDados = dia ? movimento.dias.find((d) => d.dia === dia) ?? null : null;
   const totalFiltrado = diaDados ? diaDados.total : movimento.total;
   const verticalFiltrado = diaDados ? diaDados.vertical : movimento.vertical;
   const horizontalFiltrado = totalFiltrado - verticalFiltrado;
   const maxPessoa = Math.max(1, ...pessoas.map((p) => p.total));
   const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
+  const maxOperadorConv = Math.max(1, ...porOperador.map((o) => o.total));
   const pico = porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
   const mediaPorEmpilhador = pessoas.length ? totalFiltrado / pessoas.length : null;
-  const card = (k: "equipe" | "horario") => ({ onClick: abrir(k), ativo: sub === k });
+  const card = (k: "equipe" | "horario" | "tempo") => ({ onClick: abrir(k), ativo: sub === k });
   const pessoaSel = pessoaAberta ? pessoas.find((p) => p.usuario === pessoaAberta) ?? null : null;
   const historicoSel = pessoaAberta ? historicoPessoa(movimento.porPessoaDia, pessoaAberta) : [];
+  const fmtMin = (v: number | null) => (v === null ? "—" : v < 1 ? `${Math.round(v * 60)}s` : `${n1(v)} min`);
+  const TITULO_SUB_MOV: Record<"equipe" | "horario" | "tempo", string> = { equipe: "Quem fez", horario: "Horário", tempo: "Tempo de resposta" };
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
         <Mini rotulo="Movimentações" valor={n0(totalFiltrado)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
         <Mini rotulo="Vertical" valor={n0(verticalFiltrado)} sub="mudou de nível (altura) no rack" />
         <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
         <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub="clique pra ver quem fez quanto" />
         <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? `nesse dia, por pessoa` : "no mês, por pessoa"} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
+        <Mini {...card("tempo")} rotulo="Tempo de resposta" valor={fmtMin(resumoConv.medianaRespostaMin)} sub={resumoConv.total ? `Convocação Ativa · ${resumoConv.total} tarefas` : "Convocação Ativa — sem tarefa ainda"} />
       </div>
       <div className="flex items-center gap-3 text-xs">
         {sub ? (
@@ -551,10 +557,10 @@ function VisaoMovimento({
             <button type="button" onClick={fechar} className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/20">
               ◂ Voltar ao resumo
             </button>
-            <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Movimentação › {sub === "equipe" ? "Quem fez" : "Horário"}</span>
+            <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Movimentação › {TITULO_SUB_MOV[sub]}</span>
           </>
         ) : (
-          <span className="text-white/35">Clique num card pra ver quem fez ou o horário</span>
+          <span className="text-white/35">Clique num card pra ver quem fez, o horário ou o tempo de resposta</span>
         )}
       </div>
 
@@ -655,6 +661,64 @@ function VisaoMovimento({
           />
           <p className="mt-2 text-xs text-white/35">Pico em {String(pico.hora).padStart(2, "0")}h, com {n0(pico.total)} de {n0(totalFiltrado)} movimentações ({formatPercent(totalFiltrado > 0 ? pico.total / totalFiltrado : 0, 0)}).</p>
         </Bloco>
+      )}
+
+      {sub === "tempo" && (
+        resumoConv.total === 0 ? (
+          <Vazio>
+            <div className="max-w-md space-y-2">
+              <p className="text-lg font-semibold text-white/70">Convocação Ativa ligada, sem tarefa {dia ? `em ${ddmm(dia)}` : `em ${formatMesAno(mes)}`}</p>
+              <p className="text-sm text-white/40">Vocês ligaram o módulo em 13/10 — a partir de segunda, toda movimentação passa a entrar aqui. Esse card enche sozinho.</p>
+            </div>
+          </Vazio>
+        ) : (
+          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            <Bloco titulo="Tempo por operador" direita={<Dica>mediana, não média — um teste isolado não distorce</Dica>}>
+              <div className="h-full overflow-auto pr-1">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+                    <tr>
+                      <th className="py-2 font-semibold">Operador</th>
+                      <th className="py-2 text-right font-semibold">Tarefas</th>
+                      <th className="py-2 text-right font-semibold">Resposta</th>
+                      <th className="py-2 text-right font-semibold">Execução</th>
+                      <th className="w-24 py-2 text-right font-semibold">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porOperador.map((o) => (
+                      <tr key={o.operador} className="border-t border-white/[0.06]">
+                        <td className="py-2 font-semibold text-white">{o.nome ?? `Operador ${o.operador}`}</td>
+                        <td className="py-2 text-right font-bold tabular-nums text-white">{n0(o.total)}</td>
+                        <td className="py-2 text-right tabular-nums text-white/70">{fmtMin(o.medianaRespostaMin)}</td>
+                        <td className="py-2 text-right tabular-nums text-white/70">{fmtMin(o.medianaExecucaoMin)}</td>
+                        <td className="py-2">
+                          <div className="h-1.5 rounded-full bg-white/10">
+                            <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(o.total / maxOperadorConv) * 100}%` }} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Bloco>
+            <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Mini rotulo="Tarefas" valor={n0(resumoConv.total)} sub={`${n0(resumoConv.finalizadas)} finalizadas`} />
+                <Mini rotulo="Rejeitadas" valor={n0(resumoConv.rejeitadas)} sub={resumoConv.total ? formatPercent(resumoConv.rejeitadas / resumoConv.total, 0) : undefined} />
+                <Mini rotulo="Resposta (mediana)" valor={fmtMin(resumoConv.medianaRespostaMin)} sub="solicitação → aceite" />
+                <Mini rotulo="Execução (mediana)" valor={fmtMin(resumoConv.medianaExecucaoMin)} sub="aceite → finalização" />
+              </div>
+              <Bloco titulo="O que é isso" className="shrink-0">
+                <p className="text-sm text-white/50">
+                  A <strong className="text-white/70">Convocação Ativa</strong> é a rotina que chama o operador pra uma tarefa de movimentação — diferente do que o resto desse card mede (o movimento em si, no <code className="text-white/70">MOVIMENT_END_502</code>). Aqui dá pra medir quanto tempo o operador leva pra aceitar a convocação, e quanto tempo leva da aceitação até finalizar.
+                </p>
+                <p className="mt-3 text-xs text-white/35">Módulo ligado em 13/10/2026 — ainda é pouco dado ({resumoConv.total} tarefas até agora). A partir de segunda-feira toda a equipe passa a usar, então esse número fica confiável com o tempo.</p>
+              </Bloco>
+            </div>
+          </div>
+        )
       )}
     </div>
   );
