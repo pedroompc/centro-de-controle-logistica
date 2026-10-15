@@ -9,7 +9,9 @@
  *    isso essa parte nunca rankeia por usuário.
  *  - Movimentação: `MOVIMENT_END_502` (reserva → picking) — a equipe REAL de
  *    piso (depto Logística). Aqui sim o ranking por pessoa é legítimo.
- * Esc limpa o filtro de dia (visão Volume).
+ * `dia` é um filtro CRUZADO: clicar num dia em Volume, Antecedência ou
+ * Movimentação filtra as três. Esc limpa. Pessoa (Movimentação) e produto
+ * (Giro) abrem histórico diário ao clicar — clique de novo fecha.
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
@@ -18,9 +20,9 @@ import { variacaoPercentual } from "@/domain/tendencias";
 import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
-  TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ddmm, semCentavos, type PapelBI,
+  TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
-import { resumoVolume, resumoAntecedencia } from "@/domain/abastecimento";
+import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento, MovimentoPiso } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
@@ -32,9 +34,9 @@ type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "ru
 const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "volume", titulo: "Volume", contexto: "caixas e unidades abastecidas por dia · clique num dia para filtrar" },
-  { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga" },
-  { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês" },
-  { id: "movimento", titulo: "Movimentação", contexto: "quem move, vertical × horizontal e horário — a equipe real de piso" },
+  { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
+  { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique num produto para ver o histórico diário" },
+  { id: "movimento", titulo: "Movimentação", contexto: "quem move, vertical × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
 
@@ -56,6 +58,7 @@ function custoDoMes(d: DadosBIAbastecimento, mes: string): number | null {
 
 export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string }) {
   const [visao, setVisao] = useState<VisaoAba | null>(null);
+  const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoAba) => setVisao((a) => (a === v ? null : v));
   const titulo = visao ? VISOES.find((v) => v.id === visao)! : null;
 
@@ -73,44 +76,55 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const pctAntes = ant && ant.antes + ant.depoisOuJunto > 0 ? ant.antes / (ant.antes + ant.depoisOuJunto) : null;
 
   const menu = (
-    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
-      <Quadro
-        {...q("custo")}
-        rotulo="Custo e equipe"
-        valor={custo === null ? "—" : semCentavos(custo)}
-        sub={`${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${delta > 0 ? "+" : ""}${formatPercent(delta, 1)} vs mês anterior` : ""}`}
-      />
-      <Quadro
-        {...q("volume")}
-        rotulo="Volume"
-        valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
-        sub={semH ?? (resumo ? `${n0(resumo.unidades)} un · ${resumo.dias} dias` : "sem abastecimento no mês")}
-      />
-      <Quadro
-        {...q("antecedencia")}
-        rotulo="Antecedência"
-        valor={pctAntes !== null ? formatPercent(pctAntes, 0) : "—"}
-        sub={semH ?? (ant ? `mediana ${ant.medianaHoras !== null ? n1(ant.medianaHoras) : "—"}h de folga` : "sem cargas no mês")}
-      />
-      <Quadro
-        {...q("giro")}
-        rotulo="Giro de picking"
-        valor={h ? `${h.produtos.length} produtos` : "—"}
-        sub={semH ?? (resumo ? `${n0(resumo.abastecimentos)} abastecimentos · ${resumo.dias} dias` : "sem abastecimento no mês")}
-      />
-      <Quadro
-        {...q("movimento")}
-        rotulo="Movimentação"
-        valor={h ? `${n0(h.movimentoPiso.total)}` : "—"}
-        sub={semH ?? (h ? `${n0(h.movimentoPiso.vertical)} vert. · ${n0(h.movimentoPiso.horizontal)} horiz. · ${h.movimentoPiso.pessoas.length} pessoas` : "sem dado no mês")}
-      />
-      <Quadro
-        {...q("rupturas")}
-        rotulo="Rupturas"
-        valor={h ? `${h.rupturas.length}` : "—"}
-        sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no mês")}
-      />
-    </div>
+    <>
+      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
+        <Quadro
+          {...q("custo")}
+          rotulo="Custo e equipe"
+          valor={custo === null ? "—" : semCentavos(custo)}
+          sub={`${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${delta > 0 ? "+" : ""}${formatPercent(delta, 1)} vs mês anterior` : ""}`}
+        />
+        <Quadro
+          {...q("volume")}
+          rotulo="Volume"
+          valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
+          sub={semH ?? (resumo ? `${n0(resumo.unidades)} un · ${resumo.dias} dias` : "sem abastecimento no mês")}
+        />
+        <Quadro
+          {...q("antecedencia")}
+          rotulo="Antecedência"
+          valor={pctAntes !== null ? formatPercent(pctAntes, 0) : "—"}
+          sub={semH ?? (ant ? `mediana ${ant.medianaHoras !== null ? n1(ant.medianaHoras) : "—"}h de folga` : "sem cargas no mês")}
+        />
+        <Quadro
+          {...q("giro")}
+          rotulo="Giro de picking"
+          valor={h ? `${h.produtos.length} produtos` : "—"}
+          sub={semH ?? (resumo ? `${n0(resumo.abastecimentos)} abastecimentos · ${resumo.dias} dias` : "sem abastecimento no mês")}
+        />
+        <Quadro
+          {...q("movimento")}
+          rotulo="Movimentação"
+          valor={h ? `${n0(h.movimentoPiso.total)}` : "—"}
+          sub={semH ?? (h ? `${n0(h.movimentoPiso.vertical)} vert. · ${n0(h.movimentoPiso.horizontal)} horiz.` : "sem dado no mês")}
+        />
+        <Quadro
+          {...q("rupturas")}
+          rotulo="Rupturas"
+          valor={h ? `${h.rupturas.length}` : "—"}
+          sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no mês")}
+        />
+      </div>
+      {dia && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-white/50">
+          <span className="font-semibold uppercase tracking-[0.16em]">Filtro</span>
+          <ChipTV ativo onClick={() => setDia(null)}>
+            dia {ddmm(dia)} ✕
+          </ChipTV>
+          <span>vale pra Volume, Antecedência e Movimentação · Esc limpa</span>
+        </div>
+      )}
+    </>
   );
 
   return (
@@ -120,6 +134,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
       hrefMes={hrefMes}
       hrefSair={hrefSair}
       menu={menu}
+      onEsc={() => setDia(null)}
       palco={
         visao && titulo
           ? {
@@ -132,13 +147,13 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : !h ? (
                   <SemHarpia erro={semH ?? ""} />
                 ) : visao === "volume" ? (
-                  <VisaoVolume h={h} mes={dados.mes} pessoas={dados.pessoas.length} custoMes={custo} />
+                  <VisaoVolume h={h} mes={dados.mes} pessoas={dados.pessoas.length} custoMes={custo} dia={dia} onDia={setDia} />
                 ) : visao === "antecedencia" ? (
-                  <VisaoAntecedencia ant={ant!} />
+                  <VisaoAntecedencia h={h} mes={dados.mes} dia={dia} onDia={setDia} />
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
                 ) : visao === "movimento" ? (
-                  <VisaoMovimento movimento={h.movimentoPiso} mes={dados.mes} />
+                  <VisaoMovimento movimento={h.movimentoPiso} mes={dados.mes} dia={dia} onDia={setDia} />
                 ) : (
                   <VisaoRupturas h={h} mes={dados.mes} />
                 ),
@@ -315,16 +330,20 @@ function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
 
 // --- VOLUME --------------------------------------------------------------------
 
-function VisaoVolume({ h, mes, pessoas, custoMes }: { h: DadosHarpiaAbastecimento; mes: string; pessoas: number; custoMes: number | null }) {
-  const [dia, setDia] = useState<string | null>(null);
+function VisaoVolume({
+  h, mes, pessoas, custoMes, dia, onDia,
+}: {
+  h: DadosHarpiaAbastecimento; mes: string; pessoas: number; custoMes: number | null; dia: string | null; onDia: (d: string | null) => void;
+}) {
   const resumo = resumoVolume(h.dias);
   if (h.dias.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
   const porDiaCx = new Map(h.dias.map((d) => [d.dia, d.caixas]));
   const caixasPorPessoaDia = pessoas && resumo.dias ? resumo.caixas / pessoas / resumo.dias : null;
   const skusPorPessoaDia = pessoas && resumo.skusMedioDia !== null ? resumo.skusMedioDia / pessoas : null;
   const custoPorCaixa = custoMes !== null && resumo.caixas > 0 ? custoMes / resumo.caixas : null;
+  const diaDados = dia ? h.dias.find((d) => d.dia === dia) ?? null : null;
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
         <Mini rotulo="Caixas" valor={n0(resumo.caixas)} sub={`${resumo.dias} dias com abastecimento`} />
         <Mini rotulo="Unidades" valor={n0(resumo.unidades)} />
@@ -333,16 +352,24 @@ function VisaoVolume({ h, mes, pessoas, custoMes }: { h: DadosHarpiaAbasteciment
         <Mini rotulo="Caixas por pessoa/dia" valor={caixasPorPessoaDia !== null ? n1(caixasPorPessoaDia) : "—"} sub={pessoas ? `${pessoas} pessoas no setor` : "nenhuma pessoa cadastrada no setor"} />
         <Mini rotulo="SKUs por pessoa/dia" valor={skusPorPessoaDia !== null ? n1(skusPorPessoaDia) : "—"} sub="eficiência da equipe, não por pessoa" />
       </div>
+      {diaDados && (
+        <div className="grid grid-cols-3 gap-3 rounded-xl bg-amber-400/10 p-2 ring-1 ring-amber-400/30 xl:grid-cols-4">
+          <Mini rotulo={`Caixas · ${ddmm(dia!)}`} valor={n0(diaDados.caixas)} />
+          <Mini rotulo="Unidades do dia" valor={n0(diaDados.unidades)} />
+          <Mini rotulo="SKUs do dia" valor={n0(diaDados.skus)} />
+          <Mini rotulo="Abastecimentos do dia" valor={n0(diaDados.abastecimentos)} />
+        </div>
+      )}
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <Bloco titulo="Caixas abastecidas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
-          <CalendarioBI mes={mes} porDia={porDiaCx} fmt={n0} selecionado={dia} onSelecionar={setDia} vazio="sem abastecimento" />
+          <CalendarioBI mes={mes} porDia={porDiaCx} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem abastecimento" />
         </Bloco>
         <div className="grid min-h-0 grid-rows-2 gap-4">
           <Bloco titulo="Unidades abastecidas por dia">
             <BarrasTV
               altura={150}
               fmt={n0}
-              onClick={(d) => setDia(dia === d ? null : d)}
+              onClick={(d) => onDia(dia === d ? null : d)}
               itens={h.dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.unidades, detalhe: `${ddmm(d.dia)} · ${n0(d.unidades)} un`, selecionado: d.dia === dia }))}
             />
           </Bloco>
@@ -350,7 +377,7 @@ function VisaoVolume({ h, mes, pessoas, custoMes }: { h: DadosHarpiaAbasteciment
             <BarrasTV
               altura={150}
               fmt={n0}
-              onClick={(d) => setDia(dia === d ? null : d)}
+              onClick={(d) => onDia(dia === d ? null : d)}
               itens={h.dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.skus, detalhe: `${ddmm(d.dia)} · ${n0(d.skus)} SKUs`, selecionado: d.dia === dia }))}
             />
           </Bloco>
@@ -362,26 +389,39 @@ function VisaoVolume({ h, mes, pessoas, custoMes }: { h: DadosHarpiaAbasteciment
 
 // --- ANTECEDÊNCIA ---------------------------------------------------------------
 
-function VisaoAntecedencia({ ant }: { ant: ReturnType<typeof resumoAntecedencia> }) {
-  if (ant.total === 0) return <Vazio>Nenhuma carga abastecida neste mês.</Vazio>;
+function VisaoAntecedencia({
+  h, mes, dia, onDia,
+}: {
+  h: DadosHarpiaAbastecimento; mes: string; dia: string | null; onDia: (d: string | null) => void;
+}) {
+  const cargasFiltradas = dia ? h.cargas.filter((c) => c.dia === dia) : h.cargas;
+  const ant = resumoAntecedencia(cargasFiltradas);
+  if (h.cargas.length === 0) return <Vazio>Nenhuma carga abastecida neste mês.</Vazio>;
   const pctAntes = ant.antes + ant.depoisOuJunto > 0 ? ant.antes / (ant.antes + ant.depoisOuJunto) : null;
   const maxFaixa = Math.max(1, ...ant.faixas.map((f) => f.qtd));
+  const porDia = new Map<string, number>();
+  for (const c of h.cargas) porDia.set(c.dia, (porDia.get(c.dia) ?? 0) + 1);
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Mini rotulo="Cargas analisadas" valor={n0(ant.total)} sub={ant.semSeparacao ? `${ant.semSeparacao} ainda sem separação` : undefined} />
+        <Mini rotulo="Cargas analisadas" valor={n0(ant.total)} sub={dia ? ddmm(dia) : ant.semSeparacao ? `${ant.semSeparacao} ainda sem separação` : formatMesAno(mes)} />
         <Mini rotulo="Abastecido antes" valor={pctAntes !== null ? formatPercent(pctAntes, 0) : "—"} sub={`${n0(ant.antes)} de ${n0(ant.antes + ant.depoisOuJunto)} cargas`} />
         <Mini rotulo="Mediana de folga" valor={ant.medianaHoras !== null ? `${n1(ant.medianaHoras)}h` : "—"} sub="entre o abastecimento e o fim da separação" />
         <Mini rotulo="Depois ou junto" valor={n0(ant.depoisOuJunto)} sub="carga separada sem folga de abastecimento" />
       </div>
-      <Bloco titulo="Distribuição da folga">
-        <BarrasTV
-          altura={220}
-          fmt={n0}
-          itens={ant.faixas.map((f) => ({ chave: f.chave, rotulo: f.rotulo, valor: f.qtd, detalhe: `${f.rotulo} · ${n0(f.qtd)} cargas`, cor: f.qtd === maxFaixa ? "#c2820a" : "#5b6fd6" }))}
-        />
-        <p className="mt-3 text-xs text-white/35">Folga = horas entre o 1º abastecimento que serviu a carga e o fim da separação dela. &quot;Depois/junto&quot; nunca deveria ter volume relevante — o abastecimento alimenta o estoque que a separação consome.</p>
-      </Bloco>
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <Bloco titulo="Cargas abastecidas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem carga" />
+        </Bloco>
+        <Bloco titulo="Distribuição da folga">
+          <BarrasTV
+            altura={220}
+            fmt={n0}
+            itens={ant.faixas.map((f) => ({ chave: f.chave, rotulo: f.rotulo, valor: f.qtd, detalhe: `${f.rotulo} · ${n0(f.qtd)} cargas`, cor: f.qtd === maxFaixa ? "#c2820a" : "#5b6fd6" }))}
+          />
+          <p className="mt-3 text-xs text-white/35">Folga = horas entre o 1º abastecimento que serviu a carga e o fim da separação dela. &quot;Depois/junto&quot; nunca deveria ter volume relevante — o abastecimento alimenta o estoque que a separação consome.</p>
+        </Bloco>
+      </div>
     </div>
   );
 }
@@ -389,11 +429,15 @@ function VisaoAntecedencia({ ant }: { ant: ReturnType<typeof resumoAntecedencia>
 // --- GIRO DE PICKING -------------------------------------------------------------
 
 function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
+  const [produtoAberto, setProdutoAberto] = useState<number | null>(null);
   const diasAtivos = resumoVolume(h.dias).dias;
   const max = Math.max(1, ...h.produtos.map((p) => p.abastecimentos));
   if (h.produtos.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
   const totalCurvas = h.curvas.reduce((t, c) => t + c.abastecimentos, 0);
   const fatiasCurva = h.curvas.map((c) => ({ rotulo: c.curva === "?" ? "Sem classificação" : `Curva ${c.curva}`, valor: c.abastecimentos, cor: corCurva(c.curva) }));
+  const produtoSel = produtoAberto ? h.produtos.find((p) => p.produto === produtoAberto) ?? null : null;
+  const historico = produtoAberto ? historicoProduto(h.produtosDia, produtoAberto) : [];
+  const toggle = (p: number) => setProdutoAberto((a) => (a === p ? null : p));
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
@@ -413,54 +457,92 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
           </p>
         </Bloco>
       )}
-      <Bloco titulo="Produtos com mais abastecimentos" direita={<Dica>sem dado de capacidade do endereço — não é registrado para esses produtos no Harpia</Dica>}>
-        <ul className="h-full space-y-2 overflow-auto pr-1">
-          {h.produtos.map((p) => (
-            <li key={p.produto}>
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="truncate text-white" title={p.descricao ?? undefined}>
-                  {p.curva && (
-                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded text-[0.6rem] font-bold text-[#0a1650]" style={{ background: corCurva(p.curva) }}>
-                      {p.curva}
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <Bloco titulo="Produtos com mais abastecimentos" direita={<Dica>clique num produto pra ver o histórico diário</Dica>}>
+          <ul className="h-full space-y-2 overflow-auto pr-1">
+            {h.produtos.map((p) => (
+              <li key={p.produto}>
+                <button
+                  type="button"
+                  onClick={() => toggle(p.produto)}
+                  className={`w-full rounded-lg px-1.5 py-1 text-left transition ${p.produto === produtoAberto ? "bg-amber-400/10 ring-1 ring-amber-400/40" : "hover:bg-white/[0.04]"}`}
+                >
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="truncate text-white" title={p.descricao ?? undefined}>
+                      {p.curva && (
+                        <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded text-[0.6rem] font-bold text-[#0a1650]" style={{ background: corCurva(p.curva) }}>
+                          {p.curva}
+                        </span>
+                      )}
+                      <span className="text-white/45">{p.produto}</span> {p.descricao ?? ""}
                     </span>
-                  )}
-                  <span className="text-white/45">{p.produto}</span> {p.descricao ?? ""}
-                </span>
-                <span className="shrink-0 font-bold tabular-nums text-white">
-                  {n0(p.abastecimentos)} <span className="font-normal text-white/45">· {diasAtivos ? n1(p.abastecimentos / diasAtivos) : "—"}/dia</span>
-                </span>
+                    <span className="shrink-0 font-bold tabular-nums text-white">
+                      {n0(p.abastecimentos)} <span className="font-normal text-white/45">· {diasAtivos ? n1(p.abastecimentos / diasAtivos) : "—"}/dia</span>
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.abastecimentos / max) * 100}%` }} />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Bloco>
+        <Bloco titulo={produtoSel ? `${produtoSel.produto} · histórico diário` : "Histórico diário"} direita={produtoSel?.descricao ? <Dica>{produtoSel.descricao}</Dica> : undefined}>
+          {produtoSel ? (
+            <>
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                <Mini rotulo="Caixas" valor={n0(produtoSel.caixas)} />
+                <Mini rotulo="Unidades" valor={n0(produtoSel.unidades)} />
+                <Mini rotulo="Abast./dia" valor={diasAtivos ? n1(produtoSel.abastecimentos / diasAtivos) : "—"} />
               </div>
-              <div className="mt-1 h-1.5 rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.abastecimentos / max) * 100}%` }} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Bloco>
+              <BarrasTV
+                altura={150}
+                fmt={n0}
+                itens={historico.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.abastecimentos, detalhe: `${ddmm(d.dia)} · ${n0(d.abastecimentos)}` }))}
+              />
+            </>
+          ) : (
+            <p className="py-6 text-center text-sm text-white/40">Clique num produto na lista pra ver o histórico diário dele.</p>
+          )}
+        </Bloco>
+      </div>
     </div>
   );
 }
 
 // --- MOVIMENTAÇÃO DE ENDEREÇO (equipe real de piso) -------------------------------
 
-function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: string }) {
+function VisaoMovimento({
+  movimento, mes, dia, onDia,
+}: {
+  movimento: MovimentoPiso; mes: string; dia: string | null; onDia: (d: string | null) => void;
+}) {
   const { sub, abrir, fechar } = useSub<"equipe" | "horario">();
+  const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
   if (movimento.total === 0) return <Vazio>Nenhuma movimentação de endereço (reserva → picking) registrada em {formatMesAno(mes)}.</Vazio>;
   const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
-  const maxPessoa = Math.max(1, ...movimento.pessoas.map((p) => p.total));
-  const maxHora = Math.max(1, ...movimento.porHora.map((h) => h.total));
+  const pessoas = pessoasMovimento(movimento.porPessoaDia, dia);
+  const porHora = horaMovimento(movimento.porHoraDia, dia);
+  const diaDados = dia ? movimento.dias.find((d) => d.dia === dia) ?? null : null;
+  const totalFiltrado = diaDados ? diaDados.total : movimento.total;
+  const verticalFiltrado = diaDados ? diaDados.vertical : movimento.vertical;
+  const horizontalFiltrado = totalFiltrado - verticalFiltrado;
+  const maxPessoa = Math.max(1, ...pessoas.map((p) => p.total));
   const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
-  const pico = movimento.porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
-  const mediaPorEmpilhador = movimento.pessoas.length ? movimento.total / movimento.pessoas.length : null;
+  const pico = porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
+  const mediaPorEmpilhador = pessoas.length ? totalFiltrado / pessoas.length : null;
   const card = (k: "equipe" | "horario") => ({ onClick: abrir(k), ativo: sub === k });
+  const pessoaSel = pessoaAberta ? pessoas.find((p) => p.usuario === pessoaAberta) ?? null : null;
+  const historicoSel = pessoaAberta ? historicoPessoa(movimento.porPessoaDia, pessoaAberta) : [];
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-        <Mini rotulo="Movimentações" valor={n0(movimento.total)} sub={formatMesAno(mes)} />
-        <Mini rotulo="Vertical" valor={n0(movimento.vertical)} sub="mudou de nível (altura) no rack" />
-        <Mini rotulo="Horizontal" valor={n0(movimento.horizontal)} sub="mesmo nível, outra posição" />
-        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(movimento.pessoas.length)} sub="clique pra ver quem fez quanto" />
-        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub="movimentações no mês, por pessoa" />
+        <Mini rotulo="Movimentações" valor={n0(totalFiltrado)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+        <Mini rotulo="Vertical" valor={n0(verticalFiltrado)} sub="mudou de nível (altura) no rack" />
+        <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
+        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub="clique pra ver quem fez quanto" />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? `nesse dia, por pessoa` : "no mês, por pessoa"} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
       </div>
       <div className="flex items-center gap-3 text-xs">
@@ -479,9 +561,9 @@ function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: str
       {sub === null && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <Bloco titulo="Movimentações por dia" direita={<Dica>reserva → picking/conferência, depto Logística</Dica>}>
-            <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={null} onSelecionar={() => {}} vazio="sem movimentação" />
+            <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
           </Bloco>
-          <Bloco titulo="Top 5 produtos mais mexidos" direita={<Dica>por nº de movimentações, não por caixa/un</Dica>}>
+          <Bloco titulo="Top 5 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
             {movimento.produtosTop.length === 0 ? (
               <p className="py-6 text-center text-sm text-white/40">Nenhum produto movimentado no mês.</p>
             ) : (
@@ -506,46 +588,64 @@ function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: str
       )}
 
       {sub === "equipe" && (
-        <Bloco titulo="Quem fez" direita={<Dica>ordenado por total de movimentações</Dica>}>
-          <div className="h-full overflow-auto pr-1">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-                <tr>
-                  <th className="py-2 font-semibold">Nome</th>
-                  <th className="py-2 font-semibold">Depto</th>
-                  <th className="py-2 text-right font-semibold">Total</th>
-                  <th className="py-2 text-right font-semibold">Vertical</th>
-                  <th className="py-2 text-right font-semibold">Horizontal</th>
-                  <th className="w-32 py-2 text-right font-semibold">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimento.pessoas.map((p) => (
-                  <tr key={p.usuario} className="border-t border-white/[0.06]">
-                    <td className="py-2 font-semibold text-white">{p.nome ?? `Usuário ${p.usuario}`}</td>
-                    <td className="py-2 text-white/60">{p.departamento ?? "—"}</td>
-                    <td className="py-2 text-right font-bold tabular-nums text-white">{n0(p.total)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{n0(p.vertical)}</td>
-                    <td className="py-2 text-right tabular-nums text-white/70">{n0(p.horizontal)}</td>
-                    <td className="py-2">
-                      <div className="h-1.5 rounded-full bg-white/10">
-                        <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.total / maxPessoa) * 100}%` }} />
-                      </div>
-                    </td>
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "mês inteiro · clique numa pessoa"}</Dica>}>
+            <div className="h-full overflow-auto pr-1">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+                  <tr>
+                    <th className="py-2 font-semibold">Nome</th>
+                    <th className="py-2 font-semibold">Depto</th>
+                    <th className="py-2 text-right font-semibold">Total</th>
+                    <th className="py-2 text-right font-semibold">Vertical</th>
+                    <th className="py-2 text-right font-semibold">Horizontal</th>
+                    <th className="w-32 py-2 text-right font-semibold">%</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Bloco>
+                </thead>
+                <tbody>
+                  {pessoas.map((p) => (
+                    <tr
+                      key={p.usuario}
+                      onClick={() => setPessoaAberta((a) => (a === p.usuario ? null : p.usuario))}
+                      className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${p.usuario === pessoaAberta ? "bg-amber-400/10" : ""}`}
+                    >
+                      <td className="py-2 font-semibold text-white">{p.nome ?? `Usuário ${p.usuario}`}</td>
+                      <td className="py-2 text-white/60">{p.departamento ?? "—"}</td>
+                      <td className="py-2 text-right font-bold tabular-nums text-white">{n0(p.total)}</td>
+                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.vertical)}</td>
+                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.horizontal)}</td>
+                      <td className="py-2">
+                        <div className="h-1.5 rounded-full bg-white/10">
+                          <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.total / maxPessoa) * 100}%` }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Bloco>
+          <Bloco titulo={pessoaSel ? `${pessoaSel.nome ?? `Usuário ${pessoaSel.usuario}`} · histórico` : "Histórico diário"}>
+            {pessoaSel ? (
+              <BarrasTV
+                altura={220}
+                fmt={n0}
+                onClick={(d) => onDia(dia === d ? null : d)}
+                itens={historicoSel.map((x) => ({ chave: x.dia, rotulo: x.dia.slice(8, 10), valor: x.total, detalhe: `${ddmm(x.dia)} · ${n0(x.total)}`, selecionado: x.dia === dia }))}
+              />
+            ) : (
+              <p className="py-6 text-center text-sm text-white/40">Clique numa pessoa na tabela pra ver o histórico diário dela.</p>
+            )}
+          </Bloco>
+        </div>
       )}
 
       {sub === "horario" && (
-        <Bloco titulo="Movimentações por hora do dia">
+        <Bloco titulo="Movimentações por hora do dia" direita={<Dica>{dia ? ddmm(dia) : formatMesAno(mes)}</Dica>}>
           <BarrasTV
             altura={240}
             fmt={n0}
-            itens={movimento.porHora.map((x) => ({
+            itens={porHora.map((x) => ({
               chave: String(x.hora),
               rotulo: `${x.hora}h`,
               valor: x.total,
@@ -553,7 +653,7 @@ function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: str
               detalhe: `${String(x.hora).padStart(2, "0")}:00–${String(x.hora).padStart(2, "0")}:59 · ${n0(x.total)}`,
             }))}
           />
-          <p className="mt-2 text-xs text-white/35">Pico em {String(pico.hora).padStart(2, "0")}h, com {n0(pico.total)} de {n0(movimento.total)} movimentações ({formatPercent(maxHora / Math.max(1, movimento.total), 0)}).</p>
+          <p className="mt-2 text-xs text-white/35">Pico em {String(pico.hora).padStart(2, "0")}h, com {n0(pico.total)} de {n0(totalFiltrado)} movimentações ({formatPercent(totalFiltrado > 0 ? pico.total / totalFiltrado : 0, 0)}).</p>
         </Bloco>
       )}
     </div>

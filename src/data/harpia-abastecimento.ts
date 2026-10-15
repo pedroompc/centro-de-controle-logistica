@@ -16,6 +16,10 @@ import { filialIn } from "./filiais";
  *
  * Rupturas de picking (estoque negativo no endereço) ficam em
  * `HIST_ABAST_NEG_848`, ligadas a (1).
+ *
+ * Movimentação e cargas vêm em linhas POR DIA (não pré-agregadas) pra dar
+ * pro BI cruzar filtro de dia entre visões e abrir histórico por pessoa/
+ * produto — a agregação em si é feita no domínio (`@/domain/abastecimento`).
  */
 
 export interface DiaAbastecimento {
@@ -35,6 +39,12 @@ export interface ProdutoGiro {
   unidades: number;
 }
 
+export interface ProdutoGiroDia {
+  produto: number;
+  dia: string;
+  abastecimentos: number;
+}
+
 export interface CurvaAbast {
   curva: string; // "A" | "B" | "C" | "?" (sem classificação)
   abastecimentos: number;
@@ -43,6 +53,7 @@ export interface CurvaAbast {
 
 export interface CargaAntecedencia {
   numcar: number;
+  dia: string; // dia do 1º abastecimento que serviu a carga
   /** Horas entre o 1º abastecimento e o fim da separação da carga; `null` = carga sem separação finalizada no recorte. */
   horasFolga: number | null;
 }
@@ -55,13 +66,19 @@ export interface RupturaAbastecimento {
   unidades: number;
 }
 
-export interface PessoaMovimentoPiso {
+export interface LinhaPessoaDia {
+  dia: string;
   usuario: number;
   nome: string | null;
   departamento: string | null;
   total: number;
   vertical: number;
-  horizontal: number;
+}
+
+export interface LinhaHoraDia {
+  dia: string;
+  hora: number;
+  total: number;
 }
 
 export interface DiaMovimentoPiso {
@@ -80,15 +97,16 @@ export interface MovimentoPiso {
   total: number;
   vertical: number;
   horizontal: number;
-  pessoas: PessoaMovimentoPiso[];
-  dias: DiaMovimentoPiso[];
-  porHora: { hora: number; total: number }[];
-  produtosTop: ProdutoMovimentoPiso[];
+  dias: DiaMovimentoPiso[]; // pro calendário
+  porPessoaDia: LinhaPessoaDia[]; // agregação/filtro por dia é no domínio
+  porHoraDia: LinhaHoraDia[]; // idem
+  produtosTop: ProdutoMovimentoPiso[]; // top 5 do mês inteiro
 }
 
 export interface DadosHarpiaAbastecimento {
   dias: DiaAbastecimento[];
   produtos: ProdutoGiro[];
+  produtosDia: ProdutoGiroDia[]; // histórico diário só dos produtos do top 20 (drill-down)
   curvas: CurvaAbast[];
   cargas: CargaAntecedencia[];
   rupturas: RupturaAbastecimento[];
@@ -150,7 +168,7 @@ WITH abast AS (
    WHERE NUMCAR IS NOT NULL AND NUMCAR > 0 AND POSICAO <> 'C' AND ${filialIn("CODFILIAL")}
    GROUP BY NUMCAR
 )
-SELECT a.NUMCAR, (s.DT_SEP - a.DT_ABAST) * 24 AS HORAS_FOLGA
+SELECT a.NUMCAR, TO_CHAR(TRUNC(a.DT_ABAST), 'YYYY-MM-DD') AS DIA, (s.DT_SEP - a.DT_ABAST) * 24 AS HORAS_FOLGA
   FROM abast a
   LEFT JOIN sep s ON s.NUMCAR = a.NUMCAR`;
 
@@ -178,16 +196,17 @@ SELECT COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}`;
 
-const SQL_MOVIMENTO_PESSOAS = `
-SELECT m.USU_FK_502 AS USU, u.DESCR_COMPLETO_754 AS NOME, d.DESCR_176 AS DEPTO,
+// Por pessoa E por dia (não pré-agregado) — dá pro BI filtrar por dia e abrir histórico por pessoa.
+const SQL_MOVIMENTO_PESSOAS_DIA = `
+SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, m.USU_FK_502 AS USU,
+       u.DESCR_COMPLETO_754 AS NOME, d.DESCR_176 AS DEPTO,
        COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
   FROM HARPIAW2.MOVIMENT_END_502 m
   LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = m.USU_FK_502
   LEFT JOIN HARPIAW2.DEPART_176 d ON d.DEPART_PK_176 = u.DEPART_FK_754
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}
- GROUP BY m.USU_FK_502, u.DESCR_COMPLETO_754, d.DESCR_176
- ORDER BY COUNT(*) DESC`;
+ GROUP BY TRUNC(m.DT_MOVIMENT_502), m.USU_FK_502, u.DESCR_COMPLETO_754, d.DESCR_176`;
 
 const SQL_MOVIMENTO_DIAS = `
 SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
@@ -196,12 +215,13 @@ SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TOTAL
    AND ${FILTRO_PISO}
  GROUP BY TRUNC(m.DT_MOVIMENT_502)`;
 
-const SQL_MOVIMENTO_HORA = `
-SELECT TO_CHAR(m.DT_MOVIMENT_502, 'HH24') AS HORA, COUNT(*) AS TOTAL
+// Por hora E por dia — mesma lógica: filtro de dia reusa a mesma consulta.
+const SQL_MOVIMENTO_HORA_DIA = `
+SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, TO_CHAR(m.DT_MOVIMENT_502, 'HH24') AS HORA, COUNT(*) AS TOTAL
   FROM HARPIAW2.MOVIMENT_END_502 m
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}
- GROUP BY TO_CHAR(m.DT_MOVIMENT_502, 'HH24')`;
+ GROUP BY TRUNC(m.DT_MOVIMENT_502), TO_CHAR(m.DT_MOVIMENT_502, 'HH24')`;
 
 // ROWNUM (não FETCH FIRST) por compatibilidade com Oracle anterior ao 12c.
 const SQL_MOVIMENTO_PRODUTOS = `
@@ -231,24 +251,45 @@ async function descricoesProdutos(codigos: number[]): Promise<Map<number, string
   return mapa;
 }
 
+/** Histórico diário dos produtos do top 20 (drill-down do Giro). Vazio se não há produtos. */
+async function produtosDiaDoMes(codigos: number[], binds: { ini: string; fim: string }): Promise<ProdutoGiroDia[]> {
+  const unicos = [...new Set(codigos.filter((c) => c > 0))];
+  if (!unicos.length) return [];
+  const sql = `
+SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA, COUNT(*) AS QTD
+  FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
+  JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
+ WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND m.MERC_FK_1361 IN (${unicos.map((_, i) => `:c${i}`).join(",")})
+ GROUP BY m.MERC_FK_1361, TRUNC(p.PREP_DTHR_809)`;
+  const rows = await queryWinthor<{ PRODUTO: number; DIA: string; QTD: number }>(sql, {
+    ...binds,
+    ...Object.fromEntries(unicos.map((c, i) => [`c${i}`, c])),
+  });
+  return rows.map((r) => ({ produto: num(r.PRODUTO), dia: String(r.DIA), abastecimentos: num(r.QTD) }));
+}
+
 /** Lê o abastecimento do mês no Harpia. Lança erro (ex.: sem permissão) — quem chama mostra. */
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoas, movDias, movHora, movProdutos] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
-    queryWinthor<{ NUMCAR: number; HORAS_FOLGA: number | null }>(SQL_CARGAS, binds),
+    queryWinthor<{ NUMCAR: number; DIA: string; HORAS_FOLGA: number | null }>(SQL_CARGAS, binds),
     queryWinthor<{ DT: string; PRODUTO: number; CX: number; UN: number }>(SQL_RUPTURAS, binds),
     queryWinthor<{ REATIVOS: number }>(SQL_REATIVOS, binds),
     queryWinthor<{ TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_TOTAL, binds),
-    queryWinthor<{ USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_PESSOAS, binds),
+    queryWinthor<{ DIA: string; USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_PESSOAS_DIA, binds),
     queryWinthor<{ DIA: string; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_DIAS, binds),
-    queryWinthor<{ HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA, binds),
+    queryWinthor<{ DIA: string; HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA_DIA, binds),
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
   ]);
-  const descricoes = await descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]);
+  const [descricoes, produtosDia] = await Promise.all([
+    descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
+    produtosDiaDoMes(prods.map((r) => num(r.PRODUTO)), binds),
+  ]);
   const movTotalNum = num(movTotal[0]?.TOTAL);
   const movVerticalNum = num(movTotal[0]?.VERTICAL);
   return {
@@ -263,11 +304,13 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
       caixas: num(r.CX),
       unidades: num(r.UN),
     })),
+    produtosDia,
     curvas: curvasRaw
       .map((r) => ({ curva: String(r.CURVA), abastecimentos: num(r.QTD), skus: num(r.SKUS) }))
       .sort((a, b) => b.abastecimentos - a.abastecimentos),
     cargas: cargas.map((r) => ({
       numcar: num(r.NUMCAR),
+      dia: String(r.DIA),
       horasFolga: r.HORAS_FOLGA == null ? null : Number(r.HORAS_FOLGA),
     })),
     rupturas: rupturas.map((r) => ({
@@ -282,20 +325,18 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
       total: movTotalNum,
       vertical: movVerticalNum,
       horizontal: movTotalNum - movVerticalNum,
-      pessoas: movPessoas
-        .map((r) => ({
-          usuario: num(r.USU),
-          nome: r.NOME ?? null,
-          departamento: r.DEPTO ?? null,
-          total: num(r.TOTAL),
-          vertical: num(r.VERTICAL),
-          horizontal: num(r.TOTAL) - num(r.VERTICAL),
-        }))
-        .sort((a, b) => b.total - a.total),
       dias: movDias
         .map((r) => ({ dia: String(r.DIA), total: num(r.TOTAL), vertical: num(r.VERTICAL) }))
         .sort((a, b) => a.dia.localeCompare(b.dia)),
-      porHora: movHora.map((r) => ({ hora: Number(r.HORA), total: num(r.TOTAL) })).sort((a, b) => a.hora - b.hora),
+      porPessoaDia: movPessoasDia.map((r) => ({
+        dia: String(r.DIA),
+        usuario: num(r.USU),
+        nome: r.NOME ?? null,
+        departamento: r.DEPTO ?? null,
+        total: num(r.TOTAL),
+        vertical: num(r.VERTICAL),
+      })),
+      porHoraDia: movHoraDia.map((r) => ({ dia: String(r.DIA), hora: Number(r.HORA), total: num(r.TOTAL) })),
       produtosTop: movProdutos.map((r) => ({
         produto: num(r.PRODUTO),
         descricao: descricoes.get(num(r.PRODUTO)) ?? null,

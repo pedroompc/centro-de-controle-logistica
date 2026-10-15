@@ -79,3 +79,50 @@ export function resumoAntecedencia(cargas: { horasFolga: number | null }[]): Res
     faixas: FAIXAS_ANTECEDENCIA.map((f) => ({ chave: f.chave, rotulo: f.rotulo, qtd: comDado.filter((c) => f.teste(c.horasFolga)).length })),
   };
 }
+
+// --- Movimentação de piso: agregação por dia/pessoa/produto (filtro cruzado) --
+
+export interface PessoaMovimento {
+  usuario: number;
+  nome: string | null;
+  departamento: string | null;
+  total: number;
+  vertical: number;
+  horizontal: number;
+}
+
+/** Agrega movimentação por pessoa; `dia` filtra pra um dia específico (`null` = mês inteiro). */
+export function pessoasMovimento(linhas: { dia: string; usuario: number; nome: string | null; departamento: string | null; total: number; vertical: number }[], dia: string | null): PessoaMovimento[] {
+  const m = new Map<number, Omit<PessoaMovimento, "horizontal">>();
+  for (const l of linhas) {
+    if (dia && l.dia !== dia) continue;
+    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, departamento: l.departamento, total: 0, vertical: 0 };
+    r.total += l.total;
+    r.vertical += l.vertical;
+    m.set(l.usuario, r);
+  }
+  return [...m.values()].map((r) => ({ ...r, horizontal: r.total - r.vertical })).sort((a, b) => b.total - a.total);
+}
+
+/** Movimentações por hora do dia; `dia` filtra pra um dia específico (`null` = mês inteiro). */
+export function horaMovimento(linhas: { dia: string; hora: number; total: number }[], dia: string | null): { hora: number; total: number }[] {
+  const m = new Map<number, number>();
+  for (const l of linhas) {
+    if (dia && l.dia !== dia) continue;
+    m.set(l.hora, (m.get(l.hora) ?? 0) + l.total);
+  }
+  return [...m.entries()].map(([hora, total]) => ({ hora, total })).sort((a, b) => a.hora - b.hora);
+}
+
+/** Histórico diário de uma pessoa (drill-down ao clicar na linha dela). */
+export function historicoPessoa(linhas: { dia: string; usuario: number; total: number }[], usuario: number): { dia: string; total: number }[] {
+  return linhas
+    .filter((l) => l.usuario === usuario)
+    .map((l) => ({ dia: l.dia, total: l.total }))
+    .sort((a, b) => a.dia.localeCompare(b.dia));
+}
+
+/** Histórico diário de um produto do top 20 (drill-down ao clicar no produto, no Giro). */
+export function historicoProduto(linhas: { produto: number; dia: string; abastecimentos: number }[], produto: number): { dia: string; abastecimentos: number }[] {
+  return linhas.filter((l) => l.produto === produto).sort((a, b) => a.dia.localeCompare(b.dia));
+}
