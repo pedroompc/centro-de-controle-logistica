@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { custoDoSetor, headcountPorStatus, faltasNoPeriodo, custoTotalAtivos } from "./metrics";
+import { custoDoSetor, headcountPorStatus, faltasNoPeriodo, custoTotalAtivos, resumoPorTurno } from "./metrics";
 import type { Funcionario, Falta } from "./types";
 
 const f = (over: Partial<Funcionario>): Funcionario => ({
@@ -17,6 +17,7 @@ const f = (over: Partial<Funcionario>): Funcionario => ({
   ajudaCusto: null,
   premiacao: null,
   adicionalNoturno: null,
+  turno: "manha",
   ...over,
 });
 
@@ -77,5 +78,27 @@ describe("custoTotalAtivos", () => {
       f({ id: "3", custoMensal: 3034, status: "desligado" }),
     ];
     expect(custoTotalAtivos(funcs)).toBe(6068);
+  });
+});
+
+describe("resumoPorTurno", () => {
+  const funcs = [
+    f({ id: "1", setorId: "s1", turno: "manha", custoMensal: 1000 }),
+    f({ id: "2", setorId: "s1", turno: "noite", custoMensal: 2000 }),
+    f({ id: "3", setorId: "s1", turno: "noite", custoMensal: 3000 }),
+    f({ id: "4", setorId: "s1", turno: "noite", custoMensal: 9000, status: "desligado" }),
+    f({ id: "5", setorId: "s2", turno: "tarde", custoMensal: 500 }),
+  ];
+
+  it("conta ativos e soma custo por turno, sempre com os 3 turnos na ordem", () => {
+    expect(resumoPorTurno(funcs, "s1")).toEqual([
+      { turno: "manha", ativos: 1, custo: 1000 },
+      { turno: "tarde", ativos: 0, custo: 0 },
+      { turno: "noite", ativos: 2, custo: 5000 },
+    ]);
+  });
+
+  it("sem setor considera o efetivo inteiro", () => {
+    expect(resumoPorTurno(funcs).map((t) => t.ativos)).toEqual([1, 1, 2]);
   });
 });

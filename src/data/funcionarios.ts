@@ -9,7 +9,7 @@ import type { Funcionario } from "@/domain/types";
 
 // Literal único (não concatenar): o Supabase infere as colunas a partir do tipo
 // literal da string; um `string` genérico degrada a inferência.
-const COLUNAS = "id, nome, cargo, setor_id, custo_mensal, data_admissao, status, salario_base, passagem, alimentacao, plano_saude, ajuda_custo, premiacao, adicional_noturno";
+const COLUNAS = "id, nome, cargo, setor_id, custo_mensal, data_admissao, status, turno, salario_base, passagem, alimentacao, plano_saude, ajuda_custo, premiacao, adicional_noturno";
 
 export async function listarFuncionarios(): Promise<Funcionario[]> {
   const supabase = await createClient();
@@ -63,6 +63,7 @@ export async function salvarFuncionario(formData: FormData): Promise<{ erro: str
     custo_mensal: calculado ?? Number(formData.get("custo_mensal") ?? 0),
     data_admissao: String(formData.get("data_admissao") ?? ""),
     status: String(formData.get("status") ?? "ativo"),
+    turno: String(formData.get("turno") ?? "manha"),
     salario_base: composicao.salarioBase,
     passagem: composicao.passagem,
     alimentacao: composicao.alimentacao,

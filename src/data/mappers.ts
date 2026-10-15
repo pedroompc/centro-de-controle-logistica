@@ -1,4 +1,4 @@
-import type { Setor, Funcionario, Falta, StatusFuncionario, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo, ConfigDescarregamento, ReceitaDiversa, ReceitaCategoria, TotalDiarioDescarregamento } from "@/domain/types";
+import type { Setor, Funcionario, Falta, StatusFuncionario, Turno, TipoFalta, CustoFixo, CustoMensal, CustoTipo, Fornecedor, PrecoDescarregamento, Receita, DescarregamentoTipo, ConfigDescarregamento, ReceitaDiversa, ReceitaCategoria, TotalDiarioDescarregamento } from "@/domain/types";
 
 export function mapSetor(row: { id: string; nome: string }): Setor {
   return { id: row.id, nome: row.nome };
@@ -12,6 +12,7 @@ export function mapFuncionario(row: {
   custo_mensal: string | number;
   data_admissao: string;
   status: string;
+  turno?: string | null;
   salario_base?: string | number | null;
   passagem?: string | number | null;
   alimentacao?: string | number | null;
@@ -32,6 +33,7 @@ export function mapFuncionario(row: {
     custoMensal: Number(row.custo_mensal),
     dataAdmissao: row.data_admissao,
     status: row.status as StatusFuncionario,
+    turno: (row.turno ?? "manha") as Turno,
     salarioBase: num(row.salario_base),
     passagem: num(row.passagem),
     alimentacao: num(row.alimentacao),

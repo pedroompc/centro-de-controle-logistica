@@ -17,6 +17,7 @@ const f = (over: Partial<Funcionario>): Funcionario => ({
   ajudaCusto: null,
   premiacao: null,
   adicionalNoturno: null,
+  turno: "manha",
   ...over,
 });
 

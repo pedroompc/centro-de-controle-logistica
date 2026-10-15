@@ -2,6 +2,9 @@ export type UserRole = "admin" | "viewer";
 
 export type StatusFuncionario = "ativo" | "afastado" | "desligado";
 
+/** Quando a pessoa trabalha — dimensão separada do setor (onde). */
+export type Turno = "manha" | "tarde" | "noite";
+
 export type TipoFalta =
   | "justificada"
   | "injustificada"
@@ -22,6 +25,7 @@ export interface Funcionario {
   custoMensal: number;
   dataAdmissao: string; // ISO date "yyyy-mm-dd"
   status: StatusFuncionario;
+  turno: Turno;
   // Composição do custo (rubricas da folha). null = não veio na importação
   // — só parte do efetivo tem o detalhamento gravado.
   salarioBase: number | null;

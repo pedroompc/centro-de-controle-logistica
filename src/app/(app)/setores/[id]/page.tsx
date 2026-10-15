@@ -4,7 +4,7 @@ import { listarSetores, renomearSetor, excluirSetor } from "@/data/setores";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarFaltas } from "@/data/faltas";
 import { isAdmin } from "@/data/auth";
-import { custoDoSetor, headcountPorStatus, faltasNoPeriodo } from "@/domain/metrics";
+import { custoDoSetor, headcountPorStatus, faltasNoPeriodo, resumoPorTurno, ROTULO_TURNO } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
 import { inicioFimMesAtual, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
 import { carregarRecebimento, carregarDetalheCusto, carregarFatosDescarrego } from "../../painel/painel-actions";
@@ -159,6 +159,21 @@ export default async function SetorDetalhe({
         <StatCard label="Faltas no mês" value={`${totalFaltas}`} accent="red" />
       </div>
 
+      <Card className="mt-6 p-6">
+        <SectionTitle>Por turno</SectionTitle>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {resumoPorTurno(funcionarios, id).map((t) => (
+            <div key={t.turno} className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{ROTULO_TURNO[t.turno]}</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-[#141a4d]">
+                {t.ativos} <span className="text-sm font-medium text-slate-500">ativos</span>
+              </p>
+              <p className="text-sm tabular-nums text-slate-600">{formatBRL(t.custo)}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       {admin && (
         <Card className="mt-6 p-6">
           <SectionTitle>Gerenciar setor</SectionTitle>
@@ -198,6 +213,7 @@ export default async function SetorDetalhe({
               <tr>
                 <th className="px-5 py-3 font-semibold">Nome</th>
                 <th className="px-5 py-3 font-semibold">Cargo</th>
+                <th className="px-5 py-3 font-semibold">Turno</th>
                 <th className="px-5 py-3 font-semibold">Custo mensal</th>
                 <th className="px-5 py-3 font-semibold">Status</th>
               </tr>
@@ -211,13 +227,14 @@ export default async function SetorDetalhe({
                     </Link>
                   </td>
                   <td className="px-5 py-3 text-slate-500">{f.cargo}</td>
+                  <td className="px-5 py-3 text-slate-500">{ROTULO_TURNO[f.turno]}</td>
                   <td className="px-5 py-3 tabular-nums text-slate-600">{formatBRL(f.custoMensal)}</td>
                   <td className="px-5 py-3"><StatusBadge status={f.status} /></td>
                 </tr>
               ))}
               {doSetor.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-slate-400">Nenhum funcionário neste setor.</td>
+                  <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Nenhum funcionário neste setor.</td>
                 </tr>
               )}
             </tbody>
@@ -234,7 +251,7 @@ export default async function SetorDetalhe({
               >
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-[#141a4d]">{f.nome}</p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">{f.cargo}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">{f.cargo} · {ROTULO_TURNO[f.turno]}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                   <span className="tabular-nums text-sm font-semibold text-slate-700">{formatBRL(f.custoMensal)}</span>

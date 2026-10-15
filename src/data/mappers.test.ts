@@ -28,6 +28,7 @@ describe("mapFuncionario", () => {
       ajudaCusto: null,
       premiacao: null,
       adicionalNoturno: null,
+      turno: "manha",
     });
   });
 

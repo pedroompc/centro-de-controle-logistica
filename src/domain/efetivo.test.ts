@@ -6,7 +6,7 @@ import type { Funcionario, Falta } from "./types";
 function func(over: Partial<Funcionario>): Funcionario {
   return {
     id: "x", nome: "F", cargo: "C", setorId: "s1", custoMensal: 1000,
-    dataAdmissao: "2026-01-01", status: "ativo",
+    dataAdmissao: "2026-01-01", status: "ativo", turno: "manha",
     salarioBase: null, passagem: null, alimentacao: null, planoSaude: null,
     ajudaCusto: null, premiacao: null, adicionalNoturno: null,
     ...over,

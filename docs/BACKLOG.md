@@ -6,6 +6,8 @@ Itens combinados para fazer **quando os créditos voltarem**. Nada aqui foi impl
 
 ## 1. Separar SETOR de TURNO + filtro por turno  🔜 (prioridade do Pedro)
 
+> **Status 2026-10-15:** campo `turno` criado (migration `0026_turno.sql`), formulário, filtro e coluna na lista, quebra por turno no detalhe do setor. Setor "Noite" reclassificado nos setores reais via SQL (prévia + aplicar). Pendente: dizer quem é da **tarde** (todos fora da noite ficaram `manha` por padrão) e levar o turno pros BIs/dashboard.
+
 **Decisão de design (definida com o Pedro):** setor e turno são **duas dimensões separadas**.
 - `setor` = a ÁREA onde a pessoa atua (ex: Depósito, Entrega...), independente do horário.
 - `turno` = QUANDO ela trabalha — campo próprio no funcionário.

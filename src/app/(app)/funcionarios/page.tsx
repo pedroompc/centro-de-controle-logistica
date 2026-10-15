@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { formatBRL } from "@/domain/format";
+import { TURNOS, ROTULO_TURNO } from "@/domain/metrics";
 import { PageHeader, Card, StatusBadge } from "@/components/ui";
 import { isAdmin } from "@/data/auth";
 import { FuncionarioForm } from "./funcionario-form";
@@ -12,9 +13,9 @@ const inputCls =
 export default async function FuncionariosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ setor?: string; status?: string; q?: string }>;
+  searchParams: Promise<{ setor?: string; turno?: string; status?: string; q?: string }>;
 }) {
-  const { setor, status, q } = await searchParams;
+  const { setor, turno, status, q } = await searchParams;
   const [funcionarios, setores, admin] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
@@ -24,6 +25,7 @@ export default async function FuncionariosPage({
 
   const filtrados = funcionarios.filter((f) => {
     if (setor && f.setorId !== setor) return false;
+    if (turno && f.turno !== turno) return false;
     if (status && f.status !== status) return false;
     if (q && !f.nome.toLowerCase().includes(q.toLowerCase())) return false;
     return true;
@@ -60,6 +62,12 @@ export default async function FuncionariosPage({
               <option key={s.id} value={s.id}>{s.nome}</option>
             ))}
           </select>
+          <select name="turno" defaultValue={turno ?? ""} className={`${inputCls} w-full sm:w-auto`}>
+            <option value="">Todos os turnos</option>
+            {TURNOS.map((t) => (
+              <option key={t} value={t}>{ROTULO_TURNO[t]}</option>
+            ))}
+          </select>
           <select name="status" defaultValue={status ?? ""} className={`${inputCls} w-full sm:w-auto`}>
             <option value="">Todos os status</option>
             <option value="ativo">Ativo</option>
@@ -81,6 +89,7 @@ export default async function FuncionariosPage({
                 <th className="px-5 py-3 font-semibold">Nome</th>
                 <th className="px-5 py-3 font-semibold">Cargo</th>
                 <th className="px-5 py-3 font-semibold">Setor</th>
+                <th className="px-5 py-3 font-semibold">Turno</th>
                 <th className="px-5 py-3 font-semibold">Custo mensal</th>
                 <th className="px-5 py-3 font-semibold">Status</th>
               </tr>
@@ -95,13 +104,14 @@ export default async function FuncionariosPage({
                   </td>
                   <td className="px-5 py-3 text-slate-500">{f.cargo}</td>
                   <td className="px-5 py-3 text-slate-500">{nomeSetor.get(f.setorId) ?? "—"}</td>
+                  <td className="px-5 py-3 text-slate-500">{ROTULO_TURNO[f.turno]}</td>
                   <td className="px-5 py-3 tabular-nums text-slate-600">{formatBRL(f.custoMensal)}</td>
                   <td className="px-5 py-3"><StatusBadge status={f.status} /></td>
                 </tr>
               ))}
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Nenhum funcionário encontrado.</td>
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-400">Nenhum funcionário encontrado.</td>
                 </tr>
               )}
             </tbody>
@@ -119,7 +129,7 @@ export default async function FuncionariosPage({
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-[#141a4d]">{f.nome}</p>
                   <p className="mt-0.5 truncate text-xs text-slate-500">
-                    {f.cargo} · {nomeSetor.get(f.setorId) ?? "—"}
+                    {f.cargo} · {nomeSetor.get(f.setorId) ?? "—"} · {ROTULO_TURNO[f.turno]}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">

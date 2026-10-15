@@ -5,6 +5,7 @@ import { listarSetores } from "@/data/setores";
 import { isAdmin } from "@/data/auth";
 import { formatBRL, formatDataBR } from "@/domain/format";
 import { FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
+import { ROTULO_TURNO } from "@/domain/metrics";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge, Pill } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
 import { FuncionarioForm } from "../funcionario-form";
@@ -41,7 +42,7 @@ export default async function FuncionarioDetalhe({ params }: { params: Promise<{
   return (
     <div>
       <BackLink href="/funcionarios">Funcionários</BackLink>
-      <PageHeader title={funcionario.nome} subtitle={`${funcionario.cargo} · ${setor?.nome ?? "—"}`}>
+      <PageHeader title={funcionario.nome} subtitle={`${funcionario.cargo} · ${setor?.nome ?? "—"} · Turno ${ROTULO_TURNO[funcionario.turno].toLowerCase()}`}>
         <StatusBadge status={funcionario.status} />
         {admin && <FuncionarioForm setores={setores} inicial={funcionario} />}
         {admin && (

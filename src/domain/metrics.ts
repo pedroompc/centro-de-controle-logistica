@@ -1,4 +1,12 @@
-import type { Funcionario, Falta, StatusFuncionario } from "./types";
+import type { Funcionario, Falta, StatusFuncionario, Turno } from "./types";
+
+export const TURNOS: readonly Turno[] = ["manha", "tarde", "noite"];
+
+export const ROTULO_TURNO: Record<Turno, string> = {
+  manha: "Manhã",
+  tarde: "Tarde",
+  noite: "Noite",
+};
 
 export function custoDoSetor(funcionarios: Funcionario[], setorId: string): number {
   return funcionarios
@@ -38,4 +46,20 @@ export function custoTotalAtivos(funcionarios: Funcionario[]): number {
   return funcionarios
     .filter((f) => f.status === "ativo")
     .reduce((total, f) => total + f.custoMensal, 0);
+}
+
+/**
+ * Ativos e custo mensal por turno — de um setor ou, sem `setorId`, do efetivo
+ * inteiro. Devolve sempre os 3 turnos (zerados quando vazios) na ordem do dia.
+ */
+export function resumoPorTurno(
+  funcionarios: Funcionario[],
+  setorId?: string,
+): { turno: Turno; ativos: number; custo: number }[] {
+  return TURNOS.map((turno) => {
+    const doTurno = funcionarios.filter(
+      (f) => f.turno === turno && f.status === "ativo" && (!setorId || f.setorId === setorId),
+    );
+    return { turno, ativos: doTurno.length, custo: doTurno.reduce((t, f) => t + f.custoMensal, 0) };
+  });
 }

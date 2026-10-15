@@ -4,6 +4,7 @@ import { useState } from "react";
 import { salvarFuncionario } from "@/data/funcionarios";
 import { custoMensalDaComposicao, FATOR_ENCARGOS_SALARIO, type ComposicaoCusto } from "@/domain/efetivo";
 import { formatBRL } from "@/domain/format";
+import { TURNOS, ROTULO_TURNO } from "@/domain/metrics";
 import type { Setor, Funcionario } from "@/domain/types";
 
 const STATUS = ["ativo", "afastado", "desligado"] as const;
@@ -92,6 +93,14 @@ export function FuncionarioForm({ setores, inicial }: { setores: Setor[]; inicia
           <option value="" disabled>Selecione…</option>
           {setores.map((s) => (
             <option key={s.id} value={s.id}>{s.nome}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span className={lbl}>Turno</span>
+        <select name="turno" defaultValue={inicial?.turno ?? "manha"} className={`${field} w-full`}>
+          {TURNOS.map((t) => (
+            <option key={t} value={t}>{ROTULO_TURNO[t]}</option>
           ))}
         </select>
       </label>
