@@ -442,15 +442,18 @@ function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: str
   const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
   const maxPessoa = Math.max(1, ...movimento.pessoas.map((p) => p.total));
   const maxHora = Math.max(1, ...movimento.porHora.map((h) => h.total));
+  const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
   const pico = movimento.porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
+  const mediaPorEmpilhador = movimento.pessoas.length ? movimento.total / movimento.pessoas.length : null;
   const card = (k: "equipe" | "horario") => ({ onClick: abrir(k), ativo: sub === k });
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
         <Mini rotulo="Movimentações" valor={n0(movimento.total)} sub={formatMesAno(mes)} />
         <Mini rotulo="Vertical" valor={n0(movimento.vertical)} sub="mudou de nível (altura) no rack" />
         <Mini rotulo="Horizontal" valor={n0(movimento.horizontal)} sub="mesmo nível, outra posição" />
         <Mini {...card("equipe")} rotulo="Pessoas" valor={String(movimento.pessoas.length)} sub="clique pra ver quem fez quanto" />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub="movimentações no mês, por pessoa" />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
       </div>
       <div className="flex items-center gap-3 text-xs">
@@ -467,9 +470,32 @@ function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: str
       </div>
 
       {sub === null && (
-        <Bloco titulo="Movimentações por dia" direita={<Dica>reserva → picking/conferência, depto Logística</Dica>}>
-          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={null} onSelecionar={() => {}} vazio="sem movimentação" />
-        </Bloco>
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <Bloco titulo="Movimentações por dia" direita={<Dica>reserva → picking/conferência, depto Logística</Dica>}>
+            <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={null} onSelecionar={() => {}} vazio="sem movimentação" />
+          </Bloco>
+          <Bloco titulo="Top 5 produtos mais mexidos" direita={<Dica>por nº de movimentações, não por caixa/un</Dica>}>
+            {movimento.produtosTop.length === 0 ? (
+              <p className="py-6 text-center text-sm text-white/40">Nenhum produto movimentado no mês.</p>
+            ) : (
+              <ul className="space-y-3">
+                {movimento.produtosTop.map((p) => (
+                  <li key={p.produto}>
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="truncate text-white" title={p.descricao ?? undefined}>
+                        <span className="text-white/45">{p.produto}</span> {p.descricao ?? ""}
+                      </span>
+                      <span className="shrink-0 font-bold tabular-nums text-white">{n0(p.total)}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.total / maxProduto) * 100}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Bloco>
+        </div>
       )}
 
       {sub === "equipe" && (

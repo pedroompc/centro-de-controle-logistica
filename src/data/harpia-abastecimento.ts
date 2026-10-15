@@ -69,6 +69,12 @@ export interface DiaMovimentoPiso {
   vertical: number;
 }
 
+export interface ProdutoMovimentoPiso {
+  produto: number;
+  descricao: string | null;
+  total: number;
+}
+
 export interface MovimentoPiso {
   total: number;
   vertical: number;
@@ -76,6 +82,7 @@ export interface MovimentoPiso {
   pessoas: PessoaMovimentoPiso[];
   dias: DiaMovimentoPiso[];
   porHora: { hora: number; total: number }[];
+  produtosTop: ProdutoMovimentoPiso[];
 }
 
 export interface DadosHarpiaAbastecimento {
@@ -195,6 +202,17 @@ SELECT TO_CHAR(m.DT_MOVIMENT_502, 'HH24') AS HORA, COUNT(*) AS TOTAL
    AND ${FILTRO_PISO}
  GROUP BY TO_CHAR(m.DT_MOVIMENT_502, 'HH24')`;
 
+// ROWNUM (não FETCH FIRST) por compatibilidade com Oracle anterior ao 12c.
+const SQL_MOVIMENTO_PRODUTOS = `
+SELECT * FROM (
+  SELECT m.MERC_PF_502 AS PRODUTO, COUNT(*) AS TOTAL
+    FROM HARPIAW2.MOVIMENT_END_502 m
+   WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+     AND ${FILTRO_PISO}
+   GROUP BY m.MERC_PF_502
+   ORDER BY COUNT(*) DESC
+) WHERE ROWNUM <= 5`;
+
 /** Descrição do produto pelo cadastro do Winthor (o código do Harpia costuma ser o CODPROD). */
 async function descricoesProdutos(codigos: number[]): Promise<Map<number, string>> {
   const unicos = [...new Set(codigos.filter((c) => c > 0))];
@@ -216,7 +234,7 @@ async function descricoesProdutos(codigos: number[]): Promise<Map<number, string
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoas, movDias, movHora] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoas, movDias, movHora, movProdutos] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number }>(SQL_CURVAS, binds),
@@ -227,8 +245,9 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_PESSOAS, binds),
     queryWinthor<{ DIA: string; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_DIAS, binds),
     queryWinthor<{ HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA, binds),
+    queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
   ]);
-  const descricoes = await descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO)]);
+  const descricoes = await descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]);
   const movTotalNum = num(movTotal[0]?.TOTAL);
   const movVerticalNum = num(movTotal[0]?.VERTICAL);
   return {
@@ -274,6 +293,11 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         .map((r) => ({ dia: String(r.DIA), total: num(r.TOTAL), vertical: num(r.VERTICAL) }))
         .sort((a, b) => a.dia.localeCompare(b.dia)),
       porHora: movHora.map((r) => ({ hora: Number(r.HORA), total: num(r.TOTAL) })).sort((a, b) => a.hora - b.hora),
+      produtosTop: movProdutos.map((r) => ({
+        produto: num(r.PRODUTO),
+        descricao: descricoes.get(num(r.PRODUTO)) ?? null,
+        total: num(r.TOTAL),
+      })),
     },
   };
 }
