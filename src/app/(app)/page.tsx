@@ -2,7 +2,7 @@ import Link from "next/link";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFaltas } from "@/data/faltas";
-import { custoDoSetor, faltasNoPeriodo } from "@/domain/metrics";
+import { custoDoSetor, faltasNoPeriodo, resumoPorTurno, ROTULO_TURNO } from "@/domain/metrics";
 import { formatBRL, formatPercent } from "@/domain/format";
 import {
   primeiroDiaDoMes,
@@ -196,6 +196,17 @@ export default async function Dashboard({
     },
   ];
 
+  // Efetivo por turno (cadastro atual — turno não tem foto mensal).
+  const nomeSetor = new Map(setores.map((s) => [s.id, s.nome]));
+  const porTurno = resumoPorTurno(funcionarios).map((t) => {
+    const contagem = new Map<string, number>();
+    for (const f of ativos) if (f.turno === t.turno) contagem.set(f.setorId, (contagem.get(f.setorId) ?? 0) + 1);
+    const setoresTurno = [...contagem]
+      .map(([id, n]) => ({ nome: nomeSetor.get(id) ?? "—", n }))
+      .sort((a, b) => b.n - a.n);
+    return { ...t, setores: setoresTurno };
+  });
+
   return (
     <div>
       <PageHeader
@@ -243,6 +254,40 @@ export default async function Dashboard({
           <ListaComparativa linhas={linhasComposicao} tone="navy" />
         </Card>
       </div>
+
+      <Card className="mt-6 p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <SectionTitle>Efetivo por turno</SectionTitle>
+          <span className="text-xs text-slate-400">cadastro atual · produção por turno fica no BI de cada setor</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {porTurno.map((t) => (
+            <Link
+              key={t.turno}
+              href={`/funcionarios?turno=${t.turno}&status=ativo`}
+              className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 transition hover:border-amber-300 hover:bg-white"
+            >
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{ROTULO_TURNO[t.turno]}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-[#141a4d]">
+                {t.ativos} <span className="text-sm font-medium text-slate-500">ativos</span>
+              </p>
+              <p className="text-sm tabular-nums text-slate-600">
+                {formatBRL(t.custo)}
+                {custoEfetivo > 0 && <span className="text-slate-400"> · {formatPercent(t.custo / custoEfetivo)} da folha</span>}
+              </p>
+              <ul className="mt-3 space-y-1 text-xs text-slate-500">
+                {t.setores.slice(0, 5).map((s) => (
+                  <li key={s.nome} className="flex justify-between gap-2">
+                    <span className="truncate">{s.nome}</span>
+                    <span className="tabular-nums">{s.n}</span>
+                  </li>
+                ))}
+                {t.setores.length > 5 && <li className="text-slate-400">+{t.setores.length - 5} setores</li>}
+              </ul>
+            </Link>
+          ))}
+        </div>
+      </Card>
 
       <p className="mt-3 text-xs text-slate-400">
         Custos fixos/variáveis comparam com o histórico real de lançamentos. Salário e efetivo por

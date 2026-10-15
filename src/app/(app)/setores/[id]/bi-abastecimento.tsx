@@ -21,7 +21,11 @@ import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
+  NomeUsuario, ComparativoTurnos,
 } from "./bi-ui";
+import { resumoTurnosProducao, turnosDosUsuarios, type ChaveTurno } from "@/domain/turno";
+import { TURNOS, ROTULO_TURNO } from "@/domain/metrics";
+import type { NomesHarpia } from "./turno-dados";
 import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
@@ -29,7 +33,7 @@ import type { DadosBIAbastecimento } from "./abastecimento-dados";
 const CURVA_COR: Record<string, string> = { A: "#10b981", B: "#5b6fd6", C: "#c2820a" };
 const corCurva = (c: string) => CURVA_COR[c] ?? "#64748b";
 
-type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "rupturas";
+type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "rupturas" | "turnos";
 
 const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
@@ -38,6 +42,7 @@ const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique num produto para ver o histórico diário" },
   { id: "movimento", titulo: "Movimentação", contexto: "quem move, vertical × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
+  { id: "turnos", titulo: "Turnos", contexto: "manhã × tarde × noite — equipe do cadastro e movimentação de piso pelo turno de quem moveu · respeita o filtro de dia" },
 ];
 
 const PAPEIS: PapelBI[] = [
@@ -74,10 +79,13 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const resumo = h ? resumoVolume(h.dias) : null;
   const ant = h ? resumoAntecedencia(h.cargas) : null;
   const pctAntes = ant && ant.antes + ant.depoisOuJunto > 0 ? ant.antes / (ant.antes + ant.depoisOuJunto) : null;
+  const tur = h ? turnosAbastecimento(h, dados.nomes, dia) : null;
+  const totMovTur = tur ? Object.values(tur.mov).reduce((t, x) => t + x.total, 0) : 0;
+  const lider = tur ? TURNOS.reduce((a, b) => (tur.mov[b].total > tur.mov[a].total ? b : a)) : null;
 
   const menu = (
     <>
-      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
+      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-7">
         <Quadro
           {...q("custo")}
           rotulo="Custo e equipe"
@@ -114,6 +122,12 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           valor={h ? `${h.rupturas.length}` : "—"}
           sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no mês")}
         />
+        <Quadro
+          {...q("turnos")}
+          rotulo="Turnos"
+          valor={tur && lider && totMovTur > 0 ? `${ROTULO_TURNO[lider]} ${formatPercent(tur.mov[lider].total / totMovTur, 0)}` : "—"}
+          sub={semH ?? (tur ? (tur.mov.sem.pessoas > 0 ? `das movimentações · ${tur.mov.sem.pessoas} sem turno` : "das movimentações") : "")}
+        />
       </div>
       {dia && (
         <div className="mt-2 flex items-center gap-2 text-xs text-white/50">
@@ -121,7 +135,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           <ChipTV ativo onClick={() => setDia(null)}>
             dia {ddmm(dia)} ✕
           </ChipTV>
-          <span>vale pra Volume, Antecedência e Movimentação · Esc limpa</span>
+          <span>vale pra Volume, Antecedência, Movimentação e Turnos · Esc limpa</span>
         </div>
       )}
     </>
@@ -153,7 +167,9 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
                 ) : visao === "movimento" ? (
-                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} mes={dados.mes} dia={dia} onDia={setDia} />
+                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados.nomes} />
+                ) : visao === "turnos" ? (
+                  <VisaoTurnos dados={dados} h={h} dia={dia} />
                 ) : (
                   <VisaoRupturas h={h} mes={dados.mes} />
                 ),
@@ -514,9 +530,9 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 // --- MOVIMENTAÇÃO DE ENDEREÇO (equipe real de piso) -------------------------------
 
 function VisaoMovimento({
-  movimento, convocacoes, mes, dia, onDia,
+  movimento, convocacoes, mes, dia, onDia, nomes,
 }: {
-  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; mes: string; dia: string | null; onDia: (d: string | null) => void;
+  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; mes: string; dia: string | null; onDia: (d: string | null) => void; nomes: NomesHarpia;
 }) {
   const { sub, abrir, fechar } = useSub<"equipe" | "horario" | "tempo">();
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
@@ -615,7 +631,7 @@ function VisaoMovimento({
                       onClick={() => setPessoaAberta((a) => (a === p.usuario ? null : p.usuario))}
                       className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${p.usuario === pessoaAberta ? "bg-amber-400/10" : ""}`}
                     >
-                      <td className="py-2 font-semibold text-white">{p.nome ?? `Usuário ${p.usuario}`}</td>
+                      <td className="max-w-0 py-2"><NomeUsuario usuario={p.usuario} nomeHarpia={p.nome} nomes={nomes} /></td>
                       <td className="py-2 text-white/60">{p.departamento ?? "—"}</td>
                       <td className="py-2 text-right font-bold tabular-nums text-white">{n0(p.total)}</td>
                       <td className="py-2 text-right tabular-nums text-white/70">{n0(p.vertical)}</td>
@@ -777,6 +793,69 @@ function VisaoRupturas({ h, mes }: { h: DadosHarpiaAbastecimento; mes: string })
           </table>
         </div>
       </Bloco>
+    </div>
+  );
+}
+
+/** Movimentação de piso e Convocação Ativa somadas pelo turno de quem executou. */
+function turnosAbastecimento(h: DadosHarpiaAbastecimento, nomes: NomesHarpia, dia: string | null) {
+  const turnos = turnosDosUsuarios(nomes.ligacoes, nomes.funcionarios);
+  const linhas = h.movimentoPiso.porPessoaDia.filter((l) => !dia || l.dia === dia);
+  const conv = h.convocacoes.filter((c) => !dia || c.dia === dia);
+  const chave = (u: number | null): ChaveTurno => (u === null ? "sem" : turnos.get(u) ?? "sem");
+  const media = (k: ChaveTurno, campo: "minutosResposta" | "minutosExecucao") => {
+    const v = conv.filter((c) => chave(c.usuario) === k && c[campo] !== null).map((c) => c[campo]!);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
+  return {
+    mov: resumoTurnosProducao(linhas.map((l) => ({ usuario: l.usuario, dia: l.dia, valor: l.total })), turnos),
+    vertical: resumoTurnosProducao(linhas.map((l) => ({ usuario: l.usuario, dia: l.dia, valor: l.vertical })), turnos),
+    convocacoes: (k: ChaveTurno) => conv.filter((c) => chave(c.usuario) === k && c.finalizada).length,
+    resposta: (k: ChaveTurno) => media(k, "minutosResposta"),
+    execucao: (k: ChaveTurno) => media(k, "minutosExecucao"),
+  };
+}
+
+function VisaoTurnos({ dados, h, dia }: { dados: DadosBIAbastecimento; h: DadosHarpiaAbastecimento; dia: string | null }) {
+  const t = turnosAbastecimento(h, dados.nomes, dia);
+  const comSem = t.mov.sem.total > 0 || t.convocacoes("sem") > 0;
+  const chaves: ChaveTurno[] = [...TURNOS, "sem"];
+  const por = (f: (k: ChaveTurno) => string | undefined) => Object.fromEntries(chaves.map((k) => [k, f(k)]));
+  const equipe = (k: ChaveTurno) => dados.pessoas.filter((p) => p.turno === k);
+  const custo = (k: ChaveTurno) => equipe(k).reduce((s, p) => s + p.custo, 0);
+  const totMov = chaves.reduce((s, k) => s + t.mov[k].total, 0);
+  const min = (v: number | null) => (v === null ? undefined : `${n1(v)} min`);
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+      <Bloco titulo={`Comparativo por turno${dia ? ` · ${ddmm(dia)}` : ""}`} direita={<Dica>turno = cadastro do funcionário ligado ao usuário do Harpia</Dica>}>
+        <div className="h-full overflow-auto pr-1">
+          <ComparativoTurnos
+            comSem={comSem}
+            linhas={[
+              { rotulo: "Equipe do setor", dica: "ativos no cadastro", valores: por((k) => (k === "sem" ? undefined : String(equipe(k).length))) },
+              { rotulo: "Custo da equipe", dica: "folha mensal do cadastro", valores: por((k) => (k === "sem" ? undefined : semCentavos(custo(k)))) },
+              { rotulo: "Pessoas que moveram", dica: "usuários do Harpia (qualquer setor)", valores: por((k) => String(t.mov[k].pessoas)) },
+              { rotulo: "Movimentações", forte: true, valores: por((k) => n0(t.mov[k].total)) },
+              { rotulo: "Participação", valores: por((k) => (totMov > 0 ? formatPercent(t.mov[k].total / totMov, 0) : undefined)) },
+              { rotulo: "Movimentações por pessoa/dia", forte: true, valores: por((k) => (t.mov[k].porPessoaDia === null ? undefined : n1(t.mov[k].porPessoaDia!))) },
+              { rotulo: "Verticais", dica: "% das movimentações do turno", valores: por((k) => (t.mov[k].total > 0 ? `${n0(t.vertical[k].total)} · ${formatPercent(t.vertical[k].total / t.mov[k].total, 0)}` : undefined)) },
+              { rotulo: "Convocações finalizadas", dica: "Convocação Ativa (ligada em 13/10)", valores: por((k) => n0(t.convocacoes(k))) },
+              { rotulo: "Tempo médio de resposta", dica: "solicitação → aceite", valores: por((k) => min(t.resposta(k))) },
+              { rotulo: "Tempo médio de execução", dica: "aceite → finalização", valores: por((k) => min(t.execucao(k))) },
+              {
+                rotulo: "Custo por movimentação",
+                dica: "custo do mês da equipe do turno ÷ movimentações do turno (só sem filtro de dia)",
+                valores: por((k) => (k === "sem" || dia || t.mov[k].total === 0 ? undefined : formatBRL(custo(k) / t.mov[k].total))),
+              },
+            ]}
+          />
+        </div>
+      </Bloco>
+      {comSem && (
+        <p className="text-xs text-amber-300/80">
+          {t.mov.sem.pessoas} usuário(s) do Harpia sem funcionário ligado — ligue em Movimentação › Pessoas pra entrarem no turno certo.
+        </p>
+      )}
     </div>
   );
 }

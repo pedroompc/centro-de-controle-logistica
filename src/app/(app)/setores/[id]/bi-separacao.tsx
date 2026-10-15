@@ -7,8 +7,7 @@
  * (tudo que foi conferido foi separado). Clicar num dia do calendário filtra
  * as três visões do Harpia; Esc limpa.
  */
-import { useState, useTransition } from "react";
-import { ligarUsuarioHarpia } from "@/data/harpia-usuarios";
+import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -16,7 +15,11 @@ import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
+  NomeUsuario, ComparativoTurnos,
 } from "./bi-ui";
+import { resumoTurnosProducao, turnosDosUsuarios, type ChaveTurno } from "@/domain/turno";
+import { TURNOS, ROTULO_TURNO } from "@/domain/metrics";
+import type { NomesHarpia } from "./turno-dados";
 import { resumoProducao, porConferente, errosPorMilItens, resumoPedidos, rendimentoMensal, capacidadeSeparacao, mediaPorHora, type RendimentoMes } from "@/domain/separacao";
 import { indicesMelhores } from "@/domain/recebimento";
 import type { DiaProducaoSep } from "@/data/winthor-separacao";
@@ -24,7 +27,7 @@ import { formatKg } from "@/domain/format";
 import type { DadosHarpiaSeparacao } from "@/data/harpia-separacao";
 import type { DadosBISeparacao } from "./separacao-dados";
 
-type VisaoSep = "custo" | "producao" | "rendimento" | "conferencia" | "qualidade";
+type VisaoSep = "custo" | "producao" | "rendimento" | "conferencia" | "qualidade" | "turnos";
 
 const VISOES: { id: VisaoSep; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
@@ -32,6 +35,7 @@ const VISOES: { id: VisaoSep; titulo: string; contexto: string }[] = [
   { id: "rendimento", titulo: "Rendimento da equipe", contexto: "quanto cada pessoa rende por dia, mês a mês · horários de pico · quantos separadores você precisa" },
   { id: "conferencia", titulo: "Conferência", contexto: "itens (linhas) conferidos por conferente e por hora na doca · clique num dia para filtrar" },
   { id: "qualidade", titulo: "Qualidade", contexto: "divergências pegas na conferência (bipado ≠ carga) · clique num dia para filtrar" },
+  { id: "turnos", titulo: "Turnos", contexto: "manhã × tarde × noite — equipe do cadastro e conferência do Harpia pelo turno de quem conferiu · respeita o filtro de dia" },
 ];
 
 const PAPEIS: PapelBI[] = [
@@ -77,9 +81,12 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const iRend = rend.findIndex((x) => x.mes === dados.mes);
   const rendAtual = iRend >= 0 ? rend[iRend] : null;
   const verdeRend = iRend >= 0 && melhoresDoTrimestre(rend, dados, (x) => x.pedidosPorPessoaDia).has(iRend);
+  const tur = h ? turnosSeparacao(h, dados.nomes, dia) : null;
+  const lider = tur ? TURNOS.reduce((a, b) => (tur.itens[b].total > tur.itens[a].total ? b : a)) : null;
+  const totItensTur = tur ? Object.values(tur.itens).reduce((t, x) => t + x.total, 0) : 0;
 
   const menu = (
-    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-5">
+    <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
       <Quadro
         {...q("custo")}
         rotulo="Custo e equipe"
@@ -114,6 +121,12 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
         rotulo="Qualidade"
         valor={h ? `${totErros.toLocaleString("pt-BR")} erros` : "—"}
         sub={semH ?? (taxa !== null ? `${taxa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} a cada 1.000 itens conferidos` : "sem itens conferidos")}
+      />
+      <Quadro
+        {...q("turnos")}
+        rotulo="Turnos"
+        valor={tur && lider && totItensTur > 0 ? `${ROTULO_TURNO[lider]} ${formatPercent(tur.itens[lider].total / totItensTur, 0)}` : "—"}
+        sub={semH ?? (tur ? (tur.itens.sem.pessoas > 0 ? `dos itens conferidos · ${tur.itens.sem.pessoas} usuário(s) sem turno` : "dos itens conferidos") : "")}
       />
     </div>
   );
@@ -159,8 +172,10 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                 ) : !h ? (
                   <SemHarpia erro={"erro" in dados.harpia ? dados.harpia.erro : ""} />
 
+                ) : visao === "turnos" ? (
+                  <VisaoTurnos dados={dados} h={h} dia={dia} />
                 ) : visao === "conferencia" ? (
-                  <VisaoConferencia h={h} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados} />
+                  <VisaoConferencia h={h} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados.nomes} />
                 ) : (
                   <VisaoQualidade h={h} mes={dados.mes} dia={dia} onDia={setDia} />
                 ),
@@ -397,48 +412,9 @@ function VisaoProducao({ dias, mes, dia, onDia, custoMes }: { dias: DiaProducaoS
   );
 }
 
-type Nomes = Pick<DadosBISeparacao, "ligacoes" | "funcionarios" | "admin">;
-
-/** Nome do conferente: o funcionário ligado ao usuário do Harpia; o admin liga/troca ali mesmo. */
-function NomeUsuario({ usuario, nomes }: { usuario: number; nomes: Nomes }) {
-  const [pendente, iniciar] = useTransition();
-  const [erro, setErro] = useState<string | null>(null);
-  const funcId = nomes.ligacoes?.[usuario] ?? null;
-  const func = funcId ? nomes.funcionarios.find((f) => f.id === funcId) : null;
-  const ligar = (id: string) =>
-    iniciar(async () => {
-      const r = await ligarUsuarioHarpia(usuario, id || null);
-      setErro(r.erro ?? null);
-    });
-  return (
-    <div className="min-w-0">
-      <div className="flex items-baseline gap-2">
-        <span className="truncate font-semibold text-white">{func ? func.nome : `Usuário ${usuario}`}</span>
-        {func && <span className="shrink-0 text-[0.65rem] text-white/35">usuário {usuario}</span>}
-      </div>
-      {nomes.admin && nomes.ligacoes !== null && (
-        <select
-          value={funcId ?? ""}
-          disabled={pendente}
-          onChange={(e) => ligar(e.target.value)}
-          className={`mt-1 w-full max-w-[16rem] rounded-md border-0 bg-white/10 px-2 py-0.5 text-xs outline-none ring-1 ring-white/15 ${func ? "text-white/50" : "text-amber-300"}`}
-          aria-label={`Funcionário do usuário ${usuario} do Harpia`}
-        >
-          <option value="" className="text-slate-900">{func ? "— desligar —" : "ligar a um funcionário…"}</option>
-          {nomes.funcionarios.map((f) => (
-            <option key={f.id} value={f.id} className="text-slate-900">
-              {f.nome} · {f.cargo}{f.doSetor ? "" : " (outro setor)"}
-            </option>
-          ))}
-        </select>
-      )}
-      {erro && <div className="mt-0.5 text-xs text-rose-300">{erro}</div>}
-    </div>
-  );
-}
-
-function VisaoConferencia({ h, mes, dia, onDia, nomes }: PropsHarpia & { nomes: Nomes }) {
+function VisaoConferencia({ h, mes, dia, onDia, nomes }: PropsHarpia & { nomes: NomesHarpia }) {
   const lista = porConferente(h.conferentes, dia);
+  const nomeHarpia = new Map(h.conferentes.map((c) => [c.usuario, c.nome]));
   const tot = lista.reduce((t, c) => t + c.itens, 0);
   const max = Math.max(1, ...lista.map((c) => c.itens));
   const porDia = new Map(h.dias.map((d) => [d.dia, d.itens]));
@@ -450,9 +426,9 @@ function VisaoConferencia({ h, mes, dia, onDia, nomes }: PropsHarpia & { nomes: 
   return (
     <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       <Bloco titulo={`Conferentes${dia ? ` · ${ddmm(dia)}` : ""}`} direita={<Dica>
-            {nomes.ligacoes === null
+            {!nomes.podeLigar
               ? "rode a migração 0025 para ligar usuário → funcionário"
-              : `${lista.filter((c) => !nomes.ligacoes?.[c.usuario]).length} sem funcionário ligado · horas = 1ª à última conferência do dia`}
+              : `${lista.filter((c) => !nomes.ligacoes[c.usuario]).length} sem funcionário ligado · horas = 1ª à última conferência do dia`}
           </Dica>}>
         <div className="h-full overflow-auto pr-1">
           <table className="w-full text-left text-sm">
@@ -472,7 +448,7 @@ function VisaoConferencia({ h, mes, dia, onDia, nomes }: PropsHarpia & { nomes: 
               {lista.map((c) => (
                 <tr key={c.usuario} className="border-t border-white/[0.06]">
                   <td className="max-w-0 py-2">
-                    <NomeUsuario usuario={c.usuario} nomes={nomes} />
+                    <NomeUsuario usuario={c.usuario} nomeHarpia={nomeHarpia.get(c.usuario)} nomes={nomes} />
                     <div className="mt-1 h-1 rounded-full bg-white/10">
                       <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(c.itens / max) * 100}%` }} />
                     </div>
@@ -674,6 +650,69 @@ function VisaoRendimento({ dados }: { dados: DadosBISeparacao }) {
           )}
         </Bloco>
       </div>
+    </div>
+  );
+}
+
+/** Conferência (itens, caixas) e erros do Harpia somados pelo turno de quem conferiu. */
+function turnosSeparacao(h: DadosHarpiaSeparacao, nomes: NomesHarpia, dia: string | null) {
+  const turnos = turnosDosUsuarios(nomes.ligacoes, nomes.funcionarios);
+  const confs = h.conferentes.filter((c) => !dia || c.dia === dia);
+  return {
+    itens: resumoTurnosProducao(confs.map((c) => ({ usuario: c.usuario, dia: c.dia, valor: c.itens })), turnos),
+    caixas: resumoTurnosProducao(confs.map((c) => ({ usuario: c.usuario, dia: c.dia, valor: c.caixas })), turnos),
+    erros: resumoTurnosProducao(
+      h.errosPorConferente.filter((e) => !dia || e.dia === dia).map((e) => ({ usuario: e.usuario, dia: e.dia, valor: e.erros })),
+      turnos,
+    ),
+  };
+}
+
+function VisaoTurnos({ dados, h, dia }: { dados: DadosBISeparacao; h: DadosHarpiaSeparacao; dia: string | null }) {
+  const t = turnosSeparacao(h, dados.nomes, dia);
+  const comSem = t.itens.sem.total > 0 || t.erros.sem.total > 0;
+  const chaves: ChaveTurno[] = [...TURNOS, "sem"];
+  const por = (f: (k: ChaveTurno) => string | undefined) => Object.fromEntries(chaves.map((k) => [k, f(k)]));
+  const equipe = (k: ChaveTurno) => dados.pessoas.filter((p) => p.turno === k);
+  const custo = (k: ChaveTurno) => equipe(k).reduce((s, p) => s + p.custo, 0);
+  const totItens = chaves.reduce((s, k) => s + t.itens[k].total, 0);
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+      <Bloco titulo={`Comparativo por turno${dia ? ` · ${ddmm(dia)}` : ""}`} direita={<Dica>turno = cadastro do funcionário ligado ao usuário do Harpia</Dica>}>
+        <div className="h-full overflow-auto pr-1">
+          <ComparativoTurnos
+            comSem={comSem}
+            linhas={[
+              { rotulo: "Equipe do setor", dica: "ativos no cadastro", valores: por((k) => (k === "sem" ? undefined : String(equipe(k).length))) },
+              { rotulo: "Custo da equipe", dica: "folha mensal do cadastro", valores: por((k) => (k === "sem" ? undefined : semCentavos(custo(k)))) },
+              { rotulo: "Conferentes no Harpia", dica: "usuários que conferiram", valores: por((k) => String(t.itens[k].pessoas)) },
+              { rotulo: "Itens conferidos", forte: true, valores: por((k) => n0(t.itens[k].total)) },
+              { rotulo: "Participação", valores: por((k) => (totItens > 0 ? formatPercent(t.itens[k].total / totItens, 0) : undefined)) },
+              { rotulo: "Itens por conferente/dia", forte: true, valores: por((k) => (t.itens[k].porPessoaDia === null ? undefined : n0(t.itens[k].porPessoaDia!))) },
+              { rotulo: "Caixas conferidas", valores: por((k) => n0(t.caixas[k].total)) },
+              { rotulo: "Erros de separação", dica: "atribuídos a quem conferiu o item", valores: por((k) => n0(t.erros[k].total)) },
+              {
+                rotulo: "Erros a cada 1.000 itens",
+                forte: true,
+                valores: por((k) => {
+                  const x = errosPorMilItens(t.erros[k].total, t.itens[k].total);
+                  return x === null ? undefined : n1(x);
+                }),
+              },
+              {
+                rotulo: "Custo por caixa conferida",
+                dica: "custo do mês da equipe do turno ÷ caixas do turno (só sem filtro de dia)",
+                valores: por((k) => (k === "sem" || dia || t.caixas[k].total === 0 ? undefined : formatBRL(custo(k) / t.caixas[k].total))),
+              },
+            ]}
+          />
+        </div>
+      </Bloco>
+      {comSem && (
+        <p className="text-xs text-amber-300/80">
+          {t.itens.sem.pessoas} usuário(s) do Harpia sem funcionário ligado — ligue em Conferência pra entrarem no turno certo.
+        </p>
+      )}
     </div>
   );
 }

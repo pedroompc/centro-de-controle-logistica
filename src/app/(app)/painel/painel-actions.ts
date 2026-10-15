@@ -10,7 +10,7 @@ import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
-import type { DescarregamentoTipo, Equipamento, Funcionario } from "@/domain/types";
+import type { DescarregamentoTipo, Equipamento, Funcionario, Turno } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
@@ -394,6 +394,7 @@ export interface PessoaRecebimento {
   papel: "ajudante" | "conferente" | "empilhador" | "outros";
   custo: number;
   outroSetor: boolean; // empilhador cadastrado fora do setor Recebimento
+  turno: Turno;
   // Composição da folha (null = rubrica não cadastrada para a pessoa).
   rubricas: Pick<Funcionario, "salarioBase" | "passagem" | "alimentacao" | "planoSaude" | "ajudaCusto" | "premiacao" | "adicionalNoturno">;
 }
@@ -433,11 +434,12 @@ export async function carregarDetalheCusto(): Promise<DetalheCusto> {
       papel: ehCargoEmpilhador(f.cargo) ? ("empilhador" as const) : grupoDoCargo(f.cargo),
       custo: f.custoMensal,
       outroSetor: false,
+      turno: f.turno,
     })),
     // Operador de fora do setor só entra se não houver um no setor (mesma regra do custo).
     ...(doSetor.some((f) => ehCargoEmpilhador(f.cargo))
       ? []
-      : opsFora.map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, papel: "empilhador" as const, custo: f.custoMensal, outroSetor: true, rubricas: rubricas(f) }))),
+      : opsFora.map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, papel: "empilhador" as const, custo: f.custoMensal, outroSetor: true, turno: f.turno, rubricas: rubricas(f) }))),
   ];
   return {
     pessoas,

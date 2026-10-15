@@ -5,10 +5,14 @@
  * blocos, cards, barras e a parte de equipe/folha/equipamentos. Cada setor
  * (Recebimento, Separação…) monta os seus quadros em cima delas.
  */
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState, useTransition, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
-import type { Equipamento, Funcionario } from "@/domain/types";
+import { ROTULO_TURNO, TURNOS } from "@/domain/metrics";
+import type { ChaveTurno } from "@/domain/turno";
+import { ligarUsuarioHarpia } from "@/data/harpia-usuarios";
+import type { Equipamento, Funcionario, Turno } from "@/domain/types";
+import type { NomesHarpia } from "./turno-dados";
 
 export const semCentavos = (v: number) => formatBRL(v).replace(",00", "");
 
@@ -28,6 +32,7 @@ export interface PessoaBI {
   papel: string;
   custo: number;
   outroSetor: boolean;
+  turno: Turno;
   rubricas: Pick<Funcionario, "salarioBase" | "passagem" | "alimentacao" | "planoSaude" | "ajudaCusto" | "premiacao" | "adicionalNoturno">;
 }
 
@@ -219,10 +224,12 @@ export function BarraComposicao({ fatias, fmt = semCentavos }: { fatias: { rotul
 /** Equipe agrupada por função, com subtotal e % do custo, e filtro por função. */
 export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; papeis: PapelBI[]; total: number }) {
   const [papel, setPapel] = useState<string>("todos");
+  const [turno, setTurno] = useState<Turno | null>(null);
   const ordem = papeis.map((p) => p.id);
   const presentes = papeis.filter((pp) => pessoas.some((y) => y.papel === pp.id));
+  const turnosPresentes = TURNOS.filter((t) => pessoas.some((y) => y.turno === t));
   const pos = (id: string) => (ordem.indexOf(id) < 0 ? ordem.length : ordem.indexOf(id));
-  const lista = pessoas.filter((y) => papel === "todos" || y.papel === papel).sort((a, b) => pos(a.papel) - pos(b.papel) || b.custo - a.custo);
+  const lista = pessoas.filter((y) => (papel === "todos" || y.papel === papel) && (!turno || y.turno === turno)).sort((a, b) => pos(a.papel) - pos(b.papel) || b.custo - a.custo);
   const subtotal = (pp: string) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + y.custo, 0);
   // Salário base (sem encargos nem benefícios). Sem rubrica cadastrada, não entra na soma.
   const salarios = (pp: string) => lista.filter((y) => y.papel === pp).reduce((t, y) => t + (y.rubricas.salarioBase ?? 0), 0);
@@ -237,6 +244,13 @@ export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; 
               {pp.rotulo} {pessoas.filter((y) => y.papel === pp.id).length}
             </ChipTV>
           ))}
+          {turnosPresentes.length > 1 && <span className="mx-1 self-center text-white/20">|</span>}
+          {turnosPresentes.length > 1 &&
+            turnosPresentes.map((t) => (
+              <ChipTV key={t} ativo={turno === t} onClick={() => setTurno((a) => (a === t ? null : t))}>
+                {ROTULO_TURNO[t]} {pessoas.filter((y) => y.turno === t).length} · {semCentavos(pessoas.filter((y) => y.turno === t).reduce((s, y) => s + y.custo, 0))}
+              </ChipTV>
+            ))}
         </div>
       }
     >
@@ -246,6 +260,7 @@ export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; 
             <tr>
               <th className="py-2 font-semibold">Nome</th>
               <th className="py-2 font-semibold">Cargo</th>
+              <th className="py-2 font-semibold">Turno</th>
               <th className="py-2 pr-6 text-right font-semibold">Salário</th>
               <th className="py-2 text-right font-semibold">Custo / mês</th>
               <th className="w-24 py-2 text-right font-semibold">% do custo</th>
@@ -256,7 +271,7 @@ export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; 
               <Fragment key={y.id}>
                 {(i === 0 || lista[i - 1].papel !== y.papel) && (
                   <tr className="border-t border-white/10">
-                    <td colSpan={2} className="pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em]" style={{ color: papelDe(papeis, y.papel).cor }}>
+                    <td colSpan={3} className="pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em]" style={{ color: papelDe(papeis, y.papel).cor }}>
                       {papelDe(papeis, y.papel).plural} · {lista.filter((z) => z.papel === y.papel).length}
                     </td>
                     <td className="pb-1 pr-6 pt-3 text-right text-xs tabular-nums text-white/50">{salarios(y.papel) > 0 ? formatBRL(salarios(y.papel)) : ""}</td>
@@ -273,6 +288,7 @@ export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; 
                     {y.cargo}
                     {y.outroSetor && <span className="ml-1 text-xs text-amber-300">(outro setor)</span>}
                   </td>
+                  <td className="py-2 text-white/60">{ROTULO_TURNO[y.turno]}</td>
                   <td className="py-2 pr-6 text-right tabular-nums text-white/70">{y.rubricas.salarioBase === null ? "—" : formatBRL(y.rubricas.salarioBase)}</td>
                   <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
                   <td className="py-2 text-right tabular-nums text-white/50">{total > 0 ? formatPercent(y.custo / total) : "—"}</td>
@@ -465,5 +481,103 @@ export function CalendarioBI({
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * Nome de um usuário do Harpia: o funcionário ligado (com o turno) ou, sem
+ * ligação, o nome que o Harpia tem. "auto" = casado pelo nome, ninguém
+ * confirmou ainda. O admin liga/troca ali mesmo.
+ */
+export function NomeUsuario({ usuario, nomeHarpia, nomes }: { usuario: number; nomeHarpia?: string | null; nomes: NomesHarpia }) {
+  const [pendente, iniciar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
+  const lig = nomes.ligacoes[usuario] ?? null;
+  const func = lig ? nomes.funcionarios.find((f) => f.id === lig.funcionarioId) : null;
+  const ligar = (id: string) =>
+    iniciar(async () => {
+      const r = await ligarUsuarioHarpia(usuario, id || null);
+      setErro(r.erro ?? null);
+    });
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline gap-2">
+        <span className="truncate font-semibold text-white">{func ? func.nome : nomeHarpia || `Usuário ${usuario}`}</span>
+        {func ? (
+          <span className="shrink-0 text-[0.65rem] text-white/35">
+            {ROTULO_TURNO[func.turno].toLowerCase()}{lig?.auto ? " · auto" : ""}
+          </span>
+        ) : (
+          <span className="shrink-0 text-[0.65rem] text-amber-300/70">sem turno</span>
+        )}
+      </div>
+      {nomes.admin && nomes.podeLigar && (
+        <select
+          value={lig && !lig.auto ? lig.funcionarioId : ""}
+          disabled={pendente}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => ligar(e.target.value)}
+          className={`mt-1 w-full max-w-[16rem] rounded-md border-0 bg-white/10 px-2 py-0.5 text-xs outline-none ring-1 ring-white/15 ${func ? "text-white/50" : "text-amber-300"}`}
+          aria-label={`Funcionário do usuário ${usuario} do Harpia`}
+        >
+          <option value="" className="text-slate-900">
+            {lig && !lig.auto ? "— desligar —" : func ? "confirmar ou trocar…" : "ligar a um funcionário…"}
+          </option>
+          {nomes.funcionarios.map((f) => (
+            <option key={f.id} value={f.id} className="text-slate-900">
+              {f.nome} · {f.cargo} · {ROTULO_TURNO[f.turno]}{f.doSetor ? "" : " (outro setor)"}
+            </option>
+          ))}
+        </select>
+      )}
+      {erro && <div className="mt-0.5 text-xs text-rose-300">{erro}</div>}
+    </div>
+  );
+}
+
+export interface LinhaTurnos {
+  rotulo: string;
+  valores: Partial<Record<ChaveTurno, string>>; // ausente = "—"
+  dica?: string;
+  forte?: boolean;
+}
+
+/**
+ * Comparativo lado a lado dos turnos (colunas) por indicador (linhas). A
+ * coluna "Sem turno" só aparece quando há produção de usuário não ligado.
+ */
+export function ComparativoTurnos({ linhas, comSem }: { linhas: LinhaTurnos[]; comSem: boolean }) {
+  const colunas: ChaveTurno[] = comSem ? [...TURNOS, "sem"] : [...TURNOS];
+  return (
+    <table className="w-full text-left text-sm">
+      <thead className="text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+        <tr>
+          <th className="py-2 font-semibold" />
+          {colunas.map((c) => (
+            <th key={c} className={`py-2 text-right font-semibold ${c === "sem" ? "text-amber-300/70" : ""}`}>
+              {c === "sem" ? "Sem turno" : ROTULO_TURNO[c]}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {linhas.map((l) => (
+          <tr key={l.rotulo} className="border-t border-white/[0.06]">
+            <td className="py-2.5 pr-3">
+              <div className="font-semibold text-white/80">{l.rotulo}</div>
+              {l.dica && <div className="text-[0.65rem] text-white/35">{l.dica}</div>}
+            </td>
+            {colunas.map((c) => (
+              <td
+                key={c}
+                className={`py-2.5 text-right tabular-nums ${l.forte ? "text-lg font-bold text-white" : "text-white/70"} ${c === "sem" ? "opacity-60" : ""}`}
+              >
+                {l.valores[c] ?? "—"}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

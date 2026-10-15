@@ -8,6 +8,7 @@ import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo
 import { mesmoSetor, papelSeparacao, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
+import { montarNomesHarpia, type NomesHarpia } from "./turno-dados";
 
 export interface DadosBISeparacao {
   mes: string; // mês na tela "yyyy-mm-01"
@@ -20,10 +21,8 @@ export interface DadosBISeparacao {
   harpia: { dados: DadosHarpiaSeparacao } | { erro: string };
   /** Pedidos separados por dia (Winthor, PCPEDC.DTFINALSEP). */
   producao: { dias: DiaProducaoSep[]; meses: MesSeparacao[]; horas: { hora: number; pedidos: number }[] } | { erro: string };
-  /** Usuário do Harpia → id do funcionário. `null` = tabela 0025 ausente. */
-  ligacoes: Record<number, string> | null;
-  /** Funcionários ativos para ligar aos usuários (o do setor primeiro). */
-  funcionarios: { id: string; nome: string; cargo: string; doSetor: boolean }[];
+  /** Usuário do Harpia → funcionário (e turno); opções do seletor de ligação. */
+  nomes: NomesHarpia;
   admin: boolean;
 }
 
@@ -69,6 +68,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     papel: papelSeparacao(f.cargo),
     custo: f.custoMensal,
     outroSetor: false,
+    turno: f.turno,
     rubricas: {
       salarioBase: f.salarioBase,
       passagem: f.passagem,
@@ -88,11 +88,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     equipamentos: (equipamentos ?? []).filter((e) => mesmoSetor(e.setor, setor.nome)),
     harpia,
     producao,
-    ligacoes: ligacoes ? Object.fromEntries(ligacoes) : null,
-    funcionarios: funcionarios
-      .filter((f) => f.status === "ativo")
-      .map((f) => ({ id: f.id, nome: f.nome, cargo: f.cargo, doSetor: f.setorId === setor.id }))
-      .sort((a, b) => Number(b.doSetor) - Number(a.doSetor) || a.nome.localeCompare(b.nome)),
+    nomes: montarNomesHarpia("dados" in harpia ? harpia.dados.conferentes : [], ligacoes, funcionarios, setor.id, admin),
     admin,
     serie: serieCustoSetor(meses, fotosSetor, atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) }),
   };

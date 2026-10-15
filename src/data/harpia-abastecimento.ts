@@ -106,6 +106,7 @@ export interface MovimentoPiso {
 export interface LinhaConvocacao {
   dia: string;
   operador: number;
+  usuario: number | null; // usuário do Harpia por trás do operador (dá o turno)
   nome: string | null;
   minutosResposta: number | null; // aceite − solicitação
   minutosExecucao: number | null; // finalização − aceite
@@ -253,6 +254,7 @@ SELECT * FROM (
 const SQL_CONVOCACOES = `
 SELECT TO_CHAR(TRUNC(c.DT_HR_SOLICITACAO_1028), 'YYYY-MM-DD') AS DIA,
        c.OPERADOR_FK_1028 AS OPERADOR,
+       op.USU_FK_1023 AS USU,
        NVL(u.DESCR_COMPLETO_754, op.DESCRICAO_1023) AS NOME,
        (c.DT_HR_ACEITE_1028 - c.DT_HR_SOLICITACAO_1028) * 1440 AS MIN_RESPOSTA,
        (c.DT_HR_FINALIZACAO_1028 - c.DT_HR_ACEITE_1028) * 1440 AS MIN_EXECUCAO,
@@ -314,7 +316,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ DIA: string; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_DIAS, binds),
     queryWinthor<{ DIA: string; HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA_DIA, binds),
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
-    queryWinthor<{ DIA: string; OPERADOR: number; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
+    queryWinthor<{ DIA: string; OPERADOR: number; USU: number | null; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -376,6 +378,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     convocacoes: convocacoesRaw.map((r) => ({
       dia: String(r.DIA),
       operador: num(r.OPERADOR),
+      usuario: r.USU == null ? null : num(r.USU),
       nome: r.NOME ?? null,
       minutosResposta: r.MIN_RESPOSTA == null ? null : Number(r.MIN_RESPOSTA),
       minutosExecucao: r.MIN_EXECUCAO == null ? null : Number(r.MIN_EXECUCAO),

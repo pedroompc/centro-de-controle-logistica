@@ -7,6 +7,8 @@ import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/sepa
 import { papelAbastecimento } from "@/domain/abastecimento";
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
+import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
+import { montarNomesHarpia, type NomesHarpia } from "./turno-dados";
 
 export interface DadosBIAbastecimento {
   mes: string; // mês na tela "yyyy-mm-01"
@@ -17,6 +19,8 @@ export interface DadosBIAbastecimento {
   serie: PontoCustoSetor[]; // julho/2026 → mês corrente
   /** Abastecimento do Harpia; `erro` = não conseguiu ler (permissão, rede…). */
   harpia: { dados: DadosHarpiaAbastecimento } | { erro: string };
+  /** Usuário do Harpia → funcionário (e turno); opções do seletor de ligação. */
+  nomes: NomesHarpia;
   admin: boolean;
 }
 
@@ -35,12 +39,20 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const [equipamentos, fotos, harpia, admin] = await Promise.all([
+  const [equipamentos, fotos, harpia, ligacoes, admin] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     harpiaDoMes(mes),
+    listarUsuariosHarpia().catch(() => null),
     isAdmin(),
   ]);
+  const h = "dados" in harpia ? harpia.dados : null;
+  const usuarios = h
+    ? [
+        ...h.movimentoPiso.porPessoaDia,
+        ...h.convocacoes.flatMap((c) => (c.usuario === null ? [] : [{ usuario: c.usuario, nome: c.nome }])),
+      ]
+    : [];
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
   const pessoas: PessoaBI[] = ativos.map((f) => ({
     id: f.id,
@@ -49,6 +61,7 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
     papel: papelAbastecimento(f.cargo),
     custo: f.custoMensal,
     outroSetor: false,
+    turno: f.turno,
     rubricas: {
       salarioBase: f.salarioBase,
       passagem: f.passagem,
@@ -67,6 +80,7 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
     pessoas,
     equipamentos: (equipamentos ?? []).filter((e) => mesmoSetor(e.setor, setor.nome)),
     harpia,
+    nomes: montarNomesHarpia(usuarios, ligacoes, funcionarios, setor.id, admin),
     admin,
     serie: serieCustoSetor(meses, fotosSetor, atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) }),
   };
