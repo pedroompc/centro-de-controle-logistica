@@ -187,7 +187,8 @@ export function BarrasTV({
   );
 }
 
-export function BarraComposicao({ fatias }: { fatias: { rotulo: string; valor: number; cor: string }[] }) {
+/** `fmt` formata o valor de cada fatia na legenda — padrão é dinheiro (uso original: composição de custo). */
+export function BarraComposicao({ fatias, fmt = semCentavos }: { fatias: { rotulo: string; valor: number; cor: string }[]; fmt?: (v: number) => string }) {
   const [hover, setHover] = useState<string | null>(null);
   const total = fatias.reduce((t, f) => t + f.valor, 0);
   if (total === 0) return null;
@@ -207,7 +208,7 @@ export function BarraComposicao({ fatias }: { fatias: { rotulo: string; valor: n
         {fatias.map((f) => (
           <span key={f.rotulo} onMouseEnter={() => setHover(f.rotulo)} className={`inline-flex items-center gap-1.5 text-xs ${hover === f.rotulo ? "text-white" : "text-white/60"}`}>
             <span className="h-2 w-2 rounded-sm" style={{ background: f.cor }} />
-            {f.rotulo} {formatPercent(f.valor / total, 0)} · {semCentavos(f.valor)}
+            {f.rotulo} {formatPercent(f.valor / total, 0)} · {fmt(f.valor)}
           </span>
         ))}
       </div>

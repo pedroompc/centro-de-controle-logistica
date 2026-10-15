@@ -403,7 +403,14 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
       </div>
       {totalCurvas > 0 && (
         <Bloco titulo="Abastecimento por curva ABC" direita={<Dica>classe de venda do Winthor (CLASSEVENDA) — proxy da curva</Dica>} className="shrink-0">
-          <BarraComposicao fatias={fatiasCurva} />
+          <BarraComposicao fatias={fatiasCurva} fmt={(v) => `${n0(v)} abast.`} />
+          <p className="mt-2 text-xs text-white/35">
+            {h.curvas
+              .filter((c) => c.curva !== "?")
+              .map((c) => `curva ${c.curva}: ${c.skus} produtos, ${n1(c.abastecimentos / Math.max(1, c.skus))}/produto`)
+              .join(" · ")}
+            {" — "}curva A soma menos no total porque tem bem menos produtos, mas cada um deles é abastecido bem mais vezes.
+          </p>
         </Bloco>
       )}
       <Bloco titulo="Produtos com mais abastecimentos" direita={<Dica>sem dado de capacidade do endereço — não é registrado para esses produtos no Harpia</Dica>}>

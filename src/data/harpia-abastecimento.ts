@@ -38,6 +38,7 @@ export interface ProdutoGiro {
 export interface CurvaAbast {
   curva: string; // "A" | "B" | "C" | "?" (sem classificação)
   abastecimentos: number;
+  skus: number; // produtos distintos dessa curva abastecidos no mês
 }
 
 export interface CargaAntecedencia {
@@ -125,7 +126,7 @@ SELECT * FROM (
 ) WHERE ROWNUM <= 20`;
 
 const SQL_CURVAS = `
-SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD
+SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD, COUNT(DISTINCT m.MERC_FK_1361) AS SKUS
   FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
   JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
   LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_FK_1361
@@ -237,7 +238,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
   const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoas, movDias, movHora, movProdutos] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
-    queryWinthor<{ CURVA: string; QTD: number }>(SQL_CURVAS, binds),
+    queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
     queryWinthor<{ NUMCAR: number; HORAS_FOLGA: number | null }>(SQL_CARGAS, binds),
     queryWinthor<{ DT: string; PRODUTO: number; CX: number; UN: number }>(SQL_RUPTURAS, binds),
     queryWinthor<{ REATIVOS: number }>(SQL_REATIVOS, binds),
@@ -262,7 +263,9 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
       caixas: num(r.CX),
       unidades: num(r.UN),
     })),
-    curvas: curvasRaw.map((r) => ({ curva: String(r.CURVA), abastecimentos: num(r.QTD) })).sort((a, b) => b.abastecimentos - a.abastecimentos),
+    curvas: curvasRaw
+      .map((r) => ({ curva: String(r.CURVA), abastecimentos: num(r.QTD), skus: num(r.SKUS) }))
+      .sort((a, b) => b.abastecimentos - a.abastecimentos),
     cargas: cargas.map((r) => ({
       numcar: num(r.NUMCAR),
       horasFolga: r.HORAS_FOLGA == null ? null : Number(r.HORAS_FOLGA),
