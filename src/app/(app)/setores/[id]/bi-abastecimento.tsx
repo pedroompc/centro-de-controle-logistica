@@ -2,11 +2,14 @@
 
 /**
  * BI do Abastecimento em tela cheia — mesma moldura e peças do BI da
- * Separação. Custo e equipe vêm do cadastro; Volume, Antecedência, Giro de
- * picking e Rupturas vêm do Harpia (WMS). Quem prepara o abastecimento no
- * Harpia é o FATURAMENTO gerando a ordem, não quem executa — por isso NUNCA
- * se rankeia por usuário aqui; rendimento é sempre da equipe cadastrada no
- * setor (headcount do app). Esc limpa o filtro de dia (visão Volume).
+ * Separação. Custo e equipe vêm do cadastro. O resto vem do Harpia (WMS), de
+ * DUAS fontes diferentes:
+ *  - Volume/Antecedência/Giro: `PREPARA_ABAST_*` — o FATURAMENTO preparando
+ *    carga/guia pra separação. Quem gera ali NÃO é quem executa no piso, por
+ *    isso essa parte nunca rankeia por usuário.
+ *  - Movimentação: `MOVIMENT_END_502` (reserva → picking) — a equipe REAL de
+ *    piso (depto Logística). Aqui sim o ranking por pessoa é legítimo.
+ * Esc limpa o filtro de dia (visão Volume).
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
@@ -18,8 +21,11 @@ import {
   TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
 import { resumoVolume, resumoAntecedencia } from "@/domain/abastecimento";
-import type { DadosHarpiaAbastecimento, MovimentoEndereco } from "@/data/harpia-abastecimento";
+import type { DadosHarpiaAbastecimento, MovimentoPiso } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
+
+const CURVA_COR: Record<string, string> = { A: "#10b981", B: "#5b6fd6", C: "#c2820a" };
+const corCurva = (c: string) => CURVA_COR[c] ?? "#64748b";
 
 type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "rupturas";
 
@@ -28,7 +34,7 @@ const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "volume", titulo: "Volume", contexto: "caixas e unidades abastecidas por dia · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga" },
   { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês" },
-  { id: "movimento", titulo: "Movimentação", contexto: "vertical (mudou de nível) × horizontal (mesmo nível, outra posição) — só na amostra que registra endereço" },
+  { id: "movimento", titulo: "Movimentação", contexto: "quem move, vertical × horizontal e horário — a equipe real de piso" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
 
@@ -95,8 +101,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
       <Quadro
         {...q("movimento")}
         rotulo="Movimentação"
-        valor={h ? `${n0(h.movimento.vertical)} vert.` : "—"}
-        sub={semH ?? (h ? `${n0(h.movimento.horizontal)} horiz. · amostra de ${h.movimento.total}` : "sem dado no mês")}
+        valor={h ? `${n0(h.movimentoPiso.total)}` : "—"}
+        sub={semH ?? (h ? `${n0(h.movimentoPiso.vertical)} vert. · ${n0(h.movimentoPiso.horizontal)} horiz. · ${h.movimentoPiso.pessoas.length} pessoas` : "sem dado no mês")}
       />
       <Quadro
         {...q("rupturas")}
@@ -132,7 +138,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
                 ) : visao === "movimento" ? (
-                  <VisaoMovimento movimento={h.movimento} abastecimentos={resumo?.abastecimentos ?? 0} />
+                  <VisaoMovimento movimento={h.movimentoPiso} mes={dados.mes} />
                 ) : (
                   <VisaoRupturas h={h} mes={dados.mes} />
                 ),
@@ -386,19 +392,31 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
   const diasAtivos = resumoVolume(h.dias).dias;
   const max = Math.max(1, ...h.produtos.map((p) => p.abastecimentos));
   if (h.produtos.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
+  const totalCurvas = h.curvas.reduce((t, c) => t + c.abastecimentos, 0);
+  const fatiasCurva = h.curvas.map((c) => ({ rotulo: c.curva === "?" ? "Sem classificação" : `Curva ${c.curva}`, valor: c.abastecimentos, cor: corCurva(c.curva) }));
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
         <Mini rotulo="Produtos no top" valor={String(h.produtos.length)} sub="os 20 com mais abastecimentos" />
         <Mini rotulo="Dias com abastecimento" valor={String(diasAtivos)} />
         <Mini rotulo="Abastecimentos do top 20" valor={n0(h.produtos.reduce((t, p) => t + p.abastecimentos, 0))} />
       </div>
+      {totalCurvas > 0 && (
+        <Bloco titulo="Abastecimento por curva ABC" direita={<Dica>classe de venda do Winthor (CLASSEVENDA) — proxy da curva</Dica>} className="shrink-0">
+          <BarraComposicao fatias={fatiasCurva} />
+        </Bloco>
+      )}
       <Bloco titulo="Produtos com mais abastecimentos" direita={<Dica>sem dado de capacidade do endereço — não é registrado para esses produtos no Harpia</Dica>}>
         <ul className="h-full space-y-2 overflow-auto pr-1">
           {h.produtos.map((p) => (
             <li key={p.produto}>
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="truncate text-white" title={p.descricao ?? undefined}>
+                  {p.curva && (
+                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded text-[0.6rem] font-bold text-[#0a1650]" style={{ background: corCurva(p.curva) }}>
+                      {p.curva}
+                    </span>
+                  )}
                   <span className="text-white/45">{p.produto}</span> {p.descricao ?? ""}
                 </span>
                 <span className="shrink-0 font-bold tabular-nums text-white">
@@ -416,32 +434,95 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
   );
 }
 
-// --- MOVIMENTAÇÃO DE ENDEREÇO -----------------------------------------------------
+// --- MOVIMENTAÇÃO DE ENDEREÇO (equipe real de piso) -------------------------------
 
-function VisaoMovimento({ movimento, abastecimentos }: { movimento: MovimentoEndereco; abastecimentos: number }) {
-  if (movimento.total === 0) return <Vazio>Nenhuma movimentação de endereço registrada neste mês (ver nota sobre a rotina 3411 abaixo).</Vazio>;
-  const cobertura = abastecimentos > 0 ? movimento.total / abastecimentos : null;
+function VisaoMovimento({ movimento, mes }: { movimento: MovimentoPiso; mes: string }) {
+  const { sub, abrir, fechar } = useSub<"equipe" | "horario">();
+  if (movimento.total === 0) return <Vazio>Nenhuma movimentação de endereço (reserva → picking) registrada em {formatMesAno(mes)}.</Vazio>;
+  const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
+  const maxPessoa = Math.max(1, ...movimento.pessoas.map((p) => p.total));
+  const maxHora = Math.max(1, ...movimento.porHora.map((h) => h.total));
+  const pico = movimento.porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
+  const card = (k: "equipe" | "horario") => ({ onClick: abrir(k), ativo: sub === k });
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        <Mini rotulo="Movimentações" valor={n0(movimento.total)} sub={formatMesAno(mes)} />
         <Mini rotulo="Vertical" valor={n0(movimento.vertical)} sub="mudou de nível (altura) no rack" />
         <Mini rotulo="Horizontal" valor={n0(movimento.horizontal)} sub="mesmo nível, outra posição" />
-        <Mini rotulo="Analisado" valor={n0(movimento.total)} sub="só quem tem endereço de origem e destino" />
-        <Mini rotulo="Cobertura" valor={cobertura !== null ? formatPercent(cobertura, 0) : "—"} sub="dos abastecimentos do mês" />
+        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(movimento.pessoas.length)} sub="clique pra ver quem fez quanto" />
+        <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
       </div>
-      <Bloco titulo="Vertical × horizontal">
-        <BarrasTV
-          altura={200}
-          fmt={n0}
-          itens={[
-            { chave: "vertical", rotulo: "Vertical", valor: movimento.vertical, cor: "#c2820a", detalhe: `Vertical · ${n0(movimento.vertical)}` },
-            { chave: "horizontal", rotulo: "Horizontal", valor: movimento.horizontal, cor: "#5b6fd6", detalhe: `Horizontal · ${n0(movimento.horizontal)}` },
-          ]}
-        />
-        <p className="mt-3 text-xs text-white/35">
-          Só a rotina <strong className="text-white/60">3411</strong> (transferência manual de endereço) grava de onde pra onde foi a mercadoria — é por isso que a amostra é pequena ({movimento.total} de {abastecimentos} abastecimentos do mês). Pra medir isso em todo abastecimento, pergunte ao suporte Harpia como fazer a rotina 3411 rodar sempre, não só quando alguém abre essa tela manualmente.
-        </p>
-      </Bloco>
+      <div className="flex items-center gap-3 text-xs">
+        {sub ? (
+          <>
+            <button type="button" onClick={fechar} className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/20">
+              ◂ Voltar ao resumo
+            </button>
+            <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Movimentação › {sub === "equipe" ? "Quem fez" : "Horário"}</span>
+          </>
+        ) : (
+          <span className="text-white/35">Clique num card pra ver quem fez ou o horário</span>
+        )}
+      </div>
+
+      {sub === null && (
+        <Bloco titulo="Movimentações por dia" direita={<Dica>reserva → picking/conferência, depto Logística</Dica>}>
+          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={null} onSelecionar={() => {}} vazio="sem movimentação" />
+        </Bloco>
+      )}
+
+      {sub === "equipe" && (
+        <Bloco titulo="Quem fez" direita={<Dica>ordenado por total de movimentações</Dica>}>
+          <div className="h-full overflow-auto pr-1">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+                <tr>
+                  <th className="py-2 font-semibold">Nome</th>
+                  <th className="py-2 font-semibold">Depto</th>
+                  <th className="py-2 text-right font-semibold">Total</th>
+                  <th className="py-2 text-right font-semibold">Vertical</th>
+                  <th className="py-2 text-right font-semibold">Horizontal</th>
+                  <th className="w-32 py-2 text-right font-semibold">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movimento.pessoas.map((p) => (
+                  <tr key={p.usuario} className="border-t border-white/[0.06]">
+                    <td className="py-2 font-semibold text-white">{p.nome ?? `Usuário ${p.usuario}`}</td>
+                    <td className="py-2 text-white/60">{p.departamento ?? "—"}</td>
+                    <td className="py-2 text-right font-bold tabular-nums text-white">{n0(p.total)}</td>
+                    <td className="py-2 text-right tabular-nums text-white/70">{n0(p.vertical)}</td>
+                    <td className="py-2 text-right tabular-nums text-white/70">{n0(p.horizontal)}</td>
+                    <td className="py-2">
+                      <div className="h-1.5 rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.total / maxPessoa) * 100}%` }} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Bloco>
+      )}
+
+      {sub === "horario" && (
+        <Bloco titulo="Movimentações por hora do dia">
+          <BarrasTV
+            altura={240}
+            fmt={n0}
+            itens={movimento.porHora.map((x) => ({
+              chave: String(x.hora),
+              rotulo: `${x.hora}h`,
+              valor: x.total,
+              cor: x.hora === pico.hora ? "#f5b301" : "#5b6fd6",
+              detalhe: `${String(x.hora).padStart(2, "0")}:00–${String(x.hora).padStart(2, "0")}:59 · ${n0(x.total)}`,
+            }))}
+          />
+          <p className="mt-2 text-xs text-white/35">Pico em {String(pico.hora).padStart(2, "0")}h, com {n0(pico.total)} de {n0(movimento.total)} movimentações ({formatPercent(maxHora / Math.max(1, movimento.total), 0)}).</p>
+        </Bloco>
+      )}
     </div>
   );
 }
@@ -449,15 +530,29 @@ function VisaoMovimento({ movimento, abastecimentos }: { movimento: MovimentoEnd
 // --- RUPTURAS --------------------------------------------------------------------
 
 function VisaoRupturas({ h, mes }: { h: DadosHarpiaAbastecimento; mes: string }) {
-  if (h.rupturas.length === 0) return <Vazio>Nenhuma ruptura de picking em {formatMesAno(mes)}.</Vazio>;
+  const totalAbast = resumoVolume(h.dias).abastecimentos;
+  const preventivos = Math.max(0, totalAbast - h.abastecimentosReativos);
+  const pctPreventivo = totalAbast > 0 ? preventivos / totalAbast : null;
+  if (h.rupturas.length === 0) {
+    return (
+      <Vazio>
+        <div>
+          Nenhuma ruptura de picking em {formatMesAno(mes)}.
+          {totalAbast > 0 && <p className="mt-2 text-sm text-white/40">{n0(totalAbast)} abastecimentos no mês, 100% preventivos.</p>}
+        </div>
+      </Vazio>
+    );
+  }
   const caixas = h.rupturas.reduce((t, r) => t + r.caixas, 0);
   const unidades = h.rupturas.reduce((t, r) => t + r.unidades, 0);
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3 xl:grid-cols-5">
         <Mini rotulo="Rupturas" valor={n0(h.rupturas.length)} sub={formatMesAno(mes)} />
         <Mini rotulo="Caixas faltantes" valor={n0(caixas)} />
         <Mini rotulo="Unidades faltantes" valor={n0(unidades)} />
+        <Mini rotulo="Abastecimento preventivo" valor={pctPreventivo !== null ? formatPercent(pctPreventivo, 1) : "—"} sub={`${n0(preventivos)} de ${n0(totalAbast)} abastecimentos`} />
+        <Mini rotulo="Abastecimento reativo" valor={n0(h.abastecimentosReativos)} sub="feito por causa de uma ruptura" />
       </div>
       <Bloco titulo="Eventos de ruptura" direita={<Dica>estoque negativo no endereço de picking, já resolvido pelo abastecimento que o registrou</Dica>}>
         <div className="h-full overflow-auto pr-1">

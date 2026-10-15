@@ -3,11 +3,19 @@ import { inicioFimDoMes } from "@/domain/periodo";
 import { filialIn } from "./filiais";
 
 /**
- * Abastecimento de picking no Harpia (esquema HARPIAW2, mesmo Oracle do
- * Winthor): `PREPARA_ABAST_809` (cabeçalho, quem/quando preparou — é o
- * FATURAMENTO, não quem executa), `PREPARA_ABAST_GUIAS_1360` (carregamento
- * atendido) e `PREPARA_ABAST_MERC_1361` (produto/quantidade). Rupturas de
- * picking (estoque negativo no endereço) ficam em `HIST_ABAST_NEG_848`.
+ * Abastecimento no Harpia (esquema HARPIAW2, mesmo Oracle do Winthor) tem
+ * DUAS fontes independentes, quase sem ligação entre si:
+ *
+ * 1) `PREPARA_ABAST_809`/`_GUIAS_1360`/`_MERC_1361` — o FATURAMENTO prepara a
+ *    carga/guia pra separação (quem/quando em `PREP_USU_FK_809` é faturamento,
+ *    não quem executa no piso).
+ * 2) `MOVIMENT_END_502` — a movimentação FÍSICA de endereço (reserva → picking,
+ *    `TIPO_END_502='M'` para `TIPO_END_DESTINO_502` em ('C','P')), executada
+ *    pela equipe real de piso (depto LOGISTICA). É bem maior em volume que (1)
+ *    e é a fonte certa pra "quem fez", vertical×horizontal e horário.
+ *
+ * Rupturas de picking (estoque negativo no endereço) ficam em
+ * `HIST_ABAST_NEG_848`, ligadas a (1).
  */
 
 export interface DiaAbastecimento {
@@ -21,9 +29,15 @@ export interface DiaAbastecimento {
 export interface ProdutoGiro {
   produto: number;
   descricao: string | null;
+  curva: string | null; // classe de venda do Winthor (A/B/C) — proxy da curva ABC
   abastecimentos: number;
   caixas: number;
   unidades: number;
+}
+
+export interface CurvaAbast {
+  curva: string; // "A" | "B" | "C" | "?" (sem classificação)
+  abastecimentos: number;
 }
 
 export interface CargaAntecedencia {
@@ -40,19 +54,40 @@ export interface RupturaAbastecimento {
   unidades: number;
 }
 
-export interface MovimentoEndereco {
+export interface PessoaMovimentoPiso {
+  usuario: number;
+  nome: string | null;
+  departamento: string | null;
   total: number;
-  vertical: number; // mudou de nível (altura) no rack
-  horizontal: number; // mesmo nível, outra posição
+  vertical: number;
+  horizontal: number;
+}
+
+export interface DiaMovimentoPiso {
+  dia: string;
+  total: number;
+  vertical: number;
+}
+
+export interface MovimentoPiso {
+  total: number;
+  vertical: number;
+  horizontal: number;
+  pessoas: PessoaMovimentoPiso[];
+  dias: DiaMovimentoPiso[];
+  porHora: { hora: number; total: number }[];
 }
 
 export interface DadosHarpiaAbastecimento {
   dias: DiaAbastecimento[];
   produtos: ProdutoGiro[];
+  curvas: CurvaAbast[];
   cargas: CargaAntecedencia[];
   rupturas: RupturaAbastecimento[];
-  /** Vertical/horizontal só é registrado pela rotina 3411 (transferência manual de endereço) — a maioria dos abastecimentos não passa por ela. */
-  movimento: MovimentoEndereco;
+  /** Abastecimentos (eventos) do mês que tiveram ruptura associada — o resto é preventivo. */
+  abastecimentosReativos: number;
+  /** Movimentação física de endereço (reserva → picking), pela equipe de piso. */
+  movimentoPiso: MovimentoPiso;
 }
 
 const num = (v: unknown) => Number(v) || 0;
@@ -69,15 +104,26 @@ SELECT TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA,
  GROUP BY TRUNC(p.PREP_DTHR_809)`;
 
 // ROWNUM (não FETCH FIRST) por compatibilidade com Oracle anterior ao 12c.
+// CLASSEVENDA do Winthor = proxy da curva ABC (classificação por venda).
 const SQL_PRODUTOS = `
 SELECT * FROM (
-  SELECT m.MERC_FK_1361 AS PRODUTO, COUNT(*) AS QTD, SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_SEP_UN_1361) AS UN
+  SELECT m.MERC_FK_1361 AS PRODUTO, pr.CLASSEVENDA AS CURVA, COUNT(*) AS QTD,
+         SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_SEP_UN_1361) AS UN
     FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
     JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
+    LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_FK_1361
    WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
-   GROUP BY m.MERC_FK_1361
+   GROUP BY m.MERC_FK_1361, pr.CLASSEVENDA
    ORDER BY COUNT(*) DESC
 ) WHERE ROWNUM <= 20`;
+
+const SQL_CURVAS = `
+SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD
+  FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
+  JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
+  LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_FK_1361
+ WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+ GROUP BY pr.CLASSEVENDA`;
 
 // Antecedência: 1º abastecimento (Harpia) que serviu a carga × 1ª separação
 // finalizada (Winthor) daquela mesma carga. Diferença calculada no Oracle
@@ -100,24 +146,54 @@ SELECT a.NUMCAR, (s.DT_SEP - a.DT_ABAST) * 24 AS HORAS_FOLGA
   FROM abast a
   LEFT JOIN sep s ON s.NUMCAR = a.NUMCAR`;
 
-// Movimentação de endereço: só a rotina 3411 (transferência manual) grava
-// origem/destino — a maioria dos abastecimentos não passa por ela (ver nota
-// em MovimentoEndereco). Endereço = RUA(2)+PREDIO(2)+NIVEL(2)+APTO(3);
-// nível em SUBSTR(col,5,2), validado contra a faixa real de uso (00-05).
-const SQL_MOVIMENTO = `
-SELECT COUNT(*) AS TOTAL,
-       SUM(CASE WHEN SUBSTR(END_PF_502, 5, 2) <> SUBSTR(END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END) AS VERTICAL
-  FROM HARPIAW2.MOVIMENT_END_502
- WHERE NUM_ABAST_FK_502 IS NOT NULL
-   AND DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
-   AND LENGTH(END_PF_502) = 9 AND LENGTH(END_DESTINO_FK_502) = 9`;
-
 const SQL_RUPTURAS = `
 SELECT TO_CHAR(h.DT_HIST_PK_848, 'YYYY-MM-DD HH24:MI') AS DT, h.MERC_PF_848 AS PRODUTO,
        h.TOTAL_CX_848 AS CX, h.TOTAL_UN_848 AS UN
   FROM HARPIAW2.HIST_ABAST_NEG_848 h
  WHERE h.DT_HIST_PK_848 >= TO_DATE(:ini, 'YYYY-MM-DD') AND h.DT_HIST_PK_848 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
  ORDER BY h.DT_HIST_PK_848 DESC`;
+
+const SQL_REATIVOS = `
+SELECT COUNT(DISTINCT ABASTECIMENTO_848) AS REATIVOS
+  FROM HARPIAW2.HIST_ABAST_NEG_848
+ WHERE DT_HIST_PK_848 >= TO_DATE(:ini, 'YYYY-MM-DD') AND DT_HIST_PK_848 < TO_DATE(:fim, 'YYYY-MM-DD') + 1`;
+
+// Movimentação física de endereço: reserva (M) → picking/conferência (C/P).
+// Endereço = RUA(2)+PREDIO(2)+NIVEL(2)+APTO(3); nível em SUBSTR(col,5,2),
+// validado contra a faixa real de uso (00-05, ver convocação ativa 1022).
+const FILTRO_PISO = `m.TIPO_END_502 = 'M' AND m.TIPO_END_DESTINO_502 IN ('C', 'P') AND LENGTH(m.END_PF_502) = 9 AND LENGTH(m.END_DESTINO_FK_502) = 9`;
+const VERTICAL_PISO = `CASE WHEN SUBSTR(m.END_PF_502, 5, 2) <> SUBSTR(m.END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END`;
+
+const SQL_MOVIMENTO_TOTAL = `
+SELECT COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
+  FROM HARPIAW2.MOVIMENT_END_502 m
+ WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND ${FILTRO_PISO}`;
+
+const SQL_MOVIMENTO_PESSOAS = `
+SELECT m.USU_FK_502 AS USU, u.DESCR_COMPLETO_754 AS NOME, d.DESCR_176 AS DEPTO,
+       COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
+  FROM HARPIAW2.MOVIMENT_END_502 m
+  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = m.USU_FK_502
+  LEFT JOIN HARPIAW2.DEPART_176 d ON d.DEPART_PK_176 = u.DEPART_FK_754
+ WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND ${FILTRO_PISO}
+ GROUP BY m.USU_FK_502, u.DESCR_COMPLETO_754, d.DESCR_176
+ ORDER BY COUNT(*) DESC`;
+
+const SQL_MOVIMENTO_DIAS = `
+SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
+  FROM HARPIAW2.MOVIMENT_END_502 m
+ WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND ${FILTRO_PISO}
+ GROUP BY TRUNC(m.DT_MOVIMENT_502)`;
+
+const SQL_MOVIMENTO_HORA = `
+SELECT TO_CHAR(m.DT_MOVIMENT_502, 'HH24') AS HORA, COUNT(*) AS TOTAL
+  FROM HARPIAW2.MOVIMENT_END_502 m
+ WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND ${FILTRO_PISO}
+ GROUP BY TO_CHAR(m.DT_MOVIMENT_502, 'HH24')`;
 
 /** Descrição do produto pelo cadastro do Winthor (o código do Harpia costuma ser o CODPROD). */
 async function descricoesProdutos(codigos: number[]): Promise<Map<number, string>> {
@@ -140,14 +216,21 @@ async function descricoesProdutos(codigos: number[]): Promise<Map<number, string
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, cargas, rupturas, movimento] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoas, movDias, movHora] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
+    queryWinthor<{ CURVA: string; QTD: number }>(SQL_CURVAS, binds),
     queryWinthor<{ NUMCAR: number; HORAS_FOLGA: number | null }>(SQL_CARGAS, binds),
     queryWinthor<{ DT: string; PRODUTO: number; CX: number; UN: number }>(SQL_RUPTURAS, binds),
-    queryWinthor<{ TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO, binds),
+    queryWinthor<{ REATIVOS: number }>(SQL_REATIVOS, binds),
+    queryWinthor<{ TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_TOTAL, binds),
+    queryWinthor<{ USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_PESSOAS, binds),
+    queryWinthor<{ DIA: string; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_DIAS, binds),
+    queryWinthor<{ HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA, binds),
   ]);
   const descricoes = await descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO)]);
+  const movTotalNum = num(movTotal[0]?.TOTAL);
+  const movVerticalNum = num(movTotal[0]?.VERTICAL);
   return {
     dias: dias
       .map((r) => ({ dia: String(r.DIA), abastecimentos: num(r.ABASTS), caixas: num(r.CX), unidades: num(r.UN), skus: num(r.SKUS) }))
@@ -155,10 +238,12 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     produtos: prods.map((r) => ({
       produto: num(r.PRODUTO),
       descricao: descricoes.get(num(r.PRODUTO)) ?? null,
+      curva: r.CURVA == null ? null : String(r.CURVA),
       abastecimentos: num(r.QTD),
       caixas: num(r.CX),
       unidades: num(r.UN),
     })),
+    curvas: curvasRaw.map((r) => ({ curva: String(r.CURVA), abastecimentos: num(r.QTD) })).sort((a, b) => b.abastecimentos - a.abastecimentos),
     cargas: cargas.map((r) => ({
       numcar: num(r.NUMCAR),
       horasFolga: r.HORAS_FOLGA == null ? null : Number(r.HORAS_FOLGA),
@@ -170,10 +255,25 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
       caixas: num(r.CX),
       unidades: num(r.UN),
     })),
-    movimento: {
-      total: num(movimento[0]?.TOTAL),
-      vertical: num(movimento[0]?.VERTICAL),
-      horizontal: num(movimento[0]?.TOTAL) - num(movimento[0]?.VERTICAL),
+    abastecimentosReativos: num(reativos[0]?.REATIVOS),
+    movimentoPiso: {
+      total: movTotalNum,
+      vertical: movVerticalNum,
+      horizontal: movTotalNum - movVerticalNum,
+      pessoas: movPessoas
+        .map((r) => ({
+          usuario: num(r.USU),
+          nome: r.NOME ?? null,
+          departamento: r.DEPTO ?? null,
+          total: num(r.TOTAL),
+          vertical: num(r.VERTICAL),
+          horizontal: num(r.TOTAL) - num(r.VERTICAL),
+        }))
+        .sort((a, b) => b.total - a.total),
+      dias: movDias
+        .map((r) => ({ dia: String(r.DIA), total: num(r.TOTAL), vertical: num(r.VERTICAL) }))
+        .sort((a, b) => a.dia.localeCompare(b.dia)),
+      porHora: movHora.map((r) => ({ hora: Number(r.HORA), total: num(r.TOTAL) })).sort((a, b) => a.hora - b.hora),
     },
   };
 }
