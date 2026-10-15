@@ -563,11 +563,11 @@ function VisaoMovimento({
           <Bloco titulo="Movimentações por dia" direita={<Dica>reserva → picking/conferência, depto Logística</Dica>}>
             <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
           </Bloco>
-          <Bloco titulo="Top 5 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
+          <Bloco titulo="Top 50 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
             {movimento.produtosTop.length === 0 ? (
               <p className="py-6 text-center text-sm text-white/40">Nenhum produto movimentado no mês.</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="h-full space-y-3 overflow-auto pr-1">
                 {movimento.produtosTop.map((p) => (
                   <li key={p.produto}>
                     <div className="flex items-baseline justify-between gap-3 text-sm">

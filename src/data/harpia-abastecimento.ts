@@ -232,7 +232,7 @@ SELECT * FROM (
      AND ${FILTRO_PISO}
    GROUP BY m.MERC_PF_502
    ORDER BY COUNT(*) DESC
-) WHERE ROWNUM <= 5`;
+) WHERE ROWNUM <= 50`;
 
 /** Descrição do produto pelo cadastro do Winthor (o código do Harpia costuma ser o CODPROD). */
 async function descricoesProdutos(codigos: number[]): Promise<Map<number, string>> {
