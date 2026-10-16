@@ -1,5 +1,5 @@
 import { listarFornecedores, encerrarFornecedor } from "@/data/fornecedores";
-import { isAdmin } from "@/data/auth";
+import { isAdmin, exigirAdminPagina } from "@/data/auth";
 import { PageHeader, Card, BackLink } from "@/components/ui";
 import { FornecedorForm, EditarFornecedorForm } from "./fornecedor-form";
 
@@ -7,6 +7,7 @@ const editInput =
   "w-56 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
 
 export default async function FornecedoresPage() {
+  await exigirAdminPagina();
   const [fornecedores, admin] = await Promise.all([listarFornecedores(), isAdmin()]);
 
   return (

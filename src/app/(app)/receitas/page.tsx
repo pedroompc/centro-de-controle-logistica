@@ -3,7 +3,7 @@ import { listarReceitasDoMes, serieReceitasMensais, removerReceita, type Filtros
 import { listarFornecedores } from "@/data/fornecedores";
 import { listarPrecos } from "@/data/precos-descarregamento";
 import { lerConfig } from "@/data/config-descarregamento";
-import { isAdmin } from "@/data/auth";
+import { isAdmin, exigirAdminPagina } from "@/data/auth";
 import {
   resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas, carrosDoLancamento,
 } from "@/domain/receitas-metrics";
@@ -120,6 +120,7 @@ export default async function ReceitasPage({
 }: {
   searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string; vista?: string; dia?: string }>;
 }) {
+  await exigirAdminPagina();
   const sp = await searchParams;
   const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
   const filtros: FiltrosReceita = {

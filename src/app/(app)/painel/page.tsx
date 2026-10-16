@@ -1,3 +1,4 @@
+import { isAdmin } from "@/data/auth";
 import { formatMesAno, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
 import { carregarResumoDevolucao } from "./painel-actions";
 import PainelView from "./painel-view";
@@ -19,8 +20,8 @@ export default async function PainelPage({
   const mesFechado = mesSel < primeiroDiaDoMes();
   const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
 
-  const devInicial = await carregarResumoDevolucao(mesSel);
+  const [devInicial, admin] = await Promise.all([carregarResumoDevolucao(mesSel), isAdmin()]);
 
   // `key` por mês: ao navegar de mês o painel recomeça do zero (estado e dados).
-  return <PainelView key={mesSel} mes={mesFechado ? mesSel : ""} mesLabel={mesLabel} devInicial={devInicial} />;
+  return <PainelView key={mesSel} mes={mesFechado ? mesSel : ""} mesLabel={mesLabel} devInicial={devInicial} admin={admin} />;
 }

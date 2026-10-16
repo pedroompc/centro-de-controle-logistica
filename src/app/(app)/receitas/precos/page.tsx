@@ -1,6 +1,6 @@
 import { listarPrecos, editarPreco } from "@/data/precos-descarregamento";
 import { lerConfig, editarValorMinimo } from "@/data/config-descarregamento";
-import { isAdmin } from "@/data/auth";
+import { isAdmin, exigirAdminPagina } from "@/data/auth";
 import { formatBRL } from "@/domain/format";
 import { ROTULO_TIPO } from "@/domain/descarregamento";
 import { PageHeader, Card, BackLink } from "@/components/ui";
@@ -9,6 +9,7 @@ const editInput =
   "w-32 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
 
 export default async function PrecosPage() {
+  await exigirAdminPagina();
   const [precos, config, admin] = await Promise.all([listarPrecos(), lerConfig(), isAdmin()]);
 
   return (

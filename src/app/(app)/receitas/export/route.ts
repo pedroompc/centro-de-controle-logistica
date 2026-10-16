@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { isAdmin } from "@/data/auth";
 import { listarReceitasDoMes } from "@/data/receitas";
 import { listarDiversasDoMes } from "@/data/receitas-diversas";
 import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
@@ -12,6 +13,7 @@ const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const num = (n: number) => String(n).replace(".", ",");
 
 export async function GET(req: NextRequest) {
+  if (!(await isAdmin())) return new Response("Acesso restrito a administradores.", { status: 403 });
   const sp = req.nextUrl.searchParams;
   const mes = sp.get("mes") ? primeiroDiaDoMes(sp.get("mes")!) : primeiroDiaDoMes();
   const fornecedorId = sp.get("fornecedor") || undefined;

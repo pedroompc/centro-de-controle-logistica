@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { items, comMes, isActive } from "./sidebar-nav";
+import { itensVisiveis, comMes, isActive } from "./sidebar-nav";
 
 /**
  * Navegação mobile no estilo aplicativo: barra inferior fixa com as 4 seções
@@ -18,6 +18,7 @@ export function MobileNav({ userEmail, admin }: { userEmail?: string | null; adm
 
   // Ordem escolhida para a barra inferior (independente da ordem da lateral).
   const ORDEM_BARRA = ["/", "/pedidos-a-faturar", "/devolucoes", "/receitas"];
+  const items = itensVisiveis(admin);
   const primarios = items
     .filter((i) => i.primary)
     .sort((a, b) => ORDEM_BARRA.indexOf(a.href) - ORDEM_BARRA.indexOf(b.href));

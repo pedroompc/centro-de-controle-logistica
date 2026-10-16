@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/domain/types";
 
@@ -46,4 +47,12 @@ export async function assertAdmin(): Promise<void> {
   if (!(await isAdmin())) {
     throw new Error("Ação restrita a administradores.");
   }
+}
+
+/**
+ * Página restrita a admin (ex.: Receitas — valores em R$ que não podem aparecer
+ * na conta de leitura da TV). Quem não é admin volta para o início.
+ */
+export async function exigirAdminPagina(): Promise<void> {
+  if (!(await isAdmin())) redirect("/");
 }

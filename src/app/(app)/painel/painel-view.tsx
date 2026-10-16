@@ -116,7 +116,7 @@ function Marca() {
   );
 }
 
-function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[]): Slide[] {
+function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
     s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} /> });
@@ -130,7 +130,7 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSe
     s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "notas entregues / devolvidas e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
-  if (d.receitas)
+  if (admin && d.receitas)
     s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} recebimento={recSerie} /> });
   if (d.descarregos)
     s.push({ id: "descarregos", titulo: "Descarrego", contexto: "comparação com o mês anterior e o dia a dia do mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} serie={d.serieDescarrego} mesLabel={mesLabel} /> });
@@ -253,10 +253,13 @@ export default function PainelView({
   mes,
   mesLabel,
   devInicial,
+  admin,
 }: {
   mes: string;
   mesLabel: string;
   devInicial: ResumoDevolucao;
+  /** Só admin vê R$ (receitas e custo da equipe). A TV roda numa conta de leitura. */
+  admin: boolean;
 }) {
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
@@ -290,11 +293,14 @@ export default function PainelView({
     await passo("vendedores", async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
     await passo("bairros RMR", async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
     await passo("a faturar", async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
-    await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
-    await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
+    if (admin) {
+      await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
+      await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
+    }
     await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
     await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
+    // Placar do recebimento traz custo da equipe em R$ — só admin.
+    if (admin) await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
     // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
     await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
@@ -302,7 +308,7 @@ export default function PainelView({
     else await passo("placar", async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
     setFalhas(falhou);
     setRelogio(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
-  }, [mes]);
+  }, [mes, admin]);
 
   useEffect(() => {
     // aquecer() só chama setState DEPOIS de um await (busca no servidor).
@@ -322,7 +328,7 @@ export default function PainelView({
   // Trimestre do placar: o mês na tela e os 2 anteriores.
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
-  const slides = construirSlides(dados, dev, mesLabel, recSerie);
+  const slides = construirSlides(dados, dev, mesLabel, recSerie, admin);
   const nSlides = slides.length;
   const posicao = nSlides > 0 ? idx % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
@@ -334,7 +340,7 @@ export default function PainelView({
   const mesAtual = primeiroDiaDoMes();
   const podeVoltar = mesRef > INICIO_HISTORICO;
   const podeAvancar = mesRef < mesAtual;
-  const placarRecebimento = !!recAtual && !!atual && SLIDES_RECEBIMENTO.has(atual.id);
+  const placarRecebimento = admin && !!recAtual && !!atual && SLIDES_RECEBIMENTO.has(atual.id);
 
   const irPara = useCallback((n: number) => setIdx(((n % nSlides) + nSlides) % nSlides), [nSlides]);
   const proximo = useCallback(() => setIdx((i) => i + 1), []);
@@ -420,17 +426,18 @@ export default function PainelView({
         </div>
 
         {/* KPIs sempre visíveis — foco operacional (logística): sem faturamento
-            em R$; entram positivados e entregas. Só a Receita do mês fica em R$. */}
+            em R$; entram positivados e entregas. Só a Receita do mês fica em R$,
+            e só para admin (a TV roda numa conta de leitura). */}
         {placarRecebimento && recAtual ? (
           <PlacarRecebimento r={recAtual} ant={recAnt} janela={janelaTrimestre} prevLabel={prevLabel} />
         ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        <div className={`mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 ${admin ? "xl:grid-cols-6" : "xl:grid-cols-5"}`}>
           <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />
           <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} delta={dev.disponivel ? deltaPct(dev.atendimentos, antOk?.atendimentos, true, prevLabel) : undefined} />
           <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} delta={dev.disponivel ? deltaPct(dev.pesoFaturado, antOk?.pesoFaturado, true, prevLabel) : undefined} />
           <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} delta={dev.disponivel ? deltaTaxa(dev.taxaValor, antOk?.taxaValor, false, prevLabel) : undefined} tone="rose" />
           <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
-          <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />
+          {admin && <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />}
         </div>
         )}
 

@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 // `short` = rótulo curto para a barra inferior do celular; `primary` marca os
 // itens que ficam sempre à mão nessa barra (os demais vão para a folha "Mais").
-export type Item = { href: string; label: string; short?: string; primary?: boolean; icon: React.ReactNode };
+export type Item = { href: string; label: string; short?: string; primary?: boolean; adminOnly?: boolean; icon: React.ReactNode };
 
 // Telas que entendem `?mes=`. Ao navegar entre elas, o mês selecionado é
 // preservado; as demais (Setores, Funcionários, Tendências) ignoram o parâmetro.
@@ -69,6 +69,7 @@ export const items: Item[] = [
     label: "Receitas",
     short: "Receitas",
     primary: true,
+    adminOnly: true, // valores em R$ — fora da conta de leitura (TV)
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <path d="M12 3v18" />
@@ -151,14 +152,20 @@ export function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function SidebarNav({ variant = "sidebar" }: { variant?: "sidebar" | "top" }) {
+/** Itens do menu que o papel enxerga (admin vê tudo). */
+export function itensVisiveis(admin: boolean): Item[] {
+  return items.filter((i) => admin || !i.adminOnly);
+}
+
+export function SidebarNav({ variant = "sidebar", admin }: { variant?: "sidebar" | "top"; admin: boolean }) {
   const pathname = usePathname();
   const mes = useSearchParams().get("mes");
+  const visiveis = itensVisiveis(admin);
 
   if (variant === "top") {
     return (
       <nav className="flex gap-1 overflow-x-auto">
-        {items.map((it) => {
+        {visiveis.map((it) => {
           const active = isActive(pathname, it.href);
           return (
             <Link
@@ -179,7 +186,7 @@ export function SidebarNav({ variant = "sidebar" }: { variant?: "sidebar" | "top
 
   return (
     <nav className="flex flex-col gap-1">
-      {items.map((it) => {
+      {visiveis.map((it) => {
         const active = isActive(pathname, it.href);
         return (
           <Link

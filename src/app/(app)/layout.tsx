@@ -44,7 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Marca />
           </div>
           <div className="mt-8">
-            <SidebarNav />
+            <SidebarNav admin={admin} />
           </div>
         </div>
         <div className="border-t border-white/10 pt-4">

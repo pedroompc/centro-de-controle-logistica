@@ -1,5 +1,6 @@
 "use server";
 
+import { assertAdmin } from "@/data/auth";
 import { getNucleoDevolucao, getDevolucaoPorBairroRMR } from "@/data/devolucoes";
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
@@ -196,6 +197,7 @@ export interface ResumoReceitas {
 
 /** Receitas do mês por origem + série mensal (mesmas fontes da página Receitas). */
 export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
+  await assertAdmin(); // R$ — fora da conta de leitura (TV)
   const m = mesNorm(mes);
   const [descLista, diariosLista, diversas, serie] = await Promise.all([
     listarReceitasDoMes(m),
@@ -235,6 +237,7 @@ export interface MesReceitaDetalhe {
  * de diversas por material. Alinhado aos meses da série de receita.
  */
 export async function carregarReceitasDrivers(qtdMeses = 6): Promise<MesReceitaDetalhe[]> {
+  await assertAdmin();
   const [receita, desc, diversas] = await Promise.all([
     serieReceitasMensais(qtdMeses),
     serieDescarregoMensal(qtdMeses),
