@@ -25,7 +25,7 @@ import {
 } from "./bi-ui";
 import type { NomesHarpia } from "./turno-dados";
 import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes } from "@/domain/abastecimento";
-import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao } from "@/data/harpia-abastecimento";
+import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao, RecepcaoProtocolo } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
 // Verde é só pra receita (identidade visual) — curva A em azul-céu.
@@ -158,7 +158,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
                 ) : visao === "movimento" ? (
-                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados.nomes} />
+                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} recepcao={h.recepcao} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados.nomes} />
                 ) : (
                   <VisaoRupturas h={h} mes={dados.mes} />
                 ),
@@ -554,12 +554,14 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 
 // --- MOVIMENTAÇÃO DE ENDEREÇO (equipe real de piso) -------------------------------
 
+type SubMov = "equipe" | "horario" | "tempo" | "subida";
+
 function VisaoMovimento({
-  movimento, convocacoes, mes, dia, onDia, nomes,
+  movimento, convocacoes, recepcao, mes, dia, onDia, nomes,
 }: {
-  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; mes: string; dia: string | null; onDia: (d: string | null) => void; nomes: NomesHarpia;
+  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; recepcao: RecepcaoProtocolo[]; mes: string; dia: string | null; onDia: (d: string | null) => void; nomes: NomesHarpia;
 }) {
-  const { sub, abrir, fechar } = useSub<"equipe" | "horario" | "tempo">();
+  const { sub, abrir, fechar } = useSub<SubMov>();
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
   if (movimento.total === 0) return <Vazio>Nenhuma movimentação entre endereços registrada em {formatMesAno(mes)}.</Vazio>;
   const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
@@ -577,17 +579,19 @@ function VisaoMovimento({
   const maxOperadorConv = Math.max(1, ...porOperador.map((o) => o.total));
   const pico = porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
   const mediaPorEmpilhador = pessoas.length ? totalFiltrado / pessoas.length : null;
-  const card = (k: "equipe" | "horario" | "tempo") => ({ onClick: abrir(k), ativo: sub === k });
+  const card = (k: SubMov) => ({ onClick: abrir(k), ativo: sub === k });
   const pessoaSel = pessoaAberta ? pessoas.find((p) => p.usuario === pessoaAberta) ?? null : null;
   const historicoSel = pessoaAberta ? historicoPessoa(movimento.porPessoaDia, pessoaAberta) : [];
+  const recepcaoFiltrada = dia ? recepcao.filter((r) => r.dia === dia) : recepcao;
+  const volumesRecepcao = recepcaoFiltrada.reduce((t, r) => t + r.volumes, 0);
   const fmtMin = (v: number | null) => (v === null ? "—" : v < 1 ? `${Math.round(v * 60)}s` : `${n1(v)} min`);
-  const TITULO_SUB_MOV: Record<"equipe" | "horario" | "tempo", string> = { equipe: "Quem fez", horario: "Horário", tempo: "Tempo de resposta" };
+  const TITULO_SUB_MOV: Record<SubMov, string> = { equipe: "Quem fez", horario: "Horário", tempo: "Tempo de resposta", subida: "Ascendente do recebimento" };
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-8">
         <Mini rotulo="Movimentações" valor={n0(totalFiltrado)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
         <Mini rotulo="↓ Descendente" valor={n0(descendenteFiltrado)} sub="“baixar” no Harpia — reserva → picking" />
-        <Mini rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub="“subir” no Harpia — picking → reserva" />
+        <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub={`picking → reserva · + ${n0(volumesRecepcao)} vol. do recebimento`} />
         <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
         <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub="clique pra ver quem fez quanto" />
         <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? `nesse dia, por pessoa` : "no mês, por pessoa"} />
@@ -603,7 +607,7 @@ function VisaoMovimento({
             <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Movimentação › {TITULO_SUB_MOV[sub]}</span>
           </>
         ) : (
-          <span className="text-white/35">Clique num card pra ver quem fez, o horário ou o tempo de resposta</span>
+          <span className="text-white/35">Clique num card pra ver o ascendente do recebimento, quem fez, o horário ou o tempo de resposta</span>
         )}
       </div>
 
@@ -708,6 +712,8 @@ function VisaoMovimento({
         </Bloco>
       )}
 
+      {sub === "subida" && <SubidaRecebimento recepcao={recepcaoFiltrada} mes={mes} dia={dia} ascendenteInterno={ascendenteFiltrado} />}
+
       {sub === "tempo" && (
         resumoConv.total === 0 ? (
           <Vazio>
@@ -765,6 +771,75 @@ function VisaoMovimento({
           </div>
         )
       )}
+    </div>
+  );
+}
+
+/**
+ * Ascendente do recebimento: o que a recepção de compras trouxe e foi
+ * armazenado pra cima (rotina 229 do Harpia). Lista por protocolo no mesmo
+ * formato da 229, pra conferir lado a lado.
+ */
+function SubidaRecebimento({ recepcao, mes, dia, ascendenteInterno }: { recepcao: RecepcaoProtocolo[]; mes: string; dia: string | null; ascendenteInterno: number }) {
+  if (recepcao.length === 0) return <Vazio>Nenhuma recepção de compra {dia ? `em ${ddmm(dia)}` : `em ${formatMesAno(mes)}`}.</Vazio>;
+  const soma = (k: "skus" | "volumes" | "peso") => recepcao.reduce((t, r) => t + r[k], 0);
+  const volumes = soma("volumes");
+  const peso = soma("peso");
+  const porDia = new Map<string, { volumes: number; peso: number }>();
+  for (const r of recepcao) {
+    const d = porDia.get(r.dia) ?? { volumes: 0, peso: 0 };
+    d.volumes += r.volumes;
+    d.peso += r.peso;
+    porDia.set(r.dia, d);
+  }
+  const dias = [...porDia.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const lista = [...recepcao].sort((a, b) => b.dia.localeCompare(a.dia) || b.protocolo - a.protocolo);
+  const ton = (kg: number) => `${n1(kg / 1000)} t`;
+  return (
+    <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <Bloco titulo="Protocolos de recepção" direita={<Dica>compras · mesmo formato da rotina 229</Dica>}>
+        <div className="h-full overflow-auto pr-1">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+              <tr>
+                <th className="py-2 font-semibold">Data</th>
+                <th className="py-2 font-semibold">Protocolo</th>
+                <th className="py-2 font-semibold">Descrição</th>
+                <th className="py-2 text-right font-semibold">SKUs</th>
+                <th className="py-2 text-right font-semibold">Volumes</th>
+                <th className="py-2 text-right font-semibold">Peso (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((r) => (
+                <tr key={r.protocolo} className="border-t border-white/[0.06]">
+                  <td className="py-2 tabular-nums text-white/60">{ddmm(r.dia)}</td>
+                  <td className="py-2 tabular-nums text-white/60">{r.protocolo}</td>
+                  <td className="max-w-0 truncate py-2 text-white" title={r.descricao ?? undefined}>{r.descricao ?? "—"}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{n0(r.skus)}</td>
+                  <td className="py-2 text-right font-bold tabular-nums text-white">{n0(r.volumes)}</td>
+                  <td className="py-2 text-right tabular-nums text-white/70">{n1(r.peso)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Bloco>
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Mini rotulo="Volumes recebidos" valor={n0(volumes)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+          <Mini rotulo="Peso" valor={ton(peso)} sub={`${n0(peso)} kg`} />
+          <Mini rotulo="Protocolos" valor={n0(recepcao.length)} sub={`${n0(soma("skus"))} SKUs (soma por protocolo)`} />
+          <Mini rotulo="Ascendente interno" valor={n0(ascendenteInterno)} sub="movimentações picking → reserva" />
+        </div>
+        <Bloco titulo="Volumes por dia" direita={<Dica>passe o mouse pra ver o peso</Dica>}>
+          <BarrasTV
+            altura={160}
+            fmt={n0}
+            itens={dias.map(([d, x]) => ({ chave: d, rotulo: d.slice(8, 10), valor: x.volumes, detalhe: `${ddmm(d)} · ${n0(x.volumes)} vol. · ${ton(x.peso)}` }))}
+          />
+        </Bloco>
+      </div>
     </div>
   );
 }

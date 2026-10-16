@@ -106,6 +106,16 @@ export interface MovimentoPiso {
   produtosTop: ProdutoMovimentoPiso[]; // top 50 do mês inteiro
 }
 
+/** Um protocolo de recepção de compra (rotina 229 do Harpia, "Recepção Realizada"). */
+export interface RecepcaoProtocolo {
+  dia: string; // data de entrada do pedido de compra
+  protocolo: number;
+  descricao: string | null; // "NF: 000302542 / CAMIL- PE"
+  skus: number;
+  volumes: number; // volumes conferidos
+  peso: number; // kg — quantidade recebida × peso bruto do produto
+}
+
 export interface LinhaConvocacao {
   dia: string;
   operador: number;
@@ -128,6 +138,8 @@ export interface DadosHarpiaAbastecimento {
   abastecimentosReativos: number;
   /** Movimentação física de endereço (reserva → picking), pela equipe de piso. */
   movimentoPiso: MovimentoPiso;
+  /** Recepção de compras: o que chega e SOBE pra reserva (ascendente do recebimento). */
+  recepcao: RecepcaoProtocolo[];
   /** Convocação Ativa: solicitação→aceite→finalização por operador. Módulo ligado em 2026-10-13 — ainda com poucos dados. */
   convocacoes: LinhaConvocacao[];
 }
@@ -283,6 +295,35 @@ SELECT TO_CHAR(TRUNC(c.DT_HR_SOLICITACAO_1028), 'YYYY-MM-DD') AS DIA,
   LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = op.USU_FK_1023
  WHERE c.DT_HR_SOLICITACAO_1028 >= TO_DATE(:ini, 'YYYY-MM-DD') AND c.DT_HR_SOLICITACAO_1028 < TO_DATE(:fim, 'YYYY-MM-DD') + 1`;
 
+// Recepção de compras = rotina 229 do Harpia ("Relatório de Recepção
+// Realizada", filtro Compras). Validado protocolo a protocolo contra o print
+// da 229 (out/2026): SKUs, volumes e peso batem exatos.
+//   protocolo = NUM_CARREG (PEDIDO_REPO_PLAN_*), descrição em NUM_CARREG_1140;
+//   data      = DT_ENTR_572 do pedido de compra;
+//   compras   = fornecedor ≠ 2 (o 2 agrupa devolução/coleta de motorista);
+//   volumes   = QTD_VOL_580 (volumes conferidos);
+//   peso      = QTD_ARRECAD_580 × PCPRODUT.PESOBRUTO (o Harpia não grava peso).
+// Ressalva: no total de 01–16/10 a 229 somou 213.642 volumes e aqui deram
+// ~170 mil (peso igual a 0,02%) — diferença ainda não explicada.
+const SQL_RECEPCAO = `
+WITH ped AS (
+  SELECT o.EMPRESA_PF_572 AS EMP, o.NUM_PEDIDO_PK_572 AS PED, o.DT_ENTR_572 AS DT
+    FROM HARPIAW2.PEDIDO_REPO_572 o
+   WHERE o.DT_ENTR_572 >= TO_DATE(:ini, 'YYYY-MM-DD') AND o.DT_ENTR_572 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+     AND o.FABRIC_FK_572 <> 2
+), itens AS (
+  SELECT l.EMPRESA_PF_580 AS EMP, l.NUM_CARREG_PK_580 AS PROT, MIN(ped.DT) AS DT,
+         COUNT(DISTINCT l.MERC_PF_580) AS SKUS, SUM(l.QTD_VOL_580) AS VOL, SUM(l.QTD_ARRECAD_580 * p.PESOBRUTO) AS PESO
+    FROM HARPIAW2.PEDIDO_REPO_PLAN_LT_FABRIC_580 l
+    JOIN ped ON ped.EMP = l.EMPRESA_PF_580 AND ped.PED = l.NUM_PEDIDO_PF_580
+    LEFT JOIN PCPRODUT p ON p.CODPROD = l.MERC_PF_580
+   GROUP BY l.EMPRESA_PF_580, l.NUM_CARREG_PK_580
+)
+SELECT TO_CHAR(TRUNC(i.DT), 'YYYY-MM-DD') AS DIA, i.PROT,
+       (SELECT MAX(c.DESCR_AGRUP_1140) FROM HARPIAW2.NUM_CARREG_1140 c WHERE c.EMPRESA_PF_1140 = i.EMP AND c.NUM_CARREG_PK_1140 = i.PROT) AS DESCR,
+       i.SKUS, i.VOL, i.PESO
+  FROM itens i`;
+
 /** Descrição do produto pelo cadastro do Winthor (o código do Harpia costuma ser o CODPROD). */
 async function descricoesProdutos(codigos: number[]): Promise<Map<number, string>> {
   const unicos = [...new Set(codigos.filter((c) => c > 0))];
@@ -322,7 +363,7 @@ SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') 
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -335,6 +376,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ DIA: string; HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA_DIA, binds),
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
     queryWinthor<{ DIA: string; OPERADOR: number; USU: number | null; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
+    queryWinthor<{ DIA: string; PROT: number; DESCR: string | null; SKUS: number; VOL: number; PESO: number }>(SQL_RECEPCAO, binds),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -396,6 +438,16 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         total: num(r.TOTAL),
       })),
     },
+    recepcao: recepcaoRaw
+      .map((r) => ({
+        dia: String(r.DIA),
+        protocolo: num(r.PROT),
+        descricao: r.DESCR ?? null,
+        skus: num(r.SKUS),
+        volumes: num(r.VOL),
+        peso: num(r.PESO),
+      }))
+      .sort((a, b) => a.dia.localeCompare(b.dia) || a.protocolo - b.protocolo),
     convocacoes: convocacoesRaw.map((r) => ({
       dia: String(r.DIA),
       operador: num(r.OPERADOR),
