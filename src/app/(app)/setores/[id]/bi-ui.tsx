@@ -199,10 +199,23 @@ export function BarrasTV({
 }
 
 /** `fmt` formata o valor de cada fatia na legenda — padrão é dinheiro (uso original: composição de custo). */
-export function BarraComposicao({ fatias, fmt = semCentavos }: { fatias: { rotulo: string; valor: number; cor: string }[]; fmt?: (v: number) => string }) {
+/**
+ * Barra 100% empilhada com legenda. Com `onSelecionar`, cada fatia (barra e
+ * legenda) vira filtro: clique seleciona, clique de novo limpa.
+ */
+export function BarraComposicao({
+  fatias, fmt = semCentavos, selecionado = null, onSelecionar,
+}: {
+  fatias: { rotulo: string; valor: number; cor: string }[];
+  fmt?: (v: number) => string;
+  selecionado?: string | null;
+  onSelecionar?: (rotulo: string | null) => void;
+}) {
   const [hover, setHover] = useState<string | null>(null);
   const total = fatias.reduce((t, f) => t + f.valor, 0);
   if (total === 0) return null;
+  const foco = hover ?? selecionado;
+  const clicar = onSelecionar ? (r: string) => onSelecionar(selecionado === r ? null : r) : undefined;
   return (
     <div onMouseLeave={() => setHover(null)}>
       <div className="flex h-4 overflow-hidden rounded-full">
@@ -210,18 +223,37 @@ export function BarraComposicao({ fatias, fmt = semCentavos }: { fatias: { rotul
           <div
             key={f.rotulo}
             onMouseEnter={() => setHover(f.rotulo)}
-            className="h-full border-r-2 border-[#0d1550] last:border-0"
-            style={{ width: `${(f.valor / total) * 100}%`, background: f.cor, opacity: hover && hover !== f.rotulo ? 0.35 : 1 }}
+            onClick={clicar ? () => clicar(f.rotulo) : undefined}
+            className={`h-full border-r-2 border-[#0d1550] last:border-0 ${clicar ? "cursor-pointer" : ""}`}
+            style={{ width: `${(f.valor / total) * 100}%`, background: f.cor, opacity: foco && foco !== f.rotulo ? 0.35 : 1 }}
           />
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-        {fatias.map((f) => (
-          <span key={f.rotulo} onMouseEnter={() => setHover(f.rotulo)} className={`inline-flex items-center gap-1.5 text-xs ${hover === f.rotulo ? "text-white" : "text-white/60"}`}>
-            <span className="h-2 w-2 rounded-sm" style={{ background: f.cor }} />
-            {f.rotulo} {formatPercent(f.valor / total, 0)} · {fmt(f.valor)}
-          </span>
-        ))}
+        {fatias.map((f) => {
+          const conteudo = (
+            <>
+              <span className="h-2 w-2 rounded-sm" style={{ background: f.cor }} />
+              {f.rotulo} {formatPercent(f.valor / total, 0)} · {fmt(f.valor)}
+            </>
+          );
+          const cls = `inline-flex items-center gap-1.5 text-xs ${foco === f.rotulo ? "text-white" : "text-white/60"}`;
+          return clicar ? (
+            <button
+              key={f.rotulo}
+              type="button"
+              onMouseEnter={() => setHover(f.rotulo)}
+              onClick={() => clicar(f.rotulo)}
+              className={`${cls} rounded-full px-2 py-0.5 transition ${selecionado === f.rotulo ? "bg-amber-400/15 ring-1 ring-amber-400/60" : "hover:bg-white/10"}`}
+            >
+              {conteudo}
+            </button>
+          ) : (
+            <span key={f.rotulo} onMouseEnter={() => setHover(f.rotulo)} className={cls}>
+              {conteudo}
+            </span>
+          );
+        })}
       </div>
     </div>
   );

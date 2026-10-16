@@ -28,7 +28,8 @@ import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, hist
 import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
-const CURVA_COR: Record<string, string> = { A: "#10b981", B: "#5b6fd6", C: "#c2820a" };
+// Verde é só pra receita (identidade visual) — curva A em azul-céu.
+const CURVA_COR: Record<string, string> = { A: "#38bdf8", B: "#5b6fd6", C: "#c2820a" };
 const corCurva = (c: string) => CURVA_COR[c] ?? "#64748b";
 
 type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "rupturas";
@@ -37,7 +38,7 @@ const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "volume", titulo: "Volume", contexto: "caixas e unidades abastecidas por dia · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
-  { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique num produto para ver o histórico diário" },
+  { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
   { id: "movimento", titulo: "Movimentação", contexto: "quem move, descendente × ascendente × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
@@ -74,6 +75,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const semH = h ? null : "erro" in dados.harpia ? dados.harpia.erro : "";
 
   const resumo = h ? resumoVolume(h.dias) : null;
+  const abastProdutos = h ? h.curvas.reduce((t, c) => t + c.abastecimentos, 0) : 0;
+  const skusProdutos = h ? h.curvas.reduce((t, c) => t + c.skus, 0) : 0;
   const ant = h ? resumoAntecedencia(h.cargas) : null;
   const pctAntes = ant && ant.antes + ant.depoisOuJunto > 0 ? ant.antes / (ant.antes + ant.depoisOuJunto) : null;
 
@@ -101,8 +104,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
         <Quadro
           {...q("giro")}
           rotulo="Giro de picking"
-          valor={h ? `${h.produtos.length} produtos` : "—"}
-          sub={semH ?? (resumo ? `${n0(resumo.abastecimentos)} abastecimentos · ${resumo.dias} dias` : "sem abastecimento no mês")}
+          valor={h ? `${n0(abastProdutos)} abast.` : "—"}
+          sub={semH ?? (resumo && abastProdutos ? `${n0(skusProdutos)} produtos · ${resumo.dias} dias` : "sem abastecimento no mês")}
         />
         <Quadro
           {...q("movimento")}
@@ -430,26 +433,51 @@ function VisaoAntecedencia({
 
 // --- GIRO DE PICKING -------------------------------------------------------------
 
+const TOP_GIRO = 20;
+const rotuloCurva = (c: string) => (c === "?" ? "Sem classificação" : `Curva ${c}`);
+
 function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
   const [produtoAberto, setProdutoAberto] = useState<number | null>(null);
-  const diasAtivos = resumoVolume(h.dias).dias;
-  const max = Math.max(1, ...h.produtos.map((p) => p.abastecimentos));
+  const [curvaSel, setCurvaSel] = useState<string | null>(null);
+  const resumo = resumoVolume(h.dias);
+  const diasAtivos = resumo.dias;
   if (h.produtos.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
   const totalCurvas = h.curvas.reduce((t, c) => t + c.abastecimentos, 0);
-  const fatiasCurva = h.curvas.map((c) => ({ rotulo: c.curva === "?" ? "Sem classificação" : `Curva ${c.curva}`, valor: c.abastecimentos, cor: corCurva(c.curva) }));
+  const curva = curvaSel ? h.curvas.find((c) => c.curva === curvaSel) ?? null : null;
+  // Recorte: a curva clicada ou o mês inteiro.
+  const abast = curva ? curva.abastecimentos : totalCurvas;
+  const skus = curva ? curva.skus : h.curvas.reduce((t, c) => t + c.skus, 0);
+  const lista = h.produtos
+    .filter((p) => !curvaSel || (p.curva ?? "?") === curvaSel)
+    .sort((a, b) => b.abastecimentos - a.abastecimentos)
+    .slice(0, TOP_GIRO);
+  const somaTop = lista.reduce((t, p) => t + p.abastecimentos, 0);
+  const max = Math.max(1, ...lista.map((p) => p.abastecimentos));
+  const fatiasCurva = h.curvas.map((c) => ({ rotulo: rotuloCurva(c.curva), valor: c.abastecimentos, cor: corCurva(c.curva) }));
   const produtoSel = produtoAberto ? h.produtos.find((p) => p.produto === produtoAberto) ?? null : null;
   const historico = produtoAberto ? historicoProduto(h.produtosDia, produtoAberto) : [];
   const toggle = (p: number) => setProdutoAberto((a) => (a === p ? null : p));
+  const selecionarCurva = (r: string | null) => setCurvaSel(r === null ? null : h.curvas.find((c) => rotuloCurva(c.curva) === r)?.curva ?? null);
+  const recorte = curva ? rotuloCurva(curva.curva).toLowerCase() : "no mês";
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-        <Mini rotulo="Produtos no top" valor={String(h.produtos.length)} sub="os 20 com mais abastecimentos" />
-        <Mini rotulo="Dias com abastecimento" valor={String(diasAtivos)} />
-        <Mini rotulo="Abastecimentos do top 20" valor={n0(h.produtos.reduce((t, p) => t + p.abastecimentos, 0))} />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Mini
+          rotulo={curva ? `Abastecimentos · ${rotuloCurva(curva.curva)}` : "Abastecimentos"}
+          valor={n0(abast)}
+          sub={curva && totalCurvas ? `${formatPercent(abast / totalCurvas, 0)} do total do mês` : `${n0(resumo.abastecimentos)} ordens de abastecimento`}
+        />
+        <Mini rotulo="Produtos abastecidos" valor={n0(skus)} sub={`${n1(abast / Math.max(1, skus))} abast. por produto · ${recorte}`} />
+        <Mini rotulo="Dias com abastecimento" valor={String(diasAtivos)} sub={diasAtivos ? `${n0(abast / diasAtivos)} abast. por dia · ${recorte}` : undefined} />
+        <Mini
+          rotulo={`Peso do top ${TOP_GIRO}`}
+          valor={abast ? formatPercent(somaTop / abast, 0) : "—"}
+          sub={`${n0(somaTop)} abast. nos ${lista.length} produtos da lista`}
+        />
       </div>
       {totalCurvas > 0 && (
-        <Bloco titulo="Abastecimento por curva ABC" direita={<Dica>classe de venda do Winthor (CLASSEVENDA) — proxy da curva</Dica>} className="shrink-0">
-          <BarraComposicao fatias={fatiasCurva} fmt={(v) => `${n0(v)} abast.`} />
+        <Bloco titulo="Abastecimento por curva ABC" direita={<Dica>clique numa curva pra ver os produtos dela · CLASSEVENDA do Winthor</Dica>} className="shrink-0">
+          <BarraComposicao fatias={fatiasCurva} fmt={(v) => `${n0(v)} abast.`} selecionado={curva ? rotuloCurva(curva.curva) : null} onSelecionar={selecionarCurva} />
           <p className="mt-2 text-xs text-white/35">
             {h.curvas
               .filter((c) => c.curva !== "?")
@@ -460,9 +488,20 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
         </Bloco>
       )}
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <Bloco titulo="Produtos com mais abastecimentos" direita={<Dica>clique num produto pra ver o histórico diário</Dica>}>
+        <Bloco
+          titulo={curva ? `${rotuloCurva(curva.curva)} · mais abastecidos` : "Produtos com mais abastecimentos"}
+          direita={
+            curva ? (
+              <ChipTV ativo onClick={() => setCurvaSel(null)}>
+                {rotuloCurva(curva.curva)} ✕
+              </ChipTV>
+            ) : (
+              <Dica>clique num produto pra ver o histórico diário</Dica>
+            )
+          }
+        >
           <ul className="h-full space-y-2 overflow-auto pr-1">
-            {h.produtos.map((p) => (
+            {lista.map((p) => (
               <li key={p.produto}>
                 <button
                   type="button"

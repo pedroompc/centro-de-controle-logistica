@@ -119,8 +119,8 @@ export interface LinhaConvocacao {
 
 export interface DadosHarpiaAbastecimento {
   dias: DiaAbastecimento[];
-  produtos: ProdutoGiro[];
-  produtosDia: ProdutoGiroDia[]; // histórico diário só dos produtos do top 20 (drill-down)
+  produtos: ProdutoGiro[]; // top 20 geral ∪ top 20 de cada curva, do mais ao menos abastecido
+  produtosDia: ProdutoGiroDia[]; // histórico diário só desses produtos (drill-down)
   curvas: CurvaAbast[];
   cargas: CargaAntecedencia[];
   rupturas: RupturaAbastecimento[];
@@ -145,19 +145,23 @@ SELECT TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA,
  WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
  GROUP BY TRUNC(p.PREP_DTHR_809)`;
 
-// ROWNUM (não FETCH FIRST) por compatibilidade com Oracle anterior ao 12c.
 // CLASSEVENDA do Winthor = proxy da curva ABC (classificação por venda).
+// Top 20 geral + top 20 de CADA curva (pro clique na curva), num só SELECT
+// via ROW_NUMBER (sem FETCH FIRST, por compatibilidade com Oracle < 12c).
+const TOP_GIRO = 20;
 const SQL_PRODUTOS = `
-SELECT * FROM (
+SELECT PRODUTO, CURVA, QTD, CX, UN FROM (
   SELECT m.MERC_FK_1361 AS PRODUTO, pr.CLASSEVENDA AS CURVA, COUNT(*) AS QTD,
-         SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_SEP_UN_1361) AS UN
+         SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_SEP_UN_1361) AS UN,
+         ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, m.MERC_FK_1361) AS RN_GERAL,
+         ROW_NUMBER() OVER (PARTITION BY NVL(pr.CLASSEVENDA, '?') ORDER BY COUNT(*) DESC, m.MERC_FK_1361) AS RN_CURVA
     FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
     JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
     LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_FK_1361
    WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    GROUP BY m.MERC_FK_1361, pr.CLASSEVENDA
-   ORDER BY COUNT(*) DESC
-) WHERE ROWNUM <= 20`;
+) WHERE RN_GERAL <= ${TOP_GIRO} OR RN_CURVA <= ${TOP_GIRO}
+ORDER BY QTD DESC, PRODUTO`;
 
 const SQL_CURVAS = `
 SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD, COUNT(DISTINCT m.MERC_FK_1361) AS SKUS
@@ -296,7 +300,7 @@ async function descricoesProdutos(codigos: number[]): Promise<Map<number, string
   return mapa;
 }
 
-/** Histórico diário dos produtos do top 20 (drill-down do Giro). Vazio se não há produtos. */
+/** Histórico diário dos produtos do giro (drill-down do Giro). Vazio se não há produtos. */
 async function produtosDiaDoMes(codigos: number[], binds: { ini: string; fim: string }): Promise<ProdutoGiroDia[]> {
   const unicos = [...new Set(codigos.filter((c) => c > 0))];
   if (!unicos.length) return [];
