@@ -74,6 +74,11 @@ export interface LinhaPessoaDia {
   total: number;
   descendente: number;
   ascendente: number;
+  caixas: number;
+  peso: number; // kg
+  caixasDesc: number; // só descendente (o que a A424 mede)
+  pesoDesc: number;
+  skus: number; // produtos distintos no dia
 }
 
 export interface LinhaHoraDia {
@@ -102,6 +107,10 @@ export interface MovimentoPiso {
   horizontal: number; // mesmo nível
   dias: DiaMovimentoPiso[]; // pro calendário
   porPessoaDia: LinhaPessoaDia[]; // agregação/filtro por dia é no domínio
+  /** Produtos distintos por pessoa no mês inteiro (não dá pra somar os do dia). */
+  skusPessoaMes: { usuario: number; skus: number }[];
+  /** Usuários do Harpia que são empilhadores: operadores da Convocação Ativa + extras fixos. */
+  empilhadores: number[];
   porHoraDia: LinhaHoraDia[]; // idem
   produtosTop: ProdutoMovimentoPiso[]; // top 50 do mês inteiro
 }
@@ -227,11 +236,22 @@ SELECT COUNT(DISTINCT ABASTECIMENTO_848) AS REATIVOS
 //   descendente = "Necessita Baixar" — reserva → picking, o abastecimento;
 //   ascendente  = "Necessita Subir"  — picking → reserva (sobra volta pro pulmão)
 //                 ou reserva → reserva mais alta.
-const FILTRO_PISO = `m.TIPO_MOVIMENT_502 IN ('I', 'S') AND m.TIPO_END_502 IN ('M', 'C', 'P') AND m.TIPO_END_DESTINO_502 IN ('M', 'C', 'P') AND LENGTH(m.END_PF_502) = 9 AND LENGTH(m.END_DESTINO_FK_502) = 9`;
+const FILTRO_PISO = `m.STATUS_502 = 2 AND m.TIPO_MOVIMENT_502 IN ('I', 'S') AND m.TIPO_END_502 IN ('M', 'C', 'P') AND m.TIPO_END_DESTINO_502 IN ('M', 'C', 'P') AND LENGTH(m.END_PF_502) = 9 AND LENGTH(m.END_DESTINO_FK_502) = 9`;
 const NIVEIS_VALIDOS = `SUBSTR(m.END_PF_502, 5, 2) BETWEEN '00' AND '05' AND SUBSTR(m.END_DESTINO_FK_502, 5, 2) BETWEEN '00' AND '05'`;
-const DESCE_PISO = `CASE WHEN ${NIVEIS_VALIDOS} AND SUBSTR(m.END_PF_502, 5, 2) > SUBSTR(m.END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END`;
+const DESCE_COND = `${NIVEIS_VALIDOS} AND SUBSTR(m.END_PF_502, 5, 2) > SUBSTR(m.END_DESTINO_FK_502, 5, 2)`;
+const DESCE_PISO = `CASE WHEN ${DESCE_COND} THEN 1 ELSE 0 END`;
 const SOBE_PISO = `CASE WHEN ${NIVEIS_VALIDOS} AND SUBSTR(m.END_PF_502, 5, 2) < SUBSTR(m.END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END`;
 const SENTIDO_PISO = `SUM(${DESCE_PISO}) AS DESCE, SUM(${SOBE_PISO}) AS SOBE`;
+// Só conta movimentação EFETIVADA (STATUS_502 = 2: 1 = só impressa, 9 =
+// cancelada) e credita a quem EXECUTOU (USU_EFETIV_FK_502). USU_FK_502 é quem
+// pediu — no abastecimento 'S' costuma ser o faturamento.
+const USU_PISO = `NVL(m.USU_EFETIV_FK_502, m.USU_FK_502)`;
+// Quantidade: no abastecimento 'S' o QTD_502 vem em CAIXAS (unidades = QTD ×
+// INVOL_PADRAO); na interna 'I' vem em UNIDADES (caixas = QTD ÷ INVOL_PADRAO,
+// exato em 100% das linhas de out/2026). Peso = unidades × PESOBRUTO do Winthor.
+const INVOL_PISO = `NVL(NULLIF(m.INVOL_PADRAO_MERC_502, 0), 1)`;
+const CAIXAS_PISO = `CASE WHEN m.TIPO_MOVIMENT_502 = 'S' THEN m.QTD_502 ELSE m.QTD_502 / ${INVOL_PISO} END`;
+const PESO_PISO = `CASE WHEN m.TIPO_MOVIMENT_502 = 'S' THEN m.QTD_502 * ${INVOL_PISO} ELSE m.QTD_502 END * NVL(pr.PESOBRUTO, 0)`;
 
 const SQL_MOVIMENTO_TOTAL = `
 SELECT COUNT(*) AS TOTAL, ${SENTIDO_PISO}
@@ -241,15 +261,36 @@ SELECT COUNT(*) AS TOTAL, ${SENTIDO_PISO}
 
 // Por pessoa E por dia (não pré-agregado) — dá pro BI filtrar por dia e abrir histórico por pessoa.
 const SQL_MOVIMENTO_PESSOAS_DIA = `
-SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, m.USU_FK_502 AS USU,
+SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, ${USU_PISO} AS USU,
        u.DESCR_COMPLETO_754 AS NOME, d.DESCR_176 AS DEPTO,
-       COUNT(*) AS TOTAL, ${SENTIDO_PISO}
+       COUNT(*) AS TOTAL, ${SENTIDO_PISO},
+       SUM(${CAIXAS_PISO}) AS CAIXAS, SUM(${PESO_PISO}) AS PESO,
+       SUM(CASE WHEN ${DESCE_COND} THEN ${CAIXAS_PISO} ELSE 0 END) AS CAIXAS_DESC,
+       SUM(CASE WHEN ${DESCE_COND} THEN ${PESO_PISO} ELSE 0 END) AS PESO_DESC,
+       COUNT(DISTINCT m.MERC_PF_502) AS SKUS
   FROM HARPIAW2.MOVIMENT_END_502 m
-  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = m.USU_FK_502
+  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = ${USU_PISO}
   LEFT JOIN HARPIAW2.DEPART_176 d ON d.DEPART_PK_176 = u.DEPART_FK_754
+  LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_PF_502
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}
- GROUP BY TRUNC(m.DT_MOVIMENT_502), m.USU_FK_502, u.DESCR_COMPLETO_754, d.DESCR_176`;
+ GROUP BY TRUNC(m.DT_MOVIMENT_502), ${USU_PISO}, u.DESCR_COMPLETO_754, d.DESCR_176`;
+
+const SQL_MOVIMENTO_SKUS_PESSOA = `
+SELECT ${USU_PISO} AS USU, COUNT(DISTINCT m.MERC_PF_502) AS SKUS
+  FROM HARPIAW2.MOVIMENT_END_502 m
+ WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+   AND ${FILTRO_PISO}
+ GROUP BY ${USU_PISO}`;
+
+// Empilhador = operador cadastrado na Convocação Ativa (cada um preso a um
+// agente "EMPILHADEIRA"). EMPILHADORES_EXTRA = usuários do Harpia que também
+// são empilhadores mas ainda não estão na Convocação Ativa.
+const EMPILHADORES_EXTRA: number[] = [];
+const SQL_EMPILHADORES = `
+SELECT DISTINCT op.USU_FK_1023 AS USU
+  FROM HARPIAW2.CONV_ATIVA_OPERADORES_1023 op
+ WHERE op.USU_FK_1023 IS NOT NULL`;
 
 const SQL_MOVIMENTO_DIAS = `
 SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TOTAL, ${SENTIDO_PISO}
@@ -363,7 +404,7 @@ SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') 
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, skusPessoa, empilhadoresRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -371,12 +412,14 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ DT: string; PRODUTO: number; CX: number; UN: number }>(SQL_RUPTURAS, binds),
     queryWinthor<{ REATIVOS: number }>(SQL_REATIVOS, binds),
     queryWinthor<{ TOTAL: number; DESCE: number; SOBE: number }>(SQL_MOVIMENTO_TOTAL, binds),
-    queryWinthor<{ DIA: string; USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; DESCE: number; SOBE: number }>(SQL_MOVIMENTO_PESSOAS_DIA, binds),
+    queryWinthor<{ DIA: string; USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; DESCE: number; SOBE: number; CAIXAS: number; PESO: number; CAIXAS_DESC: number; PESO_DESC: number; SKUS: number }>(SQL_MOVIMENTO_PESSOAS_DIA, binds),
     queryWinthor<{ DIA: string; TOTAL: number; DESCE: number; SOBE: number }>(SQL_MOVIMENTO_DIAS, binds),
     queryWinthor<{ DIA: string; HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA_DIA, binds),
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
     queryWinthor<{ DIA: string; OPERADOR: number; USU: number | null; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
     queryWinthor<{ DIA: string; PROT: number; DESCR: string | null; SKUS: number; VOL: number; PESO: number }>(SQL_RECEPCAO, binds),
+    queryWinthor<{ USU: number; SKUS: number }>(SQL_MOVIMENTO_SKUS_PESSOA, binds),
+    queryWinthor<{ USU: number }>(SQL_EMPILHADORES, {}),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -430,7 +473,14 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         total: num(r.TOTAL),
         descendente: num(r.DESCE),
         ascendente: num(r.SOBE),
+        caixas: num(r.CAIXAS),
+        peso: num(r.PESO),
+        caixasDesc: num(r.CAIXAS_DESC),
+        pesoDesc: num(r.PESO_DESC),
+        skus: num(r.SKUS),
       })),
+      skusPessoaMes: skusPessoa.map((r) => ({ usuario: num(r.USU), skus: num(r.SKUS) })),
+      empilhadores: [...new Set([...empilhadoresRaw.map((r) => num(r.USU)), ...EMPILHADORES_EXTRA])],
       porHoraDia: movHoraDia.map((r) => ({ dia: String(r.DIA), hora: Number(r.HORA), total: num(r.TOTAL) })),
       produtosTop: movProdutos.map((r) => ({
         produto: num(r.PRODUTO),

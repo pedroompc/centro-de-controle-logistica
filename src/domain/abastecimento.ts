@@ -90,19 +90,44 @@ export interface PessoaMovimento {
   descendente: number;
   ascendente: number;
   horizontal: number;
+  caixas: number;
+  peso: number; // kg
+  caixasDesc: number;
+  pesoDesc: number;
+  skus: number; // produtos distintos no recorte
+  dias: number; // dias com movimentação no recorte
 }
 
-/** Agrega movimentação por pessoa; `dia` filtra pra um dia específico (`null` = mês inteiro). */
-export function pessoasMovimento(linhas: { dia: string; usuario: number; nome: string | null; departamento: string | null; total: number; descendente: number; ascendente: number }[], dia: string | null): PessoaMovimento[] {
+type LinhaPessoa = {
+  dia: string; usuario: number; nome: string | null; departamento: string | null;
+  total: number; descendente: number; ascendente: number;
+  caixas: number; peso: number; caixasDesc: number; pesoDesc: number; skus: number;
+};
+
+/**
+ * Agrega movimentação por pessoa; `dia` filtra pra um dia específico (`null` = mês inteiro).
+ * SKUs não somam entre dias (o mesmo produto se repete): no mês vêm de `skusMes`.
+ */
+export function pessoasMovimento(linhas: LinhaPessoa[], dia: string | null, skusMes: { usuario: number; skus: number }[] = []): PessoaMovimento[] {
   const m = new Map<number, Omit<PessoaMovimento, "horizontal">>();
   for (const l of linhas) {
     if (dia && l.dia !== dia) continue;
-    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, departamento: l.departamento, total: 0, descendente: 0, ascendente: 0 };
+    const r = m.get(l.usuario) ?? {
+      usuario: l.usuario, nome: l.nome, departamento: l.departamento,
+      total: 0, descendente: 0, ascendente: 0, caixas: 0, peso: 0, caixasDesc: 0, pesoDesc: 0, skus: 0, dias: 0,
+    };
     r.total += l.total;
     r.descendente += l.descendente;
     r.ascendente += l.ascendente;
+    r.caixas += l.caixas;
+    r.peso += l.peso;
+    r.caixasDesc += l.caixasDesc;
+    r.pesoDesc += l.pesoDesc;
+    r.skus = dia ? l.skus : r.skus;
+    r.dias += 1;
     m.set(l.usuario, r);
   }
+  if (!dia) for (const s of skusMes) { const r = m.get(s.usuario); if (r) r.skus = s.skus; }
   return [...m.values()].map((r) => ({ ...r, horizontal: r.total - r.descendente - r.ascendente })).sort((a, b) => b.total - a.total);
 }
 
@@ -117,10 +142,13 @@ export function horaMovimento(linhas: { dia: string; hora: number; total: number
 }
 
 /** Histórico diário de uma pessoa (drill-down ao clicar na linha dela). */
-export function historicoPessoa(linhas: { dia: string; usuario: number; total: number }[], usuario: number): { dia: string; total: number }[] {
+export function historicoPessoa(
+  linhas: { dia: string; usuario: number; total: number; caixas: number; peso: number }[],
+  usuario: number,
+): { dia: string; total: number; caixas: number; peso: number }[] {
   return linhas
     .filter((l) => l.usuario === usuario)
-    .map((l) => ({ dia: l.dia, total: l.total }))
+    .map((l) => ({ dia: l.dia, total: l.total, caixas: l.caixas, peso: l.peso }))
     .sort((a, b) => a.dia.localeCompare(b.dia));
 }
 

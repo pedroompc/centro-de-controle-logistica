@@ -24,7 +24,7 @@ import {
   NomeUsuario,
 } from "./bi-ui";
 import type { NomesHarpia } from "./turno-dados";
-import { resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes } from "@/domain/abastecimento";
+import { type PessoaMovimento, resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao, RecepcaoProtocolo } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
@@ -556,6 +556,66 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 
 type SubMov = "equipe" | "horario" | "tempo" | "subida";
 
+/** Quem moveu, com os empilhadores separados no topo e subtotal por grupo. */
+function TabelaQuemFez({
+  pessoas, empilhadores, nomes, aberta, onAbrir,
+}: {
+  pessoas: PessoaMovimento[]; empilhadores: number[]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
+}) {
+  const ehEmp = new Set(empilhadores);
+  const grupos = [
+    { titulo: "Empilhadores", lista: pessoas.filter((p) => ehEmp.has(p.usuario)) },
+    { titulo: "Outros", lista: pessoas.filter((p) => !ehEmp.has(p.usuario)) },
+  ].filter((g) => g.lista.length > 0);
+  const soma = (l: PessoaMovimento[], k: "total" | "descendente" | "ascendente" | "caixas" | "peso") => l.reduce((t, p) => t + p[k], 0);
+  const num = "py-2 text-right tabular-nums";
+  return (
+    <div className="h-full overflow-auto pr-1">
+      <table className="w-full text-left text-sm">
+        <thead className="sticky top-0 z-10 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+          <tr>
+            <th className="py-2 font-semibold">Nome</th>
+            <th className="py-2 text-right font-semibold">Mov.</th>
+            <th className="py-2 text-right font-semibold" title="baixar: reserva → picking">↓ Desc.</th>
+            <th className="py-2 text-right font-semibold" title="subir: picking → reserva">↑ Asc.</th>
+            <th className="py-2 text-right font-semibold">Caixas</th>
+            <th className="py-2 text-right font-semibold">Peso</th>
+            <th className="py-2 text-right font-semibold">SKUs</th>
+          </tr>
+        </thead>
+        {grupos.map((g) => (
+          <tbody key={g.titulo}>
+            <tr className="border-t border-white/10 bg-white/[0.04] text-xs">
+              <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">{g.titulo} · {g.lista.length}</td>
+              <td className={`${num} font-bold text-white/80`}>{n0(soma(g.lista, "total"))}</td>
+              <td className={`${num} text-white/60`}>{n0(soma(g.lista, "descendente"))}</td>
+              <td className={`${num} text-white/60`}>{n0(soma(g.lista, "ascendente"))}</td>
+              <td className={`${num} text-white/60`}>{n0(soma(g.lista, "caixas"))}</td>
+              <td className={`${num} text-white/60`}>{n1(soma(g.lista, "peso") / 1000)} t</td>
+              <td />
+            </tr>
+            {g.lista.map((p) => (
+              <tr
+                key={p.usuario}
+                onClick={() => onAbrir(p.usuario)}
+                className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${p.usuario === aberta ? "bg-amber-400/10" : ""}`}
+              >
+                <td className="max-w-0 py-2"><NomeUsuario usuario={p.usuario} nomeHarpia={p.nome} nomes={nomes} /></td>
+                <td className={`${num} font-bold text-white`}>{n0(p.total)}</td>
+                <td className={`${num} text-white/70`}>{n0(p.descendente)}</td>
+                <td className={`${num} text-white/70`}>{n0(p.ascendente)}</td>
+                <td className={`${num} text-white/70`}>{n0(p.caixas)}</td>
+                <td className={`${num} text-white/70`}>{n1(p.peso / 1000)} t</td>
+                <td className={`${num} text-white/70`}>{n0(p.skus)}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
+    </div>
+  );
+}
+
 function VisaoMovimento({
   movimento, convocacoes, recepcao, mes, dia, onDia, nomes,
 }: {
@@ -565,7 +625,7 @@ function VisaoMovimento({
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
   if (movimento.total === 0) return <Vazio>Nenhuma movimentação entre endereços registrada em {formatMesAno(mes)}.</Vazio>;
   const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
-  const pessoas = pessoasMovimento(movimento.porPessoaDia, dia);
+  const pessoas = pessoasMovimento(movimento.porPessoaDia, dia, movimento.skusPessoaMes);
   const porHora = horaMovimento(movimento.porHoraDia, dia);
   const resumoConv = resumoConvocacoes(convocacoes, dia);
   const porOperador = porOperadorConvocacoes(convocacoes, dia);
@@ -574,11 +634,12 @@ function VisaoMovimento({
   const descendenteFiltrado = diaDados ? diaDados.descendente : movimento.descendente;
   const ascendenteFiltrado = diaDados ? diaDados.ascendente : movimento.ascendente;
   const horizontalFiltrado = totalFiltrado - descendenteFiltrado - ascendenteFiltrado;
-  const maxPessoa = Math.max(1, ...pessoas.map((p) => p.total));
   const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
   const maxOperadorConv = Math.max(1, ...porOperador.map((o) => o.total));
   const pico = porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
-  const mediaPorEmpilhador = pessoas.length ? totalFiltrado / pessoas.length : null;
+  // Média só entre os empilhadores (operadores da Convocação Ativa) — quem move de vez em quando não puxa a média pra baixo.
+  const emp = pessoas.filter((p) => movimento.empilhadores.includes(p.usuario));
+  const mediaPorEmpilhador = emp.length ? emp.reduce((t, p) => t + p.total, 0) / emp.length : null;
   const card = (k: SubMov) => ({ onClick: abrir(k), ativo: sub === k });
   const pessoaSel = pessoaAberta ? pessoas.find((p) => p.usuario === pessoaAberta) ?? null : null;
   const historicoSel = pessoaAberta ? historicoPessoa(movimento.porPessoaDia, pessoaAberta) : [];
@@ -593,8 +654,8 @@ function VisaoMovimento({
         <Mini rotulo="↓ Descendente" valor={n0(descendenteFiltrado)} sub="“baixar” no Harpia — reserva → picking" />
         <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub={`picking → reserva · + ${n0(volumesRecepcao)} vol. do recebimento`} />
         <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
-        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub="clique pra ver quem fez quanto" />
-        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? `nesse dia, por pessoa` : "no mês, por pessoa"} />
+        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub={`${emp.length} empilhadores · clique pra ver o rendimento`} />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? "nesse dia, só empilhadores" : "no mês, só empilhadores"} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
         <Mini {...card("tempo")} rotulo="Tempo de resposta" valor={fmtMin(resumoConv.medianaRespostaMin)} sub={resumoConv.total ? `Convocação Ativa · ${resumoConv.total} tarefas` : "Convocação Ativa — sem tarefa ainda"} />
       </div>
@@ -643,53 +704,30 @@ function VisaoMovimento({
       {sub === "equipe" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "mês inteiro · clique numa pessoa"}</Dica>}>
-            <div className="h-full overflow-auto pr-1">
-              <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 bg-[#121a5a] text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-                  <tr>
-                    <th className="py-2 font-semibold">Nome</th>
-                    <th className="py-2 font-semibold">Depto</th>
-                    <th className="py-2 text-right font-semibold">Total</th>
-                    <th className="py-2 text-right font-semibold" title="baixar: reserva → picking">↓ Desc.</th>
-                    <th className="py-2 text-right font-semibold" title="subir: picking → reserva">↑ Asc.</th>
-                    <th className="py-2 text-right font-semibold">Horizontal</th>
-                    <th className="w-32 py-2 text-right font-semibold">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pessoas.map((p) => (
-                    <tr
-                      key={p.usuario}
-                      onClick={() => setPessoaAberta((a) => (a === p.usuario ? null : p.usuario))}
-                      className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${p.usuario === pessoaAberta ? "bg-amber-400/10" : ""}`}
-                    >
-                      <td className="max-w-0 py-2"><NomeUsuario usuario={p.usuario} nomeHarpia={p.nome} nomes={nomes} /></td>
-                      <td className="py-2 text-white/60">{p.departamento ?? "—"}</td>
-                      <td className="py-2 text-right font-bold tabular-nums text-white">{n0(p.total)}</td>
-                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.descendente)}</td>
-                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.ascendente)}</td>
-                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.horizontal)}</td>
-                      <td className="py-2">
-                        <div className="h-1.5 rounded-full bg-white/10">
-                          <div className="h-full rounded-full bg-[#5b6fd6]" style={{ width: `${(p.total / maxPessoa) * 100}%` }} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TabelaQuemFez pessoas={pessoas} empilhadores={movimento.empilhadores} nomes={nomes} aberta={pessoaAberta} onAbrir={(u) => setPessoaAberta((a) => (a === u ? null : u))} />
           </Bloco>
-          <Bloco titulo={pessoaSel ? `${pessoaSel.nome ?? `Usuário ${pessoaSel.usuario}`} · histórico` : "Histórico diário"}>
+          <Bloco titulo={pessoaSel ? `${pessoaSel.nome ?? `Usuário ${pessoaSel.usuario}`} · rendimento` : "Rendimento"} direita={pessoaSel ? <Dica>{dia ? ddmm(dia) : formatMesAno(mes)}</Dica> : undefined}>
             {pessoaSel ? (
-              <BarrasTV
-                altura={220}
-                fmt={n0}
-                onClick={(d) => onDia(dia === d ? null : d)}
-                itens={historicoSel.map((x) => ({ chave: x.dia, rotulo: x.dia.slice(8, 10), valor: x.total, detalhe: `${ddmm(x.dia)} · ${n0(x.total)}`, selecionado: x.dia === dia }))}
-              />
+              <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
+                <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
+                  <Mini rotulo="Movimentações" valor={n0(pessoaSel.total)} sub={pessoaSel.dias > 1 ? `${n1(pessoaSel.total / pessoaSel.dias)} por dia · ${pessoaSel.dias} dias` : undefined} />
+                  <Mini rotulo="Caixas" valor={n0(pessoaSel.caixas)} sub={pessoaSel.total ? `${n1(pessoaSel.caixas / pessoaSel.total)} por movimentação` : undefined} />
+                  <Mini rotulo="Peso" valor={`${n1(pessoaSel.peso / 1000)} t`} sub={`${n0(pessoaSel.peso)} kg`} />
+                  <Mini rotulo="SKUs" valor={n0(pessoaSel.skus)} sub="produtos distintos" />
+                  <Mini rotulo="↓ Descendente" valor={n0(pessoaSel.descendente)} sub={`${n0(pessoaSel.caixasDesc)} cx · ${n1(pessoaSel.pesoDesc / 1000)} t`} />
+                  <Mini rotulo="↑ Ascendente" valor={n0(pessoaSel.ascendente)} sub={`${n0(pessoaSel.caixas - pessoaSel.caixasDesc)} cx fora da descida`} />
+                </div>
+                <div className="min-h-[180px] flex-1">
+                  <BarrasTV
+                    altura={170}
+                    fmt={n0}
+                    onClick={(d) => onDia(dia === d ? null : d)}
+                    itens={historicoSel.map((x) => ({ chave: x.dia, rotulo: x.dia.slice(8, 10), valor: x.total, detalhe: `${ddmm(x.dia)} · ${n0(x.total)} mov. · ${n0(x.caixas)} cx · ${n1(x.peso / 1000)} t`, selecionado: x.dia === dia }))}
+                  />
+                </div>
+              </div>
             ) : (
-              <p className="py-6 text-center text-sm text-white/40">Clique numa pessoa na tabela pra ver o histórico diário dela.</p>
+              <p className="py-6 text-center text-sm text-white/40">Clique numa pessoa na tabela pra ver o rendimento dela: movimentações, caixas, peso e SKUs, dia a dia.</p>
             )}
           </Bloco>
         </div>
