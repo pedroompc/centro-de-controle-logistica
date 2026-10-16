@@ -87,21 +87,23 @@ export interface PessoaMovimento {
   nome: string | null;
   departamento: string | null;
   total: number;
-  vertical: number;
+  descendente: number;
+  ascendente: number;
   horizontal: number;
 }
 
 /** Agrega movimentação por pessoa; `dia` filtra pra um dia específico (`null` = mês inteiro). */
-export function pessoasMovimento(linhas: { dia: string; usuario: number; nome: string | null; departamento: string | null; total: number; vertical: number }[], dia: string | null): PessoaMovimento[] {
+export function pessoasMovimento(linhas: { dia: string; usuario: number; nome: string | null; departamento: string | null; total: number; descendente: number; ascendente: number }[], dia: string | null): PessoaMovimento[] {
   const m = new Map<number, Omit<PessoaMovimento, "horizontal">>();
   for (const l of linhas) {
     if (dia && l.dia !== dia) continue;
-    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, departamento: l.departamento, total: 0, vertical: 0 };
+    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, departamento: l.departamento, total: 0, descendente: 0, ascendente: 0 };
     r.total += l.total;
-    r.vertical += l.vertical;
+    r.descendente += l.descendente;
+    r.ascendente += l.ascendente;
     m.set(l.usuario, r);
   }
-  return [...m.values()].map((r) => ({ ...r, horizontal: r.total - r.vertical })).sort((a, b) => b.total - a.total);
+  return [...m.values()].map((r) => ({ ...r, horizontal: r.total - r.descendente - r.ascendente })).sort((a, b) => b.total - a.total);
 }
 
 /** Movimentações por hora do dia; `dia` filtra pra um dia específico (`null` = mês inteiro). */

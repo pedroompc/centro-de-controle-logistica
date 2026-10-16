@@ -9,10 +9,10 @@ import { filialIn } from "./filiais";
  * 1) `PREPARA_ABAST_809`/`_GUIAS_1360`/`_MERC_1361` — o FATURAMENTO prepara a
  *    carga/guia pra separação (quem/quando em `PREP_USU_FK_809` é faturamento,
  *    não quem executa no piso).
- * 2) `MOVIMENT_END_502` — a movimentação FÍSICA de endereço (reserva → picking,
- *    `TIPO_END_502='M'` para `TIPO_END_DESTINO_502` em ('C','P')), executada
- *    pela equipe real de piso (depto LOGISTICA). É bem maior em volume que (1)
- *    e é a fonte certa pra "quem fez", vertical×horizontal e horário.
+ * 2) `MOVIMENT_END_502` — a movimentação FÍSICA entre endereços (interna 'I' e
+ *    abastecimento 'S'), executada pela equipe real de piso (depto LOGISTICA).
+ *    É bem maior em volume que (1) e é a fonte certa pra "quem fez",
+ *    descendente×ascendente×horizontal e horário.
  *
  * Rupturas de picking (estoque negativo no endereço) ficam em
  * `HIST_ABAST_NEG_848`, ligadas a (1).
@@ -72,7 +72,8 @@ export interface LinhaPessoaDia {
   nome: string | null;
   departamento: string | null;
   total: number;
-  vertical: number;
+  descendente: number;
+  ascendente: number;
 }
 
 export interface LinhaHoraDia {
@@ -84,7 +85,8 @@ export interface LinhaHoraDia {
 export interface DiaMovimentoPiso {
   dia: string;
   total: number;
-  vertical: number;
+  descendente: number;
+  ascendente: number;
 }
 
 export interface ProdutoMovimentoPiso {
@@ -95,8 +97,9 @@ export interface ProdutoMovimentoPiso {
 
 export interface MovimentoPiso {
   total: number;
-  vertical: number;
-  horizontal: number;
+  descendente: number; // "baixar" do Harpia: nível de destino mais baixo (reserva → picking)
+  ascendente: number; // "subir" do Harpia: nível de destino mais alto (picking → reserva)
+  horizontal: number; // mesmo nível
   dias: DiaMovimentoPiso[]; // pro calendário
   porPessoaDia: LinhaPessoaDia[]; // agregação/filtro por dia é no domínio
   porHoraDia: LinhaHoraDia[]; // idem
@@ -197,14 +200,25 @@ SELECT COUNT(DISTINCT ABASTECIMENTO_848) AS REATIVOS
   FROM HARPIAW2.HIST_ABAST_NEG_848
  WHERE DT_HIST_PK_848 >= TO_DATE(:ini, 'YYYY-MM-DD') AND DT_HIST_PK_848 < TO_DATE(:fim, 'YYYY-MM-DD') + 1`;
 
-// Movimentação física de endereço: reserva (M) → picking/conferência (C/P).
+// Movimentação física entre endereços reais (reserva M, picking C/P), nos dois
+// sentidos: interna (I) e abastecimento (S). Fica de fora a recepção (E, que
+// grava origem = destino) e os endereços fictícios (T/A, 999999999/888888888).
 // Endereço = RUA(2)+PREDIO(2)+NIVEL(2)+APTO(3); nível em SUBSTR(col,5,2),
-// validado contra a faixa real de uso (00-05, ver convocação ativa 1022).
-const FILTRO_PISO = `m.TIPO_END_502 = 'M' AND m.TIPO_END_DESTINO_502 IN ('C', 'P') AND LENGTH(m.END_PF_502) = 9 AND LENGTH(m.END_DESTINO_FK_502) = 9`;
-const VERTICAL_PISO = `CASE WHEN SUBSTR(m.END_PF_502, 5, 2) <> SUBSTR(m.END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END`;
+// validado contra a faixa real de uso (00-05, ver convocação ativa 1022) —
+// nível fora dela (ex.: rua 91) não conta como vertical.
+//
+// Sentido = as ações da Convocação Ativa do Harpia (ACAO_TIPO_1028):
+//   descendente = "Necessita Baixar" — reserva → picking, o abastecimento;
+//   ascendente  = "Necessita Subir"  — picking → reserva (sobra volta pro pulmão)
+//                 ou reserva → reserva mais alta.
+const FILTRO_PISO = `m.TIPO_MOVIMENT_502 IN ('I', 'S') AND m.TIPO_END_502 IN ('M', 'C', 'P') AND m.TIPO_END_DESTINO_502 IN ('M', 'C', 'P') AND LENGTH(m.END_PF_502) = 9 AND LENGTH(m.END_DESTINO_FK_502) = 9`;
+const NIVEIS_VALIDOS = `SUBSTR(m.END_PF_502, 5, 2) BETWEEN '00' AND '05' AND SUBSTR(m.END_DESTINO_FK_502, 5, 2) BETWEEN '00' AND '05'`;
+const DESCE_PISO = `CASE WHEN ${NIVEIS_VALIDOS} AND SUBSTR(m.END_PF_502, 5, 2) > SUBSTR(m.END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END`;
+const SOBE_PISO = `CASE WHEN ${NIVEIS_VALIDOS} AND SUBSTR(m.END_PF_502, 5, 2) < SUBSTR(m.END_DESTINO_FK_502, 5, 2) THEN 1 ELSE 0 END`;
+const SENTIDO_PISO = `SUM(${DESCE_PISO}) AS DESCE, SUM(${SOBE_PISO}) AS SOBE`;
 
 const SQL_MOVIMENTO_TOTAL = `
-SELECT COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
+SELECT COUNT(*) AS TOTAL, ${SENTIDO_PISO}
   FROM HARPIAW2.MOVIMENT_END_502 m
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}`;
@@ -213,7 +227,7 @@ SELECT COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
 const SQL_MOVIMENTO_PESSOAS_DIA = `
 SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, m.USU_FK_502 AS USU,
        u.DESCR_COMPLETO_754 AS NOME, d.DESCR_176 AS DEPTO,
-       COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
+       COUNT(*) AS TOTAL, ${SENTIDO_PISO}
   FROM HARPIAW2.MOVIMENT_END_502 m
   LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = m.USU_FK_502
   LEFT JOIN HARPIAW2.DEPART_176 d ON d.DEPART_PK_176 = u.DEPART_FK_754
@@ -222,7 +236,7 @@ SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, m.USU_FK_502 AS U
  GROUP BY TRUNC(m.DT_MOVIMENT_502), m.USU_FK_502, u.DESCR_COMPLETO_754, d.DESCR_176`;
 
 const SQL_MOVIMENTO_DIAS = `
-SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TOTAL, SUM(${VERTICAL_PISO}) AS VERTICAL
+SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TOTAL, ${SENTIDO_PISO}
   FROM HARPIAW2.MOVIMENT_END_502 m
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}
@@ -311,9 +325,9 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ NUMCAR: number; DIA: string; HORAS_FOLGA: number | null }>(SQL_CARGAS, binds),
     queryWinthor<{ DT: string; PRODUTO: number; CX: number; UN: number }>(SQL_RUPTURAS, binds),
     queryWinthor<{ REATIVOS: number }>(SQL_REATIVOS, binds),
-    queryWinthor<{ TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_TOTAL, binds),
-    queryWinthor<{ DIA: string; USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_PESSOAS_DIA, binds),
-    queryWinthor<{ DIA: string; TOTAL: number; VERTICAL: number }>(SQL_MOVIMENTO_DIAS, binds),
+    queryWinthor<{ TOTAL: number; DESCE: number; SOBE: number }>(SQL_MOVIMENTO_TOTAL, binds),
+    queryWinthor<{ DIA: string; USU: number; NOME: string | null; DEPTO: string | null; TOTAL: number; DESCE: number; SOBE: number }>(SQL_MOVIMENTO_PESSOAS_DIA, binds),
+    queryWinthor<{ DIA: string; TOTAL: number; DESCE: number; SOBE: number }>(SQL_MOVIMENTO_DIAS, binds),
     queryWinthor<{ DIA: string; HORA: string; TOTAL: number }>(SQL_MOVIMENTO_HORA_DIA, binds),
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
     queryWinthor<{ DIA: string; OPERADOR: number; USU: number | null; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
@@ -323,7 +337,8 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     produtosDiaDoMes(prods.map((r) => num(r.PRODUTO)), binds),
   ]);
   const movTotalNum = num(movTotal[0]?.TOTAL);
-  const movVerticalNum = num(movTotal[0]?.VERTICAL);
+  const movDesceNum = num(movTotal[0]?.DESCE);
+  const movSobeNum = num(movTotal[0]?.SOBE);
   return {
     dias: dias
       .map((r) => ({ dia: String(r.DIA), abastecimentos: num(r.ABASTS), caixas: num(r.CX), unidades: num(r.UN), skus: num(r.SKUS) }))
@@ -355,10 +370,11 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     abastecimentosReativos: num(reativos[0]?.REATIVOS),
     movimentoPiso: {
       total: movTotalNum,
-      vertical: movVerticalNum,
-      horizontal: movTotalNum - movVerticalNum,
+      descendente: movDesceNum,
+      ascendente: movSobeNum,
+      horizontal: movTotalNum - movDesceNum - movSobeNum,
       dias: movDias
-        .map((r) => ({ dia: String(r.DIA), total: num(r.TOTAL), vertical: num(r.VERTICAL) }))
+        .map((r) => ({ dia: String(r.DIA), total: num(r.TOTAL), descendente: num(r.DESCE), ascendente: num(r.SOBE) }))
         .sort((a, b) => a.dia.localeCompare(b.dia)),
       porPessoaDia: movPessoasDia.map((r) => ({
         dia: String(r.DIA),
@@ -366,7 +382,8 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         nome: r.NOME ?? null,
         departamento: r.DEPTO ?? null,
         total: num(r.TOTAL),
-        vertical: num(r.VERTICAL),
+        descendente: num(r.DESCE),
+        ascendente: num(r.SOBE),
       })),
       porHoraDia: movHoraDia.map((r) => ({ dia: String(r.DIA), hora: Number(r.HORA), total: num(r.TOTAL) })),
       produtosTop: movProdutos.map((r) => ({

@@ -38,7 +38,7 @@ const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "volume", titulo: "Volume", contexto: "caixas e unidades abastecidas por dia · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
   { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique num produto para ver o histórico diário" },
-  { id: "movimento", titulo: "Movimentação", contexto: "quem move, vertical × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
+  { id: "movimento", titulo: "Movimentação", contexto: "quem move, descendente × ascendente × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
 
@@ -108,7 +108,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("movimento")}
           rotulo="Movimentação"
           valor={h ? `${n0(h.movimentoPiso.total)}` : "—"}
-          sub={semH ?? (h ? `${n0(h.movimentoPiso.vertical)} vert. · ${n0(h.movimentoPiso.horizontal)} horiz.` : "sem dado no mês")}
+          sub={semH ?? (h ? `${n0(h.movimentoPiso.descendente)} desc. · ${n0(h.movimentoPiso.ascendente)} asc. · ${n0(h.movimentoPiso.horizontal)} horiz.` : "sem dado no mês")}
         />
         <Quadro
           {...q("rupturas")}
@@ -522,7 +522,7 @@ function VisaoMovimento({
 }) {
   const { sub, abrir, fechar } = useSub<"equipe" | "horario" | "tempo">();
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
-  if (movimento.total === 0) return <Vazio>Nenhuma movimentação de endereço (reserva → picking) registrada em {formatMesAno(mes)}.</Vazio>;
+  if (movimento.total === 0) return <Vazio>Nenhuma movimentação entre endereços registrada em {formatMesAno(mes)}.</Vazio>;
   const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
   const pessoas = pessoasMovimento(movimento.porPessoaDia, dia);
   const porHora = horaMovimento(movimento.porHoraDia, dia);
@@ -530,8 +530,9 @@ function VisaoMovimento({
   const porOperador = porOperadorConvocacoes(convocacoes, dia);
   const diaDados = dia ? movimento.dias.find((d) => d.dia === dia) ?? null : null;
   const totalFiltrado = diaDados ? diaDados.total : movimento.total;
-  const verticalFiltrado = diaDados ? diaDados.vertical : movimento.vertical;
-  const horizontalFiltrado = totalFiltrado - verticalFiltrado;
+  const descendenteFiltrado = diaDados ? diaDados.descendente : movimento.descendente;
+  const ascendenteFiltrado = diaDados ? diaDados.ascendente : movimento.ascendente;
+  const horizontalFiltrado = totalFiltrado - descendenteFiltrado - ascendenteFiltrado;
   const maxPessoa = Math.max(1, ...pessoas.map((p) => p.total));
   const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
   const maxOperadorConv = Math.max(1, ...porOperador.map((o) => o.total));
@@ -544,9 +545,10 @@ function VisaoMovimento({
   const TITULO_SUB_MOV: Record<"equipe" | "horario" | "tempo", string> = { equipe: "Quem fez", horario: "Horário", tempo: "Tempo de resposta" };
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-8">
         <Mini rotulo="Movimentações" valor={n0(totalFiltrado)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
-        <Mini rotulo="Vertical" valor={n0(verticalFiltrado)} sub="mudou de nível (altura) no rack" />
+        <Mini rotulo="↓ Descendente" valor={n0(descendenteFiltrado)} sub="“baixar” no Harpia — reserva → picking" />
+        <Mini rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub="“subir” no Harpia — picking → reserva" />
         <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
         <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub="clique pra ver quem fez quanto" />
         <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? `nesse dia, por pessoa` : "no mês, por pessoa"} />
@@ -568,7 +570,7 @@ function VisaoMovimento({
 
       {sub === null && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <Bloco titulo="Movimentações por dia" direita={<Dica>reserva → picking/conferência, depto Logística</Dica>}>
+          <Bloco titulo="Movimentações por dia" direita={<Dica>entre endereços (reserva ⇄ picking), depto Logística</Dica>}>
             <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
           </Bloco>
           <Bloco titulo="Top 50 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
@@ -605,7 +607,8 @@ function VisaoMovimento({
                     <th className="py-2 font-semibold">Nome</th>
                     <th className="py-2 font-semibold">Depto</th>
                     <th className="py-2 text-right font-semibold">Total</th>
-                    <th className="py-2 text-right font-semibold">Vertical</th>
+                    <th className="py-2 text-right font-semibold" title="baixar: reserva → picking">↓ Desc.</th>
+                    <th className="py-2 text-right font-semibold" title="subir: picking → reserva">↑ Asc.</th>
                     <th className="py-2 text-right font-semibold">Horizontal</th>
                     <th className="w-32 py-2 text-right font-semibold">%</th>
                   </tr>
@@ -620,7 +623,8 @@ function VisaoMovimento({
                       <td className="max-w-0 py-2"><NomeUsuario usuario={p.usuario} nomeHarpia={p.nome} nomes={nomes} /></td>
                       <td className="py-2 text-white/60">{p.departamento ?? "—"}</td>
                       <td className="py-2 text-right font-bold tabular-nums text-white">{n0(p.total)}</td>
-                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.vertical)}</td>
+                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.descendente)}</td>
+                      <td className="py-2 text-right tabular-nums text-white/70">{n0(p.ascendente)}</td>
                       <td className="py-2 text-right tabular-nums text-white/70">{n0(p.horizontal)}</td>
                       <td className="py-2">
                         <div className="h-1.5 rounded-full bg-white/10">
