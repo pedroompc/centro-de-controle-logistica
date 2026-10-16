@@ -1,5 +1,6 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
+import { PESO_ITEM, JOIN_PESO_PRODUTO } from "./faturamento";
 import { EUGENIO } from "@/domain/fechamento-janela";
 
 /**
@@ -78,8 +79,9 @@ SELECT COUNT(DISTINCT n.CODCLI || '|' || TO_CHAR(${OP_DATE}, 'YYYYMMDD')) ATEND
 
 // Peso bruto de venda das notas cujo dia operacional cai no intervalo.
 const SQL_PESO = `
-SELECT NVL(SUM(NVL(m.PESOBRUTO, 0) * m.QT), 0) PESO
+SELECT NVL(SUM(${PESO_ITEM}), 0) PESO
   FROM PCMOV m
+  ${JOIN_PESO_PRODUTO}
   JOIN PCNFSAID n ON n.NUMTRANSVENDA = m.NUMTRANSVENDA
   LEFT JOIN PCCARREG car ON car.NUMCAR = n.NUMCAR
  WHERE ${filialIn("m.CODFILIAL")} AND m.CODOPER = 'S'

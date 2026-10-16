@@ -5,7 +5,6 @@ import {
   corDaEscala,
   rankingMetrica,
   tetoMetrica,
-  totalMetrica,
   COR_NEUTRA,
   COR_RAMPA_MIN,
   COR_RAMPA_MAX,
@@ -36,9 +35,11 @@ interface Geo {
  * logística mostra %): por cidade exibimos notas entregues / devolvidas, a participação no
  * faturamento geral,
  * a taxa de devolução e o motivo predominante. `faturamentoGeral` é a venda
- * faturada total do mês (denominador da participação).
+ * faturada total do mês (denominador da participação). `taxaGeral` é a taxa
+ * OFICIAL do mês (rotina 111, a mesma do placar do topo) — o destaque do mapa
+ * mostra ela, para a TV não exibir duas taxas de devolução diferentes.
  */
-export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeDevolucao[]; faturamentoGeral: number }) {
+export default function TvMapa({ cidades, faturamentoGeral, taxaGeral }: { cidades: CidadeDevolucao[]; faturamentoGeral: number; taxaGeral: number }) {
   const [geo, setGeo] = useState<Geo[] | null>(null);
 
   useEffect(() => {
@@ -54,7 +55,6 @@ export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeD
 
   const teto = tetoMetrica(cidades, "valor");
   const ranking = rankingMetrica(cidades, "valor");
-  const taxaGeralPE = totalMetrica(cidades, "taxa"); // devolvido / faturado de PE
   const porIbge = new Map(cidades.map((c) => [c.ibge, c]));
 
   // Card rotativo: passa por cada cidade (maior volume → menor), uma a cada
@@ -122,10 +122,10 @@ export default function TvMapa({ cidades, faturamentoGeral }: { cidades: CidadeD
       <div className="flex min-h-0 flex-col justify-center">
         <div className="mb-4 shrink-0">
           <div className="text-sm font-semibold uppercase tracking-[0.18em] text-white/45">
-            Taxa de devolução · PE
+            Taxa de devolução · geral
           </div>
           <div className="font-[family-name:var(--font-sora)] text-4xl font-extrabold tabular-nums text-rose-300 xl:text-5xl">
-            {formatPercent(taxaGeralPE)}
+            {formatPercent(taxaGeral)}
           </div>
         </div>
 

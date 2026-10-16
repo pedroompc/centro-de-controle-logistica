@@ -119,7 +119,7 @@ function Marca() {
 function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
-    s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} /> });
+    s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} taxaGeral={dev.taxaValor} /> });
   if (d.motoristas.length > 0)
     s.push({ id: "motoristas", titulo: "Motoristas que mais voltam", contexto: "top 10 por taxa de nota e por valor", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoMotoristas motoristas={d.motoristas} /> });
   if (d.clientes.length > 0 || d.vendedores.length > 0)

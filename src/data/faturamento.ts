@@ -17,7 +17,16 @@ const faixa = (col: string) =>
 const FILTRO_NF = `${filialIn("n.CODFILIAL")} AND ${faixa("n.DTSAIDA")} AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL`;
 const UNIVERSO_VENDA = `SELECT n.NUMTRANSVENDA FROM PCNFSAID n WHERE ${FILTRO_NF} AND n.NUMTRANSVENDA > 0`;
 
-const PESO_ITEM = `NVL(m.PESOBRUTO, 0) * m.QT`;
+// Peso do item = PESOBRUTO gravado no PCMOV × QT. Exceção: erro de digitação de
+// vírgula no cadastro (peso ≥ 500× o do PCPRODUT) — o TI corrige o cadastro, mas
+// o PCMOV guarda o peso da hora da venda. Caso real: NF 2526254 (13/10/2026),
+// produto 28773 com 1.266 kg/un em vez de 1,266 → +911.520 kg no mês. Nessa
+// faixa usa o peso do cadastro. O limite de 500× não pega nenhum item legítimo
+// (o maior desvio recorrente é ~150×, embalagem diferente do cadastro).
+export const PESO_ITEM = `NVL(CASE WHEN pp.PESOBRUTO > 0 AND m.PESOBRUTO >= 500 * pp.PESOBRUTO
+                                   THEN pp.PESOBRUTO ELSE m.PESOBRUTO END, 0) * m.QT`;
+/** JOIN que `PESO_ITEM` exige (alias `pp`). */
+export const JOIN_PESO_PRODUTO = `LEFT JOIN PCPRODUT pp ON pp.CODPROD = m.CODPROD`;
 
 // Vínculo da nota de entrada de devolução com a NF de venda de origem. Uma
 // devolução SEM vínculo (NUMTRANSVENDA = 0) é "avulsa" — o 111 a isola numa
@@ -50,6 +59,7 @@ SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
      FROM PCNFSAID n WHERE ${FILTRO_NF}) h,
   (SELECT NVL(SUM(${PESO_ITEM}), 0) PESO_VENDA
      FROM PCMOV m
+     ${JOIN_PESO_PRODUTO}
     WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'S'
       AND m.NUMTRANSVENDA IN (${UNIVERSO_VENDA})) s,
   (SELECT COUNT(DISTINCT CASE WHEN NOT (${EH_AVULSA}) THEN m.NUMNOTA END) DEVOLVIDAS,
@@ -57,6 +67,7 @@ SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
           NVL(SUM(${PESO_ITEM}), 0) PESO_DEVOLUCAO
      FROM PCMOV m
      LEFT JOIN ${VENDA_LINK} vlink ON vlink.NUMTRANSENT = m.NUMTRANSENT
+     ${JOIN_PESO_PRODUTO}
     WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
       AND m.DTCANCEL IS NULL) d`;
 
