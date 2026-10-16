@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sugerirFuncionario, ligacoesEfetivas, resumoTurnosProducao } from "./turno";
+import { sugerirFuncionario, ligacoesEfetivas } from "./turno";
 
 const func = (id: string, nome: string, turno: "manha" | "tarde" | "noite" = "manha") => ({ id, nome, turno });
 
@@ -48,25 +48,5 @@ describe("ligacoesEfetivas", () => {
     expect(r[64]).toEqual({ funcionarioId: "2", auto: false });
     expect(r[65]).toEqual({ funcionarioId: "2", auto: true });
     expect(r[9]).toBeUndefined();
-  });
-});
-
-describe("resumoTurnosProducao", () => {
-  it("agrega por turno do operador: total, pessoas distintas e média por pessoa/dia", () => {
-    const turnos = new Map([[1, "noite" as const], [2, "noite" as const], [3, "manha" as const]]);
-    const r = resumoTurnosProducao(
-      [
-        { usuario: 1, dia: "2026-10-01", valor: 100 },
-        { usuario: 1, dia: "2026-10-02", valor: 50 },
-        { usuario: 2, dia: "2026-10-01", valor: 30 },
-        { usuario: 3, dia: "2026-10-01", valor: 40 },
-        { usuario: 99, dia: "2026-10-01", valor: 7 },
-      ],
-      turnos,
-    );
-    expect(r.noite).toEqual({ total: 180, pessoas: 2, diasPessoa: 3, porPessoaDia: 60 });
-    expect(r.manha).toEqual({ total: 40, pessoas: 1, diasPessoa: 1, porPessoaDia: 40 });
-    expect(r.tarde).toEqual({ total: 0, pessoas: 0, diasPessoa: 0, porPessoaDia: null });
-    expect(r.sem).toEqual({ total: 7, pessoas: 1, diasPessoa: 1, porPessoaDia: 7 });
   });
 });

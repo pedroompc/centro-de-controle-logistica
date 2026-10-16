@@ -9,7 +9,6 @@ import { Fragment, useState, useTransition, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import { ROTULO_TURNO, TURNOS } from "@/domain/metrics";
-import type { ChaveTurno } from "@/domain/turno";
 import { ligarUsuarioHarpia } from "@/data/harpia-usuarios";
 import type { Equipamento, Funcionario, Turno } from "@/domain/types";
 import type { NomesHarpia } from "./turno-dados";
@@ -35,6 +34,13 @@ export interface PessoaBI {
   turno: Turno;
   rubricas: Pick<Funcionario, "salarioBase" | "passagem" | "alimentacao" | "planoSaude" | "ajudaCusto" | "premiacao" | "adicionalNoturno">;
 }
+
+// Etiqueta do turno na equipe (sem verde: verde é só receita).
+const COR_TURNO: Record<Turno, string> = {
+  manha: "bg-amber-300/15 text-amber-200",
+  tarde: "bg-orange-400/15 text-orange-200",
+  noite: "bg-indigo-400/20 text-indigo-200",
+};
 
 const papelDe = (papeis: PapelBI[], id: string): PapelBI => papeis.find((p) => p.id === id) ?? { id, rotulo: id, plural: id, cor: "#64748b" };
 
@@ -244,8 +250,8 @@ export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; 
               {pp.rotulo} {pessoas.filter((y) => y.papel === pp.id).length}
             </ChipTV>
           ))}
-          {turnosPresentes.length > 1 && <span className="mx-1 self-center text-white/20">|</span>}
-          {turnosPresentes.length > 1 &&
+          {turnosPresentes.length > 0 && <span className="mx-1 self-center text-white/20">|</span>}
+          {turnosPresentes.length > 0 &&
             turnosPresentes.map((t) => (
               <ChipTV key={t} ativo={turno === t} onClick={() => setTurno((a) => (a === t ? null : t))}>
                 {ROTULO_TURNO[t]} {pessoas.filter((y) => y.turno === t).length} · {semCentavos(pessoas.filter((y) => y.turno === t).reduce((s, y) => s + y.custo, 0))}
@@ -288,7 +294,9 @@ export function TabelaEquipe({ pessoas, papeis, total }: { pessoas: PessoaBI[]; 
                     {y.cargo}
                     {y.outroSetor && <span className="ml-1 text-xs text-amber-300">(outro setor)</span>}
                   </td>
-                  <td className="py-2 text-white/60">{ROTULO_TURNO[y.turno]}</td>
+                  <td className="py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${COR_TURNO[y.turno]}`}>{ROTULO_TURNO[y.turno]}</span>
+                  </td>
                   <td className="py-2 pr-6 text-right tabular-nums text-white/70">{y.rubricas.salarioBase === null ? "—" : formatBRL(y.rubricas.salarioBase)}</td>
                   <td className="py-2 text-right font-bold tabular-nums text-white">{formatBRL(y.custo)}</td>
                   <td className="py-2 text-right tabular-nums text-white/50">{total > 0 ? formatPercent(y.custo / total) : "—"}</td>
@@ -532,52 +540,5 @@ export function NomeUsuario({ usuario, nomeHarpia, nomes }: { usuario: number; n
       )}
       {erro && <div className="mt-0.5 text-xs text-rose-300">{erro}</div>}
     </div>
-  );
-}
-
-export interface LinhaTurnos {
-  rotulo: string;
-  valores: Partial<Record<ChaveTurno, string>>; // ausente = "—"
-  dica?: string;
-  forte?: boolean;
-}
-
-/**
- * Comparativo lado a lado dos turnos (colunas) por indicador (linhas). A
- * coluna "Sem turno" só aparece quando há produção de usuário não ligado.
- */
-export function ComparativoTurnos({ linhas, comSem }: { linhas: LinhaTurnos[]; comSem: boolean }) {
-  const colunas: ChaveTurno[] = comSem ? [...TURNOS, "sem"] : [...TURNOS];
-  return (
-    <table className="w-full text-left text-sm">
-      <thead className="text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-        <tr>
-          <th className="py-2 font-semibold" />
-          {colunas.map((c) => (
-            <th key={c} className={`py-2 text-right font-semibold ${c === "sem" ? "text-amber-300/70" : ""}`}>
-              {c === "sem" ? "Sem turno" : ROTULO_TURNO[c]}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {linhas.map((l) => (
-          <tr key={l.rotulo} className="border-t border-white/[0.06]">
-            <td className="py-2.5 pr-3">
-              <div className="font-semibold text-white/80">{l.rotulo}</div>
-              {l.dica && <div className="text-[0.65rem] text-white/35">{l.dica}</div>}
-            </td>
-            {colunas.map((c) => (
-              <td
-                key={c}
-                className={`py-2.5 text-right tabular-nums ${l.forte ? "text-lg font-bold text-white" : "text-white/70"} ${c === "sem" ? "opacity-60" : ""}`}
-              >
-                {l.valores[c] ?? "—"}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
