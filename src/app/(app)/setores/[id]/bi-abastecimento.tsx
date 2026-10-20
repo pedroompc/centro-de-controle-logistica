@@ -667,7 +667,7 @@ function VisaoMovimento({
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
-        <Mini rotulo="Movimentações" valor={n0(prem.total)} sub={`${dia ? ddmm(dia) : formatMesAno(mes)} · premiação (A424)`} />
+        <Mini rotulo="Movimentações" valor={n0(prem.total)} sub={`${dia ? ddmm(dia) : formatMesAno(mes)}`} />
         <Mini rotulo="↓ Descendente" valor={n0(prem.descendente)} sub="reabastecimento — reserva → picking" />
         <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(prem.ascendente)} sub={`movimentações − descendente · ${n0(volumesRecepcao)} vol. recebidos`} />
         <Mini {...card("equipe")} rotulo="Empilhadores" valor={String(emp.length)} sub="clique pra ver o rendimento" />
@@ -690,7 +690,7 @@ function VisaoMovimento({
 
       {sub === null && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <Bloco titulo="Movimentações por dia" direita={<Dica>premiação: empilhadores + lançado no WMS (A424)</Dica>}>
+          <Bloco titulo="Movimentações por dia" direita={<Dica>empilhadores + lançamento manual (A424)</Dica>}>
             <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
           </Bloco>
           <Bloco titulo="Top 50 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
