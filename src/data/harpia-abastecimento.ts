@@ -346,28 +346,34 @@ const LINHAS_A424 = `
 const CAIXAS_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD ELSE l.QTD / NVL(NULLIF(l.INVOL, 0), 1) END`;
 const PESO_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD * NVL(NULLIF(l.INVOL, 0), 1) ELSE l.QTD END * NVL(pr.PESOBRUTO, 0)`;
 
+// Mesma pessoa com mais de um login no Harpia → login que vale no BI.
+// 98 "EMP. THAY" = Gleidson (confirmado pelo Pedro em 20/10/2026): o operador 3
+// da Convocação Ativa passou do 76 pro 98, mas é o mesmo empilhador.
+const MESMA_PESSOA: Record<number, number> = { 98: 76 };
+const usuCanonico = (col: string) =>
+  `CASE ${col} ${Object.entries(MESMA_PESSOA).map(([de, para]) => `WHEN ${de} THEN ${para}`).join(" ")} ELSE ${col} END`;
+
 const SQL_A424_DIA = `
 WITH linhas AS (${LINHAS_A424})
-SELECT l.FUNCAO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, l.USU, MAX(u.DESCR_COMPLETO_754) AS NOME,
+SELECT l.FUNCAO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, ${usuCanonico("l.USU")} AS USU, MAX(u.DESCR_COMPLETO_754) AS NOME,
        COUNT(*) AS TAREFAS, SUM(l.CONV) AS TAREFAS_CONV, SUM(${CAIXAS_A424}) AS CAIXAS, SUM(${PESO_A424}) AS PESO, COUNT(DISTINCT l.MERC) AS SKUS
   FROM linhas l
   LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
-  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = l.USU
+  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = ${usuCanonico("l.USU")}
  WHERE l.FUNCAO IS NOT NULL
- GROUP BY l.FUNCAO, TRUNC(l.DT), l.USU`;
+ GROUP BY l.FUNCAO, TRUNC(l.DT), ${usuCanonico("l.USU")}`;
 
 const SQL_A424_SKUS_MES = `
 WITH linhas AS (${LINHAS_A424})
-SELECT l.FUNCAO, l.USU, COUNT(DISTINCT l.MERC) AS SKUS
+SELECT l.FUNCAO, ${usuCanonico("l.USU")} AS USU, COUNT(DISTINCT l.MERC) AS SKUS
   FROM linhas l
  WHERE l.FUNCAO IS NOT NULL
- GROUP BY l.FUNCAO, l.USU`;
+ GROUP BY l.FUNCAO, ${usuCanonico("l.USU")}`;
 
 // Empilhador = operador cadastrado na Convocação Ativa (cada um preso a um
 // agente "EMPILHADEIRA"). EMPILHADORES_EXTRA = usuários do Harpia que também
 // são empilhadores mas ainda não estão (ou não estão mais) na Convocação Ativa.
-// 76 = login "EMP GLEIDSON": em 20/10/2026 o operador 3 passou pro usuário 98
-// ("EMP. THAY"), mas o 76 seguiu com a movimentação do mês.
+// 76 = Gleidson, que também usa o 98 (ver MESMA_PESSOA).
 // Luiz Gabriel (3) é da noite — fora por decisão do Pedro.
 const EMPILHADORES_EXTRA: number[] = [76];
 const SQL_EMPILHADORES = `
@@ -563,7 +569,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         pesoDesc: num(r.PESO_DESC),
         skus: num(r.SKUS),
       })),
-      empilhadores: [...new Set([...empilhadoresRaw.map((r) => num(r.USU)), ...EMPILHADORES_EXTRA])],
+      empilhadores: [...new Set([...empilhadoresRaw.map((r) => num(r.USU)), ...EMPILHADORES_EXTRA].map((u) => MESMA_PESSOA[u] ?? u))],
       porHoraDia: movHoraDia.map((r) => ({ dia: String(r.DIA), hora: Number(r.HORA), total: num(r.TOTAL) })),
       produtosTop: movProdutos.map((r) => ({
         produto: num(r.PRODUTO),
