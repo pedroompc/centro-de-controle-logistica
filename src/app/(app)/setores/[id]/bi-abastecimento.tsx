@@ -48,6 +48,8 @@ const OCULTAS: ReadonlySet<VisaoAba> = new Set(["antecedencia", "rupturas"]);
 
 const PAPEIS: PapelBI[] = [
   { id: "lider", rotulo: "Líder", plural: "Liderança", cor: "#10b981" },
+  { id: "empilhador", rotulo: "Empilhador", plural: "Empilhadores", cor: "#38bdf8" },
+  { id: "wms", rotulo: "WMS", plural: "WMS", cor: "#c2820a" },
   { id: "operador", rotulo: "Operador", plural: "Operadores de abastecimento", cor: "#5b6fd6" },
 ];
 

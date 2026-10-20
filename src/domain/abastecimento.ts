@@ -6,7 +6,7 @@
  */
 import { normalizarTexto } from "./recebimento";
 
-export type PapelAbastecimento = "lider" | "operador";
+export type PapelAbastecimento = "lider" | "empilhador" | "wms" | "operador";
 
 export function ehSetorAbastecimento(nome: string): boolean {
   return normalizarTexto(nome).includes("abastec");
@@ -15,6 +15,9 @@ export function ehSetorAbastecimento(nome: string): boolean {
 export function papelAbastecimento(cargo: string): PapelAbastecimento {
   const c = normalizarTexto(cargo);
   if (c.includes("lider") || c.includes("encarreg") || c.includes("supervis") || c.includes("coorden")) return "lider";
+  if (c.includes("empilhad")) return "empilhador";
+  // Aux. de logística no abastecimento = quem lança as movimentações no WMS.
+  if (c.includes("aux") && c.includes("logist")) return "wms";
   return "operador";
 }
 

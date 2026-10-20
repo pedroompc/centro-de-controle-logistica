@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { rendimentoA424, historicoA424, premiacaoA424, premiacaoPorDia } from "./abastecimento";
+import { rendimentoA424, historicoA424, premiacaoA424, premiacaoPorDia, papelAbastecimento } from "./abastecimento";
+
+describe("papelAbastecimento", () => {
+  it("separa liderança, empilhadores, WMS e ajudantes pelo cargo", () => {
+    expect(papelAbastecimento("ENCARREGADO")).toBe("lider");
+    expect(papelAbastecimento("EMPILHADOR SENIOR")).toBe("empilhador");
+    expect(papelAbastecimento("EMPILHADOR JUNIOR")).toBe("empilhador");
+    expect(papelAbastecimento("AUX. DE LOGISTICA")).toBe("wms");
+    expect(papelAbastecimento("AJUDANTE")).toBe("operador");
+  });
+});
 
 describe("rendimentoA424", () => {
   const l = (funcao: "03" | "04", dia: string, usuario: number, tarefas: number, caixas: number) =>
