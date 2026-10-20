@@ -131,6 +131,65 @@ export function pessoasMovimento(linhas: LinhaPessoa[], dia: string | null, skus
   return [...m.values()].map((r) => ({ ...r, horizontal: r.total - r.descendente - r.ascendente })).sort((a, b) => b.total - a.total);
 }
 
+// --- Produtividade A424 (rendimento oficial dos empilhadores) -----------------
+
+type FuncaoA424 = "03" | "04";
+type LinhaA424 = { funcao: FuncaoA424; dia: string; usuario: number; nome: string | null; tarefas: number; caixas: number; peso: number; skus: number };
+
+export interface MetricaA424 {
+  tarefas: number;
+  caixas: number;
+  peso: number; // kg
+  skus: number;
+}
+
+export interface RendimentoA424 {
+  usuario: number;
+  nome: string | null;
+  reabastecimento: MetricaA424; // função 03
+  empilhadeira: MetricaA424; // função 04
+  dias: number; // dias com alguma tarefa no recorte
+}
+
+const metricaVazia = (): MetricaA424 => ({ tarefas: 0, caixas: 0, peso: 0, skus: 0 });
+
+/**
+ * Agrega a A424 por pessoa; `dia` filtra (`null` = mês inteiro). Como em
+ * `pessoasMovimento`, SKUs do mês vêm de `skusMes` (o mesmo produto se repete nos dias).
+ */
+export function rendimentoA424(linhas: LinhaA424[], dia: string | null, skusMes: { funcao: FuncaoA424; usuario: number; skus: number }[] = []): RendimentoA424[] {
+  const m = new Map<number, RendimentoA424 & { diasSet: Set<string> }>();
+  for (const l of linhas) {
+    if (dia && l.dia !== dia) continue;
+    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, reabastecimento: metricaVazia(), empilhadeira: metricaVazia(), dias: 0, diasSet: new Set<string>() };
+    const alvo = l.funcao === "03" ? r.reabastecimento : r.empilhadeira;
+    alvo.tarefas += l.tarefas;
+    alvo.caixas += l.caixas;
+    alvo.peso += l.peso;
+    alvo.skus = dia ? l.skus : alvo.skus;
+    r.nome ??= l.nome;
+    r.diasSet.add(l.dia);
+    m.set(l.usuario, r);
+  }
+  if (!dia) {
+    for (const s of skusMes) {
+      const r = m.get(s.usuario);
+      if (r) (s.funcao === "03" ? r.reabastecimento : r.empilhadeira).skus = s.skus;
+    }
+  }
+  return [...m.values()]
+    .map(({ diasSet, ...r }) => ({ ...r, dias: diasSet.size }))
+    .sort((a, b) => b.reabastecimento.caixas - a.reabastecimento.caixas);
+}
+
+/** Histórico diário de reabastecimento (03) de uma pessoa — drill-down do empilhador. */
+export function historicoA424(linhas: LinhaA424[], usuario: number): { dia: string; tarefas: number; caixas: number; peso: number }[] {
+  return linhas
+    .filter((l) => l.usuario === usuario && l.funcao === "03")
+    .map((l) => ({ dia: l.dia, tarefas: l.tarefas, caixas: l.caixas, peso: l.peso }))
+    .sort((a, b) => a.dia.localeCompare(b.dia));
+}
+
 /** Movimentações por hora do dia; `dia` filtra pra um dia específico (`null` = mês inteiro). */
 export function horaMovimento(linhas: { dia: string; hora: number; total: number }[], dia: string | null): { hora: number; total: number }[] {
   const m = new Map<number, number>();

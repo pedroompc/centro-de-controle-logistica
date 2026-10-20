@@ -24,7 +24,7 @@ import {
   NomeUsuario,
 } from "./bi-ui";
 import type { NomesHarpia } from "./turno-dados";
-import { type PessoaMovimento, resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes } from "@/domain/abastecimento";
+import { type PessoaMovimento, type RendimentoA424, resumoVolume, resumoAntecedencia, pessoasMovimento, horaMovimento, historicoPessoa, historicoProduto, resumoConvocacoes, porOperadorConvocacoes, rendimentoA424, historicoA424 } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao, RecepcaoProtocolo } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
@@ -36,7 +36,7 @@ type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "ru
 
 const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
-  { id: "volume", titulo: "Volume", contexto: "caixas e unidades abastecidas por dia · clique num dia para filtrar" },
+  { id: "volume", titulo: "Volume", contexto: "demanda de abastecimento gerada pelo faturamento (rotina 341) · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
   { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
   { id: "movimento", titulo: "Movimentação", contexto: "quem move, descendente × ascendente × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
@@ -351,7 +351,7 @@ function VisaoVolume({
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
         <Mini rotulo="Caixas" valor={n0(resumo.caixas)} sub={`${resumo.dias} dias com abastecimento`} />
-        <Mini rotulo="Unidades" valor={n0(resumo.unidades)} />
+        <Mini rotulo="Unidades" valor={n0(resumo.unidades)} sub="caixas fechadas × embalagem + avulsas" />
         <Mini rotulo="SKUs por dia" valor={resumo.skusMedioDia !== null ? n0(resumo.skusMedioDia) : "—"} sub="produtos distintos, média do dia" />
         <Mini rotulo="Abastecimentos" valor={n0(resumo.abastecimentos)} sub={resumo.dias ? `${n0(resumo.abastecimentos / resumo.dias)} por dia` : undefined} />
         <Mini rotulo="Caixas por pessoa/dia" valor={caixasPorPessoaDia !== null ? n1(caixasPorPessoaDia) : "—"} sub={pessoas ? `${pessoas} pessoas no setor` : "nenhuma pessoa cadastrada no setor"} />
@@ -556,6 +556,54 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 
 type SubMov = "equipe" | "horario" | "tempo" | "subida";
 
+/** Empilhadores pela regra da A424: 03 reabastecimento (até o picking) e 04 empilhadeira (baixar/subir palete). */
+function TabelaEmpilhadores({
+  rendimentos, nomes, aberta, onAbrir,
+}: {
+  rendimentos: RendimentoA424[]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
+}) {
+  const soma = (k: "tarefas" | "caixas" | "peso", f: "reabastecimento" | "empilhadeira") => rendimentos.reduce((t, r) => t + r[f][k], 0);
+  const num = "py-2 text-right tabular-nums";
+  return (
+    <table className="w-full text-left text-sm">
+      <thead className="text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
+        <tr>
+          <th className="py-2 font-semibold">Empilhador</th>
+          <th className="py-2 text-right font-semibold" title="A424 função 03 — tarefas de levar até o picking">Reabast.</th>
+          <th className="py-2 text-right font-semibold">Caixas</th>
+          <th className="py-2 text-right font-semibold">Peso</th>
+          <th className="py-2 text-right font-semibold">SKUs</th>
+          <th className="py-2 text-right font-semibold" title="A424 função 04 — baixar/subir palete e movimentação sem convocação">Empilhad.</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr className="border-t border-white/10 bg-white/[0.04] text-xs">
+          <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">Regra A424 · {rendimentos.length}</td>
+          <td className={`${num} font-bold text-white/80`}>{n0(soma("tarefas", "reabastecimento"))}</td>
+          <td className={`${num} text-white/60`}>{n0(soma("caixas", "reabastecimento"))}</td>
+          <td className={`${num} text-white/60`}>{n1(soma("peso", "reabastecimento") / 1000)} t</td>
+          <td />
+          <td className={`${num} text-white/60`}>{n0(soma("tarefas", "empilhadeira"))}</td>
+        </tr>
+        {rendimentos.map((r) => (
+          <tr
+            key={r.usuario}
+            onClick={() => onAbrir(r.usuario)}
+            className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${r.usuario === aberta ? "bg-amber-400/10" : ""}`}
+          >
+            <td className="max-w-0 py-2"><NomeUsuario usuario={r.usuario} nomeHarpia={r.nome} nomes={nomes} /></td>
+            <td className={`${num} font-bold text-white`}>{n0(r.reabastecimento.tarefas)}</td>
+            <td className={`${num} text-white/70`}>{n0(r.reabastecimento.caixas)}</td>
+            <td className={`${num} text-white/70`}>{n1(r.reabastecimento.peso / 1000)} t</td>
+            <td className={`${num} text-white/70`}>{n0(r.reabastecimento.skus)}</td>
+            <td className={`${num} text-white/70`}>{n0(r.empilhadeira.tarefas)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /** Quem moveu, com os empilhadores separados no topo e subtotal por grupo. */
 function TabelaQuemFez({
   pessoas, empilhadores, nomes, aberta, onAbrir,
@@ -637,12 +685,17 @@ function VisaoMovimento({
   const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
   const maxOperadorConv = Math.max(1, ...porOperador.map((o) => o.total));
   const pico = porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
-  // Média só entre os empilhadores (operadores da Convocação Ativa) — quem move de vez em quando não puxa a média pra baixo.
-  const emp = pessoas.filter((p) => movimento.empilhadores.includes(p.usuario));
-  const mediaPorEmpilhador = emp.length ? emp.reduce((t, p) => t + p.total, 0) / emp.length : null;
+  // Empilhadores medidos pela regra da A424 (rendimento oficial); o resto da equipe, pela movimentação de piso.
+  const emp = rendimentoA424(movimento.a424, dia, movimento.a424SkusMes).filter((r) => movimento.empilhadores.includes(r.usuario));
+  const outros = pessoas.filter((p) => !movimento.empilhadores.includes(p.usuario));
+  // Média só entre os empilhadores — quem move de vez em quando não puxa a média pra baixo.
+  const mediaPorEmpilhador = emp.length ? emp.reduce((t, r) => t + r.reabastecimento.tarefas, 0) / emp.length : null;
   const card = (k: SubMov) => ({ onClick: abrir(k), ativo: sub === k });
-  const pessoaSel = pessoaAberta ? pessoas.find((p) => p.usuario === pessoaAberta) ?? null : null;
-  const historicoSel = pessoaAberta ? historicoPessoa(movimento.porPessoaDia, pessoaAberta) : [];
+  const empSel = pessoaAberta ? emp.find((r) => r.usuario === pessoaAberta) ?? null : null;
+  const pessoaSel = pessoaAberta && !empSel ? outros.find((p) => p.usuario === pessoaAberta) ?? null : null;
+  const historicoSel = pessoaSel ? historicoPessoa(movimento.porPessoaDia, pessoaSel.usuario) : [];
+  const historicoEmp = empSel ? historicoA424(movimento.a424, empSel.usuario) : [];
+  const abrirPessoa = (u: number) => setPessoaAberta((a) => (a === u ? null : u));
   const recepcaoFiltrada = dia ? recepcao.filter((r) => r.dia === dia) : recepcao;
   const volumesRecepcao = recepcaoFiltrada.reduce((t, r) => t + r.volumes, 0);
   const fmtMin = (v: number | null) => (v === null ? "—" : v < 1 ? `${Math.round(v * 60)}s` : `${n1(v)} min`);
@@ -654,8 +707,8 @@ function VisaoMovimento({
         <Mini rotulo="↓ Descendente" valor={n0(descendenteFiltrado)} sub="“baixar” no Harpia — reserva → picking" />
         <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub={`picking → reserva · + ${n0(volumesRecepcao)} vol. do recebimento`} />
         <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
-        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(pessoas.length)} sub={`${emp.length} empilhadores · clique pra ver o rendimento`} />
-        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={dia ? "nesse dia, só empilhadores" : "no mês, só empilhadores"} />
+        <Mini {...card("equipe")} rotulo="Pessoas" valor={String(outros.length + emp.length)} sub={`${emp.length} empilhadores · clique pra ver o rendimento`} />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`reabastecimentos (A424) ${dia ? "nesse dia" : "no mês"}`} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
         <Mini {...card("tempo")} rotulo="Tempo de resposta" valor={fmtMin(resumoConv.medianaRespostaMin)} sub={resumoConv.total ? `Convocação Ativa · ${resumoConv.total} tarefas` : "Convocação Ativa — sem tarefa ainda"} />
       </div>
@@ -704,10 +757,34 @@ function VisaoMovimento({
       {sub === "equipe" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "mês inteiro · clique numa pessoa"}</Dica>}>
-            <TabelaQuemFez pessoas={pessoas} empilhadores={movimento.empilhadores} nomes={nomes} aberta={pessoaAberta} onAbrir={(u) => setPessoaAberta((a) => (a === u ? null : u))} />
+            <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto pr-1">
+              {emp.length > 0 && <TabelaEmpilhadores rendimentos={emp} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />}
+              {outros.length > 0 && <TabelaQuemFez pessoas={outros} empilhadores={[]} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />}
+            </div>
           </Bloco>
-          <Bloco titulo={pessoaSel ? `${pessoaSel.nome ?? `Usuário ${pessoaSel.usuario}`} · rendimento` : "Rendimento"} direita={pessoaSel ? <Dica>{dia ? ddmm(dia) : formatMesAno(mes)}</Dica> : undefined}>
-            {pessoaSel ? (
+          <Bloco
+            titulo={empSel ? `${empSel.nome ?? `Usuário ${empSel.usuario}`} · rendimento` : pessoaSel ? `${pessoaSel.nome ?? `Usuário ${pessoaSel.usuario}`} · rendimento` : "Rendimento"}
+            direita={empSel || pessoaSel ? <Dica>{empSel ? "regra A424 · " : ""}{dia ? ddmm(dia) : formatMesAno(mes)}</Dica> : undefined}
+          >
+            {empSel ? (
+              <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
+                <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
+                  <Mini rotulo="Reabastecimentos" valor={n0(empSel.reabastecimento.tarefas)} sub={empSel.dias > 1 ? `${n1(empSel.reabastecimento.tarefas / empSel.dias)} por dia · ${empSel.dias} dias` : "até o picking (A424 03)"} />
+                  <Mini rotulo="Caixas" valor={n0(empSel.reabastecimento.caixas)} sub={empSel.reabastecimento.tarefas ? `${n1(empSel.reabastecimento.caixas / empSel.reabastecimento.tarefas)} por reabastecimento` : undefined} />
+                  <Mini rotulo="Peso" valor={`${n1(empSel.reabastecimento.peso / 1000)} t`} sub={`${n0(empSel.reabastecimento.peso)} kg`} />
+                  <Mini rotulo="SKUs" valor={n0(empSel.reabastecimento.skus)} sub="produtos distintos" />
+                  <Mini rotulo="Empilhadeira" valor={n0(empSel.empilhadeira.tarefas)} sub={`${n0(empSel.empilhadeira.caixas)} cx · baixar/subir (A424 04)`} />
+                </div>
+                <div className="min-h-[180px] flex-1">
+                  <BarrasTV
+                    altura={170}
+                    fmt={n0}
+                    onClick={(d) => onDia(dia === d ? null : d)}
+                    itens={historicoEmp.map((x) => ({ chave: x.dia, rotulo: x.dia.slice(8, 10), valor: x.caixas, detalhe: `${ddmm(x.dia)} · ${n0(x.tarefas)} reabast. · ${n0(x.caixas)} cx · ${n1(x.peso / 1000)} t`, selecionado: x.dia === dia }))}
+                  />
+                </div>
+              </div>
+            ) : pessoaSel ? (
               <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
                 <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
                   <Mini rotulo="Movimentações" valor={n0(pessoaSel.total)} sub={pessoaSel.dias > 1 ? `${n1(pessoaSel.total / pessoaSel.dias)} por dia · ${pessoaSel.dias} dias` : undefined} />

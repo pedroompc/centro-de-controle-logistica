@@ -100,6 +100,20 @@ export interface ProdutoMovimentoPiso {
   total: number;
 }
 
+/** Função da A424: 03 = reabastecimento de picking ("Movimentar" até o picking); 04 = operador de empilhadeira (baixar/subir palete e movimentação sem convocação). */
+export type FuncaoA424 = "03" | "04";
+
+export interface LinhaA424Dia {
+  funcao: FuncaoA424;
+  dia: string;
+  usuario: number;
+  nome: string | null;
+  tarefas: number; // "TOTAL_MERC" da A424 — 1 por produto movimentado
+  caixas: number; // "TOTAL_VOL" da A424
+  peso: number; // kg REAL (unidades × peso do Winthor) — a A424 subestima (ver SQL_A424)
+  skus: number;
+}
+
 export interface MovimentoPiso {
   total: number;
   descendente: number; // "baixar" do Harpia: nível de destino mais baixo (reserva → picking)
@@ -113,6 +127,10 @@ export interface MovimentoPiso {
   empilhadores: number[];
   porHoraDia: LinhaHoraDia[]; // idem
   produtosTop: ProdutoMovimentoPiso[]; // top 50 do mês inteiro
+  /** Produtividade pela regra da A424 (funções 03 e 04) — é o rendimento oficial dos empilhadores. */
+  a424: LinhaA424Dia[];
+  /** SKUs distintos no mês por função/usuário (não dá pra somar os do dia). */
+  a424SkusMes: { funcao: FuncaoA424; usuario: number; skus: number }[];
 }
 
 /** Um protocolo de recepção de compra (rotina 229 do Harpia, "Recepção Realizada"). */
@@ -155,11 +173,14 @@ export interface DadosHarpiaAbastecimento {
 
 const num = (v: unknown) => Number(v) || 0;
 
+// Unidades = QTD_COMER_1361 (total: caixas fechadas × embalagem + avulsas).
+// QTD_SEP_UN_1361 é só a parte avulsa e QTD_SEP_CX_1361 só as caixas fechadas.
+// STATUS_809 = 5 ("Cancelado") é o fim normal desse fluxo (rotina 341x) — não filtrar.
 const SQL_DIAS = `
 SELECT TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA,
        COUNT(DISTINCT p.ID_NUM_ABAST_PK_809) AS ABASTS,
        SUM(m.QTD_SEP_CX_1361) AS CX,
-       SUM(m.QTD_SEP_UN_1361) AS UN,
+       SUM(m.QTD_COMER_1361) AS UN,
        COUNT(DISTINCT m.MERC_FK_1361) AS SKUS
   FROM HARPIAW2.PREPARA_ABAST_809 p
   JOIN HARPIAW2.PREPARA_ABAST_MERC_1361 m ON m.NUM_ABAST_FK_1361 = p.ID_NUM_ABAST_PK_809
@@ -173,7 +194,7 @@ const TOP_GIRO = 20;
 const SQL_PRODUTOS = `
 SELECT PRODUTO, CURVA, QTD, CX, UN FROM (
   SELECT m.MERC_FK_1361 AS PRODUTO, pr.CLASSEVENDA AS CURVA, COUNT(*) AS QTD,
-         SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_SEP_UN_1361) AS UN,
+         SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_COMER_1361) AS UN,
          ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, m.MERC_FK_1361) AS RN_GERAL,
          ROW_NUMBER() OVER (PARTITION BY NVL(pr.CLASSEVENDA, '?') ORDER BY COUNT(*) DESC, m.MERC_FK_1361) AS RN_CURVA
     FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
@@ -283,10 +304,80 @@ SELECT ${USU_PISO} AS USU, COUNT(DISTINCT m.MERC_PF_502) AS SKUS
    AND ${FILTRO_PISO}
  GROUP BY ${USU_PISO}`;
 
+// Produtividade dos empilhadores = rotina A424 do Harpia ("Remuneração por
+// Produtividade Geral"), funções 03 (REABASTECIMENTO) e 04 (OPERADOR DE
+// EMPILHADEIRA). Regra copiada do SQL que a própria A424 exporta; validado
+// contra o export de 01–20/10/2026: tarefas e caixas batem exatos por usuário.
+//
+// Na Convocação Ativa uma movimentação da 502 vira até 3 tarefas na 1028, cada
+// uma com operador e hora próprios (ACAO_TIPO_1028):
+//   1 Baixar     — desce o palete inteiro (QTD + sobra)       → 04
+//   2 Movimentar — leva até o picking (QTD)                     → 03
+//   3 Subir      — devolve a sobra pra reserva (SALDO_FINAL)    → 04
+// O crédito é do operador da tarefa, na data de FINALIZAÇÃO (a 502 guarda a
+// data do pedido e quem pediu). Movimentação sem convocação finalizada cai da
+// 502 creditada a USU_FK_502, como a A424 faz.
+//
+// Única diferença proposital: o peso. A A424 multiplica CAIXAS pelo peso da
+// UNIDADE no trecho sem convocação (subestima até 24× em caixa de 24); aqui é
+// unidades × PESOBRUTO do Winthor, que bate ±4% com o PESO_502 do Harpia.
+const LINHAS_A424 = `
+  SELECT CASE WHEN c.ACAO_TIPO_1028 = '2' AND NVL(m.CARREG_PULMAO_DOCA_502, 0) = 0 AND NVL(m.SEQ_INVENT_502, 0) = 0 THEN '03'
+              WHEN c.ACAO_TIPO_1028 IN ('2', '4') AND NVL(m.CARREG_PULMAO_DOCA_502, 0) = 0 THEN NULL
+              ELSE '04' END AS FUNCAO,
+         c.DT_HR_FINALIZACAO_1028 AS DT, op.USU_FK_1023 AS USU, m.MERC_PF_502 AS MERC, m.TIPO_MOVIMENT_502 AS TIPO,
+         CASE c.ACAO_TIPO_1028 WHEN '1' THEN m.QTD_502 + NVL(m.SALDO_FINAL_END_502, 0) WHEN '3' THEN NVL(m.SALDO_FINAL_END_502, 0) ELSE m.QTD_502 END AS QTD,
+         m.INVOL_PADRAO_MERC_502 AS INVOL
+    FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c
+    JOIN HARPIAW2.CONV_ATIVA_OPERADORES_1023 op ON op.EMPRESA_PF_1023 = c.EMPRESA_PF_1028 AND op.OPERADOR_PK_1023 = c.OPERADOR_FK_1028
+    JOIN HARPIAW2.CONV_ATIVA_OPERADOR_AGENT_1024 oa ON oa.AGENTE_PF_1024 = c.AGENTE_FK_1028 AND oa.EMPRESA_PF_1024 = op.EMPRESA_PF_1023 AND oa.OPERADOR_PF_1024 = op.OPERADOR_PK_1023
+    JOIN HARPIAW2.CONV_ATIVA_AGENTES_1021 ag ON ag.AGENTE_PK_1021 = oa.AGENTE_PF_1024
+    JOIN HARPIAW2.MOVIMENT_END_502 m ON m.EMPRESA_PF_502 = c.EMPRESA_PF_1028 AND m.SEQ_CONVOCACAO_ATIVA_502 = c.SEQ_CONVOCACAO_ATIVA_FK_1028
+    JOIN HARPIAW2.MERC_EMPRESA_468 me ON me.EMPRESA_PF_468 = m.EMPRESA_PF_502 AND me.MERC_PF_468 = m.MERC_PF_502
+   WHERE c.DT_HR_FINALIZACAO_1028 >= TO_DATE(:ini, 'YYYY-MM-DD') AND c.DT_HR_FINALIZACAO_1028 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+     AND c.STATUS_1028 = '3' AND c.EMPRESA_PF_1028 = 1
+  UNION ALL
+  SELECT '04', m.DT_MOVIMENT_502, m.USU_FK_502, m.MERC_PF_502, m.TIPO_MOVIMENT_502, m.QTD_502, m.INVOL_PADRAO_MERC_502
+    FROM HARPIAW2.MOVIMENT_END_502 m
+   WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+     AND m.EMPRESA_PF_502 = 1 AND m.TIPO_MOVIMENT_502 IN ('S', 'I', 'D', 'E') AND m.STATUS_502 = '2'
+     AND (m.TIPO_END_502 = 'M' OR m.TIPO_END_DESTINO_502 = 'M') AND NVL(m.SEQ_INVENT_502, 0) = 0
+     AND NOT EXISTS (SELECT 1 FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c WHERE c.EMPRESA_PF_1028 = m.EMPRESA_PF_502 AND c.SEQ_CONVOCACAO_ATIVA_FK_1028 = m.SEQ_CONVOCACAO_ATIVA_502 AND c.STATUS_1028 = '3')
+  UNION ALL
+  SELECT '03', m.DT_MOVIMENT_502, m.USU_FK_502, m.MERC_PF_502, m.TIPO_MOVIMENT_502, m.QTD_502, m.INVOL_PADRAO_MERC_502
+    FROM HARPIAW2.MOVIMENT_END_502 m
+   WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+     AND m.EMPRESA_PF_502 = 1 AND m.TIPO_MOVIMENT_502 IN ('S', 'I') AND m.TIPO_END_502 = 'M' AND m.TIPO_END_DESTINO_502 = 'C' AND m.STATUS_502 = '2'
+     AND NVL(m.CARREG_PULMAO_DOCA_502, 0) = 0 AND NVL(m.SEQ_INVENT_502, 0) = 0
+     AND NOT EXISTS (SELECT 1 FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c WHERE c.EMPRESA_PF_1028 = m.EMPRESA_PF_502 AND c.SEQ_CONVOCACAO_ATIVA_FK_1028 = m.SEQ_CONVOCACAO_ATIVA_502 AND c.ACAO_TIPO_1028 = '2' AND c.STATUS_1028 = '3')`;
+// "S" grava QTD em caixas; o resto em unidades.
+const CAIXAS_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD ELSE l.QTD / NVL(NULLIF(l.INVOL, 0), 1) END`;
+const PESO_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD * NVL(NULLIF(l.INVOL, 0), 1) ELSE l.QTD END * NVL(pr.PESOBRUTO, 0)`;
+
+const SQL_A424_DIA = `
+WITH linhas AS (${LINHAS_A424})
+SELECT l.FUNCAO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, l.USU, MAX(u.DESCR_COMPLETO_754) AS NOME,
+       COUNT(*) AS TAREFAS, SUM(${CAIXAS_A424}) AS CAIXAS, SUM(${PESO_A424}) AS PESO, COUNT(DISTINCT l.MERC) AS SKUS
+  FROM linhas l
+  LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
+  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = l.USU
+ WHERE l.FUNCAO IS NOT NULL
+ GROUP BY l.FUNCAO, TRUNC(l.DT), l.USU`;
+
+const SQL_A424_SKUS_MES = `
+WITH linhas AS (${LINHAS_A424})
+SELECT l.FUNCAO, l.USU, COUNT(DISTINCT l.MERC) AS SKUS
+  FROM linhas l
+ WHERE l.FUNCAO IS NOT NULL
+ GROUP BY l.FUNCAO, l.USU`;
+
 // Empilhador = operador cadastrado na Convocação Ativa (cada um preso a um
 // agente "EMPILHADEIRA"). EMPILHADORES_EXTRA = usuários do Harpia que também
-// são empilhadores mas ainda não estão na Convocação Ativa.
-const EMPILHADORES_EXTRA: number[] = [];
+// são empilhadores mas ainda não estão (ou não estão mais) na Convocação Ativa.
+// 76 = login "EMP GLEIDSON": em 20/10/2026 o operador 3 passou pro usuário 98
+// ("EMP. THAY"), mas o 76 seguiu com a movimentação do mês.
+// Luiz Gabriel (3) é da noite — fora por decisão do Pedro.
+const EMPILHADORES_EXTRA: number[] = [76];
 const SQL_EMPILHADORES = `
 SELECT DISTINCT op.USU_FK_1023 AS USU
   FROM HARPIAW2.CONV_ATIVA_OPERADORES_1023 op
@@ -404,7 +495,7 @@ SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') 
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, skusPessoa, empilhadoresRaw] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, skusPessoa, empilhadoresRaw, a424Raw, a424SkusRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -420,6 +511,8 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ DIA: string; PROT: number; DESCR: string | null; SKUS: number; VOL: number; PESO: number }>(SQL_RECEPCAO, binds),
     queryWinthor<{ USU: number; SKUS: number }>(SQL_MOVIMENTO_SKUS_PESSOA, binds),
     queryWinthor<{ USU: number }>(SQL_EMPILHADORES, {}),
+    queryWinthor<{ FUNCAO: string; DIA: string; USU: number; NOME: string | null; TAREFAS: number; CAIXAS: number; PESO: number; SKUS: number }>(SQL_A424_DIA, binds),
+    queryWinthor<{ FUNCAO: string; USU: number; SKUS: number }>(SQL_A424_SKUS_MES, binds),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -487,6 +580,17 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         descricao: descricoes.get(num(r.PRODUTO)) ?? null,
         total: num(r.TOTAL),
       })),
+      a424: a424Raw.map((r) => ({
+        funcao: String(r.FUNCAO) as FuncaoA424,
+        dia: String(r.DIA),
+        usuario: num(r.USU),
+        nome: r.NOME ?? null,
+        tarefas: num(r.TAREFAS),
+        caixas: num(r.CAIXAS),
+        peso: num(r.PESO),
+        skus: num(r.SKUS),
+      })),
+      a424SkusMes: a424SkusRaw.map((r) => ({ funcao: String(r.FUNCAO) as FuncaoA424, usuario: num(r.USU), skus: num(r.SKUS) })),
     },
     recepcao: recepcaoRaw
       .map((r) => ({
