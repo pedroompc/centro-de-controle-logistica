@@ -168,7 +168,7 @@ export interface DadosHarpiaAbastecimento {
   dias: DiaAbastecimento[];
   /** Reabastecimento real do picking, por dia (A424 função 03) — base da visão Volume. */
   reabastecimento: DiaReabastecimento[];
-  produtos: ProdutoGiro[]; // top 20 geral ∪ top 20 de cada curva, do mais ao menos abastecido
+  produtos: ProdutoGiro[]; // top 20 geral ∪ top 20 de cada curva, do mais ao menos reabastecido (A424 03)
   produtosDia: ProdutoGiroDia[]; // histórico diário só desses produtos (drill-down)
   curvas: CurvaAbast[];
   cargas: CargaAntecedencia[];
@@ -198,32 +198,6 @@ SELECT TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA,
   JOIN HARPIAW2.PREPARA_ABAST_MERC_1361 m ON m.NUM_ABAST_FK_1361 = p.ID_NUM_ABAST_PK_809
  WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
  GROUP BY TRUNC(p.PREP_DTHR_809)`;
-
-// CLASSEVENDA do Winthor = proxy da curva ABC (classificação por venda).
-// Top 20 geral + top 20 de CADA curva (pro clique na curva), num só SELECT
-// via ROW_NUMBER (sem FETCH FIRST, por compatibilidade com Oracle < 12c).
-const TOP_GIRO = 20;
-const SQL_PRODUTOS = `
-SELECT PRODUTO, CURVA, QTD, CX, UN FROM (
-  SELECT m.MERC_FK_1361 AS PRODUTO, pr.CLASSEVENDA AS CURVA, COUNT(*) AS QTD,
-         SUM(m.QTD_SEP_CX_1361) AS CX, SUM(m.QTD_COMER_1361) AS UN,
-         ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, m.MERC_FK_1361) AS RN_GERAL,
-         ROW_NUMBER() OVER (PARTITION BY NVL(pr.CLASSEVENDA, '?') ORDER BY COUNT(*) DESC, m.MERC_FK_1361) AS RN_CURVA
-    FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
-    JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
-    LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_FK_1361
-   WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
-   GROUP BY m.MERC_FK_1361, pr.CLASSEVENDA
-) WHERE RN_GERAL <= ${TOP_GIRO} OR RN_CURVA <= ${TOP_GIRO}
-ORDER BY QTD DESC, PRODUTO`;
-
-const SQL_CURVAS = `
-SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD, COUNT(DISTINCT m.MERC_FK_1361) AS SKUS
-  FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
-  JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
-  LEFT JOIN PCPRODUT pr ON pr.CODPROD = m.MERC_FK_1361
- WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
- GROUP BY pr.CLASSEVENDA`;
 
 // Antecedência: 1º abastecimento (Harpia) que serviu a carga × 1ª separação
 // finalizada (Winthor) daquela mesma carga. Diferença calculada no Oracle
@@ -357,7 +331,8 @@ const LINHAS_A424 = `
      AND NOT EXISTS (SELECT 1 FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c WHERE c.EMPRESA_PF_1028 = m.EMPRESA_PF_502 AND c.SEQ_CONVOCACAO_ATIVA_FK_1028 = m.SEQ_CONVOCACAO_ATIVA_502 AND c.ACAO_TIPO_1028 = '2' AND c.STATUS_1028 = '3')`;
 // "S" grava QTD em caixas; o resto em unidades.
 const CAIXAS_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD ELSE l.QTD / NVL(NULLIF(l.INVOL, 0), 1) END`;
-const PESO_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD * NVL(NULLIF(l.INVOL, 0), 1) ELSE l.QTD END * NVL(pr.PESOBRUTO, 0)`;
+const UNIDADES_A424 = `CASE WHEN l.TIPO = 'S' THEN l.QTD * NVL(NULLIF(l.INVOL, 0), 1) ELSE l.QTD END`;
+const PESO_A424 = `${UNIDADES_A424} * NVL(pr.PESOBRUTO, 0)`;
 
 // Mesma pessoa com mais de um login no Harpia → login que vale no BI.
 // 98 "EMP. THAY" = Gleidson (confirmado pelo Pedro em 20/10/2026): o operador 3
@@ -380,12 +355,38 @@ SELECT l.FUNCAO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, ${usuCanonico("l.USU
 const SQL_A424_VOLUME_DIA = `
 WITH linhas AS (${LINHAS_A424})
 SELECT TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TAREFAS, SUM(${CAIXAS_A424}) AS CAIXAS,
-       SUM(CASE WHEN l.TIPO = 'S' THEN l.QTD * NVL(NULLIF(l.INVOL, 0), 1) ELSE l.QTD END) AS UNIDADES,
+       SUM(${UNIDADES_A424}) AS UNIDADES,
        SUM(${PESO_A424}) AS PESO, COUNT(DISTINCT l.MERC) AS SKUS
   FROM linhas l
   LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
  WHERE l.FUNCAO = '03'
  GROUP BY TRUNC(l.DT)`;
+
+// Giro de picking = o mesmo reabastecimento (03), por produto. CLASSEVENDA do
+// Winthor = proxy da curva ABC. Top 20 geral + top 20 de CADA curva (pro clique
+// na curva), num só SELECT via ROW_NUMBER (sem FETCH FIRST, Oracle < 12c).
+const TOP_GIRO = 20;
+const SQL_PRODUTOS = `
+WITH linhas AS (${LINHAS_A424})
+SELECT PRODUTO, CURVA, QTD, CX, UN FROM (
+  SELECT l.MERC AS PRODUTO, pr.CLASSEVENDA AS CURVA, COUNT(*) AS QTD,
+         SUM(${CAIXAS_A424}) AS CX, SUM(${UNIDADES_A424}) AS UN,
+         ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, l.MERC) AS RN_GERAL,
+         ROW_NUMBER() OVER (PARTITION BY NVL(pr.CLASSEVENDA, '?') ORDER BY COUNT(*) DESC, l.MERC) AS RN_CURVA
+    FROM linhas l
+    LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
+   WHERE l.FUNCAO = '03'
+   GROUP BY l.MERC, pr.CLASSEVENDA
+) WHERE RN_GERAL <= ${TOP_GIRO} OR RN_CURVA <= ${TOP_GIRO}
+ORDER BY QTD DESC, PRODUTO`;
+
+const SQL_CURVAS = `
+WITH linhas AS (${LINHAS_A424})
+SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD, COUNT(DISTINCT l.MERC) AS SKUS
+  FROM linhas l
+  LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
+ WHERE l.FUNCAO = '03'
+ GROUP BY pr.CLASSEVENDA`;
 
 const SQL_A424_SKUS_MES = `
 WITH linhas AS (${LINHAS_A424})
@@ -500,12 +501,12 @@ async function produtosDiaDoMes(codigos: number[], binds: { ini: string; fim: st
   const unicos = [...new Set(codigos.filter((c) => c > 0))];
   if (!unicos.length) return [];
   const sql = `
-SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') AS DIA, COUNT(*) AS QTD
-  FROM HARPIAW2.PREPARA_ABAST_MERC_1361 m
-  JOIN HARPIAW2.PREPARA_ABAST_809 p ON p.ID_NUM_ABAST_PK_809 = m.NUM_ABAST_FK_1361
- WHERE p.PREP_DTHR_809 >= TO_DATE(:ini, 'YYYY-MM-DD') AND p.PREP_DTHR_809 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
-   AND m.MERC_FK_1361 IN (${unicos.map((_, i) => `:c${i}`).join(",")})
- GROUP BY m.MERC_FK_1361, TRUNC(p.PREP_DTHR_809)`;
+WITH linhas AS (${LINHAS_A424})
+SELECT l.MERC AS PRODUTO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, COUNT(*) AS QTD
+  FROM linhas l
+ WHERE l.FUNCAO = '03'
+   AND l.MERC IN (${unicos.map((_, i) => `:c${i}`).join(",")})
+ GROUP BY l.MERC, TRUNC(l.DT)`;
   const rows = await queryWinthor<{ PRODUTO: number; DIA: string; QTD: number }>(sql, {
     ...binds,
     ...Object.fromEntries(unicos.map((c, i) => [`c${i}`, c])),

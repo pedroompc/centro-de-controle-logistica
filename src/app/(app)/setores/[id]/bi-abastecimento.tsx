@@ -38,7 +38,7 @@ const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "volume", titulo: "Volume", contexto: "o que foi reabastecido no picking (regra da A424) · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
-  { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
+  { id: "giro", titulo: "Giro de picking", contexto: "produtos mais reabastecidos no mês (regra da A424) · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
   { id: "movimento", titulo: "Movimentação", contexto: "quem move, descendente × ascendente × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
@@ -75,7 +75,6 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const semH = h ? null : "erro" in dados.harpia ? dados.harpia.erro : "";
 
   const resumo = h ? resumoVolume(h.reabastecimento) : null;
-  const diasGiro = h ? resumoVolume(h.dias).dias : 0;
   const abastProdutos = h ? h.curvas.reduce((t, c) => t + c.abastecimentos, 0) : 0;
   const skusProdutos = h ? h.curvas.reduce((t, c) => t + c.skus, 0) : 0;
   const ant = h ? resumoAntecedencia(h.cargas) : null;
@@ -106,7 +105,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("giro")}
           rotulo="Giro de picking"
           valor={h ? `${n0(abastProdutos)} abast.` : "—"}
-          sub={semH ?? (abastProdutos ? `${n0(skusProdutos)} produtos · ${diasGiro} dias` : "sem abastecimento no mês")}
+          sub={semH ?? (abastProdutos ? `${n0(skusProdutos)} produtos · ${resumo?.dias ?? 0} dias` : "sem abastecimento no mês")}
         />
         <Quadro
           {...q("movimento")}
@@ -441,7 +440,7 @@ const rotuloCurva = (c: string) => (c === "?" ? "Sem classificação" : `Curva $
 function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
   const [produtoAberto, setProdutoAberto] = useState<number | null>(null);
   const [curvaSel, setCurvaSel] = useState<string | null>(null);
-  const resumo = resumoVolume(h.dias);
+  const resumo = resumoVolume(h.reabastecimento);
   const diasAtivos = resumo.dias;
   if (h.produtos.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
   const totalCurvas = h.curvas.reduce((t, c) => t + c.abastecimentos, 0);
@@ -465,12 +464,12 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Mini
-          rotulo={curva ? `Abastecimentos · ${rotuloCurva(curva.curva)}` : "Abastecimentos"}
+          rotulo={curva ? `Reabastecimentos · ${rotuloCurva(curva.curva)}` : "Reabastecimentos"}
           valor={n0(abast)}
-          sub={curva && totalCurvas ? `${formatPercent(abast / totalCurvas, 0)} do total do mês` : `${n0(resumo.abastecimentos)} ordens de abastecimento`}
+          sub={curva && totalCurvas ? `${formatPercent(abast / totalCurvas, 0)} do total do mês` : `${n0(resumo.caixas)} caixas no mês`}
         />
-        <Mini rotulo="Produtos abastecidos" valor={n0(skus)} sub={`${n1(abast / Math.max(1, skus))} abast. por produto · ${recorte}`} />
-        <Mini rotulo="Dias com abastecimento" valor={String(diasAtivos)} sub={diasAtivos ? `${n0(abast / diasAtivos)} abast. por dia · ${recorte}` : undefined} />
+        <Mini rotulo="Produtos reabastecidos" valor={n0(skus)} sub={`${n1(abast / Math.max(1, skus))} abast. por produto · ${recorte}`} />
+        <Mini rotulo="Dias com reabastecimento" valor={String(diasAtivos)} sub={diasAtivos ? `${n0(abast / diasAtivos)} abast. por dia · ${recorte}` : undefined} />
         <Mini
           rotulo={`Peso do top ${TOP_GIRO}`}
           valor={abast ? formatPercent(somaTop / abast, 0) : "—"}
@@ -478,20 +477,19 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
         />
       </div>
       {totalCurvas > 0 && (
-        <Bloco titulo="Abastecimento por curva ABC" direita={<Dica>clique numa curva pra ver os produtos dela · CLASSEVENDA do Winthor</Dica>} className="shrink-0">
+        <Bloco titulo="Reabastecimento por curva ABC" direita={<Dica>clique numa curva pra ver os produtos dela · CLASSEVENDA do Winthor</Dica>} className="shrink-0">
           <BarraComposicao fatias={fatiasCurva} fmt={(v) => `${n0(v)} abast.`} selecionado={curva ? rotuloCurva(curva.curva) : null} onSelecionar={selecionarCurva} />
           <p className="mt-2 text-xs text-white/35">
             {h.curvas
               .filter((c) => c.curva !== "?")
               .map((c) => `curva ${c.curva}: ${c.skus} produtos, ${n1(c.abastecimentos / Math.max(1, c.skus))}/produto`)
               .join(" · ")}
-            {" — "}curva A soma menos no total porque tem bem menos produtos, mas cada um deles é abastecido bem mais vezes.
           </p>
         </Bloco>
       )}
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <Bloco
-          titulo={curva ? `${rotuloCurva(curva.curva)} · mais abastecidos` : "Produtos com mais abastecimentos"}
+          titulo={curva ? `${rotuloCurva(curva.curva)} · mais reabastecidos` : "Produtos mais reabastecidos"}
           direita={
             curva ? (
               <ChipTV ativo onClick={() => setCurvaSel(null)}>
