@@ -121,8 +121,6 @@ export interface MovimentoPiso {
   horizontal: number; // mesmo nível
   dias: DiaMovimentoPiso[]; // pro calendário
   porPessoaDia: LinhaPessoaDia[]; // agregação/filtro por dia é no domínio
-  /** Produtos distintos por pessoa no mês inteiro (não dá pra somar os do dia). */
-  skusPessoaMes: { usuario: number; skus: number }[];
   /** Usuários do Harpia que são empilhadores: operadores da Convocação Ativa + extras fixos. */
   empilhadores: number[];
   porHoraDia: LinhaHoraDia[]; // idem
@@ -296,13 +294,6 @@ SELECT TO_CHAR(TRUNC(m.DT_MOVIMENT_502), 'YYYY-MM-DD') AS DIA, ${USU_PISO} AS US
  WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${FILTRO_PISO}
  GROUP BY TRUNC(m.DT_MOVIMENT_502), ${USU_PISO}, u.DESCR_COMPLETO_754, d.DESCR_176`;
-
-const SQL_MOVIMENTO_SKUS_PESSOA = `
-SELECT ${USU_PISO} AS USU, COUNT(DISTINCT m.MERC_PF_502) AS SKUS
-  FROM HARPIAW2.MOVIMENT_END_502 m
- WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
-   AND ${FILTRO_PISO}
- GROUP BY ${USU_PISO}`;
 
 // Produtividade dos empilhadores = rotina A424 do Harpia ("Remuneração por
 // Produtividade Geral"), funções 03 (REABASTECIMENTO) e 04 (OPERADOR DE
@@ -495,7 +486,7 @@ SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') 
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, skusPessoa, empilhadoresRaw, a424Raw, a424SkusRaw] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, empilhadoresRaw, a424Raw, a424SkusRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -509,7 +500,6 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ PRODUTO: number; TOTAL: number }>(SQL_MOVIMENTO_PRODUTOS, binds),
     queryWinthor<{ DIA: string; OPERADOR: number; USU: number | null; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
     queryWinthor<{ DIA: string; PROT: number; DESCR: string | null; SKUS: number; VOL: number; PESO: number }>(SQL_RECEPCAO, binds),
-    queryWinthor<{ USU: number; SKUS: number }>(SQL_MOVIMENTO_SKUS_PESSOA, binds),
     queryWinthor<{ USU: number }>(SQL_EMPILHADORES, {}),
     queryWinthor<{ FUNCAO: string; DIA: string; USU: number; NOME: string | null; TAREFAS: number; CAIXAS: number; PESO: number; SKUS: number }>(SQL_A424_DIA, binds),
     queryWinthor<{ FUNCAO: string; USU: number; SKUS: number }>(SQL_A424_SKUS_MES, binds),
@@ -572,7 +562,6 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         pesoDesc: num(r.PESO_DESC),
         skus: num(r.SKUS),
       })),
-      skusPessoaMes: skusPessoa.map((r) => ({ usuario: num(r.USU), skus: num(r.SKUS) })),
       empilhadores: [...new Set([...empilhadoresRaw.map((r) => num(r.USU)), ...EMPILHADORES_EXTRA])],
       porHoraDia: movHoraDia.map((r) => ({ dia: String(r.DIA), hora: Number(r.HORA), total: num(r.TOTAL) })),
       produtosTop: movProdutos.map((r) => ({

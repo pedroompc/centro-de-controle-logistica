@@ -80,57 +80,6 @@ export function resumoAntecedencia(cargas: { horasFolga: number | null }[]): Res
   };
 }
 
-// --- Movimentação de piso: agregação por dia/pessoa/produto (filtro cruzado) --
-
-export interface PessoaMovimento {
-  usuario: number;
-  nome: string | null;
-  departamento: string | null;
-  total: number;
-  descendente: number;
-  ascendente: number;
-  horizontal: number;
-  caixas: number;
-  peso: number; // kg
-  caixasDesc: number;
-  pesoDesc: number;
-  skus: number; // produtos distintos no recorte
-  dias: number; // dias com movimentação no recorte
-}
-
-type LinhaPessoa = {
-  dia: string; usuario: number; nome: string | null; departamento: string | null;
-  total: number; descendente: number; ascendente: number;
-  caixas: number; peso: number; caixasDesc: number; pesoDesc: number; skus: number;
-};
-
-/**
- * Agrega movimentação por pessoa; `dia` filtra pra um dia específico (`null` = mês inteiro).
- * SKUs não somam entre dias (o mesmo produto se repete): no mês vêm de `skusMes`.
- */
-export function pessoasMovimento(linhas: LinhaPessoa[], dia: string | null, skusMes: { usuario: number; skus: number }[] = []): PessoaMovimento[] {
-  const m = new Map<number, Omit<PessoaMovimento, "horizontal">>();
-  for (const l of linhas) {
-    if (dia && l.dia !== dia) continue;
-    const r = m.get(l.usuario) ?? {
-      usuario: l.usuario, nome: l.nome, departamento: l.departamento,
-      total: 0, descendente: 0, ascendente: 0, caixas: 0, peso: 0, caixasDesc: 0, pesoDesc: 0, skus: 0, dias: 0,
-    };
-    r.total += l.total;
-    r.descendente += l.descendente;
-    r.ascendente += l.ascendente;
-    r.caixas += l.caixas;
-    r.peso += l.peso;
-    r.caixasDesc += l.caixasDesc;
-    r.pesoDesc += l.pesoDesc;
-    r.skus = dia ? l.skus : r.skus;
-    r.dias += 1;
-    m.set(l.usuario, r);
-  }
-  if (!dia) for (const s of skusMes) { const r = m.get(s.usuario); if (r) r.skus = s.skus; }
-  return [...m.values()].map((r) => ({ ...r, horizontal: r.total - r.descendente - r.ascendente })).sort((a, b) => b.total - a.total);
-}
-
 // --- Produtividade A424 (rendimento oficial dos empilhadores) -----------------
 
 type FuncaoA424 = "03" | "04";
@@ -154,8 +103,8 @@ export interface RendimentoA424 {
 const metricaVazia = (): MetricaA424 => ({ tarefas: 0, caixas: 0, peso: 0, skus: 0 });
 
 /**
- * Agrega a A424 por pessoa; `dia` filtra (`null` = mês inteiro). Como em
- * `pessoasMovimento`, SKUs do mês vêm de `skusMes` (o mesmo produto se repete nos dias).
+ * Agrega a A424 por pessoa; `dia` filtra (`null` = mês inteiro). SKUs do mês
+ * vêm de `skusMes` (o mesmo produto se repete nos dias, não dá pra somar).
  */
 export function rendimentoA424(linhas: LinhaA424[], dia: string | null, skusMes: { funcao: FuncaoA424; usuario: number; skus: number }[] = []): RendimentoA424[] {
   const m = new Map<number, RendimentoA424 & { diasSet: Set<string> }>();
@@ -190,6 +139,8 @@ export function historicoA424(linhas: LinhaA424[], usuario: number): { dia: stri
     .sort((a, b) => a.dia.localeCompare(b.dia));
 }
 
+// --- Movimentação de piso ------------------------------------------------------
+
 /** Movimentações por hora do dia; `dia` filtra pra um dia específico (`null` = mês inteiro). */
 export function horaMovimento(linhas: { dia: string; hora: number; total: number }[], dia: string | null): { hora: number; total: number }[] {
   const m = new Map<number, number>();
@@ -198,17 +149,6 @@ export function horaMovimento(linhas: { dia: string; hora: number; total: number
     m.set(l.hora, (m.get(l.hora) ?? 0) + l.total);
   }
   return [...m.entries()].map(([hora, total]) => ({ hora, total })).sort((a, b) => a.hora - b.hora);
-}
-
-/** Histórico diário de uma pessoa (drill-down ao clicar na linha dela). */
-export function historicoPessoa(
-  linhas: { dia: string; usuario: number; total: number; caixas: number; peso: number }[],
-  usuario: number,
-): { dia: string; total: number; caixas: number; peso: number }[] {
-  return linhas
-    .filter((l) => l.usuario === usuario)
-    .map((l) => ({ dia: l.dia, total: l.total, caixas: l.caixas, peso: l.peso }))
-    .sort((a, b) => a.dia.localeCompare(b.dia));
 }
 
 /** Histórico diário de um produto do top 20 (drill-down ao clicar no produto, no Giro). */
