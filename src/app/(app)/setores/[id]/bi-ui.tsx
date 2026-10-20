@@ -5,11 +5,10 @@
  * blocos, cards, barras e a parte de equipe/folha/equipamentos. Cada setor
  * (Recebimento, Separação…) monta os seus quadros em cima delas.
  */
-import { Fragment, useState, useTransition, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import { ROTULO_TURNO, TURNOS } from "@/domain/metrics";
-import { ligarUsuarioHarpia } from "@/data/harpia-usuarios";
 import type { Equipamento, Funcionario, Turno } from "@/domain/types";
 import type { NomesHarpia } from "./turno-dados";
 
@@ -526,51 +525,16 @@ export function CalendarioBI({
 
 /**
  * Nome de um usuário do Harpia: o funcionário ligado (com o turno) ou, sem
- * ligação, o nome que o Harpia tem. "auto" = casado pelo nome, ninguém
- * confirmou ainda. O admin liga/troca ali mesmo.
+ * ligação, o nome que o Harpia tem. A ligação é automática (casada pelo nome);
+ * não há nada pra confirmar na tela.
  */
 export function NomeUsuario({ usuario, nomeHarpia, nomes }: { usuario: number; nomeHarpia?: string | null; nomes: NomesHarpia }) {
-  const [pendente, iniciar] = useTransition();
-  const [erro, setErro] = useState<string | null>(null);
   const lig = nomes.ligacoes[usuario] ?? null;
   const func = lig ? nomes.funcionarios.find((f) => f.id === lig.funcionarioId) : null;
-  const ligar = (id: string) =>
-    iniciar(async () => {
-      const r = await ligarUsuarioHarpia(usuario, id || null);
-      setErro(r.erro ?? null);
-    });
   return (
-    <div className="min-w-0">
-      <div className="flex items-baseline gap-2">
-        <span className="truncate font-semibold text-white">{func ? func.nome : nomeHarpia || `Usuário ${usuario}`}</span>
-        {func ? (
-          <span className="shrink-0 text-[0.65rem] text-white/35">
-            {ROTULO_TURNO[func.turno].toLowerCase()}{lig?.auto ? " · auto" : ""}
-          </span>
-        ) : (
-          <span className="shrink-0 text-[0.65rem] text-amber-300/70">sem turno</span>
-        )}
-      </div>
-      {nomes.admin && nomes.podeLigar && (
-        <select
-          value={lig && !lig.auto ? lig.funcionarioId : ""}
-          disabled={pendente}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => ligar(e.target.value)}
-          className={`mt-1 w-full max-w-[16rem] rounded-md border-0 bg-white/10 px-2 py-0.5 text-xs outline-none ring-1 ring-white/15 ${func ? "text-white/50" : "text-amber-300"}`}
-          aria-label={`Funcionário do usuário ${usuario} do Harpia`}
-        >
-          <option value="" className="text-slate-900">
-            {lig && !lig.auto ? "— desligar —" : func ? "confirmar ou trocar…" : "ligar a um funcionário…"}
-          </option>
-          {nomes.funcionarios.map((f) => (
-            <option key={f.id} value={f.id} className="text-slate-900">
-              {f.nome} · {f.cargo} · {ROTULO_TURNO[f.turno]}{f.doSetor ? "" : " (outro setor)"}
-            </option>
-          ))}
-        </select>
-      )}
-      {erro && <div className="mt-0.5 text-xs text-rose-300">{erro}</div>}
+    <div className="flex min-w-0 items-baseline gap-2">
+      <span className="truncate font-semibold text-white">{func ? func.nome : nomeHarpia || `Usuário ${usuario}`}</span>
+      {func && <span className="shrink-0 text-[0.65rem] text-white/35">{ROTULO_TURNO[func.turno].toLowerCase()}</span>}
     </div>
   );
 }
