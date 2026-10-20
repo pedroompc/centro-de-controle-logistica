@@ -119,7 +119,6 @@ export interface LinhaA424Dia {
   usuario: number;
   nome: string | null;
   tarefas: number; // "TOTAL_MERC" da A424 — 1 por produto movimentado
-  tarefasConvocacao: number; // das tarefas, quantas vieram da Convocação Ativa (o resto é da 502 direto)
   caixas: number; // "TOTAL_VOL" da A424
   peso: number; // kg REAL (unidades × peso do Winthor) — a A424 subestima (ver SQL_A424)
   skus: number;
@@ -134,6 +133,8 @@ export interface MovimentoPiso {
   porPessoaDia: LinhaPessoaDia[]; // agregação/filtro por dia é no domínio
   /** Usuários do Harpia que são empilhadores: operadores da Convocação Ativa + extras fixos. */
   empilhadores: number[];
+  /** Quem lança no WMS movimentação feita por um empilhador (entra no total da premiação, sem dono). */
+  lancadoresWms: number[];
   porHoraDia: LinhaHoraDia[]; // idem
   produtosTop: ProdutoMovimentoPiso[]; // top 50 do mês inteiro
   /** Produtividade pela regra da A424 (funções 03 e 04) — é o rendimento oficial dos empilhadores. */
@@ -304,7 +305,7 @@ const LINHAS_A424 = `
   SELECT CASE WHEN c.ACAO_TIPO_1028 = '2' AND NVL(m.CARREG_PULMAO_DOCA_502, 0) = 0 AND NVL(m.SEQ_INVENT_502, 0) = 0 THEN '03'
               WHEN c.ACAO_TIPO_1028 IN ('2', '4') AND NVL(m.CARREG_PULMAO_DOCA_502, 0) = 0 THEN NULL
               ELSE '04' END AS FUNCAO,
-         1 AS CONV, c.DT_HR_FINALIZACAO_1028 AS DT, op.USU_FK_1023 AS USU, m.MERC_PF_502 AS MERC, m.TIPO_MOVIMENT_502 AS TIPO,
+         c.DT_HR_FINALIZACAO_1028 AS DT, op.USU_FK_1023 AS USU, m.MERC_PF_502 AS MERC, m.TIPO_MOVIMENT_502 AS TIPO,
          CASE c.ACAO_TIPO_1028 WHEN '1' THEN m.QTD_502 + NVL(m.SALDO_FINAL_END_502, 0) WHEN '3' THEN NVL(m.SALDO_FINAL_END_502, 0) ELSE m.QTD_502 END AS QTD,
          m.INVOL_PADRAO_MERC_502 AS INVOL
     FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c
@@ -316,14 +317,14 @@ const LINHAS_A424 = `
    WHERE c.DT_HR_FINALIZACAO_1028 >= TO_DATE(:ini, 'YYYY-MM-DD') AND c.DT_HR_FINALIZACAO_1028 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
      AND c.STATUS_1028 = '3' AND c.EMPRESA_PF_1028 = 1
   UNION ALL
-  SELECT '04', 0, m.DT_MOVIMENT_502, m.USU_FK_502, m.MERC_PF_502, m.TIPO_MOVIMENT_502, m.QTD_502, m.INVOL_PADRAO_MERC_502
+  SELECT '04', m.DT_MOVIMENT_502, m.USU_FK_502, m.MERC_PF_502, m.TIPO_MOVIMENT_502, m.QTD_502, m.INVOL_PADRAO_MERC_502
     FROM HARPIAW2.MOVIMENT_END_502 m
    WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
      AND m.EMPRESA_PF_502 = 1 AND m.TIPO_MOVIMENT_502 IN ('S', 'I', 'D', 'E') AND m.STATUS_502 = '2'
      AND (m.TIPO_END_502 = 'M' OR m.TIPO_END_DESTINO_502 = 'M') AND NVL(m.SEQ_INVENT_502, 0) = 0
      AND NOT EXISTS (SELECT 1 FROM HARPIAW2.CONV_ATIVA_CONVOCACAO_1028 c WHERE c.EMPRESA_PF_1028 = m.EMPRESA_PF_502 AND c.SEQ_CONVOCACAO_ATIVA_FK_1028 = m.SEQ_CONVOCACAO_ATIVA_502 AND c.STATUS_1028 = '3')
   UNION ALL
-  SELECT '03', 0, m.DT_MOVIMENT_502, m.USU_FK_502, m.MERC_PF_502, m.TIPO_MOVIMENT_502, m.QTD_502, m.INVOL_PADRAO_MERC_502
+  SELECT '03', m.DT_MOVIMENT_502, m.USU_FK_502, m.MERC_PF_502, m.TIPO_MOVIMENT_502, m.QTD_502, m.INVOL_PADRAO_MERC_502
     FROM HARPIAW2.MOVIMENT_END_502 m
    WHERE m.DT_MOVIMENT_502 >= TO_DATE(:ini, 'YYYY-MM-DD') AND m.DT_MOVIMENT_502 < TO_DATE(:fim, 'YYYY-MM-DD') + 1
      AND m.EMPRESA_PF_502 = 1 AND m.TIPO_MOVIMENT_502 IN ('S', 'I') AND m.TIPO_END_502 = 'M' AND m.TIPO_END_DESTINO_502 = 'C' AND m.STATUS_502 = '2'
@@ -344,7 +345,7 @@ const usuCanonico = (col: string) =>
 const SQL_A424_DIA = `
 WITH linhas AS (${LINHAS_A424})
 SELECT l.FUNCAO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, ${usuCanonico("l.USU")} AS USU, MAX(u.DESCR_COMPLETO_754) AS NOME,
-       COUNT(*) AS TAREFAS, SUM(l.CONV) AS TAREFAS_CONV, SUM(${CAIXAS_A424}) AS CAIXAS, SUM(${PESO_A424}) AS PESO, COUNT(DISTINCT l.MERC) AS SKUS
+       COUNT(*) AS TAREFAS, SUM(${CAIXAS_A424}) AS CAIXAS, SUM(${PESO_A424}) AS PESO, COUNT(DISTINCT l.MERC) AS SKUS
   FROM linhas l
   LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
   LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = ${usuCanonico("l.USU")}
@@ -401,6 +402,10 @@ SELECT l.FUNCAO, ${usuCanonico("l.USU")} AS USU, COUNT(DISTINCT l.MERC) AS SKUS
 // 76 = Gleidson, que também usa o 98 (ver MESMA_PESSOA).
 // Luiz Gabriel (3) é da noite — fora por decisão do Pedro.
 const EMPILHADORES_EXTRA: number[] = [76];
+// Lucas (100) e Rafael (16) lançam no WMS movimentação que na prática foi de
+// um empilhador — o Harpia credita a eles e não dá pra saber de qual
+// empilhador era. A premiação (contada pela A424) soma no total do setor.
+const LANCADORES_WMS: number[] = [16, 100];
 const SQL_EMPILHADORES = `
 SELECT DISTINCT op.USU_FK_1023 AS USU
   FROM HARPIAW2.CONV_ATIVA_OPERADORES_1023 op
@@ -533,7 +538,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ DIA: string; OPERADOR: number; USU: number | null; NOME: string | null; MIN_RESPOSTA: number | null; MIN_EXECUCAO: number | null; FINALIZADA: number; REJEITADA: number }>(SQL_CONVOCACOES, binds),
     queryWinthor<{ DIA: string; PROT: number; DESCR: string | null; SKUS: number; VOL: number; PESO: number }>(SQL_RECEPCAO, binds),
     queryWinthor<{ USU: number }>(SQL_EMPILHADORES, {}),
-    queryWinthor<{ FUNCAO: string; DIA: string; USU: number; NOME: string | null; TAREFAS: number; TAREFAS_CONV: number; CAIXAS: number; PESO: number; SKUS: number }>(SQL_A424_DIA, binds),
+    queryWinthor<{ FUNCAO: string; DIA: string; USU: number; NOME: string | null; TAREFAS: number; CAIXAS: number; PESO: number; SKUS: number }>(SQL_A424_DIA, binds),
     queryWinthor<{ FUNCAO: string; USU: number; SKUS: number }>(SQL_A424_SKUS_MES, binds),
     queryWinthor<{ DIA: string; TAREFAS: number; CAIXAS: number; UNIDADES: number; PESO: number; SKUS: number }>(SQL_A424_VOLUME_DIA, binds),
   ]);
@@ -599,6 +604,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         skus: num(r.SKUS),
       })),
       empilhadores: [...new Set([...empilhadoresRaw.map((r) => num(r.USU)), ...EMPILHADORES_EXTRA].map((u) => MESMA_PESSOA[u] ?? u))],
+      lancadoresWms: LANCADORES_WMS,
       porHoraDia: movHoraDia.map((r) => ({ dia: String(r.DIA), hora: Number(r.HORA), total: num(r.TOTAL) })),
       produtosTop: movProdutos.map((r) => ({
         produto: num(r.PRODUTO),
@@ -611,7 +617,6 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         usuario: num(r.USU),
         nome: r.NOME ?? null,
         tarefas: num(r.TAREFAS),
-        tarefasConvocacao: num(r.TAREFAS_CONV),
         caixas: num(r.CAIXAS),
         peso: num(r.PESO),
         skus: num(r.SKUS),

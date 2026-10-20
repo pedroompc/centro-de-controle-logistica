@@ -83,7 +83,7 @@ export function resumoAntecedencia(cargas: { horasFolga: number | null }[]): Res
 // --- Produtividade A424 (rendimento oficial dos empilhadores) -----------------
 
 type FuncaoA424 = "03" | "04";
-type LinhaA424 = { funcao: FuncaoA424; dia: string; usuario: number; nome: string | null; tarefas: number; tarefasConvocacao: number; caixas: number; peso: number; skus: number };
+type LinhaA424 = { funcao: FuncaoA424; dia: string; usuario: number; nome: string | null; tarefas: number; caixas: number; peso: number; skus: number };
 
 export interface MetricaA424 {
   tarefas: number;
@@ -95,15 +95,8 @@ export interface MetricaA424 {
 export interface RendimentoA424 {
   usuario: number;
   nome: string | null;
-  reabastecimento: MetricaA424; // função 03
-  empilhadeira: MetricaA424; // função 04
-  /**
-   * Movimentos de empilhadeira, sem contar duas vezes: a A424 lança o mesmo
-   * movimento da 502 nas funções 03 e 04, mas na Convocação Ativa cada tarefa
-   * (baixar → 04, movimentar → 03, subir → 04) é um movimento à parte.
-   * = tarefas 04 + tarefas 03 vindas da convocação.
-   */
-  movimentacoes: number;
+  reabastecimento: MetricaA424; // função 03 — o descendente da premiação
+  empilhadeira: MetricaA424; // função 04 "MOVIMENTACAO" — as movimentações da premiação
   dias: number; // dias com alguma tarefa no recorte
 }
 
@@ -117,13 +110,12 @@ export function rendimentoA424(linhas: LinhaA424[], dia: string | null, skusMes:
   const m = new Map<number, RendimentoA424 & { diasSet: Set<string> }>();
   for (const l of linhas) {
     if (dia && l.dia !== dia) continue;
-    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, reabastecimento: metricaVazia(), empilhadeira: metricaVazia(), movimentacoes: 0, dias: 0, diasSet: new Set<string>() };
+    const r = m.get(l.usuario) ?? { usuario: l.usuario, nome: l.nome, reabastecimento: metricaVazia(), empilhadeira: metricaVazia(), dias: 0, diasSet: new Set<string>() };
     const alvo = l.funcao === "03" ? r.reabastecimento : r.empilhadeira;
     alvo.tarefas += l.tarefas;
     alvo.caixas += l.caixas;
     alvo.peso += l.peso;
     alvo.skus = dia ? l.skus : alvo.skus;
-    r.movimentacoes += l.funcao === "04" ? l.tarefas : l.tarefasConvocacao;
     r.nome ??= l.nome;
     r.diasSet.add(l.dia);
     m.set(l.usuario, r);
@@ -139,7 +131,7 @@ export function rendimentoA424(linhas: LinhaA424[], dia: string | null, skusMes:
     .sort((a, b) => b.reabastecimento.caixas - a.reabastecimento.caixas);
 }
 
-/** Histórico diário de uma pessoa (drill-down do empilhador): movimentações + o reabastecimento (03) do dia. */
+/** Histórico diário de uma pessoa (drill-down do empilhador): movimentações (04) + o reabastecimento (03) do dia. */
 export function historicoA424(linhas: LinhaA424[], usuario: number): { dia: string; movimentacoes: number; tarefas: number; caixas: number; peso: number }[] {
   const m = new Map<string, { dia: string; movimentacoes: number; tarefas: number; caixas: number; peso: number }>();
   for (const l of linhas) {
@@ -147,7 +139,6 @@ export function historicoA424(linhas: LinhaA424[], usuario: number): { dia: stri
     const d = m.get(l.dia) ?? { dia: l.dia, movimentacoes: 0, tarefas: 0, caixas: 0, peso: 0 };
     if (l.funcao === "04") d.movimentacoes += l.tarefas;
     else {
-      d.movimentacoes += l.tarefasConvocacao;
       d.tarefas += l.tarefas;
       d.caixas += l.caixas;
       d.peso += l.peso;
@@ -155,6 +146,44 @@ export function historicoA424(linhas: LinhaA424[], usuario: number): { dia: stri
     m.set(l.dia, d);
   }
   return [...m.values()].sort((a, b) => a.dia.localeCompare(b.dia));
+}
+
+/**
+ * Movimentação do setor do jeito que a premiação conta pela A424 (validado com
+ * a conferente no dia 13/10/2026: 428 = 304 asc + 124 desc):
+ *   total       = função 04 dos empilhadores + dos lançadores do WMS;
+ *   descendente = função 03 dos empilhadores;
+ *   ascendente  = total − descendente.
+ * `dia` filtra (`null` = mês inteiro).
+ */
+export interface ResumoPremiacao {
+  total: number;
+  descendente: number;
+  ascendente: number;
+  lancadoWms: number; // parte do total lançada no WMS por quem não é empilhador
+}
+
+export function premiacaoA424(linhas: LinhaA424[], dia: string | null, empilhadores: number[], lancadores: number[]): ResumoPremiacao {
+  const emp = new Set(empilhadores);
+  const lanc = new Set(lancadores);
+  const r = { total: 0, descendente: 0, ascendente: 0, lancadoWms: 0 };
+  for (const l of linhas) {
+    if (dia && l.dia !== dia) continue;
+    if (l.funcao === "04" && (emp.has(l.usuario) || lanc.has(l.usuario))) {
+      r.total += l.tarefas;
+      if (lanc.has(l.usuario)) r.lancadoWms += l.tarefas;
+    }
+    if (l.funcao === "03" && emp.has(l.usuario)) r.descendente += l.tarefas;
+  }
+  return { ...r, ascendente: r.total - r.descendente };
+}
+
+/** Total da premiação por dia (calendário). */
+export function premiacaoPorDia(linhas: LinhaA424[], empilhadores: number[], lancadores: number[]): Map<string, number> {
+  const quem = new Set([...empilhadores, ...lancadores]);
+  const m = new Map<string, number>();
+  for (const l of linhas) if (l.funcao === "04" && quem.has(l.usuario)) m.set(l.dia, (m.get(l.dia) ?? 0) + l.tarefas);
+  return m;
 }
 
 // --- Movimentação de piso ------------------------------------------------------

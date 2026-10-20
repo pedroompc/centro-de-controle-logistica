@@ -24,7 +24,7 @@ import {
   NomeUsuario,
 } from "./bi-ui";
 import type { NomesHarpia } from "./turno-dados";
-import { type RendimentoA424, resumoVolume, resumoAntecedencia, horaMovimento, historicoProduto, resumoConvocacoes, porOperadorConvocacoes, rendimentoA424, historicoA424 } from "@/domain/abastecimento";
+import { type RendimentoA424, resumoVolume, resumoAntecedencia, horaMovimento, historicoProduto, resumoConvocacoes, porOperadorConvocacoes, rendimentoA424, historicoA424, premiacaoA424, premiacaoPorDia } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento, MovimentoPiso, LinhaConvocacao, RecepcaoProtocolo } from "@/data/harpia-abastecimento";
 import type { DadosBIAbastecimento } from "./abastecimento-dados";
 
@@ -75,6 +75,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const semH = h ? null : "erro" in dados.harpia ? dados.harpia.erro : "";
 
   const resumo = h ? resumoVolume(h.reabastecimento) : null;
+  const prem = h ? premiacaoA424(h.movimentoPiso.a424, null, h.movimentoPiso.empilhadores, h.movimentoPiso.lancadoresWms) : null;
   const abastProdutos = h ? h.curvas.reduce((t, c) => t + c.abastecimentos, 0) : 0;
   const skusProdutos = h ? h.curvas.reduce((t, c) => t + c.skus, 0) : 0;
   const ant = h ? resumoAntecedencia(h.cargas) : null;
@@ -110,8 +111,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
         <Quadro
           {...q("movimento")}
           rotulo="Movimentação"
-          valor={h ? `${n0(h.movimentoPiso.total)}` : "—"}
-          sub={semH ?? (h ? `${n0(h.movimentoPiso.descendente)} desc. · ${n0(h.movimentoPiso.ascendente)} asc. · ${n0(h.movimentoPiso.horizontal)} horiz.` : "sem dado no mês")}
+          valor={prem ? n0(prem.total) : "—"}
+          sub={semH ?? (prem ? `${n0(prem.descendente)} desc. · ${n0(prem.ascendente)} asc.` : "sem dado no mês")}
         />
         <Quadro
           {...q("rupturas")}
@@ -553,21 +554,29 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 
 type SubMov = "equipe" | "horario" | "tempo" | "subida";
 
-/** Empilhadores pela regra da A424: movimentações de empilhadeira e o reabastecimento (função 03, até o picking). */
+/**
+ * Quem fez, do jeito que a premiação conta pela A424: Mov. = função 04,
+ * ↓ = função 03 (reabastecimento), ↑ = o resto. Os lançadores do WMS (Lucas,
+ * Rafael) entram numa linha só, sem dono — o empilhador real não fica gravado.
+ */
 function TabelaEmpilhadores({
-  rendimentos, nomes, aberta, onAbrir,
+  rendimentos, lancadores, nomes, aberta, onAbrir,
 }: {
-  rendimentos: RendimentoA424[]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
+  rendimentos: RendimentoA424[]; lancadores: RendimentoA424[]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
 }) {
   const soma = (k: "tarefas" | "caixas" | "peso") => rendimentos.reduce((t, r) => t + r.reabastecimento[k], 0);
+  const movEmp = rendimentos.reduce((t, r) => t + r.empilhadeira.tarefas, 0);
+  const movWms = lancadores.reduce((t, r) => t + r.empilhadeira.tarefas, 0);
+  const desc = soma("tarefas");
   const num = "py-2 text-right tabular-nums";
   return (
     <table className="w-full text-left text-sm">
       <thead className="text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
         <tr>
           <th className="py-2 font-semibold">Empilhador</th>
-          <th className="py-2 text-right font-semibold" title="movimentos de empilhadeira — na Convocação Ativa, cada tarefa (baixar, levar ao picking, subir) conta 1">Mov.</th>
-          <th className="py-2 text-right font-semibold" title="A424 função 03 — tarefas de levar até o picking">Reabast.</th>
+          <th className="py-2 text-right font-semibold" title="A424 função 04 — Movimentação">Mov.</th>
+          <th className="py-2 text-right font-semibold" title="descendente = A424 função 03, reabastecimento até o picking">↓ Desc.</th>
+          <th className="py-2 text-right font-semibold" title="ascendente = movimentações − descendente">↑ Asc.</th>
           <th className="py-2 text-right font-semibold">Caixas</th>
           <th className="py-2 text-right font-semibold">Peso</th>
           <th className="py-2 text-right font-semibold">SKUs</th>
@@ -575,9 +584,10 @@ function TabelaEmpilhadores({
       </thead>
       <tbody>
         <tr className="border-t border-white/10 bg-white/[0.04] text-xs">
-          <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">Regra A424 · {rendimentos.length}</td>
-          <td className={`${num} font-bold text-white/80`}>{n0(rendimentos.reduce((t, r) => t + r.movimentacoes, 0))}</td>
-          <td className={`${num} text-white/60`}>{n0(soma("tarefas"))}</td>
+          <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">Premiação · A424</td>
+          <td className={`${num} font-bold text-white/80`}>{n0(movEmp + movWms)}</td>
+          <td className={`${num} text-white/60`}>{n0(desc)}</td>
+          <td className={`${num} text-white/60`}>{n0(movEmp + movWms - desc)}</td>
           <td className={`${num} text-white/60`}>{n0(soma("caixas"))}</td>
           <td className={`${num} text-white/60`}>{n1(soma("peso") / 1000)} t</td>
           <td />
@@ -589,13 +599,28 @@ function TabelaEmpilhadores({
             className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${r.usuario === aberta ? "bg-amber-400/10" : ""}`}
           >
             <td className="max-w-0 py-2"><NomeUsuario usuario={r.usuario} nomeHarpia={r.nome} nomes={nomes} /></td>
-            <td className={`${num} font-bold text-white`}>{n0(r.movimentacoes)}</td>
+            <td className={`${num} font-bold text-white`}>{n0(r.empilhadeira.tarefas)}</td>
             <td className={`${num} text-white/70`}>{n0(r.reabastecimento.tarefas)}</td>
+            <td className={`${num} text-white/70`}>{n0(r.empilhadeira.tarefas - r.reabastecimento.tarefas)}</td>
             <td className={`${num} text-white/70`}>{n0(r.reabastecimento.caixas)}</td>
             <td className={`${num} text-white/70`}>{n1(r.reabastecimento.peso / 1000)} t</td>
             <td className={`${num} text-white/70`}>{n0(r.reabastecimento.skus)}</td>
           </tr>
         ))}
+        {movWms > 0 && (
+          <tr className="border-t border-white/[0.06]" title="movimentação de empilhador lançada no WMS por outra pessoa — o Harpia não grava qual empilhador fez">
+            <td className="max-w-0 py-2">
+              <div className="truncate font-semibold text-white/80">Lançado no WMS</div>
+              <div className="truncate text-[0.65rem] text-white/35">{lancadores.map((r) => r.nome ?? `usuário ${r.usuario}`).join(", ")} · sem empilhador identificado</div>
+            </td>
+            <td className={`${num} font-bold text-white/80`}>{n0(movWms)}</td>
+            <td className={`${num} text-white/40`}>—</td>
+            <td className={`${num} text-white/70`}>{n0(movWms)}</td>
+            <td className={`${num} text-white/40`}>—</td>
+            <td className={`${num} text-white/40`}>—</td>
+            <td className={`${num} text-white/40`}>—</td>
+          </tr>
+        )}
       </tbody>
     </table>
   );
@@ -608,24 +633,26 @@ function VisaoMovimento({
 }) {
   const { sub, abrir, fechar } = useSub<SubMov>();
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
-  if (movimento.total === 0) return <Vazio>Nenhuma movimentação entre endereços registrada em {formatMesAno(mes)}.</Vazio>;
-  const porDia = new Map(movimento.dias.map((d) => [d.dia, d.total]));
+  if (movimento.a424.length === 0) return <Vazio>Nenhuma movimentação registrada em {formatMesAno(mes)}.</Vazio>;
+  const porDia = premiacaoPorDia(movimento.a424, movimento.empilhadores, movimento.lancadoresWms);
   const porHora = horaMovimento(movimento.porHoraDia, dia);
   const resumoConv = resumoConvocacoes(convocacoes, dia);
   const porOperador = porOperadorConvocacoes(convocacoes, dia);
-  const diaDados = dia ? movimento.dias.find((d) => d.dia === dia) ?? null : null;
-  const totalFiltrado = diaDados ? diaDados.total : movimento.total;
-  const descendenteFiltrado = diaDados ? diaDados.descendente : movimento.descendente;
-  const ascendenteFiltrado = diaDados ? diaDados.ascendente : movimento.ascendente;
-  const horizontalFiltrado = totalFiltrado - descendenteFiltrado - ascendenteFiltrado;
+  const prem = premiacaoA424(movimento.a424, dia, movimento.empilhadores, movimento.lancadoresWms);
+  // Picking → reserva na 502 (só pra tela do ascendente do recebimento).
+  const diaPiso = dia ? movimento.dias.find((d) => d.dia === dia) ?? null : null;
+  const ascendenteInterno = diaPiso ? diaPiso.ascendente : movimento.ascendente;
+  const totalHora = porHora.reduce((t, x) => t + x.total, 0);
   const maxProduto = Math.max(1, ...movimento.produtosTop.map((p) => p.total));
   const maxOperadorConv = Math.max(1, ...porOperador.map((o) => o.total));
   const pico = porHora.reduce((a, b) => (b.total > a.total ? b : a), { hora: -1, total: 0 });
-  // Pessoas = só os empilhadores, medidos pela regra da A424 (rendimento oficial).
-  // Ajudante não entra: aqui é movimentação de palete, não faz sentido no ranking.
-  const emp = rendimentoA424(movimento.a424, dia, movimento.a424SkusMes).filter((r) => movimento.empilhadores.includes(r.usuario));
+  // Pessoas = só os empilhadores, pela A424 (como a premiação conta). Ajudante
+  // não entra; o que Lucas/Rafael lançam no WMS vai numa linha sem dono.
+  const rend = rendimentoA424(movimento.a424, dia, movimento.a424SkusMes);
+  const emp = rend.filter((r) => movimento.empilhadores.includes(r.usuario));
+  const lanc = rend.filter((r) => movimento.lancadoresWms.includes(r.usuario));
   // Média só entre os empilhadores — quem move de vez em quando não puxa a média pra baixo.
-  const mediaPorEmpilhador = emp.length ? emp.reduce((t, r) => t + r.movimentacoes, 0) / emp.length : null;
+  const mediaPorEmpilhador = emp.length ? emp.reduce((t, r) => t + r.empilhadeira.tarefas, 0) / emp.length : null;
   const card = (k: SubMov) => ({ onClick: abrir(k), ativo: sub === k });
   const empSel = pessoaAberta ? emp.find((r) => r.usuario === pessoaAberta) ?? null : null;
   const historicoEmp = empSel ? historicoA424(movimento.a424, empSel.usuario) : [];
@@ -636,13 +663,12 @@ function VisaoMovimento({
   const TITULO_SUB_MOV: Record<SubMov, string> = { equipe: "Quem fez", horario: "Horário", tempo: "Tempo de resposta", subida: "Ascendente do recebimento" };
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-8">
-        <Mini rotulo="Movimentações" valor={n0(totalFiltrado)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
-        <Mini rotulo="↓ Descendente" valor={n0(descendenteFiltrado)} sub="“baixar” no Harpia — reserva → picking" />
-        <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub={`picking → reserva · + ${n0(volumesRecepcao)} vol. do recebimento`} />
-        <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
+        <Mini rotulo="Movimentações" valor={n0(prem.total)} sub={`${dia ? ddmm(dia) : formatMesAno(mes)} · premiação (A424)`} />
+        <Mini rotulo="↓ Descendente" valor={n0(prem.descendente)} sub="reabastecimento — reserva → picking" />
+        <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(prem.ascendente)} sub={`movimentações − descendente · ${n0(volumesRecepcao)} vol. recebidos`} />
         <Mini {...card("equipe")} rotulo="Empilhadores" valor={String(emp.length)} sub="clique pra ver o rendimento" />
-        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`movimentações ${dia ? "nesse dia" : "no mês"}`} />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`movimentações ${dia ? "nesse dia" : "no mês"}${prem.lancadoWms ? ` · fora ${n0(prem.lancadoWms)} do WMS` : ""}`} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
         <Mini {...card("tempo")} rotulo="Tempo de resposta" valor={fmtMin(resumoConv.medianaRespostaMin)} sub={resumoConv.total ? `Convocação Ativa · ${resumoConv.total} tarefas` : "Convocação Ativa — sem tarefa ainda"} />
       </div>
@@ -661,7 +687,7 @@ function VisaoMovimento({
 
       {sub === null && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <Bloco titulo="Movimentações por dia" direita={<Dica>entre endereços (reserva ⇄ picking), depto Logística</Dica>}>
+          <Bloco titulo="Movimentações por dia" direita={<Dica>premiação: empilhadores + lançado no WMS (A424)</Dica>}>
             <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
           </Bloco>
           <Bloco titulo="Top 50 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
@@ -693,7 +719,7 @@ function VisaoMovimento({
           <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "mês inteiro · clique numa pessoa"}</Dica>}>
             {emp.length > 0 ? (
               <div className="h-full overflow-auto pr-1">
-                <TabelaEmpilhadores rendimentos={emp} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />
+                <TabelaEmpilhadores rendimentos={emp} lancadores={lanc} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />
               </div>
             ) : (
               <p className="py-6 text-center text-sm text-white/40">Nenhum empilhador com tarefa {dia ? `em ${ddmm(dia)}` : "no mês"}.</p>
@@ -706,8 +732,9 @@ function VisaoMovimento({
             {empSel ? (
               <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
                 <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
-                  <Mini rotulo="Movimentações" valor={n0(empSel.movimentacoes)} sub={empSel.dias > 1 ? `${n1(empSel.movimentacoes / empSel.dias)} por dia · ${empSel.dias} dias` : "movimentos de empilhadeira"} />
-                  <Mini rotulo="Reabastecimentos" valor={n0(empSel.reabastecimento.tarefas)} sub="até o picking (A424 03)" />
+                  <Mini rotulo="Movimentações" valor={n0(empSel.empilhadeira.tarefas)} sub={empSel.dias > 1 ? `${n1(empSel.empilhadeira.tarefas / empSel.dias)} por dia · ${empSel.dias} dias` : "A424 função 04"} />
+                  <Mini rotulo="↓ Descendente" valor={n0(empSel.reabastecimento.tarefas)} sub="reabastecimento (A424 03)" />
+                  <Mini rotulo="↑ Ascendente" valor={n0(empSel.empilhadeira.tarefas - empSel.reabastecimento.tarefas)} sub="movimentações − descendente" />
                   <Mini rotulo="Caixas" valor={n0(empSel.reabastecimento.caixas)} sub={empSel.reabastecimento.tarefas ? `${n1(empSel.reabastecimento.caixas / empSel.reabastecimento.tarefas)} por reabastecimento` : undefined} />
                   <Mini rotulo="Peso" valor={`${n1(empSel.reabastecimento.peso / 1000)} t`} sub={`${n0(empSel.reabastecimento.peso)} kg`} />
                   <Mini rotulo="SKUs" valor={n0(empSel.reabastecimento.skus)} sub="produtos distintos" />
@@ -741,11 +768,11 @@ function VisaoMovimento({
               detalhe: `${String(x.hora).padStart(2, "0")}:00–${String(x.hora).padStart(2, "0")}:59 · ${n0(x.total)}`,
             }))}
           />
-          <p className="mt-2 text-xs text-white/35">Pico em {String(pico.hora).padStart(2, "0")}h, com {n0(pico.total)} de {n0(totalFiltrado)} movimentações ({formatPercent(totalFiltrado > 0 ? pico.total / totalFiltrado : 0, 0)}).</p>
+          <p className="mt-2 text-xs text-white/35">Pico em {String(pico.hora).padStart(2, "0")}h, com {n0(pico.total)} de {n0(totalHora)} movimentações entre endereços ({formatPercent(totalHora > 0 ? pico.total / totalHora : 0, 0)}).</p>
         </Bloco>
       )}
 
-      {sub === "subida" && <SubidaRecebimento recepcao={recepcaoFiltrada} mes={mes} dia={dia} ascendenteInterno={ascendenteFiltrado} />}
+      {sub === "subida" && <SubidaRecebimento recepcao={recepcaoFiltrada} mes={mes} dia={dia} ascendenteInterno={ascendenteInterno} />}
 
       {sub === "tempo" && (
         resumoConv.total === 0 ? (
