@@ -93,7 +93,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("volume")}
           rotulo="Volume"
           valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
-          sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.unidades)} un · ${resumo.dias} dias` : "sem abastecimento no mês")}
+          sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.abastecimentos)} reabast. · ${resumo.dias} dias` : "sem abastecimento no mês")}
         />
         <Quadro
           {...q("antecedencia")}
@@ -349,18 +349,16 @@ function VisaoVolume({
   const diaDados = dia ? dias.find((d) => d.dia === dia) ?? null : null;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
+      <div className="grid grid-cols-3 gap-3 xl:grid-cols-5">
         <Mini rotulo="Caixas" valor={n0(resumo.caixas)} sub={`${resumo.dias} dias com reabastecimento`} />
-        <Mini rotulo="Unidades" valor={n0(resumo.unidades)} sub="caixas × embalagem" />
         <Mini rotulo="Peso" valor={`${n1(peso / 1000)} t`} sub={`${n0(peso)} kg`} />
         <Mini rotulo="SKUs por dia" valor={resumo.skusMedioDia !== null ? n0(resumo.skusMedioDia) : "—"} sub="produtos distintos, média do dia" />
         <Mini rotulo="Reabastecimentos" valor={n0(resumo.abastecimentos)} sub={resumo.dias ? `${n0(resumo.abastecimentos / resumo.dias)} por dia` : undefined} />
         <Mini rotulo="Caixas por reabast." valor={resumo.abastecimentos ? n1(resumo.caixas / resumo.abastecimentos) : "—"} sub={custoPorCaixa !== null ? `custo por caixa ${formatBRL(custoPorCaixa)}` : undefined} />
       </div>
       {diaDados && (
-        <div className="grid grid-cols-3 gap-3 rounded-xl bg-amber-400/10 p-2 ring-1 ring-amber-400/30 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 rounded-xl bg-amber-400/10 p-2 ring-1 ring-amber-400/30 xl:grid-cols-4">
           <Mini rotulo={`Caixas · ${ddmm(dia!)}`} valor={n0(diaDados.caixas)} />
-          <Mini rotulo="Unidades do dia" valor={n0(diaDados.unidades)} />
           <Mini rotulo="Peso do dia" valor={`${n1(diaDados.peso / 1000)} t`} />
           <Mini rotulo="SKUs do dia" valor={n0(diaDados.skus)} />
           <Mini rotulo="Reabast. do dia" valor={n0(diaDados.abastecimentos)} />
@@ -376,7 +374,7 @@ function VisaoVolume({
               altura={150}
               fmt={(v) => n1(v / 1000)}
               onClick={(d) => onDia(dia === d ? null : d)}
-              itens={dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.peso, detalhe: `${ddmm(d.dia)} · ${n1(d.peso / 1000)} t · ${n0(d.unidades)} un`, selecionado: d.dia === dia }))}
+              itens={dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.peso, detalhe: `${ddmm(d.dia)} · ${n1(d.peso / 1000)} t · ${n0(d.caixas)} cx`, selecionado: d.dia === dia }))}
             />
           </Bloco>
           <Bloco titulo="SKUs distintos reabastecidos por dia">
@@ -532,10 +530,9 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
         <Bloco titulo={produtoSel ? `${produtoSel.produto} · histórico diário` : "Histórico diário"} direita={produtoSel?.descricao ? <Dica>{produtoSel.descricao}</Dica> : undefined}>
           {produtoSel ? (
             <>
-              <div className="mb-3 grid grid-cols-3 gap-2">
+              <div className="mb-3 grid grid-cols-2 gap-2">
                 <Mini rotulo="Caixas" valor={n0(produtoSel.caixas)} />
-                <Mini rotulo="Unidades" valor={n0(produtoSel.unidades)} />
-                <Mini rotulo="Abast./dia" valor={diasAtivos ? n1(produtoSel.abastecimentos / diasAtivos) : "—"} />
+                <Mini rotulo="Reabast./dia" valor={diasAtivos ? n1(produtoSel.abastecimentos / diasAtivos) : "—"} />
               </div>
               <BarrasTV
                 altura={150}
