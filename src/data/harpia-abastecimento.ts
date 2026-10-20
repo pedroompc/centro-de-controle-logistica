@@ -30,6 +30,16 @@ export interface DiaAbastecimento {
   skus: number; // produtos distintos abastecidos no dia
 }
 
+/** O que foi de fato reabastecido no picking num dia — A424 função 03, de qualquer pessoa. */
+export interface DiaReabastecimento {
+  dia: string;
+  abastecimentos: number; // tarefas de reabastecimento (1 por produto levado ao picking)
+  caixas: number;
+  unidades: number;
+  peso: number; // kg
+  skus: number;
+}
+
 export interface ProdutoGiro {
   produto: number;
   descricao: string | null;
@@ -154,7 +164,10 @@ export interface LinhaConvocacao {
 }
 
 export interface DadosHarpiaAbastecimento {
+  /** Demanda de separação das cargas (rotina 341, faturamento) — é SAÍDA, não abastecimento. */
   dias: DiaAbastecimento[];
+  /** Reabastecimento real do picking, por dia (A424 função 03) — base da visão Volume. */
+  reabastecimento: DiaReabastecimento[];
   produtos: ProdutoGiro[]; // top 20 geral ∪ top 20 de cada curva, do mais ao menos abastecido
   produtosDia: ProdutoGiroDia[]; // histórico diário só desses produtos (drill-down)
   curvas: CurvaAbast[];
@@ -363,6 +376,17 @@ SELECT l.FUNCAO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, ${usuCanonico("l.USU
  WHERE l.FUNCAO IS NOT NULL
  GROUP BY l.FUNCAO, TRUNC(l.DT), ${usuCanonico("l.USU")}`;
 
+// Volume do mês = tudo que foi levado ao picking (03), de qualquer pessoa.
+const SQL_A424_VOLUME_DIA = `
+WITH linhas AS (${LINHAS_A424})
+SELECT TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, COUNT(*) AS TAREFAS, SUM(${CAIXAS_A424}) AS CAIXAS,
+       SUM(CASE WHEN l.TIPO = 'S' THEN l.QTD * NVL(NULLIF(l.INVOL, 0), 1) ELSE l.QTD END) AS UNIDADES,
+       SUM(${PESO_A424}) AS PESO, COUNT(DISTINCT l.MERC) AS SKUS
+  FROM linhas l
+  LEFT JOIN PCPRODUT pr ON pr.CODPROD = l.MERC
+ WHERE l.FUNCAO = '03'
+ GROUP BY TRUNC(l.DT)`;
+
 const SQL_A424_SKUS_MES = `
 WITH linhas AS (${LINHAS_A424})
 SELECT l.FUNCAO, ${usuCanonico("l.USU")} AS USU, COUNT(DISTINCT l.MERC) AS SKUS
@@ -493,7 +517,7 @@ SELECT m.MERC_FK_1361 AS PRODUTO, TO_CHAR(TRUNC(p.PREP_DTHR_809), 'YYYY-MM-DD') 
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, empilhadoresRaw, a424Raw, a424SkusRaw] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, empilhadoresRaw, a424Raw, a424SkusRaw, reabastRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -510,6 +534,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ USU: number }>(SQL_EMPILHADORES, {}),
     queryWinthor<{ FUNCAO: string; DIA: string; USU: number; NOME: string | null; TAREFAS: number; TAREFAS_CONV: number; CAIXAS: number; PESO: number; SKUS: number }>(SQL_A424_DIA, binds),
     queryWinthor<{ FUNCAO: string; USU: number; SKUS: number }>(SQL_A424_SKUS_MES, binds),
+    queryWinthor<{ DIA: string; TAREFAS: number; CAIXAS: number; UNIDADES: number; PESO: number; SKUS: number }>(SQL_A424_VOLUME_DIA, binds),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -521,6 +546,9 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
   return {
     dias: dias
       .map((r) => ({ dia: String(r.DIA), abastecimentos: num(r.ABASTS), caixas: num(r.CX), unidades: num(r.UN), skus: num(r.SKUS) }))
+      .sort((a, b) => a.dia.localeCompare(b.dia)),
+    reabastecimento: reabastRaw
+      .map((r) => ({ dia: String(r.DIA), abastecimentos: num(r.TAREFAS), caixas: num(r.CAIXAS), unidades: num(r.UNIDADES), peso: num(r.PESO), skus: num(r.SKUS) }))
       .sort((a, b) => a.dia.localeCompare(b.dia)),
     produtos: prods.map((r) => ({
       produto: num(r.PRODUTO),

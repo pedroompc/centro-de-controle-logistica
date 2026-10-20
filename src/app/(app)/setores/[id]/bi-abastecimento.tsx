@@ -36,7 +36,7 @@ type VisaoAba = "custo" | "volume" | "antecedencia" | "giro" | "movimento" | "ru
 
 const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
-  { id: "volume", titulo: "Volume", contexto: "demanda de abastecimento gerada pelo faturamento (rotina 341) · clique num dia para filtrar" },
+  { id: "volume", titulo: "Volume", contexto: "o que foi reabastecido no picking (regra da A424) · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
   { id: "giro", titulo: "Giro de picking", contexto: "produtos com mais abastecimentos no mês · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
   { id: "movimento", titulo: "Movimentação", contexto: "quem move, descendente × ascendente × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
@@ -74,7 +74,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const h = "dados" in dados.harpia ? dados.harpia.dados : null;
   const semH = h ? null : "erro" in dados.harpia ? dados.harpia.erro : "";
 
-  const resumo = h ? resumoVolume(h.dias) : null;
+  const resumo = h ? resumoVolume(h.reabastecimento) : null;
+  const diasGiro = h ? resumoVolume(h.dias).dias : 0;
   const abastProdutos = h ? h.curvas.reduce((t, c) => t + c.abastecimentos, 0) : 0;
   const skusProdutos = h ? h.curvas.reduce((t, c) => t + c.skus, 0) : 0;
   const ant = h ? resumoAntecedencia(h.cargas) : null;
@@ -93,7 +94,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("volume")}
           rotulo="Volume"
           valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
-          sub={semH ?? (resumo ? `${n0(resumo.unidades)} un · ${resumo.dias} dias` : "sem abastecimento no mês")}
+          sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.unidades)} un · ${resumo.dias} dias` : "sem abastecimento no mês")}
         />
         <Quadro
           {...q("antecedencia")}
@@ -105,7 +106,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("giro")}
           rotulo="Giro de picking"
           valor={h ? `${n0(abastProdutos)} abast.` : "—"}
-          sub={semH ?? (resumo && abastProdutos ? `${n0(skusProdutos)} produtos · ${resumo.dias} dias` : "sem abastecimento no mês")}
+          sub={semH ?? (abastProdutos ? `${n0(skusProdutos)} produtos · ${diasGiro} dias` : "sem abastecimento no mês")}
         />
         <Quadro
           {...q("movimento")}
@@ -152,7 +153,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : !h ? (
                   <SemHarpia erro={semH ?? ""} />
                 ) : visao === "volume" ? (
-                  <VisaoVolume h={h} mes={dados.mes} pessoas={dados.pessoas.length} custoMes={custo} dia={dia} onDia={setDia} />
+                  <VisaoVolume h={h} mes={dados.mes} custoMes={custo} dia={dia} onDia={setDia} />
                 ) : visao === "antecedencia" ? (
                   <VisaoAntecedencia h={h} mes={dados.mes} dia={dia} onDia={setDia} />
                 ) : visao === "giro" ? (
@@ -336,54 +337,55 @@ function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
 // --- VOLUME --------------------------------------------------------------------
 
 function VisaoVolume({
-  h, mes, pessoas, custoMes, dia, onDia,
+  h, mes, custoMes, dia, onDia,
 }: {
-  h: DadosHarpiaAbastecimento; mes: string; pessoas: number; custoMes: number | null; dia: string | null; onDia: (d: string | null) => void;
+  h: DadosHarpiaAbastecimento; mes: string; custoMes: number | null; dia: string | null; onDia: (d: string | null) => void;
 }) {
-  const resumo = resumoVolume(h.dias);
-  if (h.dias.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
-  const porDiaCx = new Map(h.dias.map((d) => [d.dia, d.caixas]));
-  const caixasPorPessoaDia = pessoas && resumo.dias ? resumo.caixas / pessoas / resumo.dias : null;
-  const skusPorPessoaDia = pessoas && resumo.skusMedioDia !== null ? resumo.skusMedioDia / pessoas : null;
+  const dias = h.reabastecimento;
+  const resumo = resumoVolume(dias);
+  if (dias.length === 0) return <Vazio>Nenhum reabastecimento registrado neste mês.</Vazio>;
+  const peso = dias.reduce((t, d) => t + d.peso, 0);
+  const porDiaCx = new Map(dias.map((d) => [d.dia, d.caixas]));
   const custoPorCaixa = custoMes !== null && resumo.caixas > 0 ? custoMes / resumo.caixas : null;
-  const diaDados = dia ? h.dias.find((d) => d.dia === dia) ?? null : null;
+  const diaDados = dia ? dias.find((d) => d.dia === dia) ?? null : null;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini rotulo="Caixas" valor={n0(resumo.caixas)} sub={`${resumo.dias} dias com abastecimento`} />
-        <Mini rotulo="Unidades" valor={n0(resumo.unidades)} sub="caixas fechadas × embalagem + avulsas" />
+        <Mini rotulo="Caixas" valor={n0(resumo.caixas)} sub={`${resumo.dias} dias com reabastecimento`} />
+        <Mini rotulo="Unidades" valor={n0(resumo.unidades)} sub="caixas × embalagem" />
+        <Mini rotulo="Peso" valor={`${n1(peso / 1000)} t`} sub={`${n0(peso)} kg`} />
         <Mini rotulo="SKUs por dia" valor={resumo.skusMedioDia !== null ? n0(resumo.skusMedioDia) : "—"} sub="produtos distintos, média do dia" />
-        <Mini rotulo="Abastecimentos" valor={n0(resumo.abastecimentos)} sub={resumo.dias ? `${n0(resumo.abastecimentos / resumo.dias)} por dia` : undefined} />
-        <Mini rotulo="Caixas por pessoa/dia" valor={caixasPorPessoaDia !== null ? n1(caixasPorPessoaDia) : "—"} sub={pessoas ? `${pessoas} pessoas no setor` : "nenhuma pessoa cadastrada no setor"} />
-        <Mini rotulo="SKUs por pessoa/dia" valor={skusPorPessoaDia !== null ? n1(skusPorPessoaDia) : "—"} sub="eficiência da equipe, não por pessoa" />
+        <Mini rotulo="Reabastecimentos" valor={n0(resumo.abastecimentos)} sub={resumo.dias ? `${n0(resumo.abastecimentos / resumo.dias)} por dia` : undefined} />
+        <Mini rotulo="Caixas por reabast." valor={resumo.abastecimentos ? n1(resumo.caixas / resumo.abastecimentos) : "—"} sub={custoPorCaixa !== null ? `custo por caixa ${formatBRL(custoPorCaixa)}` : undefined} />
       </div>
       {diaDados && (
-        <div className="grid grid-cols-3 gap-3 rounded-xl bg-amber-400/10 p-2 ring-1 ring-amber-400/30 xl:grid-cols-4">
+        <div className="grid grid-cols-3 gap-3 rounded-xl bg-amber-400/10 p-2 ring-1 ring-amber-400/30 xl:grid-cols-5">
           <Mini rotulo={`Caixas · ${ddmm(dia!)}`} valor={n0(diaDados.caixas)} />
           <Mini rotulo="Unidades do dia" valor={n0(diaDados.unidades)} />
+          <Mini rotulo="Peso do dia" valor={`${n1(diaDados.peso / 1000)} t`} />
           <Mini rotulo="SKUs do dia" valor={n0(diaDados.skus)} />
-          <Mini rotulo="Abastecimentos do dia" valor={n0(diaDados.abastecimentos)} />
+          <Mini rotulo="Reabast. do dia" valor={n0(diaDados.abastecimentos)} />
         </div>
       )}
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <Bloco titulo="Caixas abastecidas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
-          <CalendarioBI mes={mes} porDia={porDiaCx} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem abastecimento" />
+        <Bloco titulo="Caixas reabastecidas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
+          <CalendarioBI mes={mes} porDia={porDiaCx} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem reabastecimento" />
         </Bloco>
         <div className="grid min-h-0 grid-rows-2 gap-4">
-          <Bloco titulo="Unidades abastecidas por dia">
+          <Bloco titulo="Peso reabastecido por dia" direita={<Dica>toneladas</Dica>}>
             <BarrasTV
               altura={150}
-              fmt={n0}
+              fmt={(v) => n1(v / 1000)}
               onClick={(d) => onDia(dia === d ? null : d)}
-              itens={h.dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.unidades, detalhe: `${ddmm(d.dia)} · ${n0(d.unidades)} un`, selecionado: d.dia === dia }))}
+              itens={dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.peso, detalhe: `${ddmm(d.dia)} · ${n1(d.peso / 1000)} t · ${n0(d.unidades)} un`, selecionado: d.dia === dia }))}
             />
           </Bloco>
-          <Bloco titulo="SKUs distintos abastecidos por dia" direita={<Dica>custo por caixa: {custoPorCaixa !== null ? formatBRL(custoPorCaixa) : "—"}</Dica>}>
+          <Bloco titulo="SKUs distintos reabastecidos por dia">
             <BarrasTV
               altura={150}
               fmt={n0}
               onClick={(d) => onDia(dia === d ? null : d)}
-              itens={h.dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.skus, detalhe: `${ddmm(d.dia)} · ${n0(d.skus)} SKUs`, selecionado: d.dia === dia }))}
+              itens={dias.map((d) => ({ chave: d.dia, rotulo: d.dia.slice(8, 10), valor: d.skus, detalhe: `${ddmm(d.dia)} · ${n0(d.skus)} SKUs`, selecionado: d.dia === dia }))}
             />
           </Bloco>
         </div>
