@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { rendimentoA424, historicoA424 } from "./abastecimento";
 
 describe("rendimentoA424", () => {
-  const l = (funcao: "03" | "04", dia: string, usuario: number, tarefas: number, caixas: number) =>
-    ({ funcao, dia, usuario, nome: `U${usuario}`, tarefas, caixas, peso: caixas * 5, skus: tarefas });
+  const l = (funcao: "03" | "04", dia: string, usuario: number, tarefas: number, caixas: number, tarefasConvocacao = 0) =>
+    ({ funcao, dia, usuario, nome: `U${usuario}`, tarefas, tarefasConvocacao, caixas, peso: caixas * 5, skus: tarefas });
 
   const linhas = [
     l("03", "2026-10-01", 54, 10, 500),
@@ -28,10 +28,15 @@ describe("rendimentoA424", () => {
     expect(mes[0].reabastecimento.skus).toBe(7);
   });
 
-  it("histórico diário só da função 03", () => {
-    expect(historicoA424(linhas, 54)).toEqual([
-      { dia: "2026-10-01", tarefas: 10, caixas: 500, peso: 2500 },
-      { dia: "2026-10-02", tarefas: 5, caixas: 100, peso: 500 },
+  it("movimentações = tarefas 04 + tarefas 03 da convocação (o mesmo movimento da 502 não conta duas vezes)", () => {
+    const r = rendimentoA424([l("03", "2026-10-01", 54, 10, 500, 3), l("04", "2026-10-01", 54, 12, 520)], null);
+    expect(r[0].movimentacoes).toBe(15);
+  });
+
+  it("histórico diário: movimentações e o reabastecimento (03) do dia", () => {
+    expect(historicoA424([l("03", "2026-10-01", 54, 10, 500, 3), l("04", "2026-10-01", 54, 12, 520), l("03", "2026-10-02", 54, 5, 100)], 54)).toEqual([
+      { dia: "2026-10-01", movimentacoes: 15, tarefas: 10, caixas: 500, peso: 2500 },
+      { dia: "2026-10-02", movimentacoes: 0, tarefas: 5, caixas: 100, peso: 500 },
     ]);
   });
 });

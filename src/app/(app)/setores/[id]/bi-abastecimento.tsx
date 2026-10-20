@@ -556,34 +556,34 @@ function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
 
 type SubMov = "equipe" | "horario" | "tempo" | "subida";
 
-/** Empilhadores pela regra da A424: 03 reabastecimento (até o picking) e 04 empilhadeira (baixar/subir palete). */
+/** Empilhadores pela regra da A424: movimentações de empilhadeira e o reabastecimento (função 03, até o picking). */
 function TabelaEmpilhadores({
   rendimentos, nomes, aberta, onAbrir,
 }: {
   rendimentos: RendimentoA424[]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
 }) {
-  const soma = (k: "tarefas" | "caixas" | "peso", f: "reabastecimento" | "empilhadeira") => rendimentos.reduce((t, r) => t + r[f][k], 0);
+  const soma = (k: "tarefas" | "caixas" | "peso") => rendimentos.reduce((t, r) => t + r.reabastecimento[k], 0);
   const num = "py-2 text-right tabular-nums";
   return (
     <table className="w-full text-left text-sm">
       <thead className="text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
         <tr>
           <th className="py-2 font-semibold">Empilhador</th>
+          <th className="py-2 text-right font-semibold" title="movimentos de empilhadeira — na Convocação Ativa, cada tarefa (baixar, levar ao picking, subir) conta 1">Mov.</th>
           <th className="py-2 text-right font-semibold" title="A424 função 03 — tarefas de levar até o picking">Reabast.</th>
           <th className="py-2 text-right font-semibold">Caixas</th>
           <th className="py-2 text-right font-semibold">Peso</th>
           <th className="py-2 text-right font-semibold">SKUs</th>
-          <th className="py-2 text-right font-semibold" title="A424 função 04 — baixar/subir palete e movimentação sem convocação">Empilhad.</th>
         </tr>
       </thead>
       <tbody>
         <tr className="border-t border-white/10 bg-white/[0.04] text-xs">
           <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">Regra A424 · {rendimentos.length}</td>
-          <td className={`${num} font-bold text-white/80`}>{n0(soma("tarefas", "reabastecimento"))}</td>
-          <td className={`${num} text-white/60`}>{n0(soma("caixas", "reabastecimento"))}</td>
-          <td className={`${num} text-white/60`}>{n1(soma("peso", "reabastecimento") / 1000)} t</td>
+          <td className={`${num} font-bold text-white/80`}>{n0(rendimentos.reduce((t, r) => t + r.movimentacoes, 0))}</td>
+          <td className={`${num} text-white/60`}>{n0(soma("tarefas"))}</td>
+          <td className={`${num} text-white/60`}>{n0(soma("caixas"))}</td>
+          <td className={`${num} text-white/60`}>{n1(soma("peso") / 1000)} t</td>
           <td />
-          <td className={`${num} text-white/60`}>{n0(soma("tarefas", "empilhadeira"))}</td>
         </tr>
         {rendimentos.map((r) => (
           <tr
@@ -592,11 +592,11 @@ function TabelaEmpilhadores({
             className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${r.usuario === aberta ? "bg-amber-400/10" : ""}`}
           >
             <td className="max-w-0 py-2"><NomeUsuario usuario={r.usuario} nomeHarpia={r.nome} nomes={nomes} /></td>
-            <td className={`${num} font-bold text-white`}>{n0(r.reabastecimento.tarefas)}</td>
+            <td className={`${num} font-bold text-white`}>{n0(r.movimentacoes)}</td>
+            <td className={`${num} text-white/70`}>{n0(r.reabastecimento.tarefas)}</td>
             <td className={`${num} text-white/70`}>{n0(r.reabastecimento.caixas)}</td>
             <td className={`${num} text-white/70`}>{n1(r.reabastecimento.peso / 1000)} t</td>
             <td className={`${num} text-white/70`}>{n0(r.reabastecimento.skus)}</td>
-            <td className={`${num} text-white/70`}>{n0(r.empilhadeira.tarefas)}</td>
           </tr>
         ))}
       </tbody>
@@ -628,7 +628,7 @@ function VisaoMovimento({
   // Ajudante não entra: aqui é movimentação de palete, não faz sentido no ranking.
   const emp = rendimentoA424(movimento.a424, dia, movimento.a424SkusMes).filter((r) => movimento.empilhadores.includes(r.usuario));
   // Média só entre os empilhadores — quem move de vez em quando não puxa a média pra baixo.
-  const mediaPorEmpilhador = emp.length ? emp.reduce((t, r) => t + r.reabastecimento.tarefas, 0) / emp.length : null;
+  const mediaPorEmpilhador = emp.length ? emp.reduce((t, r) => t + r.movimentacoes, 0) / emp.length : null;
   const card = (k: SubMov) => ({ onClick: abrir(k), ativo: sub === k });
   const empSel = pessoaAberta ? emp.find((r) => r.usuario === pessoaAberta) ?? null : null;
   const historicoEmp = empSel ? historicoA424(movimento.a424, empSel.usuario) : [];
@@ -645,7 +645,7 @@ function VisaoMovimento({
         <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(ascendenteFiltrado)} sub={`picking → reserva · + ${n0(volumesRecepcao)} vol. do recebimento`} />
         <Mini rotulo="Horizontal" valor={n0(horizontalFiltrado)} sub="mesmo nível, outra posição" />
         <Mini {...card("equipe")} rotulo="Empilhadores" valor={String(emp.length)} sub="clique pra ver o rendimento" />
-        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`reabastecimentos (A424) ${dia ? "nesse dia" : "no mês"}`} />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`movimentações ${dia ? "nesse dia" : "no mês"}`} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
         <Mini {...card("tempo")} rotulo="Tempo de resposta" valor={fmtMin(resumoConv.medianaRespostaMin)} sub={resumoConv.total ? `Convocação Ativa · ${resumoConv.total} tarefas` : "Convocação Ativa — sem tarefa ainda"} />
       </div>
@@ -709,23 +709,23 @@ function VisaoMovimento({
             {empSel ? (
               <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
                 <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
-                  <Mini rotulo="Reabastecimentos" valor={n0(empSel.reabastecimento.tarefas)} sub={empSel.dias > 1 ? `${n1(empSel.reabastecimento.tarefas / empSel.dias)} por dia · ${empSel.dias} dias` : "até o picking (A424 03)"} />
+                  <Mini rotulo="Movimentações" valor={n0(empSel.movimentacoes)} sub={empSel.dias > 1 ? `${n1(empSel.movimentacoes / empSel.dias)} por dia · ${empSel.dias} dias` : "movimentos de empilhadeira"} />
+                  <Mini rotulo="Reabastecimentos" valor={n0(empSel.reabastecimento.tarefas)} sub="até o picking (A424 03)" />
                   <Mini rotulo="Caixas" valor={n0(empSel.reabastecimento.caixas)} sub={empSel.reabastecimento.tarefas ? `${n1(empSel.reabastecimento.caixas / empSel.reabastecimento.tarefas)} por reabastecimento` : undefined} />
                   <Mini rotulo="Peso" valor={`${n1(empSel.reabastecimento.peso / 1000)} t`} sub={`${n0(empSel.reabastecimento.peso)} kg`} />
                   <Mini rotulo="SKUs" valor={n0(empSel.reabastecimento.skus)} sub="produtos distintos" />
-                  <Mini rotulo="Empilhadeira" valor={n0(empSel.empilhadeira.tarefas)} sub={`${n0(empSel.empilhadeira.caixas)} cx · baixar/subir (A424 04)`} />
                 </div>
                 <div className="min-h-[180px] flex-1">
                   <BarrasTV
                     altura={170}
                     fmt={n0}
                     onClick={(d) => onDia(dia === d ? null : d)}
-                    itens={historicoEmp.map((x) => ({ chave: x.dia, rotulo: x.dia.slice(8, 10), valor: x.caixas, detalhe: `${ddmm(x.dia)} · ${n0(x.tarefas)} reabast. · ${n0(x.caixas)} cx · ${n1(x.peso / 1000)} t`, selecionado: x.dia === dia }))}
+                    itens={historicoEmp.map((x) => ({ chave: x.dia, rotulo: x.dia.slice(8, 10), valor: x.movimentacoes, detalhe: `${ddmm(x.dia)} · ${n0(x.movimentacoes)} mov. · ${n0(x.tarefas)} reabast. · ${n0(x.caixas)} cx · ${n1(x.peso / 1000)} t`, selecionado: x.dia === dia }))}
                   />
                 </div>
               </div>
             ) : (
-              <p className="py-6 text-center text-sm text-white/40">Clique num empilhador na tabela pra ver o rendimento dele: reabastecimentos, caixas, peso e SKUs, dia a dia.</p>
+              <p className="py-6 text-center text-sm text-white/40">Clique num empilhador na tabela pra ver o rendimento dele: movimentações, reabastecimentos, caixas, peso e SKUs, dia a dia.</p>
             )}
           </Bloco>
         </div>
