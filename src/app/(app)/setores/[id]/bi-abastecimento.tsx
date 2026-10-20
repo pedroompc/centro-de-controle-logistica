@@ -587,7 +587,7 @@ function TabelaEmpilhadores({
       </thead>
       <tbody>
         <tr className="border-t border-white/10 bg-white/[0.04] text-xs">
-          <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">Premiação · A424</td>
+          <td className="py-1.5 font-bold uppercase tracking-[0.14em] text-amber-300">Total</td>
           <td className={`${num} font-bold text-white/80`}>{n0(movEmp + movWms)}</td>
           <td className={`${num} text-white/60`}>{n0(desc)}</td>
           <td className={`${num} text-white/60`}>{n0(movEmp + movWms - desc)}</td>
@@ -613,7 +613,7 @@ function TabelaEmpilhadores({
         {movWms > 0 && (
           <tr className="border-t border-white/[0.06]" title="movimentação de empilhador lançada no WMS por outra pessoa — o Harpia não grava qual empilhador fez">
             <td className="max-w-0 py-2">
-              <div className="truncate font-semibold text-white/80">Lançado no WMS</div>
+              <div className="truncate font-semibold text-white/80">Lançamento manual</div>
               <div className="truncate text-[0.65rem] text-white/35">{lancadores.map((r) => r.nome ?? `usuário ${r.usuario}`).join(", ")} · sem empilhador identificado</div>
             </td>
             <td className={`${num} font-bold text-white/80`}>{n0(movWms)}</td>
