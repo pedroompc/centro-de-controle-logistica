@@ -43,6 +43,9 @@ const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
 
+// Fora do menu por ora (pedido do Pedro, 20/10/2026) — as visões continuam no código.
+const OCULTAS: ReadonlySet<VisaoAba> = new Set(["antecedencia", "rupturas"]);
+
 const PAPEIS: PapelBI[] = [
   { id: "lider", rotulo: "Líder", plural: "Liderança", cor: "#10b981" },
   { id: "operador", rotulo: "Operador", plural: "Operadores de abastecimento", cor: "#5b6fd6" },
@@ -83,7 +86,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
 
   const menu = (
     <>
-      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
+      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Quadro
           {...q("custo")}
           rotulo="Custo e equipe"
@@ -96,12 +99,12 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
           sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.abastecimentos)} reabast. · ${resumo.dias} dias` : "sem abastecimento no mês")}
         />
-        <Quadro
+        {!OCULTAS.has("antecedencia") && <Quadro
           {...q("antecedencia")}
           rotulo="Antecedência"
           valor={pctAntes !== null ? formatPercent(pctAntes, 0) : "—"}
           sub={semH ?? (ant ? `mediana ${ant.medianaHoras !== null ? n1(ant.medianaHoras) : "—"}h de folga` : "sem cargas no mês")}
-        />
+        />}
         <Quadro
           {...q("giro")}
           rotulo="Giro de picking"
@@ -114,12 +117,12 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           valor={prem ? n0(prem.total) : "—"}
           sub={semH ?? (prem ? `${n0(prem.descendente)} desc. · ${n0(prem.ascendente)} asc.` : "sem dado no mês")}
         />
-        <Quadro
+        {!OCULTAS.has("rupturas") && <Quadro
           {...q("rupturas")}
           rotulo="Rupturas"
           valor={h ? `${h.rupturas.length}` : "—"}
           sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no mês")}
-        />
+        />}
       </div>
       {dia && (
         <div className="mt-2 flex items-center gap-2 text-xs text-white/50">
@@ -127,7 +130,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           <ChipTV ativo onClick={() => setDia(null)}>
             dia {ddmm(dia)} ✕
           </ChipTV>
-          <span>vale pra Volume, Antecedência e Movimentação · Esc limpa</span>
+          <span>vale pra Volume e Movimentação · Esc limpa</span>
         </div>
       )}
     </>
