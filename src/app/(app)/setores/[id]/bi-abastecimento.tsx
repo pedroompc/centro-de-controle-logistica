@@ -13,9 +13,10 @@
  * Movimentação filtra as três. Esc limpa. Pessoa (Movimentação) e produto
  * (Giro) abrem histórico diário ao clicar — clique de novo fecha.
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
+import { ROTULO_TURNO } from "@/domain/metrics";
 import { variacaoPercentual } from "@/domain/tendencias";
 import { BIShell, type HrefMes } from "./bi-shell";
 import {
@@ -57,6 +58,16 @@ const n0 = (v: number) => Math.round(v).toLocaleString("pt-BR");
 const n1 = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
 
+/**
+ * Custo do setor ÷ faturamento líquido do mês. No mês corrente o custo entra
+ * proporcional ao que já correu (o faturamento também é parcial) — mesma
+ * conta do BI do Recebimento.
+ */
+function custoSobreFaturamento(d: DadosBIAbastecimento): number | null {
+  const c = custoDoMes(d, d.mes);
+  return c === null || !d.faturamentoLiquido || d.faturamentoLiquido <= 0 ? null : (c * d.fracaoMes) / d.faturamentoLiquido;
+}
+
 /** Custo do mês: folha (foto do mês; no corrente, o cadastro) + equipamentos de hoje. */
 function custoDoMes(d: DadosBIAbastecimento, mes: string): number | null {
   const p = d.serie.find((x) => x.mes === mes);
@@ -74,6 +85,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const i = dados.serie.findIndex((x) => x.mes === dados.mes);
   const anterior = i > 0 ? custoDoMes(dados, dados.serie[i - 1].mes) : null;
   const delta = custo !== null && anterior ? variacaoPercentual(custo, anterior) : null;
+  const sobreFat = custoSobreFaturamento(dados);
   const conta = (id: string) => dados.pessoas.filter((y) => y.papel === id).length;
   const q = (v: VisaoAba) => ({ ativo: visao === v, onClick: () => abrir(v) });
   const h = "dados" in dados.harpia ? dados.harpia.dados : null;
@@ -93,7 +105,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("custo")}
           rotulo="Custo e equipe"
           valor={custo === null ? "—" : semCentavos(custo)}
-          sub={`${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${delta > 0 ? "+" : ""}${formatPercent(delta, 1)} vs mês anterior` : ""}`}
+          sub={`${sobreFat !== null ? `${formatPercent(sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${delta > 0 ? "+" : ""}${formatPercent(delta, 1)} vs mês anterior` : ""}`}
         />
         <Quadro
           {...q("volume")}
@@ -205,6 +217,7 @@ function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
   const custoEquip = equipamentos.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
   const total = folha + custoEquip;
   const custoMes = custoDoMes(dados, dados.mes);
+  const sobreFat = custoSobreFaturamento(dados);
   const presentes = PAPEIS.filter((pp) => pessoas.some((y) => y.papel === pp.id));
   const fatias = [
     ...presentes.map((pp) => ({ rotulo: pp.plural, valor: pessoas.filter((y) => y.papel === pp.id).reduce((t, y) => t + y.custo, 0), cor: pp.cor })),
@@ -228,12 +241,17 @@ function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-3 gap-3 xl:grid-cols-5">
+      <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
         <Mini {...card("custo")} rotulo="Custo do mês" valor={custoMes === null ? "—" : formatBRL(custoMes)} sub={custoMes === null ? "mês sem foto do efetivo" : formatMesAno(dados.mes)} />
         <Mini {...card("equipe")} rotulo="Equipe" valor={`${pessoas.length} pessoas`} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase()}`).join(" · ")} />
         <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
         <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${equipamentos.reduce((t, e) => t + e.quantidade, 0)} unidades · por mês`} />
         <Mini rotulo="Custo por pessoa" valor={pessoas.length ? formatBRL(total / pessoas.length) : "—"} sub="média, com equipamentos" />
+        <Mini
+          rotulo="Custo ÷ faturamento líquido"
+          valor={sobreFat === null ? "—" : formatPercent(sobreFat, 2)}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.fracaoMes < 1 ? " · custo proporcional ao mês corrido" : ""}`}
+        />
       </div>
       <div className="flex items-center gap-3 text-xs">
         {sub ? (
@@ -563,12 +581,17 @@ type SubMov = "equipe" | "horario" | "tempo" | "subida";
  * Quem fez, do jeito que a premiação conta pela A424: Mov. = função 04,
  * ↓ = função 03 (reabastecimento), ↑ = o resto. Os lançadores do WMS (Lucas,
  * Rafael) entram numa linha só, sem dono — o empilhador real não fica gravado.
+ * Empilhadores agrupados por turno (pelo horário das movimentações no Harpia)
+ * pra comparar manhã × noite.
  */
 function TabelaEmpilhadores({
-  rendimentos, lancadores, nomes, aberta, onAbrir,
+  rendimentos, lancadores, turnos, nomes, aberta, onAbrir,
 }: {
-  rendimentos: RendimentoA424[]; lancadores: RendimentoA424[]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
+  rendimentos: RendimentoA424[]; lancadores: RendimentoA424[]; turnos: MovimentoPiso["turnos"]; nomes: NomesHarpia; aberta: number | null; onAbrir: (usuario: number) => void;
 }) {
+  const grupos = (["manha", "noite"] as const)
+    .map((t) => ({ turno: t, linhas: rendimentos.filter((r) => (turnos[r.usuario] ?? "manha") === t) }))
+    .filter((g) => g.linhas.length > 0);
   const soma = (k: "tarefas" | "caixas" | "peso") => rendimentos.reduce((t, r) => t + r.reabastecimento[k], 0);
   const movEmp = rendimentos.reduce((t, r) => t + r.empilhadeira.tarefas, 0);
   const movWms = lancadores.reduce((t, r) => t + r.empilhadeira.tarefas, 0);
@@ -597,21 +620,43 @@ function TabelaEmpilhadores({
           <td className={`${num} text-white/60`}>{n1(soma("peso") / 1000)} t</td>
           <td />
         </tr>
-        {rendimentos.map((r) => (
-          <tr
-            key={r.usuario}
-            onClick={() => onAbrir(r.usuario)}
-            className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${r.usuario === aberta ? "bg-amber-400/10" : ""}`}
-          >
-            <td className="max-w-0 py-2"><NomeUsuario usuario={r.usuario} nomeHarpia={r.nome} nomes={nomes} /></td>
-            <td className={`${num} font-bold text-white`}>{n0(r.empilhadeira.tarefas)}</td>
-            <td className={`${num} text-white/70`}>{n0(r.reabastecimento.tarefas)}</td>
-            <td className={`${num} text-white/70`}>{n0(r.empilhadeira.tarefas - r.reabastecimento.tarefas)}</td>
-            <td className={`${num} text-white/70`}>{n0(r.reabastecimento.caixas)}</td>
-            <td className={`${num} text-white/70`}>{n1(r.reabastecimento.peso / 1000)} t</td>
-            <td className={`${num} text-white/70`}>{n0(r.reabastecimento.skus)}</td>
-          </tr>
-        ))}
+        {grupos.map((g) => {
+          const mov = g.linhas.reduce((t, r) => t + r.empilhadeira.tarefas, 0);
+          const desc = g.linhas.reduce((t, r) => t + r.reabastecimento.tarefas, 0);
+          return (
+            <Fragment key={g.turno}>
+              {grupos.length > 1 && (
+                <tr className="border-t border-white/10 text-xs">
+                  <td className="py-1.5">
+                    <span className="font-bold uppercase tracking-[0.14em] text-sky-300">{ROTULO_TURNO[g.turno]}</span>
+                    <span className="ml-2 text-white/40">{g.linhas.length} empilhador{g.linhas.length > 1 ? "es" : ""} · média {n0(mov / g.linhas.length)} mov.</span>
+                  </td>
+                  <td className={`${num} font-bold text-white/70`}>{n0(mov)}</td>
+                  <td className={`${num} text-white/50`}>{n0(desc)}</td>
+                  <td className={`${num} text-white/50`}>{n0(mov - desc)}</td>
+                  <td className={`${num} text-white/50`}>{n0(g.linhas.reduce((t, r) => t + r.reabastecimento.caixas, 0))}</td>
+                  <td className={`${num} text-white/50`}>{n1(g.linhas.reduce((t, r) => t + r.reabastecimento.peso, 0) / 1000)} t</td>
+                  <td />
+                </tr>
+              )}
+              {g.linhas.map((r) => (
+                <tr
+                  key={r.usuario}
+                  onClick={() => onAbrir(r.usuario)}
+                  className={`cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.05] ${r.usuario === aberta ? "bg-amber-400/10" : ""}`}
+                >
+                  <td className="max-w-0 py-2"><NomeUsuario usuario={r.usuario} nomeHarpia={r.nome} nomes={nomes} /></td>
+                  <td className={`${num} font-bold text-white`}>{n0(r.empilhadeira.tarefas)}</td>
+                  <td className={`${num} text-white/70`}>{n0(r.reabastecimento.tarefas)}</td>
+                  <td className={`${num} text-white/70`}>{n0(r.empilhadeira.tarefas - r.reabastecimento.tarefas)}</td>
+                  <td className={`${num} text-white/70`}>{n0(r.reabastecimento.caixas)}</td>
+                  <td className={`${num} text-white/70`}>{n1(r.reabastecimento.peso / 1000)} t</td>
+                  <td className={`${num} text-white/70`}>{n0(r.reabastecimento.skus)}</td>
+                </tr>
+              ))}
+            </Fragment>
+          );
+        })}
         {movWms > 0 && (
           <tr className="border-t border-white/[0.06]" title="movimentação de empilhador lançada no WMS por outra pessoa — o Harpia não grava qual empilhador fez">
             <td className="max-w-0 py-2">
@@ -724,7 +769,7 @@ function VisaoMovimento({
           <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "mês inteiro · clique numa pessoa"}</Dica>}>
             {emp.length > 0 ? (
               <div className="h-full overflow-auto pr-1">
-                <TabelaEmpilhadores rendimentos={emp} lancadores={lanc} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />
+                <TabelaEmpilhadores rendimentos={emp} lancadores={lanc} turnos={movimento.turnos} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />
               </div>
             ) : (
               <p className="py-6 text-center text-sm text-white/40">Nenhum empilhador com tarefa {dia ? `em ${ddmm(dia)}` : "no mês"}.</p>

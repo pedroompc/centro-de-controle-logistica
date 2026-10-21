@@ -141,6 +141,8 @@ export interface MovimentoPiso {
   a424: LinhaA424Dia[];
   /** SKUs distintos no mês por função/usuário (não dá pra somar os do dia). */
   a424SkusMes: { funcao: FuncaoA424; usuario: number; skus: number }[];
+  /** Turno de cada usuário no mês, pelo horário das movimentações (ver SQL_A424_TURNO). */
+  turnos: Record<number, "manha" | "noite">;
 }
 
 /** Um protocolo de recepção de compra (rotina 229 do Harpia, "Recepção Realizada"). */
@@ -389,6 +391,17 @@ SELECT NVL(pr.CLASSEVENDA, '?') AS CURVA, COUNT(*) AS QTD, COUNT(DISTINCT l.MERC
  WHERE l.FUNCAO = '03'
  GROUP BY pr.CLASSEVENDA`;
 
+// Turno de cada pessoa no mês, pelo horário das próprias movimentações (04):
+// maioria entre 21h e 07h = noite (o turno do Luiz Gabriel). Quem estica até
+// 20h (Waldvogel) continua no dia. Não depende de cadastro.
+const SQL_A424_TURNO = `
+WITH linhas AS (${LINHAS_A424})
+SELECT ${usuCanonico("l.USU")} AS USU, COUNT(*) AS TOTAL,
+       SUM(CASE WHEN TO_NUMBER(TO_CHAR(l.DT, 'HH24')) BETWEEN 7 AND 20 THEN 0 ELSE 1 END) AS NOITE
+  FROM linhas l
+ WHERE l.FUNCAO = '04'
+ GROUP BY ${usuCanonico("l.USU")}`;
+
 const SQL_A424_SKUS_MES = `
 WITH linhas AS (${LINHAS_A424})
 SELECT l.FUNCAO, ${usuCanonico("l.USU")} AS USU, COUNT(DISTINCT l.MERC) AS SKUS
@@ -400,8 +413,8 @@ SELECT l.FUNCAO, ${usuCanonico("l.USU")} AS USU, COUNT(DISTINCT l.MERC) AS SKUS
 // agente "EMPILHADEIRA"). EMPILHADORES_EXTRA = usuários do Harpia que também
 // são empilhadores mas ainda não estão (ou não estão mais) na Convocação Ativa.
 // 76 = Gleidson, que também usa o 98 (ver MESMA_PESSOA).
-// Luiz Gabriel (3) é da noite — fora por decisão do Pedro.
-const EMPILHADORES_EXTRA: number[] = [76];
+// 3 = Luiz Gabriel, empilhador da noite (fora da Convocação Ativa).
+const EMPILHADORES_EXTRA: number[] = [76, 3];
 // Lucas (100) e Rafael (16) lançam no WMS movimentação que na prática foi de
 // um empilhador — o Harpia credita a eles e não dá pra saber de qual
 // empilhador era. A premiação (contada pela A424) soma no total do setor.
@@ -523,7 +536,7 @@ SELECT l.MERC AS PRODUTO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, COUNT(*) AS
 export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
   const { inicio, fim } = inicioFimDoMes(mes);
   const binds = { ini: inicio, fim };
-  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, empilhadoresRaw, a424Raw, a424SkusRaw, reabastRaw] = await Promise.all([
+  const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, empilhadoresRaw, a424Raw, a424SkusRaw, reabastRaw, turnosRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<{ CURVA: string; QTD: number; SKUS: number }>(SQL_CURVAS, binds),
@@ -541,6 +554,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
     queryWinthor<{ FUNCAO: string; DIA: string; USU: number; NOME: string | null; TAREFAS: number; CAIXAS: number; PESO: number; SKUS: number }>(SQL_A424_DIA, binds),
     queryWinthor<{ FUNCAO: string; USU: number; SKUS: number }>(SQL_A424_SKUS_MES, binds),
     queryWinthor<{ DIA: string; TAREFAS: number; CAIXAS: number; UNIDADES: number; PESO: number; SKUS: number }>(SQL_A424_VOLUME_DIA, binds),
+    queryWinthor<{ USU: number; TOTAL: number; NOITE: number }>(SQL_A424_TURNO, binds),
   ]);
   const [descricoes, produtosDia] = await Promise.all([
     descricoesProdutos([...prods.map((r) => num(r.PRODUTO)), ...rupturas.map((r) => r.PRODUTO), ...movProdutos.map((r) => r.PRODUTO)]),
@@ -622,6 +636,7 @@ export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAb
         skus: num(r.SKUS),
       })),
       a424SkusMes: a424SkusRaw.map((r) => ({ funcao: String(r.FUNCAO) as FuncaoA424, usuario: num(r.USU), skus: num(r.SKUS) })),
+      turnos: Object.fromEntries(turnosRaw.map((r) => [num(r.USU), num(r.NOITE) * 2 > num(r.TOTAL) ? "noite" : "manha"])),
     },
     recepcao: recepcaoRaw
       .map((r) => ({

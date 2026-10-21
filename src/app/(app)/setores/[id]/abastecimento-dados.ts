@@ -1,4 +1,6 @@
 import { listarEquipamentos } from "@/data/equipamentos";
+import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
+import { fracaoDoMes } from "@/domain/recebimento";
 import { lerAbastecimentoHarpia, type DadosHarpiaAbastecimento } from "@/data/harpia-abastecimento";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
@@ -22,6 +24,10 @@ export interface DadosBIAbastecimento {
   /** Usuário do Harpia → funcionário (e turno); opções do seletor de ligação. */
   nomes: NomesHarpia;
   admin: boolean;
+  /** Venda líquida do mês (Winthor ao vivo, como o card do dashboard); null = indisponível. */
+  faturamentoLiquido: number | null;
+  /** Quanto do mês já correu (1 = fechado) — o custo entra proporcional. */
+  fracaoMes: number;
 }
 
 async function harpiaDoMes(mes: string): Promise<DadosBIAbastecimento["harpia"]> {
@@ -39,12 +45,13 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
   const atual = primeiroDiaDoMes();
   const meses: string[] = [];
   for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const [equipamentos, fotos, harpia, ligacoes, admin] = await Promise.all([
+  const [equipamentos, fotos, harpia, ligacoes, admin, faturamento] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     harpiaDoMes(mes),
     listarUsuariosHarpia().catch(() => null),
     isAdmin(),
+    getResumoFaturamentoDashboard(mes).catch(() => null),
   ]);
   const h = "dados" in harpia ? harpia.dados : null;
   const usuarios = h
@@ -82,6 +89,8 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
     harpia,
     nomes: montarNomesHarpia(usuarios, ligacoes, funcionarios, setor.id, admin),
     admin,
+    faturamentoLiquido: faturamento?.vendaLiquida ?? null,
+    fracaoMes: fracaoDoMes(mes),
     serie: serieCustoSetor(meses, fotosSetor, atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) }),
   };
 }
