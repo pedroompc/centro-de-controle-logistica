@@ -30,7 +30,7 @@ type VisaoSep = "custo" | "producao" | "turnos" | "operadores" | "qualidade";
 const VISOES: { id: VisaoSep; titulo: string; admin?: boolean }[] = [
   { id: "custo", titulo: "Custo e equipe" },
   { id: "producao", titulo: "Produção" },
-  { id: "turnos", titulo: "Turnos" },
+  { id: "turnos", titulo: "Dia × Noite" },
   { id: "operadores", titulo: "Operadores", admin: true },
   { id: "qualidade", titulo: "Qualidade" },
 ];
@@ -84,7 +84,6 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const linhasDiaVar = h?.linhas && h.dias && ant?.linhas && ant.dias ? varRel(h.linhas / h.dias, ant.linhas / ant.dias) : null;
   const deltaCusto = h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
   const rk = rankingTurnos(ind.turnos);
-  const melhorHora = rk.linhasPorHora ? ind.turnos.find((t) => t.turno === rk.linhasPorHora)! : null;
   const cobertura = tot && tot.linhas > 0 ? tot.linhasComSeparador / tot.linhas : null;
   const semProd = p ? null : "sem acesso ao Harpia";
 
@@ -104,9 +103,9 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
       />
       <Quadro
         {...q("turnos")}
-        rotulo="Turnos"
-        valor={melhorHora ? `${melhorHora.rotulo} · ${n1(melhorHora.linhasPorHora!)}` : "—"}
-        sub={semProd ?? (melhorHora ? "endereços/hora" : "sem comparação")}
+        rotulo={dia ? `Dia × Noite · ${ddmm(dia)}` : "Dia × Noite"}
+        valor={tot ? `${n0(tot.kg)} kg` : "—"}
+        sub={semProd ?? ind.turnos.map((t) => `${t.rotulo} ${t.porDia ? n0(t.porDia.kg) : "—"} kg${dia ? "" : `/${t.turno === "noite" ? "noite" : "dia"}`}`).join(" · ")}
       />
       {dados.admin && dados.individual && (
         <Quadro {...q("operadores")} rotulo="Operadores" valor={`${dados.individual.separadores.length} separadores`} sub={`${pct(cobertura, 0)} dos endereços com registro`} />
@@ -153,7 +152,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                 ) : visao === "producao" ? (
                   <VisaoProducao dados={dados} p={p} dia={dia} onDia={setDia} />
                 ) : visao === "turnos" ? (
-                  <VisaoTurnos turnos={ind.turnos} ranking={rk} dia={dia} divergencias={dados.divergenciasTurno} />
+                  <VisaoTurnos p={p} turnos={ind.turnos} ranking={rk} dia={dia} onDia={setDia} divergencias={dados.divergenciasTurno} />
                 ) : visao === "operadores" && dados.individual ? (
                   <VisaoOperadores ind={dados.individual} mes={dados.mes} />
                 ) : visao === "qualidade" ? (
