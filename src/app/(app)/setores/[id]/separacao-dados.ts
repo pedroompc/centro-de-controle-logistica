@@ -8,8 +8,8 @@ import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { INICIO_HISTORICO, mesAnterior, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import {
-  mesmoSetor, papelSeparacao, serieCustoSetor, resolverTurnos, porSeparador, porConferente, linhasPorHoraDoGrupo, sinalOperador,
-  type PontoCustoSetor, type LinhaTurno, type ErroTurno, type DiaSep, type EquipeTurno, type ResumoSeparador, type ResumoConferente, type SinalOperador,
+  mesmoSetor, papelSeparacao, serieCustoSetor, resolverTurnos, skusPorTurnoDia, porSeparador, porConferente, linhasPorHoraDoGrupo, sinalOperador,
+  type PontoCustoSetor, type SkusTurnoDia, type LinhaTurno, type ErroTurno, type DiaSep, type EquipeTurno, type ResumoSeparador, type ResumoConferente, type SinalOperador,
 } from "@/domain/separacao";
 import { turnosDivergentes, confrontoDiario, diasUteisSemProducao, linhasPorTipo, type ConfrontoDia, type LinhasPorTipo } from "@/domain/separacao-auditoria";
 import { TURNOS_SEPARACAO, TURNOS_VALIDADOS_RH } from "@/domain/turnos-separacao";
@@ -39,6 +39,7 @@ export interface ProducaoBI {
   erros: ErroTurno[];
   produtosComErro: ProdutoErro[];
   enderecos: DadosHarpiaSeparacao["enderecos"];
+  skusTurno: SkusTurnoDia[];
   equipe: Record<Turno, EquipeTurno>;
 }
 
@@ -183,7 +184,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   let auditoria: AuditoriaSep | null = null;
   if (ok(harpia)) {
     const r = resolverTurnos(harpia.linhas, harpia.erros, harpia.mapas, turnoDoUsuario);
-    producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, enderecos: harpia.enderecos, equipe };
+    producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, enderecos: harpia.enderecos, skusTurno: skusPorTurnoDia(harpia.produtosTurno, turnoDoUsuario), equipe };
 
     const kgPorDia = new Map<string, number>();
     for (const l of harpia.linhas) kgPorDia.set(l.dia, (kgPorDia.get(l.dia) ?? 0) + l.kg);

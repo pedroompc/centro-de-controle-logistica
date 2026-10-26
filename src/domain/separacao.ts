@@ -107,6 +107,35 @@ export interface ErroSep {
   sobra: number; // ocorrências com bipado > carga
 }
 
+/** Produto apanhado num dia por um separador (ou sem registro) numa janela de turno. */
+export interface ProdutoTurnoSep {
+  dia: string;
+  usuario: number | null;
+  turnoHora: Turno; // turno pela hora (início da página ou 1ª conferência)
+  produto: number;
+}
+
+/** SKUs distintos por dia × turno (mesma regra de turno das linhas: cadastro do separador vence a hora). */
+export interface SkusTurnoDia {
+  dia: string;
+  turno: Turno;
+  skus: number;
+}
+
+export function skusPorTurnoDia(produtos: ProdutoTurnoSep[], turnoDoUsuario: Map<number, Turno>): SkusTurnoDia[] {
+  const m = new Map<string, Set<number>>();
+  for (const p of produtos) {
+    const turno = (p.usuario !== null ? turnoDoUsuario.get(p.usuario) : undefined) ?? p.turnoHora;
+    const k = `${p.dia}|${turno}`;
+    if (!m.has(k)) m.set(k, new Set());
+    m.get(k)!.add(p.produto);
+  }
+  return [...m.entries()].map(([k, set]) => {
+    const [dia, turno] = k.split("|");
+    return { dia, turno: turno as Turno, skus: set.size };
+  });
+}
+
 /** Página separada por alguém (início/fim em ms). */
 export interface PaginaSep {
   usuario: number;
@@ -335,6 +364,8 @@ export interface ResumoTurno {
   kgPorLinha: number | null; // perfil do trabalho: linhas mais pesadas/leves
   unidadesPorLinha: number | null;
   mapasConsolidados: number | null; // % das linhas em mapa consolidado por carga (0/8)
+  /** Média por dia trabalhado pelo turno (÷ `dias`). Sem nome de separador: vale também para a noite. */
+  porDia: { kg: number; linhas: number; pedidos: number; caixas: number; skus: number | null } | null;
 }
 
 /**
@@ -347,9 +378,10 @@ export function resumoPorTurno(args: {
   erros: ErroTurno[];
   equipe: Record<Turno, EquipeTurno>;
   custoFolhaPeriodo: number | null; // folha do setor × fração (sem equipamentos)
+  skus?: SkusTurnoDia[];
   dia?: string | null;
 }): ResumoTurno[] {
-  const { linhas, erros, equipe, custoFolhaPeriodo, dia = null } = args;
+  const { linhas, erros, equipe, custoFolhaPeriodo, skus, dia = null } = args;
   const sel = linhas.filter((l) => !dia || l.dia === dia);
   const base = () => ({ linhas: 0, caixas: 0, unidades: 0, kg: 0, pedidos: 0, clientes: 0, comSeparador: 0, porOperador: 0, porHorario: 0, consolidadas: 0, dias: new Set<string>(), erros: 0 });
   const acc = new Map<Turno, ReturnType<typeof base>>(TURNOS_SEPARACAO.map((t) => [t.id, base()]));
@@ -410,6 +442,16 @@ export function resumoPorTurno(args: {
       kgPorLinha: div(a.kg, a.linhas),
       unidadesPorLinha: div(a.unidades, a.linhas),
       mapasConsolidados: div(a.consolidadas, a.linhas),
+      porDia:
+        dias > 0
+          ? {
+              kg: a.kg / dias,
+              linhas: a.linhas / dias,
+              pedidos: a.pedidos / dias,
+              caixas: a.caixas / dias,
+              skus: skus ? skus.filter((x) => x.turno === cfg.id && (!dia || x.dia === dia)).reduce((t, x) => t + x.skus, 0) / dias : null,
+            }
+          : null,
     };
   });
 }

@@ -76,6 +76,7 @@ Turno de cada linha (`atribuirTurno`):
 |---|---|
 | Pessoas / separadores / conferentes | Cadastro ativo do setor com aquele turno (cadastro de hoje, porque não há histórico por pessoa) |
 | Horas disponíveis | separadores do turno × jornada (8 h, config) × dias com linha do turno. **Estimativa**: sem ponto, falta, férias ou hora extra |
+| Média por dia trabalhado (t, endereços, SKUs, pedidos, caixas) | total do turno ÷ dias operacionais em que o turno teve endereço. Não depende do nome do separador: endereço sem registro entra no turno pela hora da 1ª conferência do mapa, então a noite é medida inteira. SKUs = produtos distintos no dia × turno (`SQL_PRODUTOS_TURNO`, mesma regra de turno), média dos dias. Paletes: não exibido. O Winthor não grava (`PCPEDC.QTPALETE` vazio) e o Harpia só numera palete nos mapas tipo 8 |
 | Linhas, kg, pedidos por hora | produção do turno ÷ horas disponíveis |
 | Linhas por separador por dia | linhas ÷ separadores ÷ dias |
 | Pedidos e clientes do turno | Rateio: pedidos do mapa × (linhas do turno no mapa ÷ linhas do mapa). A soma dos turnos fecha o total (testado: 21.278 = 21.278) |

@@ -59,7 +59,7 @@ function indicadores(d: DadosBISeparacao, dia: string | null) {
   const erros = p ? resumoErros(p.erros, dia) : null;
   const folha = d.serie.find((x) => x.mes === d.mes)?.folha ?? null;
   const turnos = p
-    ? resumoPorTurno({ linhas: p.linhas, erros: p.erros, equipe: p.equipe, custoFolhaPeriodo: custoDoPeriodo(folha, d.fracaoMes, totMes?.dias ?? 0, !!dia), dia })
+    ? resumoPorTurno({ linhas: p.linhas, erros: p.erros, equipe: p.equipe, custoFolhaPeriodo: custoDoPeriodo(folha, d.fracaoMes, totMes?.dias ?? 0, !!dia), skus: p.skusTurno, dia })
     : [];
   return { p, h, tot, totMes, custo, unit, sobreFat, erros, turnos, taxaErro: erros && tot ? porMilLinhas(erros.separador.itens, tot.linhas) : null };
 }

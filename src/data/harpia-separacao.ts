@@ -1,7 +1,8 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { inicioFimDoMes } from "@/domain/periodo";
-import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlJanelaOperacional } from "@/domain/turnos-separacao";
-import type { DiaSep, ErroSep, LinhaSep, MapaSep, PaginaSep } from "@/domain/separacao";
+import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlJanelaOperacional, sqlTurnoDaHora } from "@/domain/turnos-separacao";
+import type { DiaSep, ErroSep, LinhaSep, MapaSep, PaginaSep, ProdutoTurnoSep } from "@/domain/separacao";
+import type { Turno } from "@/domain/types";
 
 /**
  * Separação no Harpia (WMS, esquema HARPIAW2 no mesmo Oracle do Winthor).
@@ -86,6 +87,15 @@ export const SQL_SKUS = `
 WITH ${CTE_MAPA}
 SELECT COUNT(DISTINCT x.MERC_PF_1196) AS SKUS
   FROM mapa mp JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA`;
+
+// Produto distinto por (dia, separador, turno pela hora): o servidor resolve o
+// turno (cadastro do separador vence a hora) e conta os SKUs de cada dia × turno.
+export const SQL_PRODUTOS_TURNO = `
+WITH ${CTE_MAPA}
+SELECT DISTINCT ${DIA} AS DIA, pg.USU_SEP_FK_1236 AS USU, ${sqlTurnoDaHora(HORA_REF)} AS TURNO, x.MERC_PF_1196 AS PRODUTO
+  FROM mapa mp
+  JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA
+  ${JOIN_PAGINA}`;
 
 // Erro → linha (mapa × produto × pedido) → página → separador. Só atribui
 // quando TODAS as linhas da chave são do mesmo separador registrado.
@@ -249,6 +259,7 @@ export interface DadosHarpiaSeparacao {
   totalMes: { pedidos: number; clientes: number; cargas: number; mapas: number; skus: number };
   erros: ErroSep[];
   produtosComErro: ProdutoErro[];
+  produtosTurno: ProdutoTurnoSep[];
   /** Endereço × produto no mês: total, quantos com 1 visita só e as duas pontas. */
   enderecos: { total: number; umaVisita: number; mais: EnderecoVisitado[]; menos: EnderecoVisitado[] };
   /** Separadores com página registrada e o nome no Harpia — SÓ para o servidor resolver o turno. */
@@ -269,7 +280,7 @@ const bindsDoMes = (mes: string) => {
 /** Produção, pedidos e erros do mês no Harpia. Lança erro (sem acesso, rede) — quem chama mostra. */
 export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSeparacao> {
   const binds = bindsDoMes(mes);
-  const [lin, maps, dias, skus, erros, prods, ends] = await Promise.all([
+  const [lin, maps, dias, skus, erros, prods, ends, prodTurno] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_LINHAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_MAPAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
@@ -277,6 +288,7 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
     queryWinthor<Record<string, unknown>>(SQL_ERROS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<Record<string, unknown>>(SQL_ENDERECOS, binds),
+    queryWinthor<Record<string, unknown>>(SQL_PRODUTOS_TURNO, binds),
   ]);
   const ids = [...new Set(lin.map((r) => usu(r.USU)).filter((u): u is number => u !== null))];
   const [descricoes, nomes] = await Promise.all([descricoesProdutos([...new Set([...prods, ...ends].map((r) => num(r.PRODUTO)).filter((c) => c > 0))]), nomesUsuarios(ids)]);
@@ -334,6 +346,7 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
       itens: num(r.ITENS),
       unidades: num(r.UN),
     })),
+    produtosTurno: prodTurno.map((r) => ({ dia: String(r.DIA), usuario: usu(r.USU), turnoHora: String(r.TURNO) as Turno, produto: num(r.PRODUTO) })),
     enderecos: {
       total: num(ends[0]?.TOTAL),
       umaVisita: num(ends[0]?.UMA),

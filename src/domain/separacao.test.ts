@@ -32,7 +32,7 @@ describe("separação", () => {
 
 import {
   totaisProducao, custoDoPeriodo, custosUnitarios, custoSobreFaturamento, resumoErros, porMilLinhas,
-  atribuirTurno, resolverTurnos, resumoPorTurno, rankingTurnos, horasUniao, porSeparador, sinalOperador, type LinhaSep, type ErroSep, type EquipeTurno,
+  atribuirTurno, resolverTurnos, skusPorTurnoDia, resumoPorTurno, rankingTurnos, horasUniao, porSeparador, sinalOperador, type LinhaSep, type ErroSep, type EquipeTurno,
 } from "./separacao";
 import type { Turno } from "./types";
 
@@ -128,6 +128,39 @@ describe("turnos", () => {
     expect(rk.producao).toBe("tarde");
     expect(rk.linhasPorHora).toBe("manha");
     expect(rk.custoPorPedido).toBe("manha");
+  });
+});
+
+describe("média por dia trabalhado do turno", () => {
+  const cadastro = new Map<number, Turno>([[7, "tarde"]]);
+  const sem: EquipeTurno = { pessoas: 0, separadores: 0, conferentes: 0, custoMes: 0 };
+  it("SKU conta 1 vez por dia e turno; separador do cadastro vence a hora", () => {
+    const s = skusPorTurnoDia(
+      [
+        { dia: "2026-10-01", usuario: null, turnoHora: "noite", produto: 1 },
+        { dia: "2026-10-01", usuario: null, turnoHora: "noite", produto: 1 }, // mesmo produto em outro mapa
+        { dia: "2026-10-01", usuario: null, turnoHora: "noite", produto: 2 },
+        { dia: "2026-10-02", usuario: null, turnoHora: "noite", produto: 1 },
+        { dia: "2026-10-01", usuario: 7, turnoHora: "noite", produto: 3 }, // hora extra: conta na tarde
+      ],
+      cadastro,
+    );
+    const de = (dia: string, turno: Turno) => s.find((x) => x.dia === dia && x.turno === turno)?.skus;
+    expect(de("2026-10-01", "noite")).toBe(2);
+    expect(de("2026-10-02", "noite")).toBe(1);
+    expect(de("2026-10-01", "tarde")).toBe(1);
+  });
+  it("divide pelos dias em que o turno separou, sem depender de nome", () => {
+    const r = resumoPorTurno({
+      linhas: resolverTurnos([L({ hora: 23, linhas: 100, kg: 30_000, caixas: 50 }), L({ dia: "2026-10-02", hora: 2, linhas: 60, kg: 10_000 })], [], [], cadastro).linhas,
+      erros: [],
+      equipe: { manha: sem, tarde: sem, noite: sem },
+      custoFolhaPeriodo: null,
+      skus: [{ dia: "2026-10-01", turno: "noite", skus: 900 }, { dia: "2026-10-02", turno: "noite", skus: 700 }],
+    });
+    const noite = r.find((t) => t.turno === "noite")!;
+    expect(noite.porDia).toEqual({ kg: 20_000, linhas: 80, pedidos: 0, caixas: 25, skus: 800 });
+    expect(r.find((t) => t.turno === "manha")!.porDia).toBeNull();
   });
 });
 

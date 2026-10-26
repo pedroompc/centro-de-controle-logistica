@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import type { CriterioTurno, ResumoTurno } from "@/domain/separacao";
 import type { Turno } from "@/domain/types";
-import { Bloco, ChipTV, ddmm, semCentavos } from "./bi-ui";
+import { Bloco, ChipTV, Mini, ddmm, semCentavos } from "./bi-ui";
 import { Aviso, COR_TURNO, VISAO, n0, n1, t1, sinalPct, varRel } from "./bi-separacao-comum";
 import type { AuditoriaSep } from "./separacao-dados";
 
@@ -30,6 +30,11 @@ const LINHAS: LinhaComparativo[] = [
   { grupo: "Equipe", rotulo: "Conferentes", valor: (t) => t.equipe.conferentes, fmt: n0, sentido: null, total: soma((t) => t.equipe.conferentes) },
   { grupo: "Equipe", rotulo: "Dias com produção", valor: (t) => t.dias, fmt: n0, sentido: null },
   { grupo: "Equipe", rotulo: "Horas disponíveis", valor: (t) => t.horasDisponiveis, fmt: n0, sentido: null, total: soma((t) => t.horasDisponiveis) },
+  { grupo: "Média por dia trabalhado", rotulo: "Toneladas", valor: (t) => (t.porDia ? t.porDia.kg / 1000 : null), fmt: (v) => `${n1(v)} t`, sentido: null },
+  { grupo: "Média por dia trabalhado", rotulo: "Endereços visitados", valor: (t) => t.porDia?.linhas ?? null, fmt: n0, sentido: null },
+  { grupo: "Média por dia trabalhado", rotulo: "SKUs", valor: (t) => t.porDia?.skus ?? null, fmt: n0, sentido: null },
+  { grupo: "Média por dia trabalhado", rotulo: "Pedidos", valor: (t) => t.porDia?.pedidos ?? null, fmt: n0, sentido: null },
+  { grupo: "Média por dia trabalhado", rotulo: "Caixas", valor: (t) => t.porDia?.caixas ?? null, fmt: n0, sentido: null },
   { grupo: "Produção", rotulo: "Endereços visitados", valor: (t) => t.linhas, fmt: n0, sentido: "maior", total: soma((t) => t.linhas) },
   { grupo: "Produção", rotulo: "Participação nos endereços", valor: (t) => t.participacaoLinhas, fmt: (v) => formatPercent(v, 0), sentido: null },
   { grupo: "Produção", rotulo: "Pedidos", valor: (t) => t.pedidos, fmt: n0, sentido: "maior", total: soma((t) => t.pedidos) },
@@ -91,90 +96,102 @@ export function VisaoTurnos({ turnos, ranking, dia, auditoria }: { turnos: Resum
   };
 
   return (
-    <div className={`${VISAO} gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]`}>
-      <Bloco
-        titulo={`Comparativo entre turnos${dia ? ` · ${ddmm(dia)}` : ""}`}
-        direita={
-          <div className="flex flex-wrap justify-end gap-1.5">
-            <ChipTV ativo={foco === null} onClick={() => setFoco(null)}>
-              todos
-            </ChipTV>
-            {turnos.map((t) => (
-              <ChipTV key={t.turno} ativo={foco === t.turno} onClick={() => setFoco(foco === t.turno ? null : t.turno)}>
-                {t.rotulo}
+    <div className={`${VISAO} xl:grid-rows-[auto_minmax(0,1fr)]`}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-3">
+        {turnos.map((t) => (
+          <Mini
+            key={t.turno}
+            rotulo={`${t.rotulo} · ${dia ? ddmm(dia) : `por ${t.turno === "noite" ? "noite" : "dia"}`}`}
+            valor={t.porDia ? `${n1(t.porDia.kg / 1000)} t` : "—"}
+            sub={t.porDia ? `${t.porDia.skus === null ? "" : `${n0(t.porDia.skus)} SKUs · `}${n0(t.porDia.linhas)} endereços · ${n0(t.porDia.pedidos)} pedidos` : "sem produção"}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+        <Bloco
+          titulo={`Comparativo entre turnos${dia ? ` · ${ddmm(dia)}` : ""}`}
+          direita={
+            <div className="flex flex-wrap justify-end gap-1.5">
+              <ChipTV ativo={foco === null} onClick={() => setFoco(null)}>
+                todos
               </ChipTV>
-            ))}
-          </div>
-        }
-      >
-        <div className="h-full overflow-auto pr-1">
-          <table className="w-full min-w-max text-sm">
-            <thead className="sticky top-0 bg-[#121a5a] text-[0.62rem] uppercase tracking-[0.12em] text-white/40">
-              <tr>
-                <th className="py-2 text-left font-semibold">Indicador</th>
-                {turnos.map((t) => (
-                  <th key={t.turno} className="py-2 text-right font-semibold">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full" style={{ background: COR_TURNO[t.turno] }} />
-                      {t.rotulo}
-                    </span>
-                    <div className="font-normal normal-case tracking-normal text-white/30">{t.config.horarioObservado}</div>
-                  </th>
-                ))}
-                <th className="py-2 text-right font-semibold">Setor</th>
-                {foco && <th className="py-2 text-right font-semibold">{turnos.find((t) => t.turno === foco)!.rotulo} × demais</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {LINHAS.map((l, i) => {
-                const cab = i === 0 || LINHAS[i - 1].grupo !== l.grupo;
-                const melhor = melhorDe(l);
-                const tot = l.total ? l.total(turnos) : null;
-                return [
-                  cab && (
-                    <tr key={`g-${l.grupo}`}>
-                      <td colSpan={turnos.length + 2 + (foco ? 1 : 0)} className="pt-3 pb-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-amber-300/80">
-                        {l.grupo}
-                      </td>
-                    </tr>
-                  ),
-                  <tr key={l.rotulo} className="border-t border-white/[0.06]">
-                    <td className="py-1.5 text-white/80">{l.rotulo}</td>
-                    {turnos.map((t) => {
-                      const v = l.valor(t);
-                      return (
-                        <td key={t.turno} className={`py-1.5 text-right tabular-nums ${melhor === t.turno ? "font-bold text-amber-300" : "text-white"} ${foco && foco !== t.turno ? "opacity-60" : ""}`}>
-                          {v === null ? "—" : l.fmt(v)}
+              {turnos.map((t) => (
+                <ChipTV key={t.turno} ativo={foco === t.turno} onClick={() => setFoco(foco === t.turno ? null : t.turno)}>
+                  {t.rotulo}
+                </ChipTV>
+              ))}
+            </div>
+          }
+        >
+          <div className="h-full overflow-auto pr-1">
+            <table className="w-full min-w-max text-sm">
+              <thead className="sticky top-0 bg-[#121a5a] text-[0.62rem] uppercase tracking-[0.12em] text-white/40">
+                <tr>
+                  <th className="py-2 text-left font-semibold">Indicador</th>
+                  {turnos.map((t) => (
+                    <th key={t.turno} className="py-2 text-right font-semibold">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ background: COR_TURNO[t.turno] }} />
+                        {t.rotulo}
+                      </span>
+                      <div className="font-normal normal-case tracking-normal text-white/30">{t.config.horarioObservado}</div>
+                    </th>
+                  ))}
+                  <th className="py-2 text-right font-semibold">Setor</th>
+                  {foco && <th className="py-2 text-right font-semibold">{turnos.find((t) => t.turno === foco)!.rotulo} × demais</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {LINHAS.map((l, i) => {
+                  const cab = i === 0 || LINHAS[i - 1].grupo !== l.grupo;
+                  const melhor = melhorDe(l);
+                  const tot = l.total ? l.total(turnos) : null;
+                  return [
+                    cab && (
+                      <tr key={`g-${l.grupo}`}>
+                        <td colSpan={turnos.length + 2 + (foco ? 1 : 0)} className="pt-3 pb-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-amber-300/80">
+                          {l.grupo}
                         </td>
-                      );
-                    })}
-                    <td className="py-1.5 text-right tabular-nums text-white/55">{tot === null ? "" : l.fmt(tot)}</td>
-                    {foco && <td className="py-1.5 text-right tabular-nums">{delta(l)}</td>}
-                  </tr>,
-                ];
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Bloco>
-      <div className="flex min-w-0 flex-col gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1 [&>*]:shrink-0">
-        <Bloco titulo="Ranking por critério">
-          <ul className="space-y-2">
-            {CRITERIOS.map((c) => {
-              const t = ranking[c.id];
-              return (
-                <li key={c.id} className="flex items-baseline justify-between gap-3 text-sm" title={c.explica}>
-                  <span className="text-white">{c.rotulo}</span>
-                  <span className="shrink-0 font-bold" style={{ color: t ? COR_TURNO[t] : undefined }}>
-                    {t ? turnos.find((x) => x.turno === t)!.rotulo : <span className="font-normal text-white/35">sem vencedor</span>}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                      </tr>
+                    ),
+                    <tr key={l.rotulo} className="border-t border-white/[0.06]">
+                      <td className="py-1.5 text-white/80">{l.rotulo}</td>
+                      {turnos.map((t) => {
+                        const v = l.valor(t);
+                        return (
+                          <td key={t.turno} className={`py-1.5 text-right tabular-nums ${melhor === t.turno ? "font-bold text-amber-300" : "text-white"} ${foco && foco !== t.turno ? "opacity-60" : ""}`}>
+                            {v === null ? "—" : l.fmt(v)}
+                          </td>
+                        );
+                      })}
+                      <td className="py-1.5 text-right tabular-nums text-white/55">{tot === null ? "" : l.fmt(tot)}</td>
+                      {foco && <td className="py-1.5 text-right tabular-nums">{delta(l)}</td>}
+                    </tr>,
+                  ];
+                })}
+              </tbody>
+            </table>
+          </div>
         </Bloco>
-        {semEquipe.length > 0 && <Aviso>{semEquipe.map((t) => t.rotulo).join(", ")}: sem separador cadastrado no turno.</Aviso>}
-        {div && div.quantidade > 0 && <Aviso>{div.quantidade} separador(es) com horário diferente do turno do cadastro.</Aviso>}
+        <div className="flex min-w-0 flex-col gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1 [&>*]:shrink-0">
+          <Bloco titulo="Ranking por critério">
+            <ul className="space-y-2">
+              {CRITERIOS.map((c) => {
+                const t = ranking[c.id];
+                return (
+                  <li key={c.id} className="flex items-baseline justify-between gap-3 text-sm" title={c.explica}>
+                    <span className="text-white">{c.rotulo}</span>
+                    <span className="shrink-0 font-bold" style={{ color: t ? COR_TURNO[t] : undefined }}>
+                      {t ? turnos.find((x) => x.turno === t)!.rotulo : <span className="font-normal text-white/35">sem vencedor</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Bloco>
+          {semEquipe.length > 0 && <Aviso>{semEquipe.map((t) => t.rotulo).join(", ")}: sem separador cadastrado no turno.</Aviso>}
+          {div && div.quantidade > 0 && <Aviso>{div.quantidade} separador(es) com horário diferente do turno do cadastro.</Aviso>}
+        </div>
       </div>
     </div>
   );

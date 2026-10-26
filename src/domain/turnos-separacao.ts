@@ -57,4 +57,8 @@ export const sqlDiaOperacional = (col: string) => `TRUNC(${col} - ${CORTE_DIA_OP
 export const sqlJanelaOperacional = (col: string) =>
   `${col} >= TO_DATE(:ini, 'YYYY-MM-DD') + ${CORTE_DIA_OPERACIONAL}/24 AND ${col} < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${CORTE_DIA_OPERACIONAL}/24`;
 
+/** Fragmento Oracle: id do turno pela janela de horário da config (mesma regra de `turnoDaHora`). */
+export const sqlTurnoDaHora = (colHora: string) =>
+  `CASE ${TURNOS_SEPARACAO.map((t) => `WHEN ${t.inicio < t.fim ? `${colHora} >= ${t.inicio} AND ${colHora} < ${t.fim}` : `(${colHora} >= ${t.inicio} OR ${colHora} < ${t.fim})`} THEN '${t.id}'`).join(" ")} END`;
+
 export const configTurno = (id: Turno): ConfigTurno => TURNOS_SEPARACAO.find((t) => t.id === id)!;
