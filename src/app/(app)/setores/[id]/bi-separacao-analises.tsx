@@ -24,7 +24,7 @@ export function VisaoQualidade({ p, mes, dia, onDia, linhas, turnos }: { p: Prod
     <div className={`${VISAO} xl:grid-rows-[auto_minmax(26rem,1fr)]`}>
       <div className={GRADE_CARDS}>
         <Mini rotulo="Do separador" valor={n0(s.itens)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
-        <Mini rotulo="Por mil linhas" valor={ou(taxa, n1)} sub={`${n0(linhas)} linhas`} />
+        <Mini rotulo="Por mil endereços" valor={ou(taxa, n1)} sub={`${n0(linhas)} endereços`} />
         <Mini rotulo="Ocorrências" valor={n0(s.ocorrencias)} />
         <Mini rotulo="Unid. divergentes" valor={n0(s.unidades)} />
         <Mini rotulo="Falta × sobra" valor={`${n0(s.falta)} × ${n0(s.sobra)}`} />
@@ -36,7 +36,7 @@ export function VisaoQualidade({ p, mes, dia, onDia, linhas, turnos }: { p: Prod
           <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem erro" menorEhMelhor />
         </Bloco>
         <div className="flex min-w-0 flex-col gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1 [&>*]:shrink-0">
-          <Bloco titulo="Por turno · erros a cada 1.000 linhas">
+          <Bloco titulo="Por turno · erros a cada 1.000 endereços">
             <ul className="space-y-2">
               {turnos.map((t) => (
                 <li key={t.turno}>
@@ -121,19 +121,19 @@ export function VisaoAuditoria({ a, tot, totalMes }: { a: AuditoriaSep; tot: Tot
         </Bloco>
       </div>
       <div className="flex min-w-0 flex-col gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1 [&>*]:shrink-0">
-        <Bloco titulo="Cobertura do registro de separador" direita={<Dica>{pct(tot.linhas ? tot.linhasComSeparador / tot.linhas : null, 0)} das linhas</Dica>}>
+        <Bloco titulo="Cobertura do registro de separador" direita={<Dica>{pct(tot.linhas ? tot.linhasComSeparador / tot.linhas : null, 0)} dos endereços</Dica>}>
           <Tabela
-            cab={["Tipo de mapa", "Mapas", "Linhas", "Com separador"]}
+            cab={["Tipo de mapa", "Mapas", "Endereços", "Com separador"]}
             linhas={a.porTipo.map((x) => [x.rotulo, n0(x.mapas), n0(x.linhas), pct(x.linhas ? x.comSeparador / x.linhas : null, 0)])}
           />
         </Bloco>
         <Bloco titulo="Cadastro e atribuição">
           <ul className="space-y-1.5 text-sm text-white/75">
             <li>
-              Separadores sem funcionário ligado: <strong className="text-white">{a.semFuncionario.separadores}</strong> ({n0(a.semFuncionario.linhas)} linhas)
+              Separadores sem funcionário ligado: <strong className="text-white">{a.semFuncionario.separadores}</strong> ({n0(a.semFuncionario.linhas)} endereços)
             </li>
             <li>
-              Horário no Harpia ≠ turno do cadastro: <strong className="text-white">{a.divergenciasTurno.quantidade}</strong> separador(es), {n0(a.divergenciasTurno.linhas)} linhas.
+              Horário no Harpia ≠ turno do cadastro: <strong className="text-white">{a.divergenciasTurno.quantidade}</strong> separador(es), {n0(a.divergenciasTurno.linhas)} endereços.
             </li>
             <li>
               Erros do separador atribuídos: <strong className="text-white">{pct(a.errosSeparador.itens ? a.errosSeparador.atribuidos / a.errosSeparador.itens : null, 0)}</strong> de {n0(a.errosSeparador.itens)}.
@@ -145,13 +145,13 @@ export function VisaoAuditoria({ a, tot, totalMes }: { a: AuditoriaSep; tot: Tot
               Usuários com página registrada: <strong className="text-white">{a.separadoresRegistrados}</strong>
             </li>
             <li>
-              Totais: {n0(tot.linhas)} linhas · {n0(totalMes.pedidos)} pedidos · {n0(totalMes.mapas)} mapas · {n0(totalMes.cargas)} cargas · {n0(totalMes.clientes)} clientes · {n0(totalMes.skus)} SKUs
+              Totais: {n0(tot.linhas)} endereços · {n0(totalMes.pedidos)} pedidos · {n0(totalMes.mapas)} mapas · {n0(totalMes.cargas)} cargas · {n0(totalMes.clientes)} clientes · {n0(totalMes.skus)} SKUs
             </li>
           </ul>
           {a.divergenciasTurno.detalhes && a.divergenciasTurno.detalhes.length > 0 && (
             <div className="mt-3">
               <Tabela
-                cab={["Separador", "Cadastro", "Horário no Harpia", "Linhas"]}
+                cab={["Separador", "Cadastro", "Horário no Harpia", "Endereços"]}
                 linhas={a.divergenciasTurno.detalhes.map((d) => [d.nome, rotuloTurno(d.cadastro), `${rotuloTurno(d.horario)} (mediana ${d.horaMediana}h)`, n0(d.linhas)])}
               />
             </div>

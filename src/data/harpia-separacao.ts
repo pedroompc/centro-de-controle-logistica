@@ -10,7 +10,8 @@ import type { DiaSep, ErroSep, LinhaSep, MapaSep, PaginaSep } from "@/domain/sep
  * O MAPA entra no dia operacional da sua 1ª conferência (− 07h): de dia o mapa
  * é conferido logo que a separação termina; à noite, separação e conferência
  * acontecem na mesma madrugada. Fontes:
- * - linhas: PLAN_SEP_MAPA_MERC_1196 (linha física a apanhar)
+ * - linhas: PLAN_SEP_MAPA_MERC_1196 — cada linha é um ENDEREÇO VISITADO (como a
+ *   operação chama): mapa × página × endereço (PORTA_PALLET) é único na tabela
  * - separador: PLAN_SEP_MAPA_PAGINA_OS_1236 (quem separou cada página, início/fim)
  *   — só parte das páginas tem nome (a noite não registra); o resto fica sem separador
  * - pedidos/clientes: PLAN_SEP_MAPA_GUIAS_1198; carga: PLAN_SEP_MAPA_1195
@@ -138,6 +139,25 @@ SELECT * FROM (
    ORDER BY COUNT(*) DESC
 ) WHERE ROWNUM <= 15`;
 
+// Endereços (PORTA_PALLET = rua·prédio·nível·apto, 2+2+2+3 dígitos, mesmos graus da
+// DEPOSIT_EMPRESA_END_179) × produto, pelas visitas no mês: os 10 mais e os 10 menos visitados.
+const SQL_ENDERECOS = `
+WITH ${CTE_MAPA},
+e AS (
+  SELECT x.PORTA_PALLET_1196 AS ENDERECO, x.MERC_PF_1196 AS PRODUTO, COUNT(*) AS VISITAS,
+         SUM(NVL(x.QTD_FATURADA_CX_1196, 0)) AS CX, SUM(${UNIDADES}) AS UN
+    FROM mapa mp
+    JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA
+    LEFT JOIN PCPRODUT pr ON pr.CODPROD = x.MERC_PF_1196
+   GROUP BY x.PORTA_PALLET_1196, x.MERC_PF_1196
+), r AS (
+  SELECT e.*, ROW_NUMBER() OVER (ORDER BY e.VISITAS DESC, e.UN DESC, e.ENDERECO) AS RM,
+         ROW_NUMBER() OVER (ORDER BY e.VISITAS, e.UN, e.ENDERECO) AS RN,
+         COUNT(*) OVER () AS TOTAL, COUNT(CASE WHEN e.VISITAS = 1 THEN 1 END) OVER () AS UMA
+    FROM e
+)
+SELECT * FROM r WHERE RM <= 10 OR RN <= 10`;
+
 // Páginas com separador dos mapas do período (intervalos em ms, horário local).
 const SQL_PAGINAS = `
 WITH ${CTE_MAPA}
@@ -204,6 +224,15 @@ export interface ProdutoErro {
   unidades: number;
 }
 
+export interface EnderecoVisitado {
+  endereco: string; // "09.02.00.101"
+  produto: number;
+  descricao: string | null;
+  visitas: number;
+  caixas: number;
+  unidades: number;
+}
+
 export interface MesProducao {
   mes: string;
   linhas: number;
@@ -220,6 +249,8 @@ export interface DadosHarpiaSeparacao {
   totalMes: { pedidos: number; clientes: number; cargas: number; mapas: number; skus: number };
   erros: ErroSep[];
   produtosComErro: ProdutoErro[];
+  /** Endereço × produto no mês: total, quantos com 1 visita só e as duas pontas. */
+  enderecos: { total: number; umaVisita: number; mais: EnderecoVisitado[]; menos: EnderecoVisitado[] };
   /** Separadores com página registrada e o nome no Harpia — SÓ para o servidor resolver o turno. */
   usuarios: { usuario: number; nome: string | null }[];
 }
@@ -238,17 +269,29 @@ const bindsDoMes = (mes: string) => {
 /** Produção, pedidos e erros do mês no Harpia. Lança erro (sem acesso, rede) — quem chama mostra. */
 export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSeparacao> {
   const binds = bindsDoMes(mes);
-  const [lin, maps, dias, skus, erros, prods] = await Promise.all([
+  const [lin, maps, dias, skus, erros, prods, ends] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_LINHAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_MAPAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_SKUS, binds),
     queryWinthor<Record<string, unknown>>(SQL_ERROS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
+    queryWinthor<Record<string, unknown>>(SQL_ENDERECOS, binds),
   ]);
   const ids = [...new Set(lin.map((r) => usu(r.USU)).filter((u): u is number => u !== null))];
-  const [descricoes, nomes] = await Promise.all([descricoesProdutos(prods.map((r) => num(r.PRODUTO)).filter((c) => c > 0)), nomesUsuarios(ids)]);
+  const [descricoes, nomes] = await Promise.all([descricoesProdutos([...new Set([...prods, ...ends].map((r) => num(r.PRODUTO)).filter((c) => c > 0))]), nomesUsuarios(ids)]);
   const total = dias.find((r) => r.DIA == null);
+  const endereco = (r: Record<string, unknown>): EnderecoVisitado => {
+    const c = String(r.ENDERECO ?? "");
+    return {
+      endereco: c.length === 9 ? `${c.slice(0, 2)}.${c.slice(2, 4)}.${c.slice(4, 6)}.${c.slice(6)}` : c || "—",
+      produto: num(r.PRODUTO),
+      descricao: descricoes.get(num(r.PRODUTO)) ?? null,
+      visitas: num(r.VISITAS),
+      caixas: num(r.CX),
+      unidades: num(r.UN),
+    };
+  };
   return {
     linhas: lin.map((r) => ({
       mapa: num(r.MAPA),
@@ -291,6 +334,12 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
       itens: num(r.ITENS),
       unidades: num(r.UN),
     })),
+    enderecos: {
+      total: num(ends[0]?.TOTAL),
+      umaVisita: num(ends[0]?.UMA),
+      mais: ends.filter((r) => num(r.RM) <= 10).sort((a, b) => num(a.RM) - num(b.RM)).map(endereco),
+      menos: ends.filter((r) => num(r.RN) <= 10).sort((a, b) => num(a.RN) - num(b.RN)).map(endereco),
+    },
     usuarios: ids.map((u) => ({ usuario: u, nome: nomes.get(u) ?? null })),
   };
 }

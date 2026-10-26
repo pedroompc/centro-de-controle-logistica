@@ -38,6 +38,7 @@ export interface ProducaoBI {
   totalMes: DadosHarpiaSeparacao["totalMes"];
   erros: ErroTurno[];
   produtosComErro: ProdutoErro[];
+  enderecos: DadosHarpiaSeparacao["enderecos"];
   equipe: Record<Turno, EquipeTurno>;
 }
 
@@ -182,7 +183,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   let auditoria: AuditoriaSep | null = null;
   if (ok(harpia)) {
     const r = resolverTurnos(harpia.linhas, harpia.erros, harpia.mapas, turnoDoUsuario);
-    producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, equipe };
+    producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, enderecos: harpia.enderecos, equipe };
 
     const kgPorDia = new Map<string, number>();
     for (const l of harpia.linhas) kgPorDia.set(l.dia, (kgPorDia.get(l.dia) ?? 0) + l.kg);

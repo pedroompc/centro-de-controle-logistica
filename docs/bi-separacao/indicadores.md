@@ -26,7 +26,7 @@ mais as checagens de duplicidade. Em 26/10/2026, setembro e outubro bateram
 
 ## Vocabulário (não são sinônimos)
 
-- **Linha** = linha do mapa (`PLAN_SEP_MAPA_MERC_1196`), um produto a apanhar. Em mapa por cliente (tipos 3 e 4) é produto × cliente. Em mapa consolidado por carga (tipos 0 e 8) é produto × carga: apanha uma vez para a carga toda.
+- **Endereço visitado** (na tela; no código e nesta doc continua "linha") = linha do mapa (`PLAN_SEP_MAPA_MERC_1196`), um produto a apanhar num endereço. Mapa × página × endereço (`PORTA_PALLET_1196`) é único na tabela (out/2026: 76.489 = 76.489), então cada linha é uma visita a um endereço numa página do mapa. Em mapa por cliente (tipos 3 e 4) é produto × cliente. Em mapa consolidado por carga (tipos 0 e 8) é produto × carga: apanha uma vez para a carga toda.
 - **Caixa** = caixa fechada (`QTD_FATURADA_CX_1196`).
 - **Unidade** = caixas × `PCPRODUT.QTUNITCX` + avulsas (`QTD_FATURADA_UN_1196`). Bate com a conferência (`QTD_AVERIG_TOTAL_UN_1197`) dentro de 0,2%.
 - **Pedido** = guia do mapa (`PLAN_SEP_MAPA_GUIAS_1198.NUM_PEDCONF_FK_1198`).
@@ -47,6 +47,7 @@ mais as checagens de duplicidade. Em 26/10/2026, setembro e outubro bateram
 | Carregamentos | `COUNT(DISTINCT CARGA_1195)` exceto mapa tipo 3 | Venda balcão (tipo 3) usa carga de sistema "VENDA BALCAO", não é carregamento | "Carregamentos" |
 | SKUs | `COUNT(DISTINCT MERC_PF_1196)` no mês | Não existe por dia nem por turno (não é aditivo) | "SKUs" |
 | Média por dia da semana | Σ do dia operacional ÷ dias com separação daquele dia da semana | Dia sem mapa não entra na média | — |
+| Endereços mais / menos visitados | `PORTA_PALLET_1196` × produto no mês: `COUNT(*)` das linhas, caixas e unidades. 10 de cada ponta; empate desempata por unidades e pelo código do endereço. Endereço exibido como rua.prédio.nível.apto (2+2+2+3 dígitos, os mesmos graus de `DEPOSIT_EMPRESA_END_179`) | Mês inteiro, não segue o filtro de dia. "com 1 visita" = quantos pares endereço × produto tiveram uma visita só |
 | Linhas por dia (mês a mês) | linhas do mês ÷ dias operacionais com separação | Permite comparar mês incompleto | — |
 
 ### Custo e financeiro

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * BI da Separação em tela cheia. A produção vem do Harpia (WMS): linha física
- * do mapa, pedidos pelas guias, separador pela página, erro com a origem que o
+ * BI da Separação em tela cheia. A produção vem do Harpia (WMS): endereço
+ * visitado (linha do mapa), pedidos pelas guias, separador pela página, erro com a origem que o
  * próprio Harpia grava. O dia é o OPERACIONAL (vira às 07h). Fórmulas e
  * consultas de validação: docs/bi-separacao/indicadores.md. Clicar num dia
  * filtra Produção, Turnos, Qualidade e o custo; Esc limpa.
@@ -18,11 +18,12 @@ import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
-import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, n0, n1, t1, brl, pct, sinalPct, varRel } from "./bi-separacao-comum";
+import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel } from "./bi-separacao-comum";
 import { VisaoTurnos } from "./bi-separacao-turnos";
 import { VisaoOperadores } from "./bi-separacao-operadores";
 import { VisaoQualidade, VisaoAuditoria } from "./bi-separacao-analises";
 import type { DadosBISeparacao, ProducaoBI, PontoHistorico } from "./separacao-dados";
+import type { EnderecoVisitado } from "@/data/harpia-separacao";
 
 type VisaoSep = "custo" | "producao" | "turnos" | "operadores" | "qualidade" | "auditoria";
 
@@ -102,17 +103,17 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
       <Quadro
         {...q("producao")}
         rotulo={dia ? `Produção · ${ddmm(dia)}` : "Produção"}
-        valor={tot ? `${n0(tot.linhas)} linhas` : "—"}
-        sub={semProd ?? `${n0(tot!.pedidos)} pedidos · ${t1(tot!.kg)}${!dia && linhasDiaVar !== null ? ` · ${sinalPct(linhasDiaVar)}/dia` : ""}`}
+        valor={tot ? n0(tot.linhas) : "—"}
+        sub={semProd ?? `endereços · ${n0(tot!.pedidos)} pedidos · ${t1(tot!.kg)}${!dia && linhasDiaVar !== null ? ` · ${sinalPct(linhasDiaVar)}/dia` : ""}`}
       />
       <Quadro
         {...q("turnos")}
         rotulo="Turnos"
         valor={melhorHora ? `${melhorHora.rotulo} · ${n1(melhorHora.linhasPorHora!)}` : "—"}
-        sub={semProd ?? (melhorHora ? "linhas/hora" : "sem comparação")}
+        sub={semProd ?? (melhorHora ? "endereços/hora" : "sem comparação")}
       />
       {dados.admin && dados.individual && (
-        <Quadro {...q("operadores")} rotulo="Operadores" valor={`${dados.individual.separadores.length} separadores`} sub={`${pct(cobertura, 0)} das linhas com registro`} />
+        <Quadro {...q("operadores")} rotulo="Operadores" valor={`${dados.individual.separadores.length} separadores`} sub={`${pct(cobertura, 0)} dos endereços com registro`} />
       )}
       <Quadro
         {...q("qualidade")}
@@ -198,14 +199,14 @@ function SemHarpia({ erro }: { erro: string }) {
 
 type SubCusto = "custo" | "equipe" | "folha" | "equipamentos" | "linha" | "fat";
 const TITULO_SUB: Record<SubCusto, string> = {
-  custo: "Custo do mês", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", linha: "Custo por linha", fat: "Custo ÷ faturamento líquido",
+  custo: "Custo do mês", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", linha: "Custo por endereço", fat: "Custo ÷ faturamento líquido",
 };
 
 type MedidaCusto = "custo" | "fat" | "linha" | "tonelada";
 const MEDIDA_CUSTO: Record<MedidaCusto, { rotulo: string; valor: (x: PontoHistorico) => number | null; fmt: (v: number) => string }> = {
   custo: { rotulo: "Custo", valor: (x) => x.custo, fmt: semCentavos },
   fat: { rotulo: "% do faturamento", valor: (x) => custoSobreFaturamento(x.custoPeriodo, x.faturamentoLiquido), fmt: (v) => formatPercent(v, 2) },
-  linha: { rotulo: "R$ por linha", valor: (x) => (x.custoPeriodo !== null && x.linhas ? x.custoPeriodo / x.linhas : null), fmt: (v) => formatBRL(v) },
+  linha: { rotulo: "R$ por endereço", valor: (x) => (x.custoPeriodo !== null && x.linhas ? x.custoPeriodo / x.linhas : null), fmt: (v) => formatBRL(v) },
   tonelada: { rotulo: "R$ por tonelada", valor: (x) => (x.custoPeriodo !== null && x.kg ? x.custoPeriodo / (x.kg / 1000) : null), fmt: semCentavos },
 };
 
@@ -246,7 +247,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
         <Mini {...card("equipe")} rotulo="Equipe" valor={`${pessoas.length} pessoas`} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase().slice(0, 4)}.`).join(" · ")} />
         <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
         <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${equipamentos.reduce((s, e) => s + e.quantidade, 0)} unidades · por mês`} />
-        <Mini {...card("linha")} rotulo="Custo por linha" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} linhas` : undefined} />
+        <Mini {...card("linha")} rotulo="Custo por endereço" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} endereços` : undefined} />
         <Mini
           {...card("fat")}
           rotulo="Custo ÷ faturamento líquido"
@@ -358,13 +359,13 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
       {sub === "linha" && (
         <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]`}>
           <div className="grid grid-cols-2 content-start gap-3">
-            <Mini rotulo="Custo por linha" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} linhas` : undefined} />
+            <Mini rotulo="Custo por endereço" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} endereços` : undefined} />
             <Mini rotulo="Custo por pedido" valor={brl(ind.unit.porPedido)} sub={t ? `${n0(t.pedidos)} pedidos` : undefined} />
             <Mini rotulo="Custo por tonelada" valor={ind.unit.porTonelada === null ? "—" : semCentavos(ind.unit.porTonelada)} sub={t ? t1(t.kg) : undefined} />
             <Mini rotulo="Custo por pessoa" valor={pessoas.length ? formatBRL(total / pessoas.length) : "—"} sub="média, com equipamentos" />
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-2">
-            <Bloco titulo="Custo por linha · mês a mês">{serie("linha", 140)}</Bloco>
+            <Bloco titulo="Custo por endereço · mês a mês">{serie("linha", 140)}</Bloco>
             <Bloco titulo="Custo por tonelada · mês a mês">{serie("tonelada", 140)}</Bloco>
           </div>
         </div>
@@ -382,7 +383,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
 
 const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 type MedidaProd = "linhas" | "pedidos" | "kg";
-const ROT_PROD: Record<MedidaProd, string> = { linhas: "Linhas", pedidos: "Pedidos", kg: "Toneladas" };
+const ROT_PROD: Record<MedidaProd, string> = { linhas: "Endereços", pedidos: "Pedidos", kg: "Toneladas" };
 
 function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: ProducaoBI; dia: string | null; onDia: (d: string | null) => void }) {
   const [medida, setMedida] = useState<MedidaProd>("linhas");
@@ -414,10 +415,10 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
   }
   const hist = dados.historico.filter((x) => x.linhas !== null);
   return (
-    <div className={`${VISAO} xl:grid-rows-[auto_minmax(28rem,1fr)]`}>
+    <div className={`${VISAO} xl:grid-rows-[auto_minmax(28rem,1fr)_auto]`}>
       <div className={GRADE_CARDS}>
-        <Mini rotulo="Linhas" valor={n0(r.linhas)} sub={r.dias ? `${n0(r.linhas / r.dias)}/dia` : undefined} />
-        <Mini rotulo="Pedidos" valor={n0(r.pedidos)} sub={r.pedidos ? `${n1(r.linhas / r.pedidos)} linhas/pedido` : undefined} />
+        <Mini rotulo="Endereços" valor={n0(r.linhas)} sub={r.dias ? `${n0(r.linhas / r.dias)}/dia` : undefined} />
+        <Mini rotulo="Pedidos" valor={n0(r.pedidos)} sub={r.pedidos ? `${n1(r.linhas / r.pedidos)} endereços/pedido` : undefined} />
         <Mini rotulo="Peso" valor={t1(r.kg)} sub={r.pedidos ? `${n0(r.kg / r.pedidos)} kg/pedido` : undefined} />
         <Mini rotulo="Caixas" valor={n0(r.caixas)} />
         <Mini rotulo="Unidades" valor={n0(r.unidades)} />
@@ -445,7 +446,7 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
           <Bloco titulo={`Média por dia da semana · ${ROT_PROD[medida].toLowerCase()}`}>
             <BarrasTV altura={140} fmt={fmtM} itens={SEMANA.map((rot, w) => ({ chave: rot, rotulo: rot, valor: qtd[w] ? soma[w] / qtd[w] : null, detalhe: `${rot} · ${qtd[w]} dias` }))} />
           </Bloco>
-          <Bloco titulo="Linhas por dia · mês a mês">
+          <Bloco titulo="Endereços por dia · mês a mês">
             <BarrasTV
               altura={140}
               fmt={n0}
@@ -454,13 +455,40 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
                 rotulo: mesCurto(x.mes) + (x.parcial ? "*" : ""),
                 valor: x.dias ? x.linhas! / x.dias : null,
                 cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
-                detalhe: `${formatMesAno(x.mes)} · ${x.dias} dias · ${n0(x.linhas!)} linhas`,
+                detalhe: `${formatMesAno(x.mes)} · ${x.dias} dias · ${n0(x.linhas!)} endereços`,
               }))}
             />
           </Bloco>
         </div>
       </div>
+      <div className={`${DUAS_COLUNAS} xl:grid-cols-2`}>
+        <Bloco titulo="Endereços mais visitados · mês" direita={<Dica>{n0(p.enderecos.total)} endereços</Dica>}>
+          <TabelaEnderecos itens={p.enderecos.mais} />
+        </Bloco>
+        <Bloco titulo="Endereços menos visitados · mês" direita={<Dica>{n0(p.enderecos.umaVisita)} com 1 visita</Dica>}>
+          <TabelaEnderecos itens={p.enderecos.menos} />
+        </Bloco>
+      </div>
     </div>
+  );
+}
+
+function TabelaEnderecos({ itens }: { itens: EnderecoVisitado[] }) {
+  if (!itens.length) return <p className="py-4 text-center text-sm text-white/40">Sem endereço no mês.</p>;
+  return (
+    <Tabela
+      cab={["Endereço", "Produto", "Visitas", "Caixas", "Unidades"]}
+      alinhar={["l", "l", "r", "r", "r"]}
+      linhas={itens.map((x) => [
+        x.endereco,
+        <span key="p" className="block max-w-[18rem] truncate" title={x.descricao ?? undefined}>
+          <span className="text-white/45">{x.produto}</span> {x.descricao ?? ""}
+        </span>,
+        n0(x.visitas),
+        n0(x.caixas),
+        n0(x.unidades),
+      ])}
+    />
   );
 }
 

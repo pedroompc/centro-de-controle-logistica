@@ -12,16 +12,16 @@ import type { DadosIndividuais, SeparadorBI } from "./separacao-dados";
 
 type Ordem = "linhasPorHora" | "linhas" | "kgPorHora" | "errosPorMil";
 const ORDENS: Record<Ordem, { rotulo: string; valor: (s: SeparadorBI) => number | null; desc: boolean }> = {
-  linhasPorHora: { rotulo: "Linhas/hora", valor: (s) => s.linhasPorHora, desc: true },
+  linhasPorHora: { rotulo: "Endereços/hora", valor: (s) => s.linhasPorHora, desc: true },
   kgPorHora: { rotulo: "Kg/hora", valor: (s) => s.kgPorHora, desc: true },
   linhas: { rotulo: "Volume", valor: (s) => s.linhas, desc: true },
   errosPorMil: { rotulo: "Erros", valor: (s) => s.errosPorMil, desc: false },
 };
 
 const SINAL: Record<Exclude<SinalOperador, null>, { rotulo: string; cls: string; dica: string }> = {
-  evolucao: { rotulo: "↑ evolução", cls: "text-amber-300", dica: "linhas/hora 10%+ acima do próprio mês anterior" },
-  queda: { rotulo: "↓ queda", cls: "text-rose-300", dica: "linhas/hora 10%+ abaixo do próprio mês anterior" },
-  atencao: { rotulo: "avaliar", cls: "text-orange-300", dica: "abaixo de 80% da média do turno com perfil de linha parecido — verificar função, jornada, experiência e tipo de mapa antes de concluir" },
+  evolucao: { rotulo: "↑ evolução", cls: "text-amber-300", dica: "endereços/hora 10%+ acima do próprio mês anterior" },
+  queda: { rotulo: "↓ queda", cls: "text-rose-300", dica: "endereços/hora 10%+ abaixo do próprio mês anterior" },
+  atencao: { rotulo: "avaliar", cls: "text-orange-300", dica: "abaixo de 80% da média do turno com perfil de endereço parecido — verificar função, jornada, experiência e tipo de mapa antes de concluir" },
 };
 
 export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: string }) {
@@ -39,9 +39,9 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
     <div className={`${VISAO} xl:grid-rows-[auto_minmax(20rem,1fr)]`}>
       <div className={GRADE_CARDS}>
         <Mini rotulo="Separadores" valor={String(ind.separadores.length)} sub={`${comAmostra.length} no ranking`} />
-        <Mini rotulo="Linhas/hora · geral" valor={ou(ind.mediaGeral, n1)} />
+        <Mini rotulo="Endereços/hora · geral" valor={ou(ind.mediaGeral, n1)} />
         {TURNOS_SEPARACAO.map((t) => (
-          <Mini key={t.id} rotulo={`Média · ${t.rotulo}`} valor={ou(ind.mediaTurno[t.id], n1)} sub={ind.kgPorLinhaTurno[t.id] === null ? "sem registro" : `${n1(ind.kgPorLinhaTurno[t.id]!)} kg/linha`} />
+          <Mini key={t.id} rotulo={`Média · ${t.rotulo}`} valor={ou(ind.mediaTurno[t.id], n1)} sub={ind.kgPorLinhaTurno[t.id] === null ? "sem registro" : `${n1(ind.kgPorLinhaTurno[t.id]!)} kg/endereço`} />
         ))}
         <Mini rotulo="Conferentes" valor={String(ind.conferentes.length)} />
       </div>
@@ -83,15 +83,15 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
                   <th className="py-2 text-left font-semibold">Separador</th>
                   <th className="py-2 text-right font-semibold">Dias</th>
                   <th className="py-2 text-right font-semibold">Horas ativas</th>
-                  <th className="py-2 text-right font-semibold">Linhas</th>
+                  <th className="py-2 text-right font-semibold">Endereços</th>
                   <th className="py-2 text-right font-semibold">Kg</th>
-                  <th className="py-2 text-right font-semibold">Linhas/h</th>
+                  <th className="py-2 text-right font-semibold">End./h</th>
                   <th className="py-2 text-right font-semibold">× turno</th>
                   <th className="py-2 text-right font-semibold">× geral</th>
                   <th className="py-2 text-right font-semibold">× {ind.mesAnterior ? formatMesAno(ind.mesAnterior).slice(0, 3) : "ant."}</th>
-                  <th className="py-2 text-right font-semibold">Kg/linha</th>
+                  <th className="py-2 text-right font-semibold">Kg/end.</th>
                   <th className="py-2 text-right font-semibold">Erros ‰</th>
-                  <th className="py-2 text-right font-semibold">R$/linha</th>
+                  <th className="py-2 text-right font-semibold">R$/end.</th>
                   <th className="py-2 text-right font-semibold">Sinal</th>
                 </tr>
               </thead>
