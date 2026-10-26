@@ -18,6 +18,10 @@ export interface HrefMes {
  * da Operação): logo, título, ‹ mês ›, Tela cheia e Sair. O topo recebe o menu
  * (quadros) do setor; o palco recebe a visão aberta. Teclas: Esc chama
  * `onEsc` (limpar filtros) · F alterna a tela cheia do navegador.
+ *
+ * Layout fluido: em tela larga (xl) e alta o palco ocupa o resto da altura;
+ * com zoom, janela baixa ou estreita, nada é esmagado — o conteúdo flui na
+ * altura natural e a moldura rola.
  */
 export function BIShell({
   titulo,
@@ -34,7 +38,7 @@ export function BIShell({
   hrefMes: HrefMes;
   hrefSair: string;
   menu: ReactNode;
-  palco: { chave: string; titulo: string; contexto: string; conteudo: ReactNode } | null;
+  palco: { chave: string; titulo: string; contexto?: string; conteudo: ReactNode } | null;
   onEsc?: () => void;
   dicaTopo?: string;
 }) {
@@ -54,10 +58,10 @@ export function BIShell({
 
   const navCls = "inline-flex h-6 w-6 items-center justify-center rounded-md";
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden text-white" style={{ background: NAVY }}>
-      <header className="shrink-0 px-6 pt-5 pb-2 xl:px-10 xl:pt-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+    <div className="fixed inset-0 z-[60] flex flex-col overflow-x-hidden overflow-y-auto text-white" style={{ background: NAVY }}>
+      <header className="shrink-0 px-4 pt-4 pb-2 sm:px-6 xl:px-10 xl:pt-6">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="flex min-w-0 items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/sol-dia.gif" alt="DIA" className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/10" />
             <div>
@@ -79,7 +83,7 @@ export function BIShell({
                     mês atual
                   </Link>
                 )}
-                · {dicaTopo}
+                {dicaTopo && <>· {dicaTopo}</>}
               </p>
             </div>
           </div>
@@ -95,22 +99,22 @@ export function BIShell({
         {menu}
       </header>
 
-      <main className="relative min-h-0 flex-1 px-6 pb-4 xl:px-10 xl:pb-5">
-        <div className="flex h-full flex-col rounded-3xl bg-white/[0.04] p-4 ring-1 ring-white/10 xl:p-5">
+      <main className="relative px-4 pb-4 sm:px-6 xl:min-h-[36rem] xl:flex-1 xl:px-10 xl:pb-5">
+        <div className="flex flex-col rounded-3xl bg-white/[0.04] p-3 ring-1 ring-white/10 sm:p-4 xl:h-full xl:p-5">
           {palco ? (
             <>
               <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
                 <h2 className="font-[family-name:var(--font-sora)] text-xl font-extrabold tracking-tight xl:text-2xl">
                   {palco.titulo} <span className="text-white/40">· {formatMesAno(mes)}</span>
                 </h2>
-                <p className="text-sm text-white/45">{palco.contexto}</p>
+                {palco.contexto && <p className="text-sm text-white/45">{palco.contexto}</p>}
               </div>
-              <div key={palco.chave} className="min-h-0 flex-1 overflow-hidden">
+              <div key={palco.chave} className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 {palco.conteudo}
               </div>
             </>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+            <div className="flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-2 text-center">
               <span className="text-4xl text-white/20" aria-hidden>↑</span>
               <p className="text-xl font-semibold text-white/60">Clique num quadro acima para abrir o detalhe</p>
               <p className="text-sm text-white/35">Clique de novo no mesmo quadro para fechar · F tela cheia · Sair volta ao setor</p>

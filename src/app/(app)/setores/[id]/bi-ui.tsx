@@ -71,8 +71,8 @@ export function Vazio({ children }: { children: ReactNode }) {
 
 export function Bloco({ titulo, direita, children, className = "" }: { titulo: string; direita?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className={`flex min-h-0 flex-col rounded-2xl bg-white/[0.05] p-4 ring-1 ring-white/10 ${className}`}>
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className={`flex min-h-0 min-w-0 flex-col rounded-2xl bg-white/[0.05] p-4 ring-1 ring-white/10 ${className}`}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">{titulo}</span>
         {direita}
       </div>

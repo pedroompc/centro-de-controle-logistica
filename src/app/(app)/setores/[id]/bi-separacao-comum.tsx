@@ -11,23 +11,28 @@ export const pct = (v: number | null, casas = 1) => ou(v, (x) => formatPercent(x
 export const sinalPct = (v: number | null) => ou(v, (x) => `${x > 0 ? "+" : ""}${formatPercent(x, 1)}`);
 export const varRel = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b - 1);
 
+// Grades que se ajustam à largura (tela, janela ou zoom) sem quebrar em breakpoint fixo.
+export const GRADE_CARDS = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.5rem),1fr))] gap-3";
+export const GRADE_MENU = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-3";
+/** Visão "TV": ocupa a altura do palco em tela larga; fora dela, flui na altura natural. */
+export const VISAO = "grid grid-cols-[minmax(0,1fr)] gap-3 xl:h-full xl:min-h-0";
+/** Duas colunas lado a lado só em tela larga; abaixo, uma coluna que encolhe com a tela. */
+export const DUAS_COLUNAS = "grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0";
+
 // Turno sem verde (verde é só receita) — mesma família das etiquetas da equipe.
 export const COR_TURNO: Record<Turno, string> = { manha: "#fcd34d", tarde: "#fb923c", noite: "#818cf8" };
 
-/** Faixa de aviso: limitação de dado (não é erro do app). */
-export function Aviso({ children, tom = "ambar" }: { children: ReactNode; tom?: "ambar" | "neutro" }) {
-  return (
-    <div className={`rounded-xl px-3 py-2 text-xs leading-relaxed ring-1 ${tom === "ambar" ? "bg-amber-400/10 text-amber-100/90 ring-amber-400/30" : "bg-white/[0.04] text-white/55 ring-white/10"}`}>
-      {children}
-    </div>
-  );
+/** Alerta curto de dado (uma linha), só quando há algo a corrigir. */
+export function Aviso({ children }: { children: ReactNode }) {
+  return <div className="rounded-xl bg-amber-400/10 px-3 py-2 text-xs text-amber-100/90 ring-1 ring-amber-400/30">{children}</div>;
 }
 
 /** Tabela compacta no escuro. */
 export function Tabela({ cab, linhas, alinhar }: { cab: ReactNode[]; linhas: ReactNode[][]; alinhar?: ("l" | "r")[] }) {
   const cls = (i: number) => (alinhar?.[i] === "l" || (!alinhar && i === 0) ? "text-left" : "text-right");
   return (
-    <table className="w-full text-sm">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max text-sm">
       <thead className="sticky top-0 bg-[#121a5a] text-[0.62rem] uppercase tracking-[0.12em] text-white/40">
         <tr>
           {cab.map((c, i) => (
@@ -48,6 +53,7 @@ export function Tabela({ cab, linhas, alinhar }: { cab: ReactNode[]; linhas: Rea
           </tr>
         ))}
       </tbody>
-    </table>
+      </table>
+    </div>
   );
 }

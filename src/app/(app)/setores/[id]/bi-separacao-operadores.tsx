@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { formatBRL } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
-import { AMOSTRA_MINIMA, rotuloTurno, type SinalOperador } from "@/domain/separacao";
+import { rotuloTurno, type SinalOperador } from "@/domain/separacao";
 import { TURNOS_SEPARACAO } from "@/domain/turnos-separacao";
 import type { Turno } from "@/domain/types";
 import { Bloco, ChipTV, Mini } from "./bi-ui";
-import { Aviso, COR_TURNO, n0, n1, ou, sinalPct, varRel } from "./bi-separacao-comum";
+import { COR_TURNO, GRADE_CARDS, VISAO, n0, n1, ou, sinalPct, varRel } from "./bi-separacao-comum";
 import type { DadosIndividuais, SeparadorBI } from "./separacao-dados";
 
 type Ordem = "linhasPorHora" | "linhas" | "kgPorHora" | "errosPorMil";
@@ -36,18 +36,15 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
   const comAmostra = ind.separadores.filter((s) => s.amostraSuficiente);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-        <Mini rotulo="Separadores registrados" valor={String(ind.separadores.length)} sub={`${comAmostra.length} com amostra para ranking`} />
-        <Mini rotulo="Linhas/hora · média geral" valor={ou(ind.mediaGeral, n1)} sub="Σ linhas ÷ Σ horas ativas" />
+    <div className={`${VISAO} xl:grid-rows-[auto_minmax(20rem,1fr)]`}>
+      <div className={GRADE_CARDS}>
+        <Mini rotulo="Separadores" valor={String(ind.separadores.length)} sub={`${comAmostra.length} no ranking`} />
+        <Mini rotulo="Linhas/hora · geral" valor={ou(ind.mediaGeral, n1)} />
         {TURNOS_SEPARACAO.map((t) => (
-          <Mini key={t.id} rotulo={`Média · ${t.rotulo}`} valor={ou(ind.mediaTurno[t.id], n1)} sub={ind.kgPorLinhaTurno[t.id] === null ? "sem registro individual" : `${n1(ind.kgPorLinhaTurno[t.id]!)} kg por linha`} />
+          <Mini key={t.id} rotulo={`Média · ${t.rotulo}`} valor={ou(ind.mediaTurno[t.id], n1)} sub={ind.kgPorLinhaTurno[t.id] === null ? "sem registro" : `${n1(ind.kgPorLinhaTurno[t.id]!)} kg/linha`} />
         ))}
-        <Mini rotulo="Conferentes" valor={String(ind.conferentes.length)} sub="na doca no mês" />
+        <Mini rotulo="Conferentes" valor={String(ind.conferentes.length)} />
       </div>
-      <Aviso tom="neutro">
-        Só entram aqui as páginas com separador registrado no Harpia (a noite não registra — fica medida como equipe na aba Turnos). <strong className="text-white/75">Horas ativas</strong> = união das páginas abertas no dia, não a jornada (sem ponto no banco). Ranking só com {AMOSTRA_MINIMA.dias}+ dias e {AMOSTRA_MINIMA.horas}+ horas. Erro = bloqueio com origem &quot;separador&quot; no Harpia, ligado à linha dele sem ambiguidade. Os sinais são para o gestor olhar, não conclusão de desempenho.
-      </Aviso>
       <Bloco
         titulo={aba === "separadores" ? `Separadores · ${formatMesAno(mes)}` : `Conferentes · ${formatMesAno(mes)}`}
         direita={
@@ -79,7 +76,7 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
       >
         <div className="h-full overflow-auto pr-1">
           {aba === "separadores" ? (
-            <table className="w-full text-sm">
+            <table className="w-full min-w-max text-sm">
               <thead className="sticky top-0 bg-[#121a5a] text-[0.6rem] uppercase tracking-[0.1em] text-white/40">
                 <tr>
                   <th className="w-8 py-2 text-left font-semibold">#</th>
@@ -104,9 +101,9 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
                   return (
                     <tr key={s.usuario} className={`border-t border-white/[0.06] ${s.amostraSuficiente ? "" : "text-white/40"}`}>
                       <td className="py-1.5 tabular-nums text-white/40">{s.amostraSuficiente ? ++pos : "·"}</td>
-                      <td className="max-w-0 py-1.5">
-                        <div className="flex min-w-0 items-baseline gap-2">
-                          <span className={`truncate font-semibold ${s.amostraSuficiente ? "text-white" : ""}`}>{s.nome}</span>
+                      <td className="py-1.5 pr-3">
+                        <div className="flex items-baseline gap-2">
+                          <span className={`font-semibold ${s.amostraSuficiente ? "text-white" : ""}`}>{s.nome}</span>
                           <span className="shrink-0 text-[0.65rem]" style={{ color: s.turno ? COR_TURNO[s.turno] : undefined }}>
                             {s.turno ? rotuloTurno(s.turno).toLowerCase() : "sem cadastro"}
                           </span>
@@ -138,7 +135,7 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
               </tbody>
             </table>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full min-w-max text-sm">
               <thead className="sticky top-0 bg-[#121a5a] text-[0.6rem] uppercase tracking-[0.1em] text-white/40">
                 <tr>
                   <th className="py-2 text-left font-semibold">Conferente</th>
@@ -153,9 +150,9 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
               <tbody>
                 {ind.conferentes.map((c) => (
                   <tr key={c.usuario} className="border-t border-white/[0.06]">
-                    <td className="max-w-0 py-1.5">
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <span className="truncate font-semibold text-white">{c.nome}</span>
+                    <td className="py-1.5 pr-3">
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-white">{c.nome}</span>
                         <span className="shrink-0 text-[0.65rem]" style={{ color: c.turno ? COR_TURNO[c.turno] : undefined }}>
                           {c.turno ? rotuloTurno(c.turno).toLowerCase() : "sem cadastro"}
                         </span>
