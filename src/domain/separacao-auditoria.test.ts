@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { turnosDivergentes, confrontoDiario, diasUteisSemProducao, linhasPorTipo, diferenca } from "./separacao-auditoria";
+import { turnosDivergentes } from "./separacao-auditoria";
 import type { LinhaSep } from "./separacao";
 import type { TurnoSep } from "./turnos-separacao";
 
@@ -12,25 +12,5 @@ describe("auditoria da separação", () => {
       new Map<number, TurnoSep>([[1, "dia"], [2, "dia"]]),
     );
     expect(d).toEqual([{ usuario: 1, cadastro: "dia", horario: "noite", horaMediana: 23, linhas: 12 }]);
-  });
-  it("confronto só da filial 1 e diferença relativa", () => {
-    const c = confrontoDiario([{ dia: "2026-10-01", pedidos: 102, clientes: 0, cargas: 0, mapas: 1 }], new Map([["2026-10-01", 1050]]), [
-      { dia: "2026-10-01", filial: "1", pedidos: 100, kg: 1000 },
-      { dia: "2026-10-01", filial: "11", pedidos: 5, kg: 9000 },
-    ]);
-    expect(c).toEqual([{ dia: "2026-10-01", pedidosHarpia: 102, pedidosWinthor: 100, kgHarpia: 1050, kgWinthor: 1000 }]);
-    expect(diferenca(102, 100)).toBeCloseTo(0.02);
-    expect(diferenca(1, 0)).toBeNull();
-  });
-  it("dias úteis sem mapa até a data", () => {
-    // out/2026: 01 é quinta; 03–04 fim de semana
-    expect(diasUteisSemProducao("2026-10-01", [{ dia: "2026-10-01", pedidos: 1, clientes: 1, cargas: 1, mapas: 1 }], "2026-10-05")).toEqual(["2026-10-02", "2026-10-05"]);
-  });
-  it("linhas e cobertura por tipo de mapa", () => {
-    const r = linhasPorTipo([L({ mapa: 1, linhas: 10, usuario: 3 }), L({ mapa: 2, linhas: 30 })], [
-      { mapa: 1, dia: "2026-10-01", tipo: 4, pedidos: 1, clientes: 1 },
-      { mapa: 2, dia: "2026-10-01", tipo: 0, pedidos: 9, clientes: 9 },
-    ]);
-    expect(r.map((x) => [x.tipo, x.linhas, x.comSeparador])).toEqual([[0, 30, 0], [4, 10, 10]]);
   });
 });

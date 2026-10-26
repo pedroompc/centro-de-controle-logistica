@@ -41,7 +41,7 @@ mais as checagens de duplicidade. Em 26/10/2026, setembro e outubro bateram
 |---|---|---|---|
 | Linhas separadas | `COUNT(*)` das linhas `MERC_1196` dos mapas do período | Toda linha liga a 1 página (checado: 0 páginas duplicadas) | "Linhas separadas" |
 | Caixas / Unidades | Σ caixas; Σ (cx × un/cx + avulsas) | `NVL(…, 0)`; produto sem `QTUNITCX` conta 1 un/cx | "Caixas" / "Unidades" |
-| Peso (t) | Σ unidades × `PCPRODUT.PESOBRUTO` ÷ 1000 | **Estimado** pelo cadastro (o Harpia não pesa). Produto sem peso conta 0 | "Peso (t)" |
+| Peso (t) | Peso do **Winthor**: Σ `PCPEDC.TOTPESO` (não cancelados, filiais 1 e 11) dos pedidos da carga do mapa (`PLAN_SEP_MAPA_1195.CARGA_1195` = `PCPEDC.NUMCAR`; carga ↔ mapa é 1 para 1 em toda a tabela, checado pelo script). Para turno/hora, o peso do mapa é repartido entre as linhas na proporção de unidades × `PCPRODUT.PESOBRUTO` (`aplicarPesoWinthor`) | Venda balcão (tipo 3) cuja carga não existe no `PCPEDC` (out/2026: 619 mapas, 91,7 t de 1.616,9 t) fica com a estimativa unidades × `PESOBRUTO` | "Peso (t)" |
 | Pedidos | Σ por dia de `COUNT(DISTINCT guia)` | Checado: 0 pedidos em mapas de dias diferentes, então a soma por dia = distintos no mês | "Pedidos" |
 | Clientes | Mês: `COUNT(DISTINCT CLI)` das guias. Dia: distintos no dia. "PDV-dia" = soma dos distintos de cada dia (mesma métrica do dashboard) | `CLI = 0` (consolidado) excluído | "Clientes" / "PDV-dia" |
 | Carregamentos | `COUNT(DISTINCT CARGA_1195)` exceto mapa tipo 3 | Venda balcão (tipo 3) usa carga de sistema "VENDA BALCAO", não é carregamento | "Carregamentos" |
@@ -128,6 +128,9 @@ pausas), unidades/h só dos dias com 1 h ou mais.
 | "Itens por conferente/dia" | Removido | Média de médias, sem uso para gestão |
 | Sem turno | Aba Turnos | Novo |
 | Ranking individual | Aba Operadores (só admin; os dados nem são consultados para quem não é admin) | Novo |
+| Peso estimado pelo cadastro (unidades × `PESOBRUTO`) | Peso do Winthor por carga | Pedido do Pedro, 26/10/2026. Por tipo de mapa em out/2026: tipo 0 −0,02%, tipo 4 +0,8%, tipo 8 −3,8% contra a estimativa |
+| Aba Auditoria (Harpia × Winthor, cobertura, regras de turno) | Removida | Pedido do Pedro, 26/10/2026. As checagens continuam no `npm run validar:separacao`; só o alerta de horário ≠ cadastro ficou, na aba Turnos |
+| Palete | Não exibido | O Winthor não grava (`PCPEDC.QTPALETE` vazio) e o Harpia só numera palete nos mapas tipo 8 |
 
 ## Dados que o banco não tem (precisam ser coletados para virar métrica)
 
@@ -138,4 +141,5 @@ pausas), unidades/h só dos dias com 1 h ou mais.
 - **Tipo de erro** (produto trocado × quantidade), avaria na separação, retrabalho, devolução ligada à separação e valor do erro.
 - **Metas oficiais**: não há metas cadastradas. O BI não classifica bom/ruim sem meta.
 - **Histórico de turno por pessoa**: meses passados usam o turno do cadastro de hoje.
-- **Regra oficial dos turnos (RH)**: os horários em `turnos-separacao.ts` são de referência (`TURNOS_VALIDADOS_RH = false`).
+- **Regra oficial dos turnos (RH)**: os horários em `turnos-separacao.ts` são de referência.
+- **Paletes separados**: sem registro completo no Winthor nem no Harpia.

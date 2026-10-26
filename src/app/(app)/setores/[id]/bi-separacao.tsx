@@ -21,11 +21,11 @@ import {
 import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel } from "./bi-separacao-comum";
 import { VisaoTurnos } from "./bi-separacao-turnos";
 import { VisaoOperadores } from "./bi-separacao-operadores";
-import { VisaoQualidade, VisaoAuditoria } from "./bi-separacao-analises";
+import { VisaoQualidade } from "./bi-separacao-analises";
 import type { DadosBISeparacao, ProducaoBI, PontoHistorico } from "./separacao-dados";
 import type { EnderecoVisitado } from "@/data/harpia-separacao";
 
-type VisaoSep = "custo" | "producao" | "turnos" | "operadores" | "qualidade" | "auditoria";
+type VisaoSep = "custo" | "producao" | "turnos" | "operadores" | "qualidade";
 
 const VISOES: { id: VisaoSep; titulo: string; admin?: boolean }[] = [
   { id: "custo", titulo: "Custo e equipe" },
@@ -33,7 +33,6 @@ const VISOES: { id: VisaoSep; titulo: string; admin?: boolean }[] = [
   { id: "turnos", titulo: "Turnos" },
   { id: "operadores", titulo: "Operadores", admin: true },
   { id: "qualidade", titulo: "Qualidade" },
-  { id: "auditoria", titulo: "Auditoria dos dados" },
 ];
 
 const PAPEIS: PapelBI[] = [
@@ -87,9 +86,6 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const rk = rankingTurnos(ind.turnos);
   const melhorHora = rk.linhasPorHora ? ind.turnos.find((t) => t.turno === rk.linhasPorHora)! : null;
   const cobertura = tot && tot.linhas > 0 ? tot.linhasComSeparador / tot.linhas : null;
-  const a = dados.auditoria;
-  const pedW = a ? a.confronto.reduce((s, x) => s + x.pedidosWinthor, 0) : 0;
-  const pedH = a ? a.confronto.reduce((s, x) => s + x.pedidosHarpia, 0) : 0;
   const semProd = p ? null : "sem acesso ao Harpia";
 
   const menu = (
@@ -120,12 +116,6 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
         rotulo={dia ? `Qualidade · ${ddmm(dia)}` : "Qualidade"}
         valor={ind.taxaErro === null ? "—" : `${n1(ind.taxaErro)} ‰`}
         sub={semProd ?? `${n0(ind.erros!.separador.itens)} itens com erro`}
-      />
-      <Quadro
-        {...q("auditoria")}
-        rotulo="Auditoria"
-        valor={pedW > 0 ? `${sinalPct(varRel(pedH, pedW))} pedidos` : "—"}
-        sub={a ? "Harpia × Winthor" : (semProd ?? "")}
       />
     </div>
   );
@@ -163,13 +153,11 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                 ) : visao === "producao" ? (
                   <VisaoProducao dados={dados} p={p} dia={dia} onDia={setDia} />
                 ) : visao === "turnos" ? (
-                  <VisaoTurnos turnos={ind.turnos} ranking={rk} dia={dia} auditoria={dados.auditoria} />
+                  <VisaoTurnos turnos={ind.turnos} ranking={rk} dia={dia} divergencias={dados.divergenciasTurno} />
                 ) : visao === "operadores" && dados.individual ? (
                   <VisaoOperadores ind={dados.individual} mes={dados.mes} />
                 ) : visao === "qualidade" ? (
                   <VisaoQualidade p={p} mes={dados.mes} dia={dia} onDia={setDia} linhas={tot?.linhas ?? 0} turnos={ind.turnos} />
-                ) : dados.auditoria ? (
-                  <VisaoAuditoria a={dados.auditoria} tot={ind.totMes!} totalMes={p.totalMes} />
                 ) : null,
             }
           : null

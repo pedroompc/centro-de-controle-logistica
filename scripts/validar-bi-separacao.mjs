@@ -40,7 +40,6 @@ SELECT COUNT(*) LINHAS,
                                 AND p.USU_SEP_FK_1236 IS NOT NULL) THEN 1 ELSE 0 END) LINHAS_COM_SEPARADOR,
        SUM(NVL(x.QTD_FATURADA_CX_1196,0)) CAIXAS,
        SUM(NVL(x.QTD_FATURADA_CX_1196,0) * NVL(pr.QTUNITCX,1) + NVL(x.QTD_FATURADA_UN_1196,0)) UNIDADES,
-       ROUND(SUM((NVL(x.QTD_FATURADA_CX_1196,0) * NVL(pr.QTUNITCX,1) + NVL(x.QTD_FATURADA_UN_1196,0)) * NVL(pr.PESOBRUTO,0))) KG,
        COUNT(DISTINCT x.MERC_PF_1196) SKUS,
        COUNT(DISTINCT TRUNC(m.INI - ${CORTE}/24)) DIAS
   FROM m JOIN HARPIAW2.PLAN_SEP_MAPA_MERC_1196 x ON x.SEQ_PLANILHA_PF_1196 = m.MAPA
@@ -72,14 +71,25 @@ SELECT NVL(e.ORIGEM_ERRO_1199,'?') ORIGEM, COUNT(*) OCORRENCIAS,
        SUM(ABS(NVL(e.QTD_CARGA_UN_1199,0) - NVL(e.QTD_BIPADA_UN_1199,0))) UNIDADES
   FROM HARPIAW2.PLAN_SEP_MAPA_MERC_ERRO_1199 e JOIN m ON m.MAPA = e.SEQ_PLANILHA_PF_1199
  GROUP BY NVL(e.ORIGEM_ERRO_1199,'?') ORDER BY 1`,
-  winthor: `
-SELECT CODFILIAL FILIAL, SUM(CASE WHEN POSICAO <> 'C' THEN 1 ELSE 0 END) PEDIDOS,
-       ROUND(SUM(CASE WHEN POSICAO <> 'C' THEN NVL(TOTPESO,0) ELSE 0 END)) KG,
-       SUM(CASE WHEN POSICAO = 'C' THEN 1 ELSE 0 END) CANCELADOS
-  FROM PCPEDC
- WHERE DTFINALSEP >= TO_DATE(:ini,'YYYY-MM-DD') + ${CORTE}/24 AND DTFINALSEP < TO_DATE(:fim,'YYYY-MM-DD') + 1 + ${CORTE}/24
-   AND CODFILIAL IN ('1','11')
- GROUP BY CODFILIAL ORDER BY 1`,
+  // Peso do Winthor por mapa (TOTPESO dos pedidos da carga); carga fora do PCPEDC (venda balcão) usa a estimativa do cadastro.
+  peso: `
+WITH m AS (${MAPAS}),
+est AS (SELECT x.SEQ_PLANILHA_PF_1196 MAPA, SUM((NVL(x.QTD_FATURADA_CX_1196,0) * NVL(pr.QTUNITCX,1) + NVL(x.QTD_FATURADA_UN_1196,0)) * NVL(pr.PESOBRUTO,0)) KG
+          FROM m JOIN HARPIAW2.PLAN_SEP_MAPA_MERC_1196 x ON x.SEQ_PLANILHA_PF_1196 = m.MAPA
+          LEFT JOIN PCPRODUT pr ON pr.CODPROD = x.MERC_PF_1196 GROUP BY x.SEQ_PLANILHA_PF_1196),
+wt AS (SELECT m.MAPA, SUM(NVL(p.TOTPESO,0)) KG
+         FROM m JOIN HARPIAW2.PLAN_SEP_MAPA_1195 mm ON mm.SEQ_PLANILHA_PK_1195 = m.MAPA
+         JOIN PCPEDC p ON p.NUMCAR = mm.CARGA_1195
+        WHERE mm.CARGA_1195 > 0 AND p.POSICAO <> 'C' AND p.CODFILIAL IN ('1','11') GROUP BY m.MAPA)
+SELECT ROUND(SUM(NVL(wt.KG, est.KG))) KG, ROUND(SUM(CASE WHEN wt.MAPA IS NULL THEN est.KG ELSE 0 END)) KG_ESTIMADO,
+       COUNT(*) MAPAS, COUNT(wt.MAPA) MAPAS_COM_WINTHOR
+  FROM est LEFT JOIN wt ON wt.MAPA = est.MAPA`,
+  // Carga com 2+ mapas: o peso do Winthor da carga entraria 2x.
+  dupCarga: `
+SELECT COUNT(*) N FROM (
+  SELECT CARGA_1195 FROM HARPIAW2.PLAN_SEP_MAPA_1195
+   WHERE CARGA_1195 > 0 AND CARGA_1195 IN (SELECT mm.CARGA_1195 FROM HARPIAW2.PLAN_SEP_MAPA_1195 mm WHERE mm.SEQ_PLANILHA_PK_1195 IN (SELECT MAPA FROM (${MAPAS})))
+   GROUP BY CARGA_1195 HAVING COUNT(*) > 1)`,
   // Duplicidade: cada uma deve dar 0.
   dupPagina: `
 SELECT COUNT(*) N FROM (
@@ -114,35 +124,34 @@ try {
 const n = (v) => Number(v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 const p = r.producao[0];
 const e = Object.fromEntries(r.erros.map((x) => [x.ORIGEM, x]));
-const w1 = r.winthor.find((x) => x.FILIAL === "1") ?? {};
-const w11 = r.winthor.find((x) => x.FILIAL === "11") ?? {};
+const pw = r.peso[0];
 const linhas = Number(p.LINHAS);
 const linha = (rotulo, valor, onde) => console.log(`${rotulo.padEnd(42)} ${String(valor).padStart(14)}   ${onde}`);
 
 console.log(`\nBI da Separação — validação de ${arg} (dias operacionais ${ini} 07h → ${fim} +1 07h)\n`);
 linha("INDICADOR", "ESPERADO", "ONDE NA TELA");
-linha("Linhas separadas", n(linhas), "Produção › Linhas separadas · card Produção");
-linha("Linhas com separador registrado", `${n(p.LINHAS_COM_SEPARADOR)} (${n((100 * p.LINHAS_COM_SEPARADOR) / linhas)}%)`, "Auditoria › Cobertura · card Operadores");
+linha("Endereços visitados (linhas do mapa)", n(linhas), "Produção › Endereços · card Produção");
+linha("Linhas com separador registrado", `${n(p.LINHAS_COM_SEPARADOR)} (${n((100 * p.LINHAS_COM_SEPARADOR) / linhas)}%)`, "card Operadores · Turnos › Origem do dado");
 linha("Caixas fechadas", n(p.CAIXAS), "Produção › Caixas");
 linha("Unidades", n(p.UNIDADES), "Produção › Unidades");
-linha("Peso (t)", n(p.KG / 1000), "Produção › Peso · card Produção");
+linha("Peso (t) — Winthor por carga", n(pw.KG / 1000), "Produção › Peso · card Produção");
+linha("  dos quais estimados (carga fora do Winthor)", `${n(pw.KG_ESTIMADO / 1000)} t · ${n(pw.MAPAS - pw.MAPAS_COM_WINTHOR)} mapas`, "venda balcão sem carga no PCPEDC");
 linha("Pedidos", n(r.pedidos[0].PEDIDOS), "Produção › Pedidos · card Produção");
 linha("Clientes distintos no mês", n(r.pedidos[0].CLIENTES_MES), "Produção › Clientes");
 linha("PDV-dia (clientes distintos por dia, somados)", n(r.pdvDia[0].PDV_DIA), "Produção › Clientes (sub)");
 linha("Carregamentos (sem venda balcão)", n(r.pedidos[0].CARGAS), "Produção › Carregamentos");
-linha("Mapas", n(r.pedidos[0].MAPAS), "Auditoria › Totais do mês");
+linha("Mapas", n(r.pedidos[0].MAPAS), "—");
 linha("SKUs", n(p.SKUS), "Produção › SKUs");
 linha("Dias operacionais com separação", n(p.DIAS), "Produção › Linhas (sub)");
-linha("Linhas da noite (sem separador, 22h–07h)", n(r.noite[0].LINHAS_NOITE_SEM_SEPARADOR), "Turnos › Noite › Linhas (se nenhum separador da noite)");
+linha("Linhas da noite (sem separador, 22h–07h)", n(r.noite[0].LINHAS_NOITE_SEM_SEPARADOR), "Turnos › Noite › Endereços (se nenhum separador da noite)");
 for (const [k, rot] of [["S", "separador"], ["C", "conferente"]]) {
   linha(`Erros ${rot}: ocorrências / itens`, `${n(e[k]?.OCORRENCIAS)} / ${n(e[k]?.ITENS)}`, `Qualidade › ${rot === "separador" ? "Ocorrências / Itens com erro" : "Erros do conferente"}`);
 }
 linha("Erros do separador a cada 1.000 linhas", n((1000 * Number(e.S?.ITENS ?? 0)) / linhas), "Qualidade › A cada 1.000 linhas · card Qualidade");
-linha("Winthor filial 1: pedidos / t", `${n(w1.PEDIDOS)} / ${n(w1.KG / 1000)}`, "Auditoria › Harpia × Winthor");
-linha("Winthor filial 11: pedidos / t", `${n(w11.PEDIDOS)} / ${n(w11.KG / 1000)}`, "Auditoria › Filial 11");
 linha("Fração do mês para o custo", n(fracao * 100) + "%", "custo do período = custo do mês × fração");
 console.log("\nCHECAGENS (devem dar 0)");
 linha("Página (mapa, OS) com 2+ registros", n(r.dupPagina[0].N), "→ linha contaria 2x por separador");
 linha("Pedido em mapas de dias diferentes", n(r.dupPedido[0].N), "→ somar pedidos por dia contaria 2x");
+linha("Carga com 2+ mapas", n(r.dupCarga[0].N), "→ peso do Winthor da carga contaria 2x");
 linha("Mapa conferido por mais de 7 dias", n(r.mapaMaisDeUmDia[0].N), "→ app lê 7 dias antes da janela; >0 pode desalinhar");
 console.log("");

@@ -69,7 +69,28 @@ export interface LinhaSep {
   linhas: number;
   caixas: number;
   unidades: number;
-  kg: number; // unidades × peso bruto do cadastro (estimado, não é balança)
+  kg: number; // peso do Winthor do mapa repartido pelas linhas (aplicarPesoWinthor); sem carga no Winthor, unidades × peso bruto do cadastro
+}
+
+/**
+ * Troca o kg estimado das linhas pelo peso do Winthor do mapa (Σ TOTPESO da
+ * carga), repartido na proporção do estimado de cada linha — ou das linhas, se
+ * o estimado do mapa for zero. Mapa sem peso no Winthor fica com o estimado.
+ */
+export function aplicarPesoWinthor(linhas: LinhaSep[], pesoMapa: Map<number, number>): LinhaSep[] {
+  const est = new Map<number, { kg: number; linhas: number }>();
+  for (const l of linhas) {
+    const e = est.get(l.mapa) ?? { kg: 0, linhas: 0 };
+    e.kg += l.kg;
+    e.linhas += l.linhas;
+    est.set(l.mapa, e);
+  }
+  return linhas.map((l) => {
+    const w = pesoMapa.get(l.mapa);
+    const e = est.get(l.mapa)!;
+    if (w === undefined) return l;
+    return { ...l, kg: e.kg > 0 ? (w * l.kg) / e.kg : e.linhas > 0 ? (w * l.linhas) / e.linhas : 0 };
+  });
 }
 
 /** Pedidos e clientes de cada mapa (guias). */

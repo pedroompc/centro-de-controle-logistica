@@ -6,7 +6,7 @@ import type { CriterioTurno, ResumoTurno } from "@/domain/separacao";
 import type { TurnoSep } from "@/domain/turnos-separacao";
 import { Bloco, ChipTV, Mini, ddmm, semCentavos } from "./bi-ui";
 import { Aviso, COR_TURNO, VISAO, n0, n1, t1, sinalPct, varRel } from "./bi-separacao-comum";
-import type { AuditoriaSep } from "./separacao-dados";
+import type { DivergenciasTurno } from "./separacao-dados";
 
 type Sentido = "maior" | "menor" | null; // qual direção é melhor (null = só descritivo)
 interface LinhaComparativo {
@@ -70,10 +70,10 @@ const CRITERIOS: { id: CriterioTurno; rotulo: string; explica: string }[] = [
   { id: "equilibrio", rotulo: "Melhor equilíbrio", explica: "menor soma das posições em endereços/hora, custo/endereço e erros/1.000" },
 ];
 
-export function VisaoTurnos({ turnos, ranking, dia, auditoria }: { turnos: ResumoTurno[]; ranking: Record<CriterioTurno, TurnoSep | null>; dia: string | null; auditoria: AuditoriaSep | null }) {
+export function VisaoTurnos({ turnos, ranking, dia, divergencias }: { turnos: ResumoTurno[]; ranking: Record<CriterioTurno, TurnoSep | null>; dia: string | null; divergencias: DivergenciasTurno | null }) {
   const [foco, setFoco] = useState<TurnoSep | null>(null);
   const semEquipe = turnos.filter((t) => t.linhas > 0 && t.equipe.separadores === 0);
-  const div = auditoria?.divergenciasTurno;
+  const div = divergencias;
 
   const melhorDe = (l: LinhaComparativo): TurnoSep | null => {
     if (!l.sentido) return null;

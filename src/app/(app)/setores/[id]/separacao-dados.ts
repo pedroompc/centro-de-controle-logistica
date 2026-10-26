@@ -1,6 +1,5 @@
 import { listarEquipamentos } from "@/data/equipamentos";
 import { lerSeparacaoHarpia, lerIndividuaisHarpia, lerProducaoIndividualMes, lerMesesSeparacaoHarpia, type DadosHarpiaSeparacao, type ProdutoErro } from "@/data/harpia-separacao";
-import { lerConfrontoWinthor, type DiaConfrontoWinthor } from "@/data/winthor-separacao";
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
 import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import { isAdmin } from "@/data/auth";
@@ -11,8 +10,8 @@ import {
   mesmoSetor, papelSeparacao, serieCustoSetor, resolverTurnos, skusPorTurnoDia, porSeparador, porConferente, linhasPorHoraDoGrupo, sinalOperador,
   type PontoCustoSetor, type SkusTurnoDia, type LinhaTurno, type ErroTurno, type DiaSep, type EquipeTurno, type ResumoSeparador, type ResumoConferente, type SinalOperador,
 } from "@/domain/separacao";
-import { turnosDivergentes, confrontoDiario, diasUteisSemProducao, linhasPorTipo, type ConfrontoDia, type LinhasPorTipo } from "@/domain/separacao-auditoria";
-import { HORAS_NA_SEPARACAO, TURNOS_SEPARACAO, TURNOS_VALIDADOS_RH, turnoSepDoCadastro, type TurnoSep } from "@/domain/turnos-separacao";
+import { turnosDivergentes } from "@/domain/separacao-auditoria";
+import { HORAS_NA_SEPARACAO, TURNOS_SEPARACAO, turnoSepDoCadastro, type TurnoSep } from "@/domain/turnos-separacao";
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
 import { montarNomesHarpia } from "./turno-dados";
@@ -43,18 +42,10 @@ export interface ProducaoBI {
   equipe: Record<TurnoSep, EquipeTurno>;
 }
 
-export interface AuditoriaSep {
-  porTipo: LinhasPorTipo[];
-  separadoresRegistrados: number;
-  semFuncionario: { separadores: number; linhas: number };
-  divergenciasTurno: { quantidade: number; linhas: number; detalhes: { nome: string; cadastro: TurnoSep; horario: TurnoSep; horaMediana: number; linhas: number }[] | null }; // detalhes só p/ admin
-  errosSeparador: { itens: number; atribuidos: number };
-  confronto: ConfrontoDia[];
-  filial11: { pedidos: number; kg: number };
-  canceladosAposSeparar: number;
-  diasSemProducao: string[];
-  turnosValidados: boolean;
-  winthorErro: string | null;
+/** Separadores com horário no Harpia ≠ turno do cadastro (alerta da aba Turnos). */
+export interface DivergenciasTurno {
+  quantidade: number;
+  linhas: number;
 }
 
 export interface SeparadorBI extends ResumoSeparador {
@@ -93,7 +84,7 @@ export interface DadosBISeparacao {
   faturamentoLiquido: number | null;
   historico: PontoHistorico[];
   producao: ProducaoBI | { erro: string };
-  auditoria: AuditoriaSep | null;
+  divergenciasTurno: DivergenciasTurno | null;
   individual: DadosIndividuais | null;
 }
 
@@ -109,7 +100,7 @@ async function tentar<T>(rotulo: string, f: () => Promise<T>): Promise<T | { err
 }
 const ok = <T extends object>(x: T | { erro: string }): x is T => !("erro" in x);
 
-/** Equipe, custo, produção (Harpia), confronto (Winthor) e — só admin — o individual. */
+/** Equipe, custo, produção (Harpia, peso do Winthor) e — só admin — o individual. */
 export async function carregarBISeparacao(setor: { id: string; nome: string }, funcionarios: Funcionario[], mes: string): Promise<DadosBISeparacao> {
   const atual = primeiroDiaDoMes();
   const hoje = new Date();
@@ -120,11 +111,10 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
 
   const admin = await isAdmin();
   const mesAnt = mesAnterior(mes) >= INICIO_SEPARADOR ? mesAnterior(mes) : null;
-  const [equipamentos, fotos, harpia, winthor, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior] = await Promise.all([
+  const [equipamentos, fotos, harpia, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     tentar("harpia-separacao", () => lerSeparacaoHarpia(mes)),
-    tentar("winthor-separacao", () => lerConfrontoWinthor(mes)),
     lerMesesSeparacaoHarpia(INICIO_HISTORICO, mes).catch(() => null),
     listarUsuariosHarpia().catch(() => null),
     getResumoFaturamentoDashboard(mes).catch(() => null),
@@ -191,36 +181,13 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   ) as Record<TurnoSep, EquipeTurno>;
 
   let producao: DadosBISeparacao["producao"] = { erro: ok(harpia) ? "" : harpia.erro };
-  let auditoria: AuditoriaSep | null = null;
+  let divergenciasTurno: DivergenciasTurno | null = null;
   if (ok(harpia)) {
     const r = resolverTurnos(harpia.linhas, harpia.erros, harpia.mapas, turnoDoUsuario);
     producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, enderecos: harpia.enderecos, skusTurno: skusPorTurnoDia(harpia.produtosTurno, turnoDoUsuario), equipe };
 
-    const kgPorDia = new Map<string, number>();
-    for (const l of harpia.linhas) kgPorDia.set(l.dia, (kgPorDia.get(l.dia) ?? 0) + l.kg);
-    const w: DiaConfrontoWinthor[] = ok(winthor) ? winthor : [];
     const div = turnosDivergentes(harpia.linhas, turnoDoUsuario);
-    const semFunc = usuarios.filter((u) => !turnoDoUsuario.has(u.usuario));
-    const semFuncSet = new Set(semFunc.map((u) => u.usuario));
-    const errosS = harpia.erros.filter((e) => e.origem === "separador");
-    const nomeDe = (u: number) => funcDoUsuario(u)?.nome ?? usuarios.find((x) => x.usuario === u)?.nome ?? `Usuário ${u}`;
-    auditoria = {
-      porTipo: linhasPorTipo(harpia.linhas, harpia.mapas),
-      separadoresRegistrados: usuarios.length,
-      semFuncionario: { separadores: semFunc.length, linhas: harpia.linhas.filter((l) => l.usuario !== null && semFuncSet.has(l.usuario)).reduce((t, l) => t + l.linhas, 0) },
-      divergenciasTurno: {
-        quantidade: div.length,
-        linhas: div.reduce((t, d) => t + d.linhas, 0),
-        detalhes: admin ? div.map((d) => ({ nome: nomeDe(d.usuario), cadastro: d.cadastro, horario: d.horario, horaMediana: d.horaMediana, linhas: d.linhas })) : null,
-      },
-      errosSeparador: { itens: errosS.reduce((t, e) => t + e.itens, 0), atribuidos: errosS.filter((e) => e.usuario !== null).reduce((t, e) => t + e.itens, 0) },
-      confronto: confrontoDiario(harpia.dias, kgPorDia, w),
-      filial11: w.filter((x) => x.filial === "11").reduce((a, x) => ({ pedidos: a.pedidos + x.pedidos, kg: a.kg + x.kg }), { pedidos: 0, kg: 0 }),
-      canceladosAposSeparar: w.reduce((t, x) => t + x.cancelados, 0),
-      diasSemProducao: diasUteisSemProducao(mes, harpia.dias, hojeISO),
-      turnosValidados: TURNOS_VALIDADOS_RH,
-      winthorErro: ok(winthor) ? null : winthor.erro,
-    };
+    divergenciasTurno = { quantidade: div.length, linhas: div.reduce((t, d) => t + d.linhas, 0) };
   }
 
   // Individual (admin): por separador no mês e no anterior; conferentes.
@@ -294,7 +261,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     faturamentoLiquido: fatMes?.vendaLiquida ?? null,
     historico,
     producao,
-    auditoria,
+    divergenciasTurno,
     individual,
   };
 }

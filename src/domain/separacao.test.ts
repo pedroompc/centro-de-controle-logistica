@@ -31,13 +31,24 @@ describe("separação", () => {
 });
 
 import {
-  totaisProducao, custoDoPeriodo, custosUnitarios, custoSobreFaturamento, resumoErros, porMilLinhas,
+  aplicarPesoWinthor, totaisProducao, custoDoPeriodo, custosUnitarios, custoSobreFaturamento, resumoErros, porMilLinhas,
   atribuirTurno, resolverTurnos, skusPorTurnoDia, resumoPorTurno, rankingTurnos, horasUniao, porSeparador, sinalOperador, type LinhaSep, type ErroSep, type EquipeTurno,
 } from "./separacao";
 import { HORAS_NA_SEPARACAO, turnoSepDoCadastro, type TurnoSep } from "./turnos-separacao";
 
 const L = (o: Partial<LinhaSep>): LinhaSep => ({ mapa: 1, dia: "2026-10-01", usuario: null, hora: 15, linhas: 0, caixas: 0, unidades: 0, kg: 0, ...o });
 const E = (o: Partial<ErroSep>): ErroSep => ({ mapa: 1, dia: "2026-10-01", usuario: null, hora: 15, origem: "separador", ocorrencias: 1, itens: 1, unidades: 1, falta: 1, sobra: 0, ...o });
+
+describe("peso do Winthor", () => {
+  it("reparte o peso da carga pelas linhas do mapa e fecha o total do Winthor", () => {
+    const r = aplicarPesoWinthor(
+      [L({ mapa: 1, usuario: 7, kg: 300, linhas: 3 }), L({ mapa: 1, kg: 100, linhas: 1 }), L({ mapa: 2, kg: 0, linhas: 2 }), L({ mapa: 3, kg: 50 })],
+      new Map([[1, 360], [2, 40]]),
+    );
+    expect(r.map((l) => l.kg)).toEqual([270, 90, 40, 50]); // mapa 3 sem carga no Winthor: fica o estimado
+    expect(r[0].kg + r[1].kg).toBe(360);
+  });
+});
 
 describe("totais e custo", () => {
   const linhas = [L({ linhas: 10, caixas: 20, kg: 1000, usuario: 7 }), L({ dia: "2026-10-02", linhas: 30, kg: 3000 })];

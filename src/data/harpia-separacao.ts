@@ -1,7 +1,8 @@
 import { queryWinthor } from "@/lib/oracle/client";
+import { filialIn } from "./filiais";
 import { inicioFimDoMes } from "@/domain/periodo";
 import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlJanelaOperacional, sqlTurnoDaHora, type TurnoSep } from "@/domain/turnos-separacao";
-import type { DiaSep, ErroSep, LinhaSep, MapaSep, PaginaSep, ProdutoTurnoSep } from "@/domain/separacao";
+import { aplicarPesoWinthor, type DiaSep, type ErroSep, type LinhaSep, type MapaSep, type PaginaSep, type ProdutoTurnoSep } from "@/domain/separacao";
 
 /**
  * Separação no Harpia (WMS, esquema HARPIAW2 no mesmo Oracle do Winthor).
@@ -16,7 +17,10 @@ import type { DiaSep, ErroSep, LinhaSep, MapaSep, PaginaSep, ProdutoTurnoSep } f
  *   — só parte das páginas tem nome (a noite não registra); o resto fica sem separador
  * - pedidos/clientes: PLAN_SEP_MAPA_GUIAS_1198; carga: PLAN_SEP_MAPA_1195
  * - erro: PLAN_SEP_MAPA_MERC_ERRO_1199 (ORIGEM_ERRO S = separador, C = conferente)
- * - peso: unidades × PCPRODUT.PESOBRUTO (o Harpia não pesa)
+ * - peso: o do WINTHOR — Σ PCPEDC.TOTPESO dos pedidos da carga do mapa (carga ↔
+ *   mapa é 1 para 1 em toda a PLAN_SEP_MAPA_1195), repartido entre as linhas do
+ *   mapa pelo peso estimado de cada uma (unidades × PCPRODUT.PESOBRUTO). Carga
+ *   que não existe no PCPEDC (venda balcão, tipo 3) fica com a estimativa.
  */
 
 const AVERIG = "HARPIAW2.PLAN_SEP_MAPA_AVERIG_1197";
@@ -37,6 +41,17 @@ mapa AS (
      AND a.DTHR_AVERIG_1197 < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${C}/24
    GROUP BY a.SEQ_PLANILHA_PF_1197
   HAVING ${sqlJanelaOperacional("MIN(a.DTHR_AVERIG_1197)")}
+)`;
+
+// Peso do Winthor de cada mapa: pedidos não cancelados da carga (filiais 1 e 11).
+const CTE_PESO_WT = `
+peso_wt AS (
+  SELECT mp.MAPA, SUM(NVL(p.TOTPESO, 0)) AS KG
+    FROM mapa mp
+    JOIN ${MAPA} m ON m.SEQ_PLANILHA_PK_1195 = mp.MAPA
+    JOIN PCPEDC p ON p.NUMCAR = m.CARGA_1195
+   WHERE m.CARGA_1195 > 0 AND p.POSICAO <> 'C' AND ${filialIn("p.CODFILIAL")}
+   GROUP BY mp.MAPA
 )`;
 
 const DIA = `TO_CHAR(${sqlDiaOperacional("mp.CONF_INI")}, 'YYYY-MM-DD')`;
@@ -67,6 +82,10 @@ SELECT mp.MAPA, ${DIA} AS DIA, MAX(m.TIPO_SEPARACAO_1195) AS TIPO,
   JOIN ${MAPA} m ON m.SEQ_PLANILHA_PK_1195 = mp.MAPA
   LEFT JOIN ${GUIAS} g ON g.SEQ_PLANILHA_PF_1198 = mp.MAPA
  GROUP BY mp.MAPA, ${sqlDiaOperacional("mp.CONF_INI")}`;
+
+export const SQL_PESO_MAPA = `
+WITH ${CTE_MAPA}, ${CTE_PESO_WT}
+SELECT MAPA, KG FROM peso_wt`;
 
 // Distintos por dia e no mês (linha com DIA nulo = total do mês).
 // Carga de venda balcão (mapa tipo 3) é carga de sistema, não carregamento: fica fora.
@@ -196,7 +215,7 @@ const SQL_NOMES = (n: number) =>
 
 // Mês a mês (dia operacional), do início do histórico ao mês na tela.
 const SQL_MESES = `
-WITH ${CTE_MAPA},
+WITH ${CTE_MAPA}, ${CTE_PESO_WT},
 lin AS (
   SELECT mp.MAPA, TRUNC(${sqlDiaOperacional("mp.CONF_INI")}, 'MM') AS MES, ${sqlDiaOperacional("mp.CONF_INI")} AS DIA,
          COUNT(*) AS LINHAS, SUM(${UNIDADES} * NVL(pr.PESOBRUTO, 0)) AS KG
@@ -207,13 +226,25 @@ lin AS (
   SELECT g.SEQ_PLANILHA_PF_1198 AS MAPA, COUNT(DISTINCT g.NUM_PEDCONF_FK_1198) AS PEDIDOS
     FROM ${GUIAS} g WHERE g.SEQ_PLANILHA_PF_1198 IN (SELECT MAPA FROM mapa) GROUP BY g.SEQ_PLANILHA_PF_1198
 )
-SELECT TO_CHAR(lin.MES, 'YYYY-MM-DD') AS MES, SUM(lin.LINHAS) AS LINHAS, SUM(lin.KG) AS KG,
+SELECT TO_CHAR(lin.MES, 'YYYY-MM-DD') AS MES, SUM(lin.LINHAS) AS LINHAS, SUM(NVL(pw.KG, lin.KG)) AS KG,
        SUM(NVL(ped.PEDIDOS, 0)) AS PEDIDOS, COUNT(DISTINCT lin.DIA) AS DIAS
   FROM lin LEFT JOIN ped ON ped.MAPA = lin.MAPA
+  LEFT JOIN peso_wt pw ON pw.MAPA = lin.MAPA
  GROUP BY lin.MES`;
 
 const num = (v: unknown) => Number(v) || 0;
 const usu = (v: unknown) => (v == null ? null : num(v));
+const linhaSep = (r: Record<string, unknown>): LinhaSep => ({
+  mapa: num(r.MAPA),
+  dia: String(r.DIA),
+  usuario: usu(r.USU),
+  hora: num(r.HORA),
+  linhas: num(r.LINHAS),
+  caixas: num(r.CX),
+  unidades: num(r.UN),
+  kg: num(r.KG),
+});
+const pesoDoMapa = (rows: Record<string, unknown>[]) => new Map(rows.map((r) => [num(r.MAPA), num(r.KG)]));
 
 export interface ConferenteDia {
   dia: string;
@@ -279,7 +310,7 @@ const bindsDoMes = (mes: string) => {
 /** Produção, pedidos e erros do mês no Harpia. Lança erro (sem acesso, rede) — quem chama mostra. */
 export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSeparacao> {
   const binds = bindsDoMes(mes);
-  const [lin, maps, dias, skus, erros, prods, ends, prodTurno] = await Promise.all([
+  const [lin, maps, dias, skus, erros, prods, ends, prodTurno, pesoWt] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_LINHAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_MAPAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
@@ -288,6 +319,7 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<Record<string, unknown>>(SQL_ENDERECOS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS_TURNO, binds),
+    queryWinthor<Record<string, unknown>>(SQL_PESO_MAPA, binds),
   ]);
   const ids = [...new Set(lin.map((r) => usu(r.USU)).filter((u): u is number => u !== null))];
   const [descricoes, nomes] = await Promise.all([descricoesProdutos([...new Set([...prods, ...ends].map((r) => num(r.PRODUTO)).filter((c) => c > 0))]), nomesUsuarios(ids)]);
@@ -304,16 +336,7 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
     };
   };
   return {
-    linhas: lin.map((r) => ({
-      mapa: num(r.MAPA),
-      dia: String(r.DIA),
-      usuario: usu(r.USU),
-      hora: num(r.HORA),
-      linhas: num(r.LINHAS),
-      caixas: num(r.CX),
-      unidades: num(r.UN),
-      kg: num(r.KG),
-    })),
+    linhas: aplicarPesoWinthor(lin.map(linhaSep), pesoDoMapa(pesoWt)),
     mapas: maps.map((r) => ({ mapa: num(r.MAPA), dia: String(r.DIA), tipo: num(r.TIPO), pedidos: num(r.PEDIDOS), clientes: num(r.CLIENTES) })),
     dias: dias
       .filter((r) => r.DIA != null)
@@ -380,13 +403,14 @@ export async function lerIndividuaisHarpia(mes: string): Promise<DadosIndividuai
 /** Mês anterior para a evolução individual (admin): só linhas, erros e páginas. */
 export async function lerProducaoIndividualMes(mes: string): Promise<{ linhas: LinhaSep[]; erros: ErroSep[]; paginas: PaginaSep[] }> {
   const binds = bindsDoMes(mes);
-  const [lin, erros, pags] = await Promise.all([
+  const [lin, erros, pags, pesoWt] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_LINHAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_ERROS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PAGINAS, binds),
+    queryWinthor<Record<string, unknown>>(SQL_PESO_MAPA, binds),
   ]);
   return {
-    linhas: lin.map((r) => ({ mapa: num(r.MAPA), dia: String(r.DIA), usuario: usu(r.USU), hora: num(r.HORA), linhas: num(r.LINHAS), caixas: num(r.CX), unidades: num(r.UN), kg: num(r.KG) })),
+    linhas: aplicarPesoWinthor(lin.map(linhaSep), pesoDoMapa(pesoWt)),
     erros: erros.map((r) => ({
       mapa: num(r.MAPA), dia: String(r.DIA), usuario: usu(r.USU), hora: num(r.HORA),
       origem: String(r.ORIGEM) as ErroSep["origem"],

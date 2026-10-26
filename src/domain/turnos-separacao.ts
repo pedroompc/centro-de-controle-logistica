@@ -8,8 +8,7 @@ import type { Turno } from "./types";
  *
  * As janelas abaixo saíram do banco (horas de separação/conferência no Harpia,
  * ago–out/2026) e são REFERÊNCIA, não a regra oficial do RH. Quando o RH
- * confirmar, ajuste aqui e troque `TURNOS_VALIDADOS_RH` para true — o BI deixa
- * de mostrar o aviso "horários de referência".
+ * confirmar, ajuste aqui.
  *
  * Na separação são DOIS turnos (decisão do Pedro, 26/10/2026): a separação de
  * dia só começa às 13h — antes disso a equipe da manhã faz abastecimento e
@@ -27,8 +26,6 @@ import type { Turno } from "./types";
  * O custo NÃO segue essa regra: a folha inteira do cadastro fica na separação.
  */
 export const CORTE_DIA_OPERACIONAL = 7;
-
-export const TURNOS_VALIDADOS_RH = false;
 
 /** Turno da separação no BI (o cadastro tem manhã/tarde/noite). */
 export type TurnoSep = "dia" | "noite";
