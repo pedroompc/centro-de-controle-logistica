@@ -104,8 +104,8 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
       <Quadro
         {...q("turnos")}
         rotulo={dia ? `Dia × Noite · ${ddmm(dia)}` : "Dia × Noite"}
-        valor={tot ? `${n0(tot.kg)} kg` : "—"}
-        sub={semProd ?? ind.turnos.map((t) => `${t.rotulo} ${t.porDia ? n0(t.porDia.kg) : "—"} kg${dia ? "" : `/${t.turno === "noite" ? "noite" : "dia"}`}`).join(" · ")}
+        valor={tot ? `${n0(ind.turnos.reduce((x, t) => x + Math.round(t.kg), 0))} kg` : "—"}
+        sub={semProd ?? ind.turnos.map((t) => `${t.rotulo} ${n0(t.kg)} kg`).join(" + ")}
       />
       {dados.admin && dados.individual && (
         <Quadro {...q("operadores")} rotulo="Operadores" valor={`${dados.individual.separadores.length} separadores`} sub={`${pct(cobertura, 0)} dos endereços com registro`} />

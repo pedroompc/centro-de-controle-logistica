@@ -119,6 +119,8 @@ export function VisaoTurnos({
   const abrir = (s: Sub) => setSub((a) => (a === s ? null : s));
   const turnoDe = (id: TurnoSep) => turnos.find((t) => t.turno === id)!;
   const porNoite = (t: ResumoTurno) => (t.turno === "noite" ? "noite" : "dia");
+  // Mesma soma do quadro "Dia × Noite": total = Σ kg arredondado de cada turno.
+  const kgTotal = turnos.reduce((x, t) => x + Math.round(t.kg), 0);
 
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_auto_auto_minmax(24rem,1fr)]`}>
@@ -137,16 +139,22 @@ export function VisaoTurnos({
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/55">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_TURNO[t.turno] }} />
-                  {t.rotulo} · {dia ? ddmm(dia) : `por ${porNoite(t)}`}
+                  {t.rotulo} · {dia ? ddmm(dia) : "no mês"}
                 </span>
                 <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>
               </div>
               <div className="mt-2 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1.6rem,12cqi,2.6rem)] font-extrabold leading-none tabular-nums text-white">
-                {t.porDia ? n0(t.porDia.kg) : "—"} <span className="text-[0.5em] font-bold text-white/50">kg</span>
+                {n0(t.kg)} <span className="text-[0.5em] font-bold text-white/50">kg</span>
+                {kgTotal > 0 && <span className="ml-2 text-[0.42em] font-bold text-white/45">{formatPercent(Math.round(t.kg) / kgTotal, 0)} do peso</span>}
               </div>
-              <div className="mt-2 truncate text-xs text-white/45">
+              {t.porDia && !dia && (
+                <div className="mt-2 text-sm font-semibold tabular-nums text-white/75">
+                  média {n0(t.porDia.kg)} kg por {porNoite(t)} · {t.dias} {porNoite(t)}s
+                </div>
+              )}
+              <div className="mt-1 truncate text-xs text-white/45">
                 {t.porDia
-                  ? `${t.porDia.skus === null ? "" : `${n0(t.porDia.skus)} SKUs · `}${n0(t.porDia.linhas)} endereços · ${n0(t.porDia.pedidos)} pedidos${dia ? "" : ` · ${t.dias} ${porNoite(t)}s`}`
+                  ? `${dia ? "" : "por " + porNoite(t) + ": "}${t.porDia.skus === null ? "" : `${n0(t.porDia.skus)} SKUs · `}${n0(t.porDia.linhas)} endereços · ${n0(t.porDia.pedidos)} pedidos`
                   : "sem produção"}
               </div>
             </button>
