@@ -12,8 +12,7 @@
  * - SKU = produto distinto.
  */
 import { normalizarTexto, ehCargoEmpilhador } from "./recebimento";
-import { configTurno, turnoDaHora, TURNOS_SEPARACAO, type ConfigTurno } from "./turnos-separacao";
-import type { Turno } from "./types";
+import { configTurno, turnoDaHora, TURNOS_SEPARACAO, type ConfigTurno, type TurnoSep } from "./turnos-separacao";
 
 export type PapelSeparacao = "separador" | "conferente" | "maquina" | "lider" | "outros";
 
@@ -111,18 +110,18 @@ export interface ErroSep {
 export interface ProdutoTurnoSep {
   dia: string;
   usuario: number | null;
-  turnoHora: Turno; // turno pela hora (início da página ou 1ª conferência)
+  turnoHora: TurnoSep; // turno pela hora (início da página ou 1ª conferência)
   produto: number;
 }
 
 /** SKUs distintos por dia × turno (mesma regra de turno das linhas: cadastro do separador vence a hora). */
 export interface SkusTurnoDia {
   dia: string;
-  turno: Turno;
+  turno: TurnoSep;
   skus: number;
 }
 
-export function skusPorTurnoDia(produtos: ProdutoTurnoSep[], turnoDoUsuario: Map<number, Turno>): SkusTurnoDia[] {
+export function skusPorTurnoDia(produtos: ProdutoTurnoSep[], turnoDoUsuario: Map<number, TurnoSep>): SkusTurnoDia[] {
   const m = new Map<string, Set<number>>();
   for (const p of produtos) {
     const turno = (p.usuario !== null ? turnoDoUsuario.get(p.usuario) : undefined) ?? p.turnoHora;
@@ -132,7 +131,7 @@ export function skusPorTurnoDia(produtos: ProdutoTurnoSep[], turnoDoUsuario: Map
   }
   return [...m.entries()].map(([k, set]) => {
     const [dia, turno] = k.split("|");
-    return { dia, turno: turno as Turno, skus: set.size };
+    return { dia, turno: turno as TurnoSep, skus: set.size };
   });
 }
 
@@ -249,7 +248,7 @@ const CONSOLIDADO = new Set([0, 8]);
  * vale o turno do CADASTRO dele (hora extra conta pro turno da pessoa); sem
  * separador (ou sem ligação), vale a janela de horário da config.
  */
-export function atribuirTurno(usuario: number | null, hora: number, turnoDoUsuario: Map<number, Turno>): { turno: Turno; regra: RegraTurno } {
+export function atribuirTurno(usuario: number | null, hora: number, turnoDoUsuario: Map<number, TurnoSep>): { turno: TurnoSep; regra: RegraTurno } {
   const t = usuario !== null ? turnoDoUsuario.get(usuario) : undefined;
   return t ? { turno: t, regra: "operador" } : { turno: turnoDaHora(hora), regra: "horario" };
 }
@@ -261,7 +260,7 @@ export function atribuirTurno(usuario: number | null, hora: number, turnoDoUsuar
  */
 export interface LinhaTurno {
   dia: string;
-  turno: Turno;
+  turno: TurnoSep;
   regra: RegraTurno;
   comSeparador: boolean;
   consolidado: boolean; // mapa consolidado por carga (tipo 0/8)
@@ -275,7 +274,7 @@ export interface LinhaTurno {
 
 export interface ErroTurno {
   dia: string;
-  turno: Turno;
+  turno: TurnoSep;
   atribuido: boolean; // erro ligado a um separador registrado sem ambiguidade
   origem: OrigemErro;
   ocorrencias: number;
@@ -289,7 +288,7 @@ export interface ErroTurno {
  * Resolve o turno no SERVIDOR e descarta o id do separador e o mapa: quem não
  * é admin recebe só o agregado por (dia, turno), nunca o trabalho de uma pessoa.
  */
-export function resolverTurnos(linhas: LinhaSep[], erros: ErroSep[], mapas: MapaSep[], turnoDoUsuario: Map<number, Turno>): { linhas: LinhaTurno[]; erros: ErroTurno[] } {
+export function resolverTurnos(linhas: LinhaSep[], erros: ErroSep[], mapas: MapaSep[], turnoDoUsuario: Map<number, TurnoSep>): { linhas: LinhaTurno[]; erros: ErroTurno[] } {
   const totalMapa = new Map<number, number>();
   for (const l of linhas) totalMapa.set(l.mapa, (totalMapa.get(l.mapa) ?? 0) + l.linhas);
   const infoMapa = new Map(mapas.map((m) => [m.mapa, m]));
@@ -329,12 +328,13 @@ export function resolverTurnos(linhas: LinhaSep[], erros: ErroSep[], mapas: Mapa
 export interface EquipeTurno {
   pessoas: number;
   separadores: number;
+  horasSeparadorDia: number; // Σ horas em separação por dia dos separadores (HORAS_NA_SEPARACAO pelo cadastro)
   conferentes: number;
   custoMes: number; // folha do cadastro do turno (sem equipamentos)
 }
 
 export interface ResumoTurno {
-  turno: Turno;
+  turno: TurnoSep;
   rotulo: string;
   config: ConfigTurno;
   equipe: EquipeTurno;
@@ -376,7 +376,7 @@ export interface ResumoTurno {
 export function resumoPorTurno(args: {
   linhas: LinhaTurno[];
   erros: ErroTurno[];
-  equipe: Record<Turno, EquipeTurno>;
+  equipe: Record<TurnoSep, EquipeTurno>;
   custoFolhaPeriodo: number | null; // folha do setor × fração (sem equipamentos)
   skus?: SkusTurnoDia[];
   dia?: string | null;
@@ -384,7 +384,7 @@ export function resumoPorTurno(args: {
   const { linhas, erros, equipe, custoFolhaPeriodo, skus, dia = null } = args;
   const sel = linhas.filter((l) => !dia || l.dia === dia);
   const base = () => ({ linhas: 0, caixas: 0, unidades: 0, kg: 0, pedidos: 0, clientes: 0, comSeparador: 0, porOperador: 0, porHorario: 0, consolidadas: 0, dias: new Set<string>(), erros: 0 });
-  const acc = new Map<Turno, ReturnType<typeof base>>(TURNOS_SEPARACAO.map((t) => [t.id, base()]));
+  const acc = new Map<TurnoSep, ReturnType<typeof base>>(TURNOS_SEPARACAO.map((t) => [t.id, base()]));
   for (const l of sel) {
     const a = acc.get(l.turno)!;
     a.linhas += l.linhas;
@@ -409,7 +409,7 @@ export function resumoPorTurno(args: {
     const a = acc.get(cfg.id)!;
     const eq = equipe[cfg.id];
     const dias = a.dias.size;
-    const horas = eq.separadores > 0 && dias > 0 ? eq.separadores * cfg.jornadaHoras * dias : null;
+    const horas = eq.horasSeparadorDia > 0 && dias > 0 ? eq.horasSeparadorDia * dias : null;
     const custo = custoFolhaPeriodo !== null && folhaTotal > 0 ? custoFolhaPeriodo * (eq.custoMes / folhaTotal) : null;
     return {
       turno: cfg.id,
@@ -463,10 +463,10 @@ export type CriterioTurno = "producao" | "linhasPorHora" | "linhasPorSeparadorDi
  * = menor soma das posições em linhas/hora, custo/linha e erros/mil — critério
  * transparente, sem pesos inventados. Empate ou só 1 turno válido → null.
  */
-export function rankingTurnos(r: ResumoTurno[]): Record<CriterioTurno, Turno | null> {
+export function rankingTurnos(r: ResumoTurno[]): Record<CriterioTurno, TurnoSep | null> {
   const validos = r.filter((x) => x.linhas > 0 && x.equipe.separadores > 0);
-  const melhor = (v: (x: ResumoTurno) => number | null, maior: boolean): Turno | null => {
-    const c = validos.map((x) => ({ t: x.turno, v: v(x) })).filter((x): x is { t: Turno; v: number } => x.v !== null);
+  const melhor = (v: (x: ResumoTurno) => number | null, maior: boolean): TurnoSep | null => {
+    const c = validos.map((x) => ({ t: x.turno, v: v(x) })).filter((x): x is { t: TurnoSep; v: number } => x.v !== null);
     if (c.length < 2) return null;
     const alvo = maior ? Math.max(...c.map((x) => x.v)) : Math.min(...c.map((x) => x.v));
     const vencedores = c.filter((x) => x.v === alvo);
@@ -512,7 +512,7 @@ export function horasUniao(intervalos: { ini: number; fim: number }[]): number {
 
 export interface ResumoSeparador {
   usuario: number;
-  turno: Turno | null; // do cadastro; null = sem funcionário ligado
+  turno: TurnoSep | null; // do cadastro; null = sem funcionário ligado
   dias: number;
   horasAtivas: number; // união das páginas registradas (tempo com página aberta)
   linhas: number;
@@ -532,7 +532,7 @@ export interface ResumoSeparador {
 export const AMOSTRA_MINIMA = { dias: 3, horas: 10 };
 
 /** Por separador registrado no Harpia (só quem tem página com nome). */
-export function porSeparador(linhas: LinhaSep[], paginas: PaginaSep[], erros: ErroSep[], turnoDoUsuario: Map<number, Turno>): ResumoSeparador[] {
+export function porSeparador(linhas: LinhaSep[], paginas: PaginaSep[], erros: ErroSep[], turnoDoUsuario: Map<number, TurnoSep>): ResumoSeparador[] {
   const m = new Map<number, { linhas: number; caixas: number; unidades: number; kg: number; erros: number }>();
   for (const l of linhas) {
     if (l.usuario === null) continue;
@@ -605,7 +605,7 @@ export function sinalOperador(atual: ResumoSeparador, anterior: ResumoSeparador 
   return null;
 }
 
-export const rotuloTurno = (t: Turno) => configTurno(t).rotulo;
+export const rotuloTurno = (t: TurnoSep) => configTurno(t).rotulo;
 
 // --- Conferência --------------------------------------------------------------
 

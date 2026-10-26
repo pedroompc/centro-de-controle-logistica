@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
-import type { Turno } from "@/domain/types";
+import type { TurnoSep } from "@/domain/turnos-separacao";
 
 export const n0 = (v: number) => Math.round(v).toLocaleString("pt-BR");
 export const n1 = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
@@ -20,7 +20,7 @@ export const VISAO = "grid grid-cols-[minmax(0,1fr)] gap-3 xl:h-full xl:min-h-0"
 export const DUAS_COLUNAS = "grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0";
 
 // Turno sem verde (verde é só receita) — mesma família das etiquetas da equipe.
-export const COR_TURNO: Record<Turno, string> = { manha: "#fcd34d", tarde: "#fb923c", noite: "#818cf8" };
+export const COR_TURNO: Record<TurnoSep, string> = { dia: "#fb923c", noite: "#818cf8" };
 
 /** Alerta curto de dado (uma linha), só quando há algo a corrigir. */
 export function Aviso({ children }: { children: ReactNode }) {

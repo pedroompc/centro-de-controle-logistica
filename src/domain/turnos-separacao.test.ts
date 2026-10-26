@@ -12,7 +12,9 @@ describe("turnos da separação", () => {
       const n = TURNOS_SEPARACAO.filter((t) => (t.inicio < t.fim ? h >= t.inicio && h < t.fim : h >= t.inicio || h < t.fim)).length;
       expect(n, `hora ${h}`).toBe(1);
     }
-    expect(turnoDaHora(13)).toBe("tarde");
+    expect(turnoDaHora(9)).toBe("dia");
+    expect(turnoDaHora(21)).toBe("dia");
+    expect(turnoDaHora(22)).toBe("noite");
     expect(turnoDaHora(6)).toBe("noite");
   });
 });

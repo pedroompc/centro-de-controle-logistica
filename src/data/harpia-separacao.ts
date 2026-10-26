@@ -1,8 +1,7 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { inicioFimDoMes } from "@/domain/periodo";
-import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlJanelaOperacional, sqlTurnoDaHora } from "@/domain/turnos-separacao";
+import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlJanelaOperacional, sqlTurnoDaHora, type TurnoSep } from "@/domain/turnos-separacao";
 import type { DiaSep, ErroSep, LinhaSep, MapaSep, PaginaSep, ProdutoTurnoSep } from "@/domain/separacao";
-import type { Turno } from "@/domain/types";
 
 /**
  * Separação no Harpia (WMS, esquema HARPIAW2 no mesmo Oracle do Winthor).
@@ -346,7 +345,7 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
       itens: num(r.ITENS),
       unidades: num(r.UN),
     })),
-    produtosTurno: prodTurno.map((r) => ({ dia: String(r.DIA), usuario: usu(r.USU), turnoHora: String(r.TURNO) as Turno, produto: num(r.PRODUTO) })),
+    produtosTurno: prodTurno.map((r) => ({ dia: String(r.DIA), usuario: usu(r.USU), turnoHora: String(r.TURNO) as TurnoSep, produto: num(r.PRODUTO) })),
     enderecos: {
       total: num(ends[0]?.TOTAL),
       umaVisita: num(ends[0]?.UMA),

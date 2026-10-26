@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import type { CriterioTurno, ResumoTurno } from "@/domain/separacao";
-import type { Turno } from "@/domain/types";
+import type { TurnoSep } from "@/domain/turnos-separacao";
 import { Bloco, ChipTV, Mini, ddmm, semCentavos } from "./bi-ui";
 import { Aviso, COR_TURNO, VISAO, n0, n1, t1, sinalPct, varRel } from "./bi-separacao-comum";
 import type { AuditoriaSep } from "./separacao-dados";
@@ -57,7 +57,7 @@ const LINHAS: LinhaComparativo[] = [
   { grupo: "Perfil do trabalho", rotulo: "Unidades por endereço", valor: (t) => t.unidadesPorLinha, fmt: n1, sentido: null, total: razao((t) => t.unidades, (t) => t.linhas) },
   { grupo: "Perfil do trabalho", rotulo: "Endereços em mapa consolidado", valor: (t) => t.mapasConsolidados, fmt: (v) => formatPercent(v, 0), sentido: null },
   { grupo: "Origem do dado", rotulo: "Endereços com separador registrado", valor: (t) => (t.linhas ? t.linhasComSeparador / t.linhas : null), fmt: (v) => formatPercent(v, 0), sentido: null },
-  { grupo: "Origem do dado", rotulo: "Turno pelo cadastro", valor: (t) => (t.linhas ? t.linhasPorOperador / t.linhas : null), fmt: (v) => formatPercent(v, 0), sentido: null },
+  { grupo: "Origem do dado", rotulo: "TurnoSep pelo cadastro", valor: (t) => (t.linhas ? t.linhasPorOperador / t.linhas : null), fmt: (v) => formatPercent(v, 0), sentido: null },
 ];
 
 const CRITERIOS: { id: CriterioTurno; rotulo: string; explica: string }[] = [
@@ -70,14 +70,14 @@ const CRITERIOS: { id: CriterioTurno; rotulo: string; explica: string }[] = [
   { id: "equilibrio", rotulo: "Melhor equilíbrio", explica: "menor soma das posições em endereços/hora, custo/endereço e erros/1.000" },
 ];
 
-export function VisaoTurnos({ turnos, ranking, dia, auditoria }: { turnos: ResumoTurno[]; ranking: Record<CriterioTurno, Turno | null>; dia: string | null; auditoria: AuditoriaSep | null }) {
-  const [foco, setFoco] = useState<Turno | null>(null);
+export function VisaoTurnos({ turnos, ranking, dia, auditoria }: { turnos: ResumoTurno[]; ranking: Record<CriterioTurno, TurnoSep | null>; dia: string | null; auditoria: AuditoriaSep | null }) {
+  const [foco, setFoco] = useState<TurnoSep | null>(null);
   const semEquipe = turnos.filter((t) => t.linhas > 0 && t.equipe.separadores === 0);
   const div = auditoria?.divergenciasTurno;
 
-  const melhorDe = (l: LinhaComparativo): Turno | null => {
+  const melhorDe = (l: LinhaComparativo): TurnoSep | null => {
     if (!l.sentido) return null;
-    const c = turnos.filter((t) => t.linhas > 0 && t.equipe.separadores > 0).map((t) => ({ t: t.turno, v: l.valor(t) })).filter((x): x is { t: Turno; v: number } => x.v !== null);
+    const c = turnos.filter((t) => t.linhas > 0 && t.equipe.separadores > 0).map((t) => ({ t: t.turno, v: l.valor(t) })).filter((x): x is { t: TurnoSep; v: number } => x.v !== null);
     if (c.length < 2) return null;
     const alvo = l.sentido === "maior" ? Math.max(...c.map((x) => x.v)) : Math.min(...c.map((x) => x.v));
     const w = c.filter((x) => x.v === alvo);

@@ -4,7 +4,7 @@ import { formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { porMilLinhas, resumoErros, rotuloTurno, type ResumoTurno, type TotaisProducao } from "@/domain/separacao";
 import { diferenca } from "@/domain/separacao-auditoria";
-import { TURNOS_SEPARACAO } from "@/domain/turnos-separacao";
+import { HORAS_NA_SEPARACAO, TURNOS_SEPARACAO } from "@/domain/turnos-separacao";
 import { Bloco, CalendarioBI, Dica, Mini, ddmm } from "./bi-ui";
 import { COR_TURNO, DUAS_COLUNAS, GRADE_CARDS, Tabela, VISAO, n0, n1, ou, pct, sinalPct, t1 } from "./bi-separacao-comum";
 import type { AuditoriaSep, ProducaoBI } from "./separacao-dados";
@@ -159,8 +159,13 @@ export function VisaoAuditoria({ a, tot, totalMes }: { a: AuditoriaSep; tot: Tot
         </Bloco>
         <Bloco titulo="Regras de turno" direita={a.turnosValidados ? undefined : <Dica>referência · não validado pelo RH</Dica>}>
           <Tabela
-            cab={["Turno", "Observado no banco", "Janela de atribuição", "Jornada"]}
-            linhas={TURNOS_SEPARACAO.map((t) => [t.rotulo, t.horarioObservado, `${t.inicio}h–${t.fim}h`, `${t.jornadaHoras}h`])}
+            cab={["Turno", "Observado no banco", "Janela de atribuição", "Horas na separação"]}
+            linhas={TURNOS_SEPARACAO.map((t) => [
+              t.rotulo,
+              t.horarioObservado,
+              `${t.inicio}h–${t.fim}h`,
+              t.id === "dia" ? `manhã ${HORAS_NA_SEPARACAO.manha}h · tarde ${HORAS_NA_SEPARACAO.tarde}h` : `${HORAS_NA_SEPARACAO.noite}h`,
+            ])}
           />
         </Bloco>
       </div>

@@ -12,8 +12,8 @@ import {
   type PontoCustoSetor, type SkusTurnoDia, type LinhaTurno, type ErroTurno, type DiaSep, type EquipeTurno, type ResumoSeparador, type ResumoConferente, type SinalOperador,
 } from "@/domain/separacao";
 import { turnosDivergentes, confrontoDiario, diasUteisSemProducao, linhasPorTipo, type ConfrontoDia, type LinhasPorTipo } from "@/domain/separacao-auditoria";
-import { TURNOS_SEPARACAO, TURNOS_VALIDADOS_RH } from "@/domain/turnos-separacao";
-import type { Equipamento, Funcionario, Turno } from "@/domain/types";
+import { HORAS_NA_SEPARACAO, TURNOS_SEPARACAO, TURNOS_VALIDADOS_RH, turnoSepDoCadastro, type TurnoSep } from "@/domain/turnos-separacao";
+import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
 import { montarNomesHarpia } from "./turno-dados";
 
@@ -40,14 +40,14 @@ export interface ProducaoBI {
   produtosComErro: ProdutoErro[];
   enderecos: DadosHarpiaSeparacao["enderecos"];
   skusTurno: SkusTurnoDia[];
-  equipe: Record<Turno, EquipeTurno>;
+  equipe: Record<TurnoSep, EquipeTurno>;
 }
 
 export interface AuditoriaSep {
   porTipo: LinhasPorTipo[];
   separadoresRegistrados: number;
   semFuncionario: { separadores: number; linhas: number };
-  divergenciasTurno: { quantidade: number; linhas: number; detalhes: { nome: string; cadastro: Turno; horario: Turno; horaMediana: number; linhas: number }[] | null }; // detalhes só p/ admin
+  divergenciasTurno: { quantidade: number; linhas: number; detalhes: { nome: string; cadastro: TurnoSep; horario: TurnoSep; horaMediana: number; linhas: number }[] | null }; // detalhes só p/ admin
   errosSeparador: { itens: number; atribuidos: number };
   confronto: ConfrontoDia[];
   filial11: { pedidos: number; kg: number };
@@ -67,15 +67,15 @@ export interface SeparadorBI extends ResumoSeparador {
 
 export interface ConferenteBI extends ResumoConferente {
   nome: string;
-  turno: Turno | null;
+  turno: TurnoSep | null;
 }
 
 /** SÓ existe para admin — montado no servidor; quem não é admin recebe null. */
 export interface DadosIndividuais {
   separadores: SeparadorBI[];
   mediaGeral: number | null;
-  mediaTurno: Record<Turno, number | null>;
-  kgPorLinhaTurno: Record<Turno, number | null>;
+  mediaTurno: Record<TurnoSep, number | null>;
+  kgPorLinhaTurno: Record<TurnoSep, number | null>;
   mesAnterior: string | null;
   conferentes: ConferenteBI[];
 }
@@ -167,18 +167,28 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     const l = nomes.ligacoes[u];
     return l ? (funcPorId.get(l.funcionarioId) ?? null) : null;
   };
-  const turnoDoUsuario = new Map<number, Turno>();
+  const turnoDoUsuario = new Map<number, TurnoSep>();
   for (const u of usuarios) {
     const f = funcDoUsuario(u.usuario);
-    if (f) turnoDoUsuario.set(u.usuario, f.turno);
+    if (f) turnoDoUsuario.set(u.usuario, turnoSepDoCadastro(f.turno));
   }
 
   const equipe = Object.fromEntries(
     TURNOS_SEPARACAO.map((t) => {
-      const g = pessoas.filter((y) => y.turno === t.id);
-      return [t.id, { pessoas: g.length, separadores: g.filter((y) => y.papel === "separador").length, conferentes: g.filter((y) => y.papel === "conferente").length, custoMes: g.reduce((s, y) => s + y.custo, 0) }];
+      const g = pessoas.filter((y) => turnoSepDoCadastro(y.turno) === t.id);
+      const sep = g.filter((y) => y.papel === "separador");
+      return [
+        t.id,
+        {
+          pessoas: g.length,
+          separadores: sep.length,
+          horasSeparadorDia: sep.reduce((s, y) => s + HORAS_NA_SEPARACAO[y.turno], 0),
+          conferentes: g.filter((y) => y.papel === "conferente").length,
+          custoMes: g.reduce((s, y) => s + y.custo, 0),
+        },
+      ];
     }),
-  ) as Record<Turno, EquipeTurno>;
+  ) as Record<TurnoSep, EquipeTurno>;
 
   let producao: DadosBISeparacao["producao"] = { erro: ok(harpia) ? "" : harpia.erro };
   let auditoria: AuditoriaSep | null = null;
@@ -218,8 +228,8 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   if (admin && ok(harpia) && indiv) {
     const atuais = porSeparador(harpia.linhas, indiv.paginas, harpia.erros, turnoDoUsuario);
     const antes = anterior ? new Map(porSeparador(anterior.linhas, anterior.paginas, anterior.erros, turnoDoUsuario).map((s) => [s.usuario, s])) : new Map<number, ResumoSeparador>();
-    const mediaTurno = {} as Record<Turno, number | null>;
-    const kgPorLinhaTurno = {} as Record<Turno, number | null>;
+    const mediaTurno = {} as Record<TurnoSep, number | null>;
+    const kgPorLinhaTurno = {} as Record<TurnoSep, number | null>;
     for (const t of TURNOS_SEPARACAO) {
       const g = atuais.filter((s) => s.turno === t.id);
       mediaTurno[t.id] = linhasPorHoraDoGrupo(g);
@@ -246,7 +256,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       mesAnterior: mesAnt,
       conferentes: porConferente(conferentesH).map((c) => {
         const f = funcDoUsuario(c.usuario);
-        return { ...c, nome: f?.nome ?? conferentesH.find((x) => x.usuario === c.usuario)?.nome ?? `Usuário ${c.usuario}`, turno: f?.turno ?? null };
+        return { ...c, nome: f?.nome ?? conferentesH.find((x) => x.usuario === c.usuario)?.nome ?? `Usuário ${c.usuario}`, turno: f ? turnoSepDoCadastro(f.turno) : null };
       }),
     };
   }

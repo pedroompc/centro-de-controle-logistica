@@ -67,20 +67,22 @@ compartilhado é rateado.
 
 ### Turnos
 
+Dois turnos de separação, **Dia** e **Noite** (decisão de 26/10/2026): a separação de dia só começa às 13h, antes disso a equipe da manhã faz abastecimento e inventário. Manhã e tarde do cadastro formam o Dia. O cadastro do RH não muda, só o BI agrupa (`turnoSepDoCadastro`).
+
 Turno de cada linha (`atribuirTurno`):
 
-1. Página com separador registrado **e** ligado a um funcionário (ligação manual em `harpia_usuarios` vence; senão, casamento automático pelo nome) → turno do **cadastro** do funcionário. Hora extra conta para o turno da pessoa.
-2. Senão → janela de horário da config (manhã 07–13, tarde 13–22, noite 22–07), usando a hora de início da página ou, sem página nomeada, a hora da 1ª conferência do mapa.
+1. Página com separador registrado **e** ligado a um funcionário (ligação manual em `harpia_usuarios` vence; senão, casamento automático pelo nome) → turno do **cadastro** do funcionário (manhã/tarde → Dia). Hora extra conta para o turno da pessoa.
+2. Senão → janela de horário da config (Dia 07–22, Noite 22–07; o pouco conferido antes das 13h fica no Dia), usando a hora de início da página ou, sem página nomeada, a hora da 1ª conferência do mapa.
 
 | Indicador | Fórmula |
 |---|---|
 | Pessoas / separadores / conferentes | Cadastro ativo do setor com aquele turno (cadastro de hoje, porque não há histórico por pessoa) |
-| Horas disponíveis | separadores do turno × jornada (8 h, config) × dias com linha do turno. **Estimativa**: sem ponto, falta, férias ou hora extra |
+| Horas disponíveis | Σ horas em separação dos separadores do turno × dias com linha do turno. Horas por pessoa pelo turno do cadastro (`HORAS_NA_SEPARACAO`): manhã 4 h (13h ao fim do turno 07h–17h), tarde 8 h, noite 8 h. **Estimativa**: sem ponto, falta, férias ou hora extra |
 | Média por dia trabalhado (t, endereços, SKUs, pedidos, caixas) | total do turno ÷ dias operacionais em que o turno teve endereço. Não depende do nome do separador: endereço sem registro entra no turno pela hora da 1ª conferência do mapa, então a noite é medida inteira. SKUs = produtos distintos no dia × turno (`SQL_PRODUTOS_TURNO`, mesma regra de turno), média dos dias. Paletes: não exibido. O Winthor não grava (`PCPEDC.QTPALETE` vazio) e o Harpia só numera palete nos mapas tipo 8 |
 | Linhas, kg, pedidos por hora | produção do turno ÷ horas disponíveis |
 | Linhas por separador por dia | linhas ÷ separadores ÷ dias |
 | Pedidos e clientes do turno | Rateio: pedidos do mapa × (linhas do turno no mapa ÷ linhas do mapa). A soma dos turnos fecha o total (testado: 21.278 = 21.278) |
-| Custo do turno | custo da folha do período × (folha do turno ÷ folha do setor). Equipamentos não têm turno e ficam fora |
+| Custo do turno | custo da folha do período × (folha do turno ÷ folha do setor). A folha INTEIRA da manhã entra no Dia, inclusive as horas de abastecimento/inventário (rateio fica para decidir com o RH). Equipamentos não têm turno e ficam fora |
 | Erros a cada 1.000 linhas | itens com erro de origem S do turno ÷ linhas do turno × 1000 |
 | Perfil | kg/linha, unidades/linha e % de linhas em mapa consolidado. Diferença acima de 25% gera aviso |
 | Ranking | Melhor de cada critério entre turnos com produção **e** separador. Empate = sem vencedor. Equilíbrio = menor soma das posições em linhas/hora, custo/linha e erros/1.000 (sem pesos) |

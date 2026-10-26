@@ -3,24 +3,23 @@
  * Cada item diz o FATO (número do banco) — hipótese de causa só quando o
  * próprio dado mostra (ex.: venda balcão sem carga no Winthor).
  */
-import { turnoDaHora } from "./turnos-separacao";
+import { turnoDaHora, type TurnoSep } from "./turnos-separacao";
 import type { DiaSep, LinhaSep, MapaSep } from "./separacao";
-import type { Turno } from "./types";
 
 export interface DivergenciaTurno {
   usuario: number;
-  cadastro: Turno;
-  horario: Turno; // turno da janela que contém a hora mediana de início das páginas
+  cadastro: TurnoSep;
+  horario: TurnoSep; // turno da janela que contém a hora mediana de início das páginas
   horaMediana: number;
   linhas: number;
 }
 
 /**
  * Separadores cujo horário registrado no Harpia não cai no turno do cadastro
- * (ex.: separa 13h–21h e está cadastrado como manhã). Sinal de cadastro de
+ * (ex.: separa de madrugada e está cadastrado no dia). Sinal de cadastro de
  * turno desatualizado — distorce o comparativo entre turnos.
  */
-export function turnosDivergentes(linhas: LinhaSep[], turnoDoUsuario: Map<number, Turno>): DivergenciaTurno[] {
+export function turnosDivergentes(linhas: LinhaSep[], turnoDoUsuario: Map<number, TurnoSep>): DivergenciaTurno[] {
   const horas = new Map<number, { hora: number; peso: number }[]>();
   for (const l of linhas) {
     if (l.usuario === null) continue;

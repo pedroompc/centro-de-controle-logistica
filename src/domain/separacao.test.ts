@@ -34,7 +34,7 @@ import {
   totaisProducao, custoDoPeriodo, custosUnitarios, custoSobreFaturamento, resumoErros, porMilLinhas,
   atribuirTurno, resolverTurnos, skusPorTurnoDia, resumoPorTurno, rankingTurnos, horasUniao, porSeparador, sinalOperador, type LinhaSep, type ErroSep, type EquipeTurno,
 } from "./separacao";
-import type { Turno } from "./types";
+import { HORAS_NA_SEPARACAO, turnoSepDoCadastro, type TurnoSep } from "./turnos-separacao";
 
 const L = (o: Partial<LinhaSep>): LinhaSep => ({ mapa: 1, dia: "2026-10-01", usuario: null, hora: 15, linhas: 0, caixas: 0, unidades: 0, kg: 0, ...o });
 const E = (o: Partial<ErroSep>): ErroSep => ({ mapa: 1, dia: "2026-10-01", usuario: null, hora: 15, origem: "separador", ocorrencias: 1, itens: 1, unidades: 1, falta: 1, sobra: 0, ...o });
@@ -71,15 +71,22 @@ describe("qualidade", () => {
 });
 
 describe("turnos", () => {
-  const cadastro = new Map<number, Turno>([[7, "tarde"]]);
+  const cadastro = new Map<number, TurnoSep>([[7, "noite"]]);
   it("operador ligado vale o cadastro; sem operador vale a janela de horário", () => {
-    expect(atribuirTurno(7, 9, cadastro)).toEqual({ turno: "tarde", regra: "operador" });
-    expect(atribuirTurno(99, 9, cadastro)).toEqual({ turno: "manha", regra: "horario" });
+    expect(atribuirTurno(7, 15, cadastro)).toEqual({ turno: "noite", regra: "operador" });
+    expect(atribuirTurno(99, 9, cadastro)).toEqual({ turno: "dia", regra: "horario" });
+    expect(atribuirTurno(null, 15, cadastro).turno).toBe("dia");
     expect(atribuirTurno(null, 23, cadastro)).toEqual({ turno: "noite", regra: "horario" });
     expect(atribuirTurno(null, 3, cadastro).turno).toBe("noite");
   });
-  const eq = (separadores: number, custoMes: number): EquipeTurno => ({ pessoas: separadores, separadores, conferentes: 0, custoMes });
-  const equipe: Record<Turno, EquipeTurno> = { manha: eq(2, 10_000), tarde: eq(4, 20_000), noite: eq(0, 0) };
+  it("manhã e tarde do cadastro formam o Dia; manhã só conta as horas a partir das 13h", () => {
+    expect(turnoSepDoCadastro("manha")).toBe("dia");
+    expect(turnoSepDoCadastro("tarde")).toBe("dia");
+    expect(turnoSepDoCadastro("noite")).toBe("noite");
+    expect(HORAS_NA_SEPARACAO).toEqual({ manha: 4, tarde: 8, noite: 8 });
+  });
+  const eq = (separadores: number, horasSeparadorDia: number, custoMes: number): EquipeTurno => ({ pessoas: separadores, separadores, horasSeparadorDia, conferentes: 0, custoMes });
+  const equipe: Record<TurnoSep, EquipeTurno> = { dia: eq(2, 12, 10_000), noite: eq(4, 32, 20_000) };
   const resolvido = resolverTurnos(
     [L({ mapa: 1, usuario: 7, linhas: 30, kg: 300 }), L({ mapa: 1, hora: 9, linhas: 10, kg: 100 }), L({ mapa: 2, dia: "2026-10-02", hora: 9, linhas: 20, kg: 200 })],
     [E({ usuario: 7, itens: 3 }), E({ hora: 9, origem: "conferente", itens: 5 })],
@@ -88,7 +95,7 @@ describe("turnos", () => {
   );
   it("o que vai para a tela não carrega o id do separador", () => {
     expect(resolvido.linhas.every((l) => !("usuario" in l) && !("mapa" in l))).toBe(true);
-    expect(resolvido.erros.find((e) => e.origem === "separador")).toMatchObject({ turno: "tarde", atribuido: true });
+    expect(resolvido.erros.find((e) => e.origem === "separador")).toMatchObject({ turno: "noite", atribuido: true });
   });
   const r = resumoPorTurno({
     linhas: resolvido.linhas,
@@ -96,44 +103,48 @@ describe("turnos", () => {
     equipe,
     custoFolhaPeriodo: 15_000,
   });
-  const [manha, tarde, noite] = r;
+  const [dia, noite] = r;
   it("rateia pedidos pelo peso das linhas no mapa e soma o total", () => {
-    expect(tarde.pedidos).toBe(6); // 30 de 40 linhas do mapa 1 × 8 pedidos
-    expect(manha.pedidos).toBe(4); // 10/40 × 8 + mapa 2 inteiro
-    expect(manha.pedidos + tarde.pedidos + noite.pedidos).toBe(10);
+    expect(noite.pedidos).toBe(6); // 30 de 40 linhas do mapa 1 × 8 pedidos
+    expect(dia.pedidos).toBe(4); // 10/40 × 8 + mapa 2 inteiro
+    expect(dia.pedidos + noite.pedidos).toBe(10);
   });
-  it("horas disponíveis = separadores × jornada × dias; custo rateado pela folha", () => {
-    expect(manha.horasDisponiveis).toBe(2 * 8 * 2);
-    expect(manha.linhasPorHora).toBe(30 / 32);
-    expect(tarde.custo).toBe(10_000);
-    expect(manha.custo).toBe(5_000);
-    expect(noite.horasDisponiveis).toBeNull();
-    expect(manha.linhasPorOperador).toBe(0);
-    expect(tarde.linhasPorOperador).toBe(30);
+  it("horas disponíveis = horas de separação da equipe × dias; custo rateado pela folha", () => {
+    expect(dia.horasDisponiveis).toBe(12 * 2); // ex.: 1 da manhã (4h) + 1 da tarde (8h), 2 dias
+    expect(dia.linhasPorHora).toBe(30 / 24);
+    expect(noite.horasDisponiveis).toBe(32);
+    expect(noite.custo).toBe(10_000);
+    expect(dia.custo).toBe(5_000);
+    expect(dia.linhasPorOperador).toBe(0);
+    expect(noite.linhasPorOperador).toBe(30);
+  });
+  it("sem separador no turno, sem horas", () => {
+    const r0 = resumoPorTurno({ linhas: resolvido.linhas, erros: [], equipe: { dia: eq(0, 0, 0), noite: eq(4, 32, 0) }, custoFolhaPeriodo: null });
+    expect(r0[0].horasDisponiveis).toBeNull();
   });
   it("erro de conferente não entra na qualidade da separação", () => {
-    expect(tarde.errosSeparador).toBe(3);
-    expect(manha.errosSeparador).toBe(0);
+    expect(noite.errosSeparador).toBe(3);
+    expect(dia.errosSeparador).toBe(0);
   });
   it("ranking: produção absoluta e produtividade podem apontar turnos diferentes", () => {
-    expect(rankingTurnos(r).producao).toBeNull(); // manhã 30 × tarde 30: empate não elege ninguém
-    // Tarde produz mais no total, mas com o dobro de gente rende menos por hora.
+    expect(rankingTurnos(r).producao).toBeNull(); // dia 30 × noite 30: empate não elege ninguém
+    // Noite produz mais no total, mas com o quádruplo de horas rende menos por hora.
     const r2 = resumoPorTurno({
       linhas: resolverTurnos([L({ usuario: 7, linhas: 60, kg: 600 }), L({ hora: 9, linhas: 40, kg: 400 })], [], [{ mapa: 1, dia: "2026-10-01", tipo: 4, pedidos: 10, clientes: 10 }], cadastro).linhas,
       erros: [],
-      equipe: { manha: eq(1, 5_000), tarde: eq(4, 20_000), noite: eq(0, 0) },
+      equipe: { dia: eq(1, 8, 5_000), noite: eq(4, 32, 20_000) },
       custoFolhaPeriodo: 25_000,
     });
     const rk = rankingTurnos(r2);
-    expect(rk.producao).toBe("tarde");
-    expect(rk.linhasPorHora).toBe("manha");
-    expect(rk.custoPorPedido).toBe("manha");
+    expect(rk.producao).toBe("noite");
+    expect(rk.linhasPorHora).toBe("dia");
+    expect(rk.custoPorPedido).toBe("dia");
   });
 });
 
 describe("média por dia trabalhado do turno", () => {
-  const cadastro = new Map<number, Turno>([[7, "tarde"]]);
-  const sem: EquipeTurno = { pessoas: 0, separadores: 0, conferentes: 0, custoMes: 0 };
+  const cadastro = new Map<number, TurnoSep>([[7, "dia"]]);
+  const sem: EquipeTurno = { pessoas: 0, separadores: 0, horasSeparadorDia: 0, conferentes: 0, custoMes: 0 };
   it("SKU conta 1 vez por dia e turno; separador do cadastro vence a hora", () => {
     const s = skusPorTurnoDia(
       [
@@ -141,26 +152,26 @@ describe("média por dia trabalhado do turno", () => {
         { dia: "2026-10-01", usuario: null, turnoHora: "noite", produto: 1 }, // mesmo produto em outro mapa
         { dia: "2026-10-01", usuario: null, turnoHora: "noite", produto: 2 },
         { dia: "2026-10-02", usuario: null, turnoHora: "noite", produto: 1 },
-        { dia: "2026-10-01", usuario: 7, turnoHora: "noite", produto: 3 }, // hora extra: conta na tarde
+        { dia: "2026-10-01", usuario: 7, turnoHora: "noite", produto: 3 }, // hora extra: conta no dia
       ],
       cadastro,
     );
-    const de = (dia: string, turno: Turno) => s.find((x) => x.dia === dia && x.turno === turno)?.skus;
+    const de = (dia: string, turno: TurnoSep) => s.find((x) => x.dia === dia && x.turno === turno)?.skus;
     expect(de("2026-10-01", "noite")).toBe(2);
     expect(de("2026-10-02", "noite")).toBe(1);
-    expect(de("2026-10-01", "tarde")).toBe(1);
+    expect(de("2026-10-01", "dia")).toBe(1);
   });
   it("divide pelos dias em que o turno separou, sem depender de nome", () => {
     const r = resumoPorTurno({
       linhas: resolverTurnos([L({ hora: 23, linhas: 100, kg: 30_000, caixas: 50 }), L({ dia: "2026-10-02", hora: 2, linhas: 60, kg: 10_000 })], [], [], cadastro).linhas,
       erros: [],
-      equipe: { manha: sem, tarde: sem, noite: sem },
+      equipe: { dia: sem, noite: sem },
       custoFolhaPeriodo: null,
       skus: [{ dia: "2026-10-01", turno: "noite", skus: 900 }, { dia: "2026-10-02", turno: "noite", skus: 700 }],
     });
     const noite = r.find((t) => t.turno === "noite")!;
     expect(noite.porDia).toEqual({ kg: 20_000, linhas: 80, pedidos: 0, caixas: 25, skus: 800 });
-    expect(r.find((t) => t.turno === "manha")!.porDia).toBeNull();
+    expect(r.find((t) => t.turno === "dia")!.porDia).toBeNull();
   });
 });
 
@@ -173,9 +184,9 @@ describe("operadores", () => {
   it("por separador e sinal contra o mês anterior", () => {
     const h = 3_600_000;
     const pags = [1, 2, 3].map((d) => ({ usuario: 7, dia: `2026-10-0${d}`, ini: d * 24 * h, fim: d * 24 * h + 4 * h }));
-    const s = porSeparador([L({ usuario: 7, linhas: 120, kg: 600 }), L({ linhas: 50 })], pags, [E({ usuario: 7, itens: 2 })], new Map([[7, "tarde"]]));
+    const s = porSeparador([L({ usuario: 7, linhas: 120, kg: 600 }), L({ linhas: 50 })], pags, [E({ usuario: 7, itens: 2 })], new Map<number, TurnoSep>([[7, "dia"]]));
     expect(s).toHaveLength(1);
-    expect(s[0]).toMatchObject({ usuario: 7, turno: "tarde", dias: 3, horasAtivas: 12, linhasPorHora: 10, erros: 2, amostraSuficiente: true });
+    expect(s[0]).toMatchObject({ usuario: 7, turno: "dia", dias: 3, horasAtivas: 12, linhasPorHora: 10, erros: 2, amostraSuficiente: true });
     const ant = { ...s[0], linhasPorHora: 8 };
     expect(sinalOperador(s[0], ant, 10, 5)).toBe("evolucao");
     expect(sinalOperador(s[0], null, 20, 5)).toBe("atencao");

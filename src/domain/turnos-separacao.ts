@@ -11,34 +11,50 @@ import type { Turno } from "./types";
  * confirmar, ajuste aqui e troque `TURNOS_VALIDADOS_RH` para true — o BI deixa
  * de mostrar o aviso "horários de referência".
  *
+ * Na separação são DOIS turnos (decisão do Pedro, 26/10/2026): a separação de
+ * dia só começa às 13h — antes disso a equipe da manhã faz abastecimento e
+ * inventário. Manhã e tarde do cadastro formam o "Dia"; a noite segue igual.
+ * O cadastro do RH não muda: só o BI agrupa.
+ *
  * `inicio`/`fim` = janela usada para atribuir ao turno o trabalho SEM operador
  * registrado (hora cheia, fim exclusivo; noite atravessa a meia-noite). Elas
- * precisam cobrir as 24h sem sobrepor. `jornadaHoras` = horas de trabalho por
- * pessoa por dia, base das "horas disponíveis" (não há ponto no banco).
+ * precisam cobrir as 24h sem sobrepor. O pouco conferido antes das 13h (~3%)
+ * fica no Dia.
+ *
+ * `HORAS_NA_SEPARACAO` = horas por pessoa por dia EM SEPARAÇÃO, pelo turno do
+ * cadastro — base das "horas disponíveis" (não há ponto no banco). Manhã conta
+ * só das 13h ao fim do turno (07h–17h → 4h); o resto é abastecimento/inventário.
+ * O custo NÃO segue essa regra: a folha inteira do cadastro fica na separação.
  */
 export const CORTE_DIA_OPERACIONAL = 7;
 
 export const TURNOS_VALIDADOS_RH = false;
 
+/** Turno da separação no BI (o cadastro tem manhã/tarde/noite). */
+export type TurnoSep = "dia" | "noite";
+
 export interface ConfigTurno {
-  id: Turno;
+  id: TurnoSep;
   rotulo: string;
   inicio: number;
   fim: number;
-  jornadaHoras: number;
   horarioObservado: string; // como o banco mostra o turno trabalhando (só informativo)
 }
 
 export const TURNOS_SEPARACAO: ConfigTurno[] = [
-  { id: "manha", rotulo: "Manhã", inicio: 7, fim: 13, jornadaHoras: 8, horarioObservado: "07h–17h" },
-  { id: "tarde", rotulo: "Tarde", inicio: 13, fim: 22, jornadaHoras: 8, horarioObservado: "13h–21h" },
-  { id: "noite", rotulo: "Noite", inicio: 22, fim: 7, jornadaHoras: 8, horarioObservado: "22h–06h" },
+  { id: "dia", rotulo: "Dia", inicio: 7, fim: 22, horarioObservado: "13h–21h" },
+  { id: "noite", rotulo: "Noite", inicio: 22, fim: 7, horarioObservado: "22h–06h" },
 ];
+
+export const HORAS_NA_SEPARACAO: Record<Turno, number> = { manha: 4, tarde: 8, noite: 8 };
+
+/** Turno da separação de quem tem esse turno no cadastro. */
+export const turnoSepDoCadastro = (t: Turno): TurnoSep => (t === "noite" ? "noite" : "dia");
 
 const dentro = (h: number, t: ConfigTurno) => (t.inicio < t.fim ? h >= t.inicio && h < t.fim : h >= t.inicio || h < t.fim);
 
 /** Turno da janela de horário que contém a hora (0–23). */
-export function turnoDaHora(hora: number, turnos: ConfigTurno[] = TURNOS_SEPARACAO): Turno {
+export function turnoDaHora(hora: number, turnos: ConfigTurno[] = TURNOS_SEPARACAO): TurnoSep {
   const t = turnos.find((x) => dentro(hora, x));
   if (!t) throw new Error(`Hora ${hora} fora de todas as janelas de turno — revise TURNOS_SEPARACAO.`);
   return t.id;
@@ -61,4 +77,4 @@ export const sqlJanelaOperacional = (col: string) =>
 export const sqlTurnoDaHora = (colHora: string) =>
   `CASE ${TURNOS_SEPARACAO.map((t) => `WHEN ${t.inicio < t.fim ? `${colHora} >= ${t.inicio} AND ${colHora} < ${t.fim}` : `(${colHora} >= ${t.inicio} OR ${colHora} < ${t.fim})`} THEN '${t.id}'`).join(" ")} END`;
 
-export const configTurno = (id: Turno): ConfigTurno => TURNOS_SEPARACAO.find((t) => t.id === id)!;
+export const configTurno = (id: TurnoSep): ConfigTurno => TURNOS_SEPARACAO.find((t) => t.id === id)!;

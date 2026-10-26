@@ -5,7 +5,7 @@ import { formatBRL } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { rotuloTurno, type SinalOperador } from "@/domain/separacao";
 import { TURNOS_SEPARACAO } from "@/domain/turnos-separacao";
-import type { Turno } from "@/domain/types";
+import type { TurnoSep } from "@/domain/turnos-separacao";
 import { Bloco, ChipTV, Mini } from "./bi-ui";
 import { COR_TURNO, GRADE_CARDS, VISAO, n0, n1, ou, sinalPct, varRel } from "./bi-separacao-comum";
 import type { DadosIndividuais, SeparadorBI } from "./separacao-dados";
@@ -26,7 +26,7 @@ const SINAL: Record<Exclude<SinalOperador, null>, { rotulo: string; cls: string;
 
 export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: string }) {
   const [aba, setAba] = useState<"separadores" | "conferentes">("separadores");
-  const [turno, setTurno] = useState<Turno | null>(null);
+  const [turno, setTurno] = useState<TurnoSep | null>(null);
   const [ordem, setOrdem] = useState<Ordem>("linhasPorHora");
   const o = ORDENS[ordem];
   const lista = ind.separadores
