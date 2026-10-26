@@ -16,7 +16,7 @@ import {
 } from "@/domain/separacao";
 import { BIShell, type HrefMes } from "./bi-shell";
 import {
-  Quadro, Vazio, Bloco, Mini, useSub, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
+  Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
 import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, n0, n1, t1, brl, pct, sinalPct, varRel } from "./bi-separacao-comum";
 import { VisaoTurnos } from "./bi-separacao-turnos";
@@ -27,7 +27,7 @@ import type { DadosBISeparacao, ProducaoBI, PontoHistorico } from "./separacao-d
 type VisaoSep = "custo" | "producao" | "turnos" | "operadores" | "qualidade" | "auditoria";
 
 const VISOES: { id: VisaoSep; titulo: string; admin?: boolean }[] = [
-  { id: "custo", titulo: "Custo e financeiro" },
+  { id: "custo", titulo: "Custo e equipe" },
   { id: "producao", titulo: "Produção" },
   { id: "turnos", titulo: "Turnos" },
   { id: "operadores", titulo: "Operadores", admin: true },
@@ -78,12 +78,11 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const q = (v: VisaoSep) => ({ ativo: visao === v, onClick: () => abrir(v) });
 
   const ind = indicadores(dados, dia);
-  const { p, tot, unit } = ind;
+  const { p, tot } = ind;
   const ant = anteriorDe(dados);
   const h = ind.h;
   const linhasDiaVar = h?.linhas && h.dias && ant?.linhas && ant.dias ? varRel(h.linhas / h.dias, ant.linhas / ant.dias) : null;
-  const custoLinhaAnt = ant?.custoPeriodo && ant.linhas ? ant.custoPeriodo / ant.linhas : null;
-  const custoLinhaMes = h?.custoPeriodo && h.linhas ? h.custoPeriodo / h.linhas : null;
+  const deltaCusto = h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
   const rk = rankingTurnos(ind.turnos);
   const melhorHora = rk.linhasPorHora ? ind.turnos.find((t) => t.turno === rk.linhasPorHora)! : null;
   const cobertura = tot && tot.linhas > 0 ? tot.linhasComSeparador / tot.linhas : null;
@@ -96,9 +95,9 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
     <div className={`mt-4 ${GRADE_MENU}`}>
       <Quadro
         {...q("custo")}
-        rotulo={dia ? `Custo · ${ddmm(dia)}` : "Custo"}
+        rotulo={dia ? `Custo e equipe · ${ddmm(dia)}` : "Custo e equipe"}
         valor={ind.custo === null ? "—" : semCentavos(ind.custo)}
-        sub={`${ind.sobreFat === null ? "—" : `${formatPercent(ind.sobreFat, 2)} do fat.`} · ${unit.porLinha === null ? "—" : formatBRL(unit.porLinha)}/linha${!dia && custoLinhaMes && custoLinhaAnt ? ` (${sinalPct(varRel(custoLinhaMes, custoLinhaAnt))})` : ""}`}
+        sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${dados.pessoas.filter((y) => y.papel === "lider").length} líder(es)${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs mês anterior` : ""}`}
       />
       <Quadro
         {...q("producao")}
@@ -195,9 +194,13 @@ function SemHarpia({ erro }: { erro: string }) {
   );
 }
 
-// --- CUSTO E FINANCEIRO -------------------------------------------------------
+// --- CUSTO E EQUIPE (mesmo modelo dos BIs do Abastecimento e do Recebimento) ---
 
-type SubCusto = "equipe" | "folha" | "equipamentos";
+type SubCusto = "custo" | "equipe" | "folha" | "equipamentos" | "linha" | "fat";
+const TITULO_SUB: Record<SubCusto, string> = {
+  custo: "Custo do mês", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", linha: "Custo por linha", fat: "Custo ÷ faturamento líquido",
+};
+
 type MedidaCusto = "custo" | "fat" | "linha" | "tonelada";
 const MEDIDA_CUSTO: Record<MedidaCusto, { rotulo: string; valor: (x: PontoHistorico) => number | null; fmt: (v: number) => string }> = {
   custo: { rotulo: "Custo", valor: (x) => x.custo, fmt: semCentavos },
@@ -208,7 +211,6 @@ const MEDIDA_CUSTO: Record<MedidaCusto, { rotulo: string; valor: (x: PontoHistor
 
 function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | null }) {
   const { sub, abrir, fechar } = useSub<SubCusto>();
-  const [medida, setMedida] = useState<MedidaCusto>("fat");
   const { pessoas, equipamentos } = dados;
   const ind = indicadores(dados, dia);
   if (pessoas.length === 0 && equipamentos.length === 0) return <Vazio>Nenhum funcionário ativo neste setor.</Vazio>;
@@ -221,63 +223,66 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
     { rotulo: "Equipamentos", valor: custoEquip, cor: "#f5b301" },
   ].filter((f) => f.valor > 0);
   const card = (k: SubCusto) => ({ onClick: abrir(k), ativo: sub === k });
-  const m = MEDIDA_CUSTO[medida];
-  const hist = dados.historico;
-  const ant = anteriorDe(dados);
-  const deltaCusto = ind.h?.custo != null && ant?.custo ? variacaoPercentual(ind.h.custo, ant.custo) : null;
+  const hist = dados.historico.filter((x) => x.mes <= dados.mes);
+  const serie = (m: MedidaCusto, altura: number) => (
+    <BarrasTV
+      altura={altura}
+      fmt={MEDIDA_CUSTO[m].fmt}
+      itens={hist.map((x) => ({
+        chave: x.mes,
+        rotulo: mesCurto(x.mes) + (x.mes === dados.atual ? "*" : ""),
+        valor: MEDIDA_CUSTO[m].valor(x),
+        cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+        detalhe: `${formatMesAno(x.mes)}${x.custo === null ? " (sem foto do mês)" : x.mes === dados.atual ? " (cadastro atual)" : ""}`,
+      }))}
+    />
+  );
   const t = ind.tot;
 
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_auto_minmax(20rem,1fr)]`}>
       <div className={GRADE_CARDS}>
+        <Mini {...card("custo")} rotulo={dia ? `Custo do dia ${ddmm(dia)}` : "Custo do mês"} valor={brl(ind.custo)} sub={ind.h?.custo == null ? "mês sem foto do efetivo" : dia ? "custo do mês ÷ dias com separação" : dados.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(dados.mes)} />
+        <Mini {...card("equipe")} rotulo="Equipe" valor={`${pessoas.length} pessoas`} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase().slice(0, 4)}.`).join(" · ")} />
+        <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
+        <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${equipamentos.reduce((s, e) => s + e.quantidade, 0)} unidades · por mês`} />
+        <Mini {...card("linha")} rotulo="Custo por linha" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} linhas` : undefined} />
         <Mini
-          rotulo={dia ? `Custo ${ddmm(dia)}` : "Custo"}
-          valor={brl(ind.custo)}
-          sub={ind.h?.custo == null ? "sem foto do efetivo" : dados.fracaoMes < 1 && !dia ? `${formatPercent(dados.fracaoMes, 0)} de ${semCentavos(ind.h.custo)}` : dia ? undefined : deltaCusto !== null ? `${sinalPct(deltaCusto)} vs anterior` : undefined}
+          {...card("fat")}
+          rotulo="Custo ÷ faturamento líquido"
+          valor={ind.sobreFat === null ? "—" : formatPercent(ind.sobreFat, 2)}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.fracaoMes < 1 ? " · custo proporcional ao mês corrido" : ""}`}
         />
-        <Mini rotulo="% do faturamento" valor={ind.sobreFat === null ? "—" : formatPercent(ind.sobreFat, 2)} sub={dados.faturamentoLiquido === null ? "sem faturamento" : `fat. ${semCentavos(dados.faturamentoLiquido)}`} />
-        <Mini rotulo="Custo/linha" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} linhas` : undefined} />
-        <Mini rotulo="Custo/pedido" valor={brl(ind.unit.porPedido)} sub={t ? `${n0(t.pedidos)} pedidos` : undefined} />
-        <Mini rotulo="Custo/tonelada" valor={ind.unit.porTonelada === null ? "—" : semCentavos(ind.unit.porTonelada)} sub={t ? t1(t.kg) : undefined} />
-        <Mini rotulo="Custo/pessoa" valor={pessoas.length ? formatBRL(total / pessoas.length) : "—"} />
       </div>
-      <div className={`${GRADE_CARDS} items-center text-xs`}>
-        <Mini rotulo="Equipe" valor={`${pessoas.length} pessoas`} {...card("equipe")} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase().slice(0, 4)}.`).join(" · ")} />
-        <Mini rotulo="Folha" valor={formatBRL(folha)} {...card("folha")} />
-        <Mini rotulo="Equipamentos" valor={formatBRL(custoEquip)} {...card("equipamentos")} sub={`${equipamentos.reduce((s, e) => s + e.quantidade, 0)} unidades`} />
-        {sub && (
-          <button type="button" onClick={fechar} className="justify-self-start rounded-full bg-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/20">
-            ◂ Voltar
-          </button>
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        {sub ? (
+          <>
+            <button type="button" onClick={fechar} className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/20">
+              ◂ Voltar ao resumo
+            </button>
+            <span className="font-bold uppercase tracking-[0.16em] text-amber-300">Custo e equipe › {TITULO_SUB[sub]}</span>
+          </>
+        ) : (
+          <span className="text-white/35">Clique num card para abrir o detalhe dele</span>
         )}
       </div>
 
       {sub === null && (
-        <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]`}>
-          <Bloco
-            titulo={`${m.rotulo} · mês a mês`}
-            direita={
-              <div className="flex flex-wrap justify-end gap-1.5">
-                {(Object.keys(MEDIDA_CUSTO) as MedidaCusto[]).map((k) => (
-                  <ChipTV key={k} ativo={medida === k} onClick={() => setMedida(k)}>
-                    {MEDIDA_CUSTO[k].rotulo}
-                  </ChipTV>
-                ))}
-              </div>
-            }
-          >
-            <BarrasTV
-              altura={220}
-              fmt={m.fmt}
-              itens={hist.map((x) => ({
-                chave: x.mes,
-                rotulo: mesCurto(x.mes) + (x.parcial ? "*" : ""),
-                valor: m.valor(x),
-                cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
-                detalhe: `${formatMesAno(x.mes)}${x.custo === null ? " (sem foto do efetivo)" : ""}${x.parcial ? " · em andamento (proporcional)" : ""}${medida === "fat" && x.faturamentoLiquido === null ? " · sem faturamento" : ""}`,
-              }))}
-            />
-          </Bloco>
+        <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]`}>
+          <TabelaEquipe pessoas={pessoas} papeis={PAPEIS} total={total} />
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]">
+            <ListaEquipamentos equipamentos={equipamentos} />
+            <Bloco titulo="Do que é feito o custo">
+              <BarraComposicao fatias={fatias} />
+              <div className="mt-4 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">Custo por mês</div>
+              {serie("custo", 110)}
+            </Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "custo" && (
+        <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]`}>
           <Bloco titulo="Do que é feito o custo">
             <BarraComposicao fatias={fatias} />
             <ul className="mt-4 space-y-2">
@@ -294,15 +299,85 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
               ))}
             </ul>
           </Bloco>
+          <Bloco titulo="Custo por mês" direita={<Dica>folha da foto do mês + equipamentos de hoje</Dica>}>
+            {serie("custo", 220)}
+          </Bloco>
         </div>
       )}
-      {sub === "equipe" && <TabelaEquipe pessoas={pessoas} papeis={PAPEIS} total={total} />}
+
+      {sub === "equipe" && (
+        <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]`}>
+          <TabelaEquipe pessoas={pessoas} papeis={PAPEIS} total={total} />
+          <Bloco titulo="Por função">
+            <ul className="space-y-4">
+              {presentes.map((pp) => {
+                const g = pessoas.filter((y) => y.papel === pp.id);
+                const tot = g.reduce((s, y) => s + y.custo, 0);
+                return (
+                  <li key={pp.id}>
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="inline-flex items-center gap-2 font-bold text-white">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: pp.cor }} />
+                        {pp.plural} · {g.length}
+                      </span>
+                      <span className="font-bold tabular-nums text-white">{formatBRL(tot)}</span>
+                    </div>
+                    <div className="mt-1 h-2 rounded-full bg-white/10">
+                      <div className="h-full rounded-full" style={{ width: `${folha > 0 ? (tot / folha) * 100 : 0}%`, background: pp.cor }} />
+                    </div>
+                    <div className="mt-1 flex justify-between text-xs text-white/45">
+                      <span>{formatPercent(folha > 0 ? tot / folha : 0, 0)} da folha</span>
+                      <span>média {formatBRL(tot / g.length)} por pessoa</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-6 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/40">Pessoas por mês</div>
+            <BarrasTV
+              altura={110}
+              fmt={(v) => String(v)}
+              itens={dados.serie.filter((x) => x.mes <= dados.mes).map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
+            />
+          </Bloco>
+        </div>
+      )}
+
       {sub === "folha" && <SubFolha pessoas={pessoas} papeis={PAPEIS} />}
-      {sub === "equipamentos" && <ListaEquipamentos equipamentos={equipamentos} grande />}
+
+      {sub === "equipamentos" && (
+        <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]`}>
+          <ListaEquipamentos equipamentos={equipamentos} grande />
+          <div className="grid grid-cols-2 content-start gap-3">
+            <Mini rotulo="% do custo do setor" valor={total > 0 ? formatPercent(custoEquip / total, 0) : "—"} />
+            <Mini rotulo="Unidades" valor={String(equipamentos.reduce((s, e) => s + e.quantidade, 0))} sub="cadastro em Custos › Equipamentos" />
+          </div>
+        </div>
+      )}
+
+      {sub === "linha" && (
+        <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]`}>
+          <div className="grid grid-cols-2 content-start gap-3">
+            <Mini rotulo="Custo por linha" valor={brl(ind.unit.porLinha)} sub={t ? `${n0(t.linhas)} linhas` : undefined} />
+            <Mini rotulo="Custo por pedido" valor={brl(ind.unit.porPedido)} sub={t ? `${n0(t.pedidos)} pedidos` : undefined} />
+            <Mini rotulo="Custo por tonelada" valor={ind.unit.porTonelada === null ? "—" : semCentavos(ind.unit.porTonelada)} sub={t ? t1(t.kg) : undefined} />
+            <Mini rotulo="Custo por pessoa" valor={pessoas.length ? formatBRL(total / pessoas.length) : "—"} sub="média, com equipamentos" />
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-2">
+            <Bloco titulo="Custo por linha · mês a mês">{serie("linha", 140)}</Bloco>
+            <Bloco titulo="Custo por tonelada · mês a mês">{serie("tonelada", 140)}</Bloco>
+          </div>
+        </div>
+      )}
+
+      {sub === "fat" && (
+        <Bloco titulo="Custo ÷ faturamento líquido · mês a mês" direita={<Dica>faturamento líquido da rotina 111 · mês corrente proporcional</Dica>}>
+          {serie("fat", 240)}
+        </Bloco>
+      )}
     </div>
   );
 }
-
 // --- PRODUÇÃO -----------------------------------------------------------------
 
 const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
