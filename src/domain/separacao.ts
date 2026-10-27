@@ -25,11 +25,13 @@ export function mesmoSetor(a: string, b: string): boolean {
   return normalizarTexto(a) === normalizarTexto(b);
 }
 
+// Liderança vem antes de conferente: encarregado que também confere (ex.: Yuri
+// Souza na noite) é líder, não entra na contagem nem na lista de conferentes.
 export function papelSeparacao(cargo: string): PapelSeparacao {
   const c = normalizarTexto(cargo);
+  if (c.includes("lider") || c.includes("encarreg") || c.includes("supervis") || c.includes("coorden")) return "lider";
   if (c.includes("confer")) return "conferente";
   if (ehCargoEmpilhador(cargo) || c.includes("operador")) return "maquina";
-  if (c.includes("lider") || c.includes("encarreg") || c.includes("supervis") || c.includes("coorden")) return "lider";
   if (c.includes("separ") || c.includes("ajudante") || c.includes("auxiliar")) return "separador";
   return "outros";
 }

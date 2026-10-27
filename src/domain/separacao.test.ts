@@ -13,6 +13,9 @@ describe("separação", () => {
     expect(papelSeparacao("CONFERENTE")).toBe("conferente");
     expect(papelSeparacao("Operador de empilhadeira")).toBe("maquina");
     expect(papelSeparacao("LÍDER DE SEPARAÇÃO")).toBe("lider");
+    expect(papelSeparacao("ENCARREGADO")).toBe("lider");
+    expect(papelSeparacao("ENCARREGADO DE CONFERÊNCIA")).toBe("lider");
+    expect(papelSeparacao("CONFERENTE")).toBe("conferente");
     expect(papelSeparacao("Motorista")).toBe("outros");
   });
   it("série: foto nos meses passados, cadastro no corrente, vazio sem foto", () => {

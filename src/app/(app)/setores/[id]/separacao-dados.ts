@@ -221,7 +221,12 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       mediaTurno,
       kgPorLinhaTurno,
       mesAnterior: mesAnt,
-      conferentes: porConferente(conferentesH).map((c) => {
+      // Login do Harpia ligado a um líder (encarregado/supervisor) não entra na
+      // lista de conferentes, mesmo que ele bipe mapa.
+      conferentes: porConferente(conferentesH.filter((c) => {
+        const f = funcDoUsuario(c.usuario);
+        return !f || papelSeparacao(f.cargo) !== "lider";
+      })).map((c) => {
         const f = funcDoUsuario(c.usuario);
         return { ...c, nome: f?.nome ?? conferentesH.find((x) => x.usuario === c.usuario)?.nome ?? `Usuário ${c.usuario}`, turno: f ? turnoSepDoCadastro(f.turno) : null };
       }),
