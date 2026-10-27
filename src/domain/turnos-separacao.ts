@@ -17,12 +17,15 @@ import type { Turno } from "./types";
  *
  * `inicio`/`fim` = janela usada para atribuir ao turno o trabalho SEM operador
  * registrado (hora cheia, fim exclusivo; noite atravessa a meia-noite). Elas
- * precisam cobrir as 24h sem sobrepor. O pouco conferido antes das 13h (~3%)
- * fica no Dia.
+ * precisam cobrir as 24h sem sobrepor. A noite começa às 20h (Pedro, 27/10).
+ * A hora usada é a do início da página ou, sem página nomeada, a hora em que o
+ * conferente do mapa COMEÇOU a conferir naquele dia — assim o conferente da
+ * tarde que passa das 20h não joga os mapas dele para a noite.
  *
  * `HORAS_NA_SEPARACAO` = horas por pessoa por dia EM SEPARAÇÃO, pelo turno do
  * cadastro — base das "horas disponíveis" (não há ponto no banco). Manhã conta
  * só das 13h ao fim do turno (07h–17h → 4h); o resto é abastecimento/inventário.
+ * Noite: 20h–06h → 10h.
  * O custo NÃO segue essa regra: a folha inteira do cadastro fica na separação.
  */
 export const CORTE_DIA_OPERACIONAL = 7;
@@ -39,11 +42,11 @@ export interface ConfigTurno {
 }
 
 export const TURNOS_SEPARACAO: ConfigTurno[] = [
-  { id: "dia", rotulo: "Dia", inicio: 7, fim: 22, horarioObservado: "13h–21h" },
-  { id: "noite", rotulo: "Noite", inicio: 22, fim: 7, horarioObservado: "22h–06h" },
+  { id: "dia", rotulo: "Dia", inicio: 7, fim: 20, horarioObservado: "13h–20h" },
+  { id: "noite", rotulo: "Noite", inicio: 20, fim: 7, horarioObservado: "20h–06h" },
 ];
 
-export const HORAS_NA_SEPARACAO: Record<Turno, number> = { manha: 4, tarde: 8, noite: 8 };
+export const HORAS_NA_SEPARACAO: Record<Turno, number> = { manha: 4, tarde: 8, noite: 10 };
 
 /** Turno da separação de quem tem esse turno no cadastro. */
 export const turnoSepDoCadastro = (t: Turno): TurnoSep => (t === "noite" ? "noite" : "dia");

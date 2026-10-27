@@ -13,8 +13,8 @@ describe("turnos da separação", () => {
       expect(n, `hora ${h}`).toBe(1);
     }
     expect(turnoDaHora(9)).toBe("dia");
-    expect(turnoDaHora(21)).toBe("dia");
-    expect(turnoDaHora(22)).toBe("noite");
+    expect(turnoDaHora(19)).toBe("dia");
+    expect(turnoDaHora(20)).toBe("noite");
     expect(turnoDaHora(6)).toBe("noite");
   });
 });

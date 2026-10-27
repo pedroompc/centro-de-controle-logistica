@@ -10,7 +10,7 @@
 import oracledb from "oracledb";
 
 const CORTE = 7; // = CORTE_DIA_OPERACIONAL em src/domain/turnos-separacao.ts
-const NOITE = { inicio: 22, fim: 7 }; // janela de atribuição da noite (mesmo arquivo)
+const NOITE = { inicio: 20, fim: 7 }; // janela de atribuição da noite (mesmo arquivo)
 
 const arg = process.argv[2];
 if (!/^\d{4}-\d{2}$/.test(arg ?? "")) {
@@ -143,7 +143,7 @@ linha("Carregamentos (sem venda balcão)", n(r.pedidos[0].CARGAS), "Produção �
 linha("Mapas", n(r.pedidos[0].MAPAS), "—");
 linha("SKUs", n(p.SKUS), "Produção › SKUs");
 linha("Dias operacionais com separação", n(p.DIAS), "Produção › Linhas (sub)");
-linha("Linhas da noite (sem separador, 22h–07h)", n(r.noite[0].LINHAS_NOITE_SEM_SEPARADOR), "Turnos › Noite › Endereços (se nenhum separador da noite)");
+linha("Linhas da noite (sem separador, 20h–07h)", n(r.noite[0].LINHAS_NOITE_SEM_SEPARADOR), "Turnos › Noite › Endereços (se nenhum separador da noite)");
 for (const [k, rot] of [["S", "separador"], ["C", "conferente"]]) {
   linha(`Erros ${rot}: ocorrências / itens`, `${n(e[k]?.OCORRENCIAS)} / ${n(e[k]?.ITENS)}`, `Qualidade › ${rot === "separador" ? "Ocorrências / Itens com erro" : "Erros do conferente"}`);
 }

@@ -94,7 +94,7 @@ describe("turnos", () => {
     expect(turnoSepDoCadastro("manha")).toBe("dia");
     expect(turnoSepDoCadastro("tarde")).toBe("dia");
     expect(turnoSepDoCadastro("noite")).toBe("noite");
-    expect(HORAS_NA_SEPARACAO).toEqual({ manha: 4, tarde: 8, noite: 8 });
+    expect(HORAS_NA_SEPARACAO).toEqual({ manha: 4, tarde: 8, noite: 10 });
   });
   const eq = (separadores: number, horasSeparadorDia: number, custoMes: number): EquipeTurno => ({ pessoas: separadores, separadores, horasSeparadorDia, conferentes: 0, custoMes });
   const equipe: Record<TurnoSep, EquipeTurno> = { dia: eq(2, 12, 10_000), noite: eq(4, 32, 20_000) };

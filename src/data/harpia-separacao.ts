@@ -10,7 +10,9 @@ import { aplicarPesoWinthor, type DiaSep, type ErroSep, type LinhaSep, type Mapa
  *
  * O MAPA entra no dia operacional da sua 1ª conferência (− 07h): de dia o mapa
  * é conferido logo que a separação termina; à noite, separação e conferência
- * acontecem na mesma madrugada. Fontes:
+ * acontecem na mesma madrugada. Sem separador registrado, o turno sai da hora
+ * em que o conferente do mapa começou a conferir naquele dia (ver CTE_MAPA).
+ * Fontes:
  * - linhas: PLAN_SEP_MAPA_MERC_1196 — cada linha é um ENDEREÇO VISITADO (como a
  *   operação chama): mapa × página × endereço (PORTA_PALLET) é único na tabela
  * - separador: PLAN_SEP_MAPA_PAGINA_OS_1236 (quem separou cada página, início/fim)
@@ -33,14 +35,36 @@ const ERRO = "HARPIAW2.PLAN_SEP_MAPA_MERC_ERRO_1199";
 // Mapas do período: 1ª conferência dentro dos dias operacionais [:ini, :fim].
 // Lê 7 dias antes para o MIN não pegar um mapa que começou antes da janela
 // (há mapa com conferência de mais de 24h; o script de validação checa > 7 dias).
+// CONF = conferente que mais bipou o mapa; SESSAO_INI = hora em que ESSE
+// conferente começou a conferir naquele dia operacional. É a referência de
+// turno do mapa sem separador: quem começou de dia e passou das 20h (ex.: o
+// conferente da tarde que fica até 21h) continua no Dia. A sessão só conta a
+// partir das 12h: antes disso é o fim da noite anterior (bips até ~07h30 que já
+// caem no dia operacional seguinte) ou abastecimento — sem esse corte o
+// conferente da noite que bipou às 07h teria a noite inteira jogada no Dia.
+const INICIO_SESSAO = 12;
 const CTE_MAPA = `
-mapa AS (
-  SELECT a.SEQ_PLANILHA_PF_1197 AS MAPA, MIN(a.DTHR_AVERIG_1197) AS CONF_INI
+conf AS (
+  SELECT a.SEQ_PLANILHA_PF_1197 AS MAPA, a.USU_AVERIG_1197 AS USU, a.DTHR_AVERIG_1197 AS DTHR
     FROM ${AVERIG} a
    WHERE a.DTHR_AVERIG_1197 >= TO_DATE(:ini, 'YYYY-MM-DD') + ${C}/24 - 7
      AND a.DTHR_AVERIG_1197 < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${C}/24
-   GROUP BY a.SEQ_PLANILHA_PF_1197
-  HAVING ${sqlJanelaOperacional("MIN(a.DTHR_AVERIG_1197)")}
+), sessao AS (
+  SELECT USU, ${sqlDiaOperacional("DTHR")} AS DIA, MIN(DTHR) AS INI
+    FROM conf
+   WHERE TO_NUMBER(TO_CHAR(DTHR, 'HH24')) >= ${INICIO_SESSAO}
+   GROUP BY USU, ${sqlDiaOperacional("DTHR")}
+), mapa0 AS (
+  SELECT MAPA, MIN(DTHR) AS CONF_INI, STATS_MODE(USU) AS CONF
+    FROM conf
+   GROUP BY MAPA
+  HAVING ${sqlJanelaOperacional("MIN(DTHR)")}
+), mapa AS (
+  SELECT m.MAPA, m.CONF_INI, m.CONF,
+         CASE WHEN TO_NUMBER(TO_CHAR(m.CONF_INI, 'HH24')) >= ${INICIO_SESSAO}
+              THEN LEAST(NVL(s.INI, m.CONF_INI), m.CONF_INI) ELSE m.CONF_INI END AS SESSAO_INI
+    FROM mapa0 m
+    LEFT JOIN sessao s ON s.USU = m.CONF AND s.DIA = ${sqlDiaOperacional("m.CONF_INI")}
 )`;
 
 // Peso do Winthor de cada mapa: pedidos não cancelados da carga (filiais 1 e 11).
@@ -58,7 +82,7 @@ const DIA = `TO_CHAR(${sqlDiaOperacional("mp.CONF_INI")}, 'YYYY-MM-DD')`;
 const UNIDADES = `(NVL(x.QTD_FATURADA_CX_1196, 0) * NVL(pr.QTUNITCX, 1) + NVL(x.QTD_FATURADA_UN_1196, 0))`;
 // Página com separador: chave (mapa, nº da OS da página) é única na 1236.
 const JOIN_PAGINA = `LEFT JOIN ${PAGINA} pg ON pg.SEQ_PLANILHA_PF_1236 = x.SEQ_PLANILHA_PF_1196 AND pg.N_OS_PAGINA_1236 = x.N_OS_PAGINA_1196 AND pg.USU_SEP_FK_1236 IS NOT NULL`;
-const HORA_REF = `TO_NUMBER(TO_CHAR(NVL(pg.DT_HR_INI_SEP_1236, mp.CONF_INI), 'HH24'))`;
+const HORA_REF = `TO_NUMBER(TO_CHAR(NVL(pg.DT_HR_INI_SEP_1236, mp.SESSAO_INI), 'HH24'))`;
 
 export const SQL_LINHAS = `
 WITH ${CTE_MAPA}
@@ -143,7 +167,7 @@ lin AS (
 ), e AS (
   SELECT i.*, mp.CONF_INI,
          CASE WHEN l.N = l.NU AND l.U1 = l.U2 THEN l.U1 END AS USU,
-         CASE WHEN l.N = l.NU AND l.U1 = l.U2 THEN l.PINI ELSE mp.CONF_INI END AS REF
+         CASE WHEN l.N = l.NU AND l.U1 = l.U2 THEN l.PINI ELSE mp.SESSAO_INI END AS REF
     FROM item i
     JOIN mapa mp ON mp.MAPA = i.MAPA
     LEFT JOIN lin l ON l.MAPA = i.MAPA AND l.MERC = i.MERC AND l.PED = i.PED
