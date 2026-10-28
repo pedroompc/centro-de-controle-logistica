@@ -68,7 +68,7 @@ function Painel({ rotulos, serie }: { rotulos: string[]; serie: SeriePainel }) {
           {rotulos[foco]}
         </text>
 
-        <path d={linha} fill="none" stroke={serie.cor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={linha} pathLength={1} className="desenhar" fill="none" stroke={serie.cor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
 
         {/* Guia vertical + ponto no mês sob o cursor */}
         {hover !== null && (

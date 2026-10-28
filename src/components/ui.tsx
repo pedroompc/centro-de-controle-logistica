@@ -1,10 +1,11 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { NumeroAnimado } from "./movimento";
 
 /** Cartão base — fundo branco, cantos arredondados, borda e sombra sutis. */
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm ${className}`}>
+    <div className={`entrar rounded-2xl border border-slate-200/80 bg-white shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -60,13 +61,13 @@ export function StatCard({
   }[accent];
 
   const inner = (
-    <div className="@container relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div className="entrar levantar @container relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
       {/* Fonte fluida: escala com a largura real do card (cqi) e nunca quebra
           linha, então valores longos (R$ 999.999,99) cabem em qualquer coluna. */}
       <p className="mt-2 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.875rem)] font-extrabold leading-tight tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
-        {value}
+        <NumeroAnimado texto={value} />
       </p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
     </div>
@@ -88,7 +89,7 @@ export function StatCard({
 export function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="@container relative h-full overflow-hidden rounded-2xl p-6 shadow-lg sm:p-7"
+      className="entrar @container relative h-full overflow-hidden rounded-2xl p-6 shadow-lg sm:p-7"
       style={{ background: "linear-gradient(140deg,#0a1650 0%,#141a4d 55%,#1b2168 100%)" }}
     >
       <span className="absolute inset-y-0 left-0 w-1.5 bg-amber-400" />
@@ -103,7 +104,7 @@ export function HeroStat({ label, value }: { label: string; value: string }) {
           dashboard) e encolhe pra caber na coluna estreita do grid de 4, sem
           quebrar linha — antes o text-5xl fixo estourava a borda. */}
       <p className="mt-2 font-[family-name:var(--font-sora)] text-[clamp(1.375rem,12cqi,3rem)] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap text-white">
-        {value}
+        <NumeroAnimado texto={value} />
       </p>
     </div>
   );
@@ -121,7 +122,7 @@ export function BarList({
   const barColor = tone === "gold" ? "bg-amber-400" : "bg-[#2a327f]";
   return (
     <div className="space-y-3">
-      {items.map((it) => {
+      {items.map((it, i) => {
         const pct = Math.max(2, Math.round((it.value / max) * 100));
         const row = (
           <div className="flex items-center gap-3">
@@ -129,7 +130,7 @@ export function BarList({
               {it.label}
             </div>
             <div className="h-6 flex-1 overflow-hidden rounded-md bg-slate-100">
-              <div className={`h-full rounded-md ${barColor}`} style={{ width: `${pct}%` }} />
+              <div className={`crescer-x h-full rounded-md ${barColor}`} style={{ width: `${pct}%`, "--i": i } as CSSProperties} />
             </div>
             <div className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums text-[#141a4d]">
               {it.display}
@@ -169,7 +170,7 @@ export function SetorBarList({
         <div className="w-24 shrink-0 text-right sm:w-28">R$ / mês</div>
         <div className="shrink-0 text-right">Pessoas</div>
       </div>
-      {items.map((it) => {
+      {items.map((it, i) => {
         const pct = Math.max(2, Math.round((it.custo / max) * 100));
         const row = (
           <div className="flex items-center gap-3">
@@ -177,7 +178,7 @@ export function SetorBarList({
               {it.label}
             </div>
             <div className="h-6 min-w-0 flex-1 overflow-hidden rounded-md bg-slate-100">
-              <div className="h-full rounded-md bg-amber-400" style={{ width: `${pct}%` }} />
+              <div className="crescer-x h-full rounded-md bg-amber-400" style={{ width: `${pct}%`, "--i": i } as CSSProperties} />
             </div>
             <div className="w-24 shrink-0 text-right text-sm font-semibold tabular-nums text-[#141a4d] sm:w-28">
               {it.custoDisplay}

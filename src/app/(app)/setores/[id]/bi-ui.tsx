@@ -5,7 +5,8 @@
  * blocos, cards, barras e a parte de equipe/folha/equipamentos. Cada setor
  * (Recebimento, Separação…) monta os seus quadros em cima delas.
  */
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
+import { NumeroAnimado } from "@/components/movimento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import { ROTULO_TURNO, TURNOS } from "@/domain/metrics";
@@ -49,7 +50,7 @@ export function Quadro({ ativo, onClick, rotulo, valor, sub, verde }: { ativo: b
       type="button"
       onClick={onClick}
       aria-pressed={ativo}
-      className={`@container rounded-2xl px-5 py-4 text-left ring-1 transition ${
+      className={`entrar levantar @container rounded-2xl px-5 py-4 text-left ring-1 transition ${
         ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.06] ring-white/10 hover:bg-white/[0.1]"
       }`}
     >
@@ -58,7 +59,7 @@ export function Quadro({ ativo, onClick, rotulo, valor, sub, verde }: { ativo: b
         <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>
       </div>
       <div className={`mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1.25rem,10cqi,2rem)] font-extrabold leading-none tabular-nums ${verde ? "text-emerald-300" : "text-white"}`}>
-        {valor}
+        <NumeroAnimado texto={valor} />
       </div>
       <div className="mt-2 truncate text-xs text-white/45">{sub}</div>
     </button>
@@ -71,7 +72,7 @@ export function Vazio({ children }: { children: ReactNode }) {
 
 export function Bloco({ titulo, direita, children, className = "" }: { titulo: string; direita?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className={`flex min-h-0 min-w-0 flex-col rounded-2xl bg-white/[0.05] p-4 ring-1 ring-white/10 ${className}`}>
+    <div className={`entrar flex min-h-0 min-w-0 flex-col rounded-2xl bg-white/[0.05] p-4 ring-1 ring-white/10 ${className}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">{titulo}</span>
         {direita}
@@ -89,17 +90,17 @@ export function Mini({ rotulo, valor, sub, onClick, ativo = false }: { rotulo: s
         <span className="truncate text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-white/45">{rotulo}</span>
         {onClick && <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>}
       </div>
-      <div className="mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1rem,9cqi,1.5rem)] font-extrabold tabular-nums text-white">{valor}</div>
+      <div className="mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1rem,9cqi,1.5rem)] font-extrabold tabular-nums text-white"><NumeroAnimado texto={valor} /></div>
       {sub && <div className="mt-0.5 truncate text-xs text-white/40">{sub}</div>}
     </>
   );
-  if (!onClick) return <div className="@container rounded-xl bg-white/[0.05] px-4 py-3 ring-1 ring-white/10">{corpo}</div>;
+  if (!onClick) return <div className="entrar @container rounded-xl bg-white/[0.05] px-4 py-3 ring-1 ring-white/10">{corpo}</div>;
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={ativo}
-      className={`@container rounded-xl px-4 py-3 text-left ring-1 transition ${ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.05] ring-white/10 hover:bg-white/[0.09]"}`}
+      className={`entrar @container rounded-xl px-4 py-3 text-left ring-1 transition ${ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.05] ring-white/10 hover:bg-white/[0.09]"}`}
     >
       {corpo}
     </button>
@@ -175,12 +176,13 @@ export function BarrasTV({
             >
               {!denso && it.valor !== null && <span className={`mb-1 text-xs font-bold tabular-nums ${it.selecionado ? "text-amber-300" : "text-white/85"}`}>{fmt(it.valor)}</span>}
               <div
-                className={`w-full rounded-t-md transition ${hover === i ? "brightness-125" : ""}`}
+                className={`crescer-y w-full rounded-t-md transition ${hover === i ? "brightness-125" : ""}`}
                 style={{
+                  "--i": i,
                   height: `${Math.max(2, (Math.abs(it.valor ?? 0) / max) * 100)}%`,
                   background: it.selecionado ? "#f5b301" : (it.cor ?? "#5b6fd6"),
                   opacity: algumSel && !it.selecionado ? 0.35 : 1,
-                }}
+                } as CSSProperties}
               />
             </div>
           ))}
@@ -217,7 +219,7 @@ export function BarraComposicao({
   const clicar = onSelecionar ? (r: string) => onSelecionar(selecionado === r ? null : r) : undefined;
   return (
     <div onMouseLeave={() => setHover(null)}>
-      <div className="flex h-4 overflow-hidden rounded-full">
+      <div className="crescer-x flex h-4 overflow-hidden rounded-full">
         {fatias.map((f) => (
           <div
             key={f.rotulo}

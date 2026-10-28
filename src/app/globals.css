@@ -147,6 +147,7 @@ body {
 @keyframes crescer-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes crescer-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .crescer-y {
+  transform-box: fill-box; /* em <rect> SVG a origem é a própria barra */
   transform-origin: bottom;
   animation: crescer-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   animation-delay: calc(var(--i, 0) * 40ms);

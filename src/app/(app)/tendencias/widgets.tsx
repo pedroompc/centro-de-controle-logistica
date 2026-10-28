@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Card } from "@/components/ui";
 
 /**
@@ -50,6 +50,7 @@ export function MiniBars({ valores, cor }: { valores: number[]; cor: string }) {
         const h = Math.max(2, (v / max) * (H - 2));
         return (
           <rect key={i} x={i * (bw + gap)} y={H - h} width={bw} height={h} rx="1.4"
+            className="crescer-y" style={{ "--i": i } as CSSProperties}
             fill={cor} opacity={i === n - 1 ? 1 : 0.28} />
         );
       })}

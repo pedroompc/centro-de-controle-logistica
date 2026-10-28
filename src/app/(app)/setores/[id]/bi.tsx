@@ -238,6 +238,9 @@ export function GraficoLinhas({ rotulos, series, fmt, altura = 240 }: { rotulos:
                   stroke={s.cor}
                   strokeWidth={2.5}
                   strokeDasharray={s.tracejada ? "6 5" : undefined}
+                  // Tracejada já usa o dasharray; só a linha cheia se desenha.
+                  pathLength={s.tracejada ? undefined : 1}
+                  className={s.tracejada ? "entrar" : "desenhar"}
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
