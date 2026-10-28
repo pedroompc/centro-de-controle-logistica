@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 // Número em pt-BR dentro de um texto já formatado: "1.234,56", "312", "12,5".
 const NUMERO = /\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?/;
@@ -36,12 +36,15 @@ export function prefereMenosMovimento(): boolean {
 export function NumeroAnimado({ texto, ms = 900 }: { texto: string; ms?: number }) {
   const [mostrado, setMostrado] = useState(texto);
 
-  useEffect(() => {
+  // Layout effect: o valor inicial da contagem entra antes da pintura — com
+  // useEffect o número final aparecia por um quadro e "caía" para zero.
+  useLayoutEffect(() => {
     if (prefereMenosMovimento() || !NUMERO.test(texto)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMostrado(texto);
       return;
     }
+    setMostrado(interpolarTexto(texto, 0));
     const t0 = performance.now();
     let quadro = 0;
     const passo = (t: number) => {
