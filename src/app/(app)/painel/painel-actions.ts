@@ -13,7 +13,7 @@ import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import type { DescarregamentoTipo, Equipamento, Funcionario, Turno } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
-import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
+import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
@@ -39,6 +39,8 @@ import {
 import { classificarRegiao, ORDEM_REGIAO, type RegiaoPE } from "@/domain/pe-regioes";
 import type { DevolucaoPorSetor, DevolucaoPorMotivo } from "@/domain/devolucoes";
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
+import { lerTemposFaturamento } from "@/data/tempo-faturamento";
+import { resumirTempos, type ResumoTempos } from "@/domain/tempo-faturamento";
 
 /** Período no servidor a partir do mês (ISO) — nunca confia em datas do cliente. */
 function periodo(mes: string) {
@@ -182,6 +184,31 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
     pesoTotal: pedidos.reduce((t, p) => t + p.pesoPedido, 0),
     topCidades,
     porRegiao,
+  };
+}
+
+// --- Tempo até faturar --------------------------------------------------------
+
+export interface ResumoTempoFaturar extends ResumoTempos {
+  /** Média de horas que o pedido bloqueado espera até ser liberado à mão. */
+  liberacaoManualH: number | null;
+  /** Mediana do mês anterior, para o ▲/▼ do card. */
+  medianaAnteriorH: number | null;
+}
+
+/** Pedido liberado → nota emitida, no mês (calendário de rotas incluído), por região. */
+export async function carregarTempoFaturar(mes: string): Promise<ResumoTempoFaturar> {
+  const m = mesNorm(mes);
+  const { inicio, fim } = inicioFimDoMes(m);
+  const ant = inicioFimDoMes(mesAnterior(m));
+  const [atual, anterior] = await Promise.all([
+    lerTemposFaturamento(inicio, fim),
+    lerTemposFaturamento(ant.inicio, ant.fim).catch(() => null),
+  ]);
+  return {
+    ...resumirTempos(atual.linhas),
+    liberacaoManualH: atual.liberacaoManualH,
+    medianaAnteriorH: anterior ? resumirTempos(anterior.linhas).medianaH : null,
   };
 }
 

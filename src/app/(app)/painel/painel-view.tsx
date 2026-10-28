@@ -16,6 +16,7 @@ import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import {
   type ResumoDevolucao,
   type ResumoAFaturar,
+  type ResumoTempoFaturar,
   type ResumoReceitas,
   type ResumoDescarregos,
   type MesReceitaDetalhe,
@@ -31,6 +32,7 @@ import {
   SecaoClientesVendedores,
   SecaoMotivos,
   SecaoAFaturar,
+  SecaoTempoFaturar,
   SecaoReceitas,
   SecaoDescarregos,
 } from "./secoes";
@@ -82,6 +84,7 @@ interface Dados {
   cidades: CidadeDevolucao[];
   bairrosRMR: BairroDevolucao[];
   aFaturar: ResumoAFaturar | null;
+  tempoFaturar: ResumoTempoFaturar | null;
   receitas: ResumoReceitas | null;
   receitasDrivers: MesReceitaDetalhe[];
   descarregos: ResumoDescarregos | null;
@@ -109,7 +112,7 @@ function Marca() {
   );
 }
 
-function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean, pausado: boolean): Slide[] {
+function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean, pausado: boolean, prevLabel: string): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
     s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} taxaGeral={dev.taxaValor} /> });
@@ -123,6 +126,8 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSe
     s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "notas entregues / devolvidas e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
+  if (d.tempoFaturar && d.tempoFaturar.pedidos > 0)
+    s.push({ id: "tempo-faturar", titulo: "Tempo até faturar", contexto: "do pedido liberado à nota emitida · calendário de rotas incluído", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoTempoFaturar dados={d.tempoFaturar} prevLabel={prevLabel} /> });
   if (admin && d.receitas)
     s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} recebimento={recSerie} /> });
   if (d.descarregos)
@@ -257,7 +262,7 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [],
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, tempoFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [],
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
@@ -291,6 +296,7 @@ export default function PainelView({
       vendedoresMotivos: r.vendedores?.motivos ?? d.vendedoresMotivos,
       bairrosRMR: r.bairrosRMR ?? d.bairrosRMR,
       aFaturar: r.aFaturar ?? d.aFaturar,
+      tempoFaturar: r.tempoFaturar ?? d.tempoFaturar,
       receitas: r.receitas ?? d.receitas,
       receitasDrivers: r.receitasDrivers ?? d.receitasDrivers,
       descarregos: r.descarregos ?? d.descarregos,
@@ -321,14 +327,14 @@ export default function PainelView({
   // Trimestre do placar: o mês na tela e os 2 anteriores.
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
-  const slides = construirSlides(dados, dev, mesLabel, recSerie, admin, pausado);
+  // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
+  const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
+  const slides = construirSlides(dados, dev, mesLabel, recSerie, admin, pausado, prevLabel);
   const nSlides = slides.length;
   // Módulo sempre positivo: voltar (←) a partir do 1º slide deixa idx negativo.
   const posicao = nSlides > 0 ? ((idx % nSlides) + nSlides) % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
 
-  // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
-  const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
   const antOk = devAnt?.disponivel ? devAnt : undefined;
   const receitaAnt = dados.receitas?.serie.find((p) => p.mes === mesAnterior(mesRef))?.valor;
   const mesAtual = primeiroDiaDoMes();
