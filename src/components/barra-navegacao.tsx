@@ -39,8 +39,9 @@ export function BarraNavegacao() {
       const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (a && deveIniciarBarra(e, a, window.location.href)) setEstado("andando");
     };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
+    // Captura: roda antes do <Link> do Next, que cancela o evento (preventDefault).
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
   }, []);
 
   // URL mudou: a tela nova chegou — completa a barra e esconde.
