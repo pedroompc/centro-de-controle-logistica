@@ -13,22 +13,14 @@ import type {
 } from "@/domain/devolucoes";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import type { PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
-import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa } from "../devolucoes/actions";
 import {
-  carregarResumoDevolucao,
-  carregarDevBairrosRMR,
-  carregarAFaturar,
-  carregarReceitas,
-  carregarReceitasDrivers,
-  carregarDescarregos,
-  carregarSerieDescarrego,
-  carregarRecebimento,
   type ResumoDevolucao,
   type ResumoAFaturar,
   type ResumoReceitas,
   type ResumoDescarregos,
   type MesReceitaDetalhe,
 } from "./painel-actions";
+import { carregarPainelLote, type LotePainel } from "./painel-lote";
 import Mapa from "./mapa";
 import MapaRMR from "./mapa-rmr";
 import {
@@ -273,42 +265,42 @@ export default function PainelView({
   const [falhas, setFalhas] = useState<string[]>([]);
   const primeira = useRef(true);
 
-  // Aquece os dados SEQUENCIALMENTE (um await por vez) — nunca uma rajada de
-  // conexões Oracle. Cada bloco é isolado: se um falhar, o slide só não entra —
-  // mas o nome do bloco vai para o cabeçalho ("sem dados: …") e para o console,
-  // para o slide não sumir sem explicação.
+  // Uma única Server Action busca todos os blocos em paralelo no servidor (as
+  // actions do navegador andam em fila). Cada bloco é isolado: se um falhar, o
+  // slide só não entra — mas o nome vai para o cabeçalho ("sem dados: …").
   const aquecer = useCallback(async () => {
-    const falhou: string[] = [];
-    const passo = async (nome: string, fn: () => Promise<void>) => {
-      try {
-        await fn();
-      } catch (e) {
-        falhou.push(nome);
-        console.error(`[painel] falha ao carregar ${nome}:`, e);
-      }
-    };
-    await passo("mapa", async () => { const v = await carregarMapa(mes); setDados((d) => ({ ...d, cidades: v })); });
-    await passo("motoristas", async () => { const v = await carregarMotoristas(mes); setDados((d) => ({ ...d, motoristas: v.itens })); });
-    await passo("clientes", async () => { const v = await carregarClientes(mes); setDados((d) => ({ ...d, clientes: v.itens, clientesMotivos: v.motivos })); });
-    await passo("vendedores", async () => { const v = await carregarVendedores(mes); setDados((d) => ({ ...d, vendedores: v.itens, vendedoresMotivos: v.motivos })); });
-    await passo("bairros RMR", async () => { const v = await carregarDevBairrosRMR(mes); setDados((d) => ({ ...d, bairrosRMR: v })); });
-    await passo("a faturar", async () => { const v = await carregarAFaturar(); setDados((d) => ({ ...d, aFaturar: v })); });
-    if (admin) {
-      await passo("receitas", async () => { const v = await carregarReceitas(mes); setDados((d) => ({ ...d, receitas: v })); });
-      await passo("receitas por mês", async () => { const v = await carregarReceitasDrivers(); setDados((d) => ({ ...d, receitasDrivers: v })); });
-    }
-    await passo("descarrego", async () => { const v = await carregarDescarregos(mes); setDados((d) => ({ ...d, descarregos: v })); });
-    await passo("série de descarrego", async () => { const v = await carregarSerieDescarrego(); setDados((d) => ({ ...d, serieDescarrego: v })); });
-    // Placar do recebimento traz custo da equipe em R$ — só admin.
-    if (admin) await passo("recebimento", async () => { const v = await carregarRecebimento(); setDados((d) => ({ ...d, recebimento: v })); });
-    // Mês anterior (placar de comparação do cabeçalho) — sempre buscado (não vem do SSR).
-    await passo("mês anterior", async () => { const v = await carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes())); setDevAnt(v); });
     // O placar de devolução da 1ª carga já veio do SSR — só refaz no refresh.
-    if (primeira.current) primeira.current = false;
-    else await passo("placar", async () => { const v = await carregarResumoDevolucao(mes); setDev(v); });
-    setFalhas(falhou);
+    const comPlacar = !primeira.current;
+    primeira.current = false;
+    let r: LotePainel;
+    try {
+      r = await carregarPainelLote(mes, comPlacar);
+    } catch (e) {
+      console.error("[painel] falha ao carregar o painel:", e);
+      setFalhas(["painel"]);
+      return;
+    }
+    setDados((d) => ({
+      ...d,
+      cidades: r.mapa ?? d.cidades,
+      motoristas: r.motoristas?.itens ?? d.motoristas,
+      clientes: r.clientes?.itens ?? d.clientes,
+      clientesMotivos: r.clientes?.motivos ?? d.clientesMotivos,
+      vendedores: r.vendedores?.itens ?? d.vendedores,
+      vendedoresMotivos: r.vendedores?.motivos ?? d.vendedoresMotivos,
+      bairrosRMR: r.bairrosRMR ?? d.bairrosRMR,
+      aFaturar: r.aFaturar ?? d.aFaturar,
+      receitas: r.receitas ?? d.receitas,
+      receitasDrivers: r.receitasDrivers ?? d.receitasDrivers,
+      descarregos: r.descarregos ?? d.descarregos,
+      serieDescarrego: r.serieDescarrego ?? d.serieDescarrego,
+      recebimento: r.recebimento ?? d.recebimento,
+    }));
+    if (r.devAnterior) setDevAnt(r.devAnterior);
+    if (r.placar) setDev(r.placar);
+    setFalhas(r.falhas);
     setRelogio(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
-  }, [mes, admin]);
+  }, [mes]);
 
   useEffect(() => {
     // aquecer() só chama setState DEPOIS de um await (busca no servidor).
