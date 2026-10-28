@@ -55,3 +55,70 @@ export function NumeroAnimado({ texto, ms = 900 }: { texto: string; ms?: number 
 
   return <span className="tabular-nums">{mostrado}</span>;
 }
+
+/**
+ * Número de painel ao vivo: quando `valor` muda de um refresh para o outro, o
+ * número dá um brilho âmbar e mostra a variação por alguns segundos. Primeiro
+ * render (ou vindo de "sem dado") não brilha.
+ */
+export function ValorVivo({
+  valor,
+  texto,
+  formatarDelta,
+  className = "",
+}: {
+  valor: number | null;
+  texto: string;
+  formatarDelta: (d: number) => string;
+  className?: string;
+}) {
+  const [anterior, setAnterior] = useState(valor);
+  const [mudanca, setMudanca] = useState<{ delta: number; vez: number } | null>(null);
+
+  // Ajuste durante o render (padrão do React p/ reagir a prop que mudou).
+  if (valor !== anterior) {
+    setAnterior(valor);
+    if (anterior !== null && valor !== null) setMudanca({ delta: valor - anterior, vez: (mudanca?.vez ?? 0) + 1 });
+  }
+
+  useEffect(() => {
+    if (!mudanca) return;
+    const t = setTimeout(() => setMudanca(null), 1800);
+    return () => clearTimeout(t);
+  }, [mudanca]);
+
+  return (
+    <span className={`inline-flex items-baseline gap-1.5 ${className}`}>
+      <span key={mudanca?.vez ?? 0} className={`rounded-md tabular-nums ${mudanca ? "brilho-ambar" : ""}`}>
+        {texto}
+      </span>
+      {mudanca && <span className="entrar text-[0.45em] font-bold text-amber-400">{formatarDelta(mudanca.delta)}</span>}
+    </span>
+  );
+}
+
+/** "AO VIVO · HH:MM" com ponto pulsando (Painel TV) ou só "Atualizado às HH:MM" (Dashboard). */
+export function SeloVivo({ relogio, pulsando, className = "" }: { relogio: string; pulsando: boolean; className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${className}`}>
+      {pulsando && <span aria-hidden className="pulso-vivo h-2 w-2 rounded-full bg-amber-500" />}
+      {pulsando ? `AO VIVO · ${relogio}` : `Atualizado às ${relogio}`}
+    </span>
+  );
+}
+
+/** O número contido num texto formatado em pt-BR ("R$ 1.234,56" → 1234.56); null se não houver. */
+export function numeroDoTexto(texto: string): number | null {
+  const m = NUMERO.exec(texto);
+  if (!m) return null;
+  const n = Number(m[0].replace(/\./g, "").replace(",", "."));
+  return texto.slice(0, m.index).includes("-") ? -n : n;
+}
+
+/** Variação com sinal, nas mesmas casas decimais do texto original ("+3", "−1.250,40"). */
+export function deltaNoFormato(texto: string, delta: number): string {
+  const m = NUMERO.exec(texto);
+  const casas = m && m[0].includes(",") ? m[0].length - m[0].indexOf(",") - 1 : 0;
+  const abs = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas }).format(Math.abs(delta));
+  return `${delta > 0 ? "+" : "−"}${abs}`;
+}

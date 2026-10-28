@@ -20,6 +20,7 @@ import { custoLiquido } from "@/domain/receitas-metrics";
 import { fotoSetorAtual, totaisEfetivoPorMes } from "@/domain/efetivo";
 import { compararSerie, type PontoValor } from "@/domain/comparativo-mensal";
 import { PageHeader, StatCard, Card, SectionTitle } from "@/components/ui";
+import { SeloVivo } from "@/components/movimento";
 import { Suspense } from "react";
 import {
   FaturamentoCards,
@@ -213,6 +214,12 @@ export default async function Dashboard({
         title="Visão geral"
         subtitle={`Operação de logística · ${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}
       >
+        {/* Dashboard não se atualiza sozinho: o selo diz de quando são os números. */}
+        <SeloVivo
+          relogio={new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Recife" })}
+          pulsando={false}
+          className="text-slate-400"
+        />
         <Link
           href="/fechamento"
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"

@@ -21,6 +21,7 @@ import {
   type MesReceitaDetalhe,
 } from "./painel-actions";
 import { carregarPainelLote, type LotePainel } from "./painel-lote";
+import { SeloVivo } from "@/components/movimento";
 import Mapa from "./mapa";
 import MapaRMR from "./mapa-rmr";
 import {
@@ -391,7 +392,7 @@ export default function PainelView({
                 {podeAvancar && (
                   <Link href="/painel" className="mr-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/70 hover:bg-white/20">mês atual</Link>
                 )}
-                · filiais 1 e 11{relogio && ` · atualizado ${relogio}`}
+                · filiais 1 e 11{relogio && <> · <SeloVivo relogio={relogio} pulsando className="text-amber-200" /></>}
                 {falhas.length > 0 && (
                   <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-xs font-semibold text-rose-200" title="Veja o console / log do servidor">
                     sem dados: {falhas.join(", ")}

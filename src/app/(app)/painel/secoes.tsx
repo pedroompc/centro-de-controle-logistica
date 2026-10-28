@@ -1,5 +1,6 @@
 "use client";
 
+import { ValorVivo, deltaNoFormato, numeroDoTexto } from "@/components/movimento";
 import { useEffect, useState, type ReactNode } from "react";
 import { formatBRL, formatPercent, formatKg } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
@@ -82,7 +83,8 @@ export function Kpi({
       <div className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">{label}</div>
       {/* Fonte fluida (cqi): encolhe em coluna estreita e nunca estoura a borda. */}
       <div className={`mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.25rem,9cqi,2.25rem)] font-extrabold leading-none tabular-nums whitespace-nowrap ${cor}`}>
-        {value}
+        {/* Número que muda no refresh brilha em âmbar e mostra a variação. */}
+        <ValorVivo valor={numeroDoTexto(value)} texto={value} formatarDelta={(d) => deltaNoFormato(value, d)} />
       </div>
       {delta ? (
         <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${delta.positivo ? "text-white/70" : "text-rose-300"}`}>
