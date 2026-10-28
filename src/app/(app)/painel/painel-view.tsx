@@ -109,12 +109,12 @@ function Marca() {
   );
 }
 
-function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean): Slide[] {
+function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean, pausado: boolean): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
     s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} taxaGeral={dev.taxaValor} /> });
   if (d.motoristas.length > 0)
-    s.push({ id: "motoristas", titulo: "Motoristas que mais voltam", contexto: "top 10 por taxa de nota e por valor", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoMotoristas motoristas={d.motoristas} /> });
+    s.push({ id: "motoristas", titulo: "Motoristas que mais voltam", contexto: "top 10 por taxa de nota e por valor", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoMotoristas motoristas={d.motoristas} pausado={pausado} /> });
   if (d.clientes.length > 0 || d.vendedores.length > 0)
     s.push({ id: "cli-ven", titulo: "Clientes e vendedores", contexto: "participação no total devolvido, comercial ou logístico e o motivo predominante", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoClientesVendedores clientes={d.clientes} vendedores={d.vendedores} totalDevolvido={dev.total} clientesMotivos={d.clientesMotivos} vendedoresMotivos={d.vendedoresMotivos} /> });
   if (dev.porMotivo.length > 0)
@@ -321,9 +321,10 @@ export default function PainelView({
   // Trimestre do placar: o mês na tela e os 2 anteriores.
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
-  const slides = construirSlides(dados, dev, mesLabel, recSerie, admin);
+  const slides = construirSlides(dados, dev, mesLabel, recSerie, admin, pausado);
   const nSlides = slides.length;
-  const posicao = nSlides > 0 ? idx % nSlides : 0;
+  // Módulo sempre positivo: voltar (←) a partir do 1º slide deixa idx negativo.
+  const posicao = nSlides > 0 ? ((idx % nSlides) + nSlides) % nSlides : 0;
   const atual = nSlides > 0 ? slides[posicao] : null;
 
   // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).

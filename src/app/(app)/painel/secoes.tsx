@@ -318,12 +318,14 @@ function seloTipoMotorista(tipo: DevolucaoPorMotorista["tipo"]): ReactNode {
  * 2 = taxa por VALOR (R$ devolvido/R$ expedido). Só motoristas com volume
  * mínimo (senão 1 entrega vira 100%).
  */
-export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotorista[] }) {
+export function SecaoMotoristas({ motoristas, pausado = false }: { motoristas: DevolucaoPorMotorista[]; pausado?: boolean }) {
   const [etapa, setEtapa] = useState(0);
+  // Painel travado: para de alternar e fica na etapa escolhida (dá para trocar no clique).
   useEffect(() => {
+    if (pausado) return;
     const t = setInterval(() => setEtapa((e) => (e === 0 ? 1 : 0)), STAGE_MS);
     return () => clearInterval(t);
-  }, []);
+  }, [pausado]);
 
   const elegiveis = motoristas.filter((m) => m.expedidas >= MIN_ENTREGAS);
 
@@ -367,10 +369,19 @@ export function SecaoMotoristas({ motoristas }: { motoristas: DevolucaoPorMotori
       <div className="mb-3 flex items-center gap-3">
         <div className="flex gap-1.5">
           {etapas.map((e, i) => (
-            <span key={e.id} className={`h-1.5 rounded-full transition-all ${i === etapa ? "w-8 bg-amber-400" : "w-3 bg-white/20"}`} />
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => setEtapa(i)}
+              aria-pressed={i === etapa}
+              className={`rounded-full px-3 py-1 text-sm font-semibold uppercase tracking-[0.12em] transition ${
+                i === etapa ? "bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/60" : "text-white/45 hover:bg-white/10 hover:text-white/80"
+              }`}
+            >
+              {e.titulo}
+            </button>
           ))}
         </div>
-        <span className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-300">{atual.titulo}</span>
         <span className="text-xs text-white/45">{atual.sub}</span>
         <span className="ml-auto text-xs text-white/35">com {MIN_ENTREGAS}+ entregas</span>
       </div>
