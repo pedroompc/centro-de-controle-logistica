@@ -192,13 +192,14 @@ export function SidebarNav({ variant = "sidebar", admin }: { variant?: "sidebar"
           <Link
             key={it.href}
             href={comMes(it.href, mes)}
-            className={`relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+            title={it.label}
+            className={`relative flex items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-medium transition group-data-[recolhida=true]/app:justify-center ${
               active ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
             }`}
           >
             {active && <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r bg-amber-400" />}
             <span className={active ? "text-amber-300" : ""}>{it.icon}</span>
-            {it.label}
+            <span className="group-data-[recolhida=true]/app:hidden">{it.label}</span>
           </Link>
         );
       })}
