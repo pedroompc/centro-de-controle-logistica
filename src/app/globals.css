@@ -131,3 +131,88 @@ body {
   .esqueleto,
   .esqueleto-escuro { animation: none; }
 }
+
+/* ── Movimento ─────────────────────────────────────────────────────────────
+   Rápido (< 1 s) e uma vez só. Em grade, o índice do item vai em --i para a
+   cascata. Âmbar é a cor do movimento; verde continua só para receita. */
+@keyframes entrar {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.entrar {
+  animation: entrar 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 110ms);
+}
+
+@keyframes crescer-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes crescer-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.crescer-y {
+  transform-origin: bottom;
+  animation: crescer-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.crescer-x {
+  transform-origin: left;
+  animation: crescer-x 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/* Linha SVG se desenhando: usar com pathLength="1" no <path>/<polyline>. */
+@keyframes desenhar { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.desenhar {
+  stroke-dasharray: 1;
+  animation: desenhar 1.2s ease-out both;
+}
+
+.levantar {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.levantar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -8px rgb(20 26 77 / 0.18);
+}
+
+/* Ponto "AO VIVO" do Painel TV — o único movimento contínuo. */
+@keyframes pulso-vivo {
+  0% { box-shadow: 0 0 0 0 rgb(245 158 11 / 0.6); }
+  70% { box-shadow: 0 0 0 8px rgb(245 158 11 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(245 158 11 / 0); }
+}
+.pulso-vivo {
+  animation: pulso-vivo 1.6s ease-out infinite;
+}
+
+/* Número que mudou no refresh: brilho âmbar curto. */
+@keyframes brilho-ambar {
+  from { box-shadow: 0 0 0 2px rgb(245 158 11 / 0.7), 0 0 24px rgb(245 158 11 / 0.35); }
+  to { box-shadow: 0 0 0 0 rgb(245 158 11 / 0), 0 0 0 rgb(245 158 11 / 0); }
+}
+.brilho-ambar {
+  animation: brilho-ambar 1.2s ease-out;
+}
+
+/* Botão "afunda" no clique. */
+button:not(:disabled):active,
+a.botao:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entrar,
+  .crescer-y,
+  .crescer-x,
+  .desenhar,
+  .pulso-vivo,
+  .brilho-ambar {
+    animation: none;
+  }
+  .levantar,
+  .levantar:hover {
+    transition: none;
+    transform: none;
+  }
+  button:not(:disabled):active,
+  a.botao:active {
+    transform: none;
+  }
+}
