@@ -122,11 +122,12 @@ Os três blocos que o Pedro aprovou no mockup:
 - Esqueleto que não bate com o layout e faz a tela "pular".
 - Admin vendo dado de viewer ou vice-versa por causa de cache compartilhado.
 
-## Em aberto (decisão do Pedro)
+## Dashboard sem atualização automática (decidido 28/10)
 
-- O Dashboard (`/`) hoje só busca dados ao abrir/recarregar. Ele deve passar a
-  se atualizar sozinho (como o Painel TV), ou fica como está e o sinal "ao vivo"
-  vira só "atualizado às HH:MM"? O bloco B no Dashboard depende disso.
+- O Dashboard (`/`) continua buscando dados só ao abrir/recarregar a página —
+  sem refresh automático. No Dashboard, o bloco B se resume a um selo
+  "atualizado às HH:MM" (sem pulso, sem brilho de mudança). Pulso e brilho de
+  mudança ficam só no Painel TV, que já se atualiza sozinho.
 
 ## Fica a critério de quem constrói
 
