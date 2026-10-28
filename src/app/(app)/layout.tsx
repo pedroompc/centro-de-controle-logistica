@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/data/auth";
 import { SidebarNav } from "./sidebar-nav";
 import { MobileNav } from "./mobile-nav";
+import { BarraNavegacao } from "@/components/barra-navegacao";
 
 function Marca({ compact = false }: { compact?: boolean }) {
   return (
@@ -37,6 +39,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-[#f6f7fb]">
+      {/* useSearchParams exige Suspense. */}
+      <Suspense fallback={null}>
+        <BarraNavegacao />
+      </Suspense>
       {/* Sidebar — desktop */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col justify-between px-4 py-6 md:flex" style={navy}>
         <div>

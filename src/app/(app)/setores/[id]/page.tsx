@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { listarSetores, renomearSetor, excluirSetor } from "@/data/setores";
@@ -21,6 +22,9 @@ import { BISeparacao } from "./bi-separacao";
 import { ehSetorAbastecimento } from "@/domain/abastecimento";
 import { carregarBIAbastecimento } from "./abastecimento-dados";
 import { BIAbastecimento } from "./bi-abastecimento";
+import { EsqueletoBI } from "./esqueleto-bi";
+import type { HrefMes } from "./bi-shell";
+import type { Funcionario, Setor } from "@/domain/types";
 
 const ABAS_RECEBIMENTO = [
   { aba: "", label: "Visão geral" },
@@ -92,45 +96,41 @@ export default async function SetorDetalhe({
     proximo: mesBI < mesAtual ? hrefBI(mesProximo(mesBI)) : null,
     atual: mesBI < mesAtual ? hrefBI(mesAtual) : null,
   };
+  // Abas e meses mudam só a query string — o loading.tsx não aparece nesse caso;
+  // o Suspense com key mostra o esqueleto na hora a cada troca.
+  const chave = `${abaParam ?? ""}|${mesBI}`;
   if (separacao && abaParam === "bi") {
-    const dados = await carregarBISeparacao(setor, funcionarios, mesBI);
-    return <BISeparacao key={mesBI} dados={dados} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
+    return (
+      <Suspense key={chave} fallback={<EsqueletoBI />}>
+        <ConteudoBISeparacao setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
+      </Suspense>
+    );
   }
   if (abastecimento && abaParam === "bi") {
-    const dados = await carregarBIAbastecimento(setor, funcionarios, mesBI);
-    return <BIAbastecimento key={mesBI} dados={dados} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
+    return (
+      <Suspense key={chave} fallback={<EsqueletoBI />}>
+        <ConteudoBIAbastecimento setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
+      </Suspense>
+    );
   }
 
   const aba = recebimento && (abaParam === "bi" || abaParam === "desempenho" || abaParam === "projecoes") ? abaParam : "";
   if (aba === "bi") {
-    const mes = mesBI;
-    const [serie, custo, fatos] = await Promise.all([
-      carregarRecebimento(),
-      carregarDetalheCusto().catch(() => null),
-      carregarFatosDescarrego(mes).catch(() => null),
-    ]);
-    // Tela cheia (overlay como o Painel da Operação); "Sair" volta ao setor.
     return (
-      <BIAba
-        key={mes}
-        dados={{ mes, serie, custo, fatos }}
-        hrefSair={`/setores/${id}`}
-        hrefMes={hrefMes}
-      />
+      <Suspense key={chave} fallback={<EsqueletoBI />}>
+        <ConteudoBIRecebimento id={id} mes={mesBI} hrefMes={hrefMes} />
+      </Suspense>
     );
   }
   if (aba) {
-    const analise = await carregarAnaliseRecebimento(funcionarios, setores);
     return (
       <div>
         <BackLink href="/setores">Setores</BackLink>
         <PageHeader title={setor.nome} subtitle={aba === "desempenho" ? "Desempenho mês a mês da equipe de descarga" : "Projeções e cenários"} />
         <AbasSetor id={id} ativa={aba} abas={ABAS_RECEBIMENTO} />
-        {aba === "desempenho" ? (
-          <RecebimentoDesempenho dados={analise} />
-        ) : (
-          <RecebimentoProjecoes serie={analise.serie} custoMedio={analise.custoMedio} perfil={analise.perfil} />
-        )}
+        <Suspense key={chave} fallback={<div className="esqueleto h-96 rounded-2xl" />}>
+          <ConteudoAnaliseRecebimento aba={aba} funcionarios={funcionarios} setores={setores} />
+        </Suspense>
       </div>
     );
   }
@@ -266,5 +266,34 @@ export default async function SetorDetalhe({
         </ul>
       </Card>
     </div>
+  );
+}
+
+async function ConteudoBISeparacao({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
+  const dados = await carregarBISeparacao(setor, funcionarios, mes);
+  return <BISeparacao key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
+}
+
+async function ConteudoBIAbastecimento({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
+  const dados = await carregarBIAbastecimento(setor, funcionarios, mes);
+  return <BIAbastecimento key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
+}
+
+async function ConteudoBIRecebimento({ id, mes, hrefMes }: { id: string; mes: string; hrefMes: HrefMes }) {
+  const [serie, custo, fatos] = await Promise.all([
+    carregarRecebimento(),
+    carregarDetalheCusto().catch(() => null),
+    carregarFatosDescarrego(mes).catch(() => null),
+  ]);
+  // Tela cheia (overlay como o Painel da Operação); "Sair" volta ao setor.
+  return <BIAba key={mes} dados={{ mes, serie, custo, fatos }} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
+}
+
+async function ConteudoAnaliseRecebimento({ aba, funcionarios, setores }: { aba: string; funcionarios: Funcionario[]; setores: Setor[] }) {
+  const analise = await carregarAnaliseRecebimento(funcionarios, setores);
+  return aba === "desempenho" ? (
+    <RecebimentoDesempenho dados={analise} />
+  ) : (
+    <RecebimentoProjecoes serie={analise.serie} custoMedio={analise.custoMedio} perfil={analise.perfil} />
   );
 }
