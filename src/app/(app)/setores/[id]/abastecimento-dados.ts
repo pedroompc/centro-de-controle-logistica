@@ -11,6 +11,7 @@ import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
 import { montarNomesHarpia, type NomesHarpia } from "./turno-dados";
+import { lembrar, ttlDoMes } from "@/lib/cache-memoria";
 
 export interface DadosBIAbastecimento {
   mes: string; // mês na tela "yyyy-mm-01"
@@ -32,7 +33,7 @@ export interface DadosBIAbastecimento {
 
 async function harpiaDoMes(mes: string): Promise<DadosBIAbastecimento["harpia"]> {
   try {
-    return { dados: await lerAbastecimentoHarpia(mes) };
+    return { dados: await lembrar(`lerAbastecimentoHarpia:${mes}`, ttlDoMes(mes), () => lerAbastecimentoHarpia(mes)) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[harpia-abastecimento]", msg);
@@ -51,7 +52,7 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
     harpiaDoMes(mes),
     listarUsuariosHarpia().catch(() => null),
     isAdmin(),
-    getResumoFaturamentoDashboard(mes).catch(() => null),
+    lembrar(`getResumoFaturamentoDashboard:${mes}`, ttlDoMes(mes), () => getResumoFaturamentoDashboard(mes)).catch(() => null),
   ]);
   const h = "dados" in harpia ? harpia.dados : null;
   const usuarios = h

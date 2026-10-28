@@ -15,6 +15,7 @@ import { HORAS_NA_SEPARACAO, TURNOS_SEPARACAO, turnoSepDoCadastro, type TurnoSep
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
 import { montarNomesHarpia } from "./turno-dados";
+import { lembrar, ttlDoMes } from "@/lib/cache-memoria";
 
 /** Primeiro mês com o separador gravado por página no Harpia (06/08/2026). */
 const INICIO_SEPARADOR = "2026-08-01";
@@ -111,17 +112,22 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
 
   const admin = await isAdmin();
   const mesAnt = mesAnterior(mes) >= INICIO_SEPARADOR ? mesAnterior(mes) : null;
+  const ttl = ttlDoMes(mes);
   const [equipamentos, fotos, harpia, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
-    tentar("harpia-separacao", () => lerSeparacaoHarpia(mes)),
-    lerMesesSeparacaoHarpia(INICIO_HISTORICO, mes).catch(() => null),
+    // Leituras do Oracle ficam em cache (5 min no mês corrente, 60 min fechado);
+    // o que vem do Supabase segue por request (RLS depende de quem está logado).
+    tentar("harpia-separacao", () => lembrar(`lerSeparacaoHarpia:${mes}`, ttl, () => lerSeparacaoHarpia(mes))),
+    lembrar(`lerMesesSeparacaoHarpia:${mes}`, ttl, () => lerMesesSeparacaoHarpia(INICIO_HISTORICO, mes)).catch(() => null),
     listarUsuariosHarpia().catch(() => null),
-    getResumoFaturamentoDashboard(mes).catch(() => null),
+    lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes)).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
     // Individual: as consultas nem rodam para quem não é admin.
-    admin ? lerIndividuaisHarpia(mes).catch(() => null) : Promise.resolve(null),
-    admin && mesAnt ? lerProducaoIndividualMes(mesAnt).catch(() => null) : Promise.resolve(null),
+    admin ? lembrar(`lerIndividuaisHarpia:${mes}`, ttl, () => lerIndividuaisHarpia(mes)).catch(() => null) : Promise.resolve(null),
+    admin && mesAnt
+      ? lembrar(`lerProducaoIndividualMes:${mesAnt}`, ttlDoMes(mesAnt), () => lerProducaoIndividualMes(mesAnt)).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
