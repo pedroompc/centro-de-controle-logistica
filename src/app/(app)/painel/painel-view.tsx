@@ -64,7 +64,7 @@ function deltaPct(atual: number, ant: number | undefined, maiorEhBom: boolean, p
 // Para uma TAXA, compara % com %: a diferença direta entre as taxas (5,3% hoje vs
 // 3,9% no mês passado → "+1,4% vs Ago"). Sem "p.p." (confunde na TV). A seta e a
 // cor dão a direção. `maiorEhBom=false` na devolução.
-function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string) {
+function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string, verdeSeBom = false) {
   if (antFrac === undefined) return undefined;
   const dif = atualFrac - antFrac;
   const subiu = dif > 0;
@@ -72,7 +72,14 @@ function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: b
     texto: `${dif >= 0 ? "+" : "−"}${formatPercent(Math.abs(dif))} vs ${prevLabel}`,
     subindo: subiu,
     positivo: maiorEhBom ? subiu : !subiu,
+    verdeSeBom,
   };
+}
+
+// Taxa de devolução: vermelha subindo, verde caindo (exceção à regra "verde só
+// para receita", pedida para a TV). Sem mês anterior fica vermelha como antes.
+function tomDevolucao(atualFrac: number, antFrac: number | undefined): "rose" | "emerald" {
+  return antFrac !== undefined && atualFrac < antFrac ? "emerald" : "rose";
 }
 
 interface Dados {
@@ -431,12 +438,30 @@ export default function PainelView({
         {placarRecebimento && recAtual ? (
           <PlacarRecebimento r={recAtual} ant={recAnt} janela={janelaTrimestre} prevLabel={prevLabel} />
         ) : (
-        <div className={`mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 ${admin ? "xl:grid-cols-6" : "xl:grid-cols-5"}`}>
+        <div className={`mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 ${admin ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
           <Kpi label="Clientes positivados" value={dev.disponivel ? inteiro.format(dev.positivados) : "—"} delta={dev.disponivel ? deltaPct(dev.positivados, antOk?.positivados, true, prevLabel) : undefined} />
           <Kpi label="Entregas realizadas" value={dev.disponivel ? inteiro.format(dev.atendimentos) : "—"} delta={dev.disponivel ? deltaPct(dev.atendimentos, antOk?.atendimentos, true, prevLabel) : undefined} />
           <Kpi label="Peso faturado" value={dev.disponivel ? formatKg(dev.pesoFaturado) : "—"} delta={dev.disponivel ? deltaPct(dev.pesoFaturado, antOk?.pesoFaturado, true, prevLabel) : undefined} />
-          <Kpi label="Taxa de devolução" value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"} delta={dev.disponivel ? deltaTaxa(dev.taxaValor, antOk?.taxaValor, false, prevLabel) : undefined} tone="rose" />
-          <Kpi label="Carteira (a faturar)" value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalPedidos) : "—"} hint="pedidos a faturar" tone="amber" />
+          <Kpi
+            label="Taxa de devolução"
+            value={dev.disponivel ? formatPercent(dev.taxaValor) : "—"}
+            delta={dev.disponivel ? deltaTaxa(dev.taxaValor, antOk?.taxaValor, false, prevLabel, true) : undefined}
+            detalhe={dev.disponivel ? `${formatKg(dev.pesoDevolucao)} devolvidos` : undefined}
+            tone={tomDevolucao(dev.taxaValor, antOk?.taxaValor)}
+          />
+          <Kpi
+            label="Devolução logística"
+            value={dev.disponivel ? formatPercent(dev.taxaLogistica) : "—"}
+            delta={dev.disponivel ? deltaTaxa(dev.taxaLogistica, antOk?.taxaLogistica, false, prevLabel, true) : undefined}
+            hint="só motivos logísticos"
+            tone={tomDevolucao(dev.taxaLogistica, antOk?.taxaLogistica)}
+          />
+          <Kpi
+            label="Carteira (a faturar)"
+            value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalClientes) : "—"}
+            hint={dados.aFaturar?.disponivel ? `clientes · ${formatKg(dados.aFaturar.pesoTotal)}` : "clientes a faturar"}
+            tone="amber"
+          />
           {admin && <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />}
         </div>
         )}

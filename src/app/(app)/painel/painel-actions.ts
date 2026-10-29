@@ -58,10 +58,12 @@ export interface ResumoDevolucao {
   vendaFaturada: number;
   vendaLiquida: number; // faturamento LÍQUIDO
   pesoFaturado: number; // kg líquido (venda − devolução)
+  pesoDevolucao: number; // kg devolvido no mês
   valorDevolucaoAvulsa: number;
   devolvidasAvulsas: number;
   taxaValor: number;
   taxaNotas: number;
+  taxaLogistica: number; // só motivos do setor Logística ÷ venda faturada
   devolvidas: number;
   emitidas: number;
   positivados: number; // clientes positivados no mês
@@ -76,10 +78,12 @@ const DEV_VAZIO: ResumoDevolucao = {
   vendaFaturada: 0,
   vendaLiquida: 0,
   pesoFaturado: 0,
+  pesoDevolucao: 0,
   valorDevolucaoAvulsa: 0,
   devolvidasAvulsas: 0,
   taxaValor: 0,
   taxaNotas: 0,
+  taxaLogistica: 0,
   devolvidas: 0,
   emitidas: 0,
   positivados: 0,
@@ -96,16 +100,20 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
     getResumoFaturamentoDashboard(mesNorm(mes)),
   ]);
   if (!nucleo && !fat) return DEV_VAZIO;
+  // Mesma base da taxa geral (venda faturada), só com os motivos logísticos.
+  const valorLogistica = nucleo?.porSetor.find((s) => s.setor === "Logística")?.valor ?? 0;
   return {
     disponivel: true,
     total: nucleo?.total ?? fat?.valorDevolucao ?? 0,
     vendaFaturada: fat?.vendaFaturada ?? 0,
     vendaLiquida: fat?.vendaLiquida ?? 0,
     pesoFaturado: fat?.pesoFaturado ?? 0,
+    pesoDevolucao: fat?.pesoDevolucao ?? 0,
     valorDevolucaoAvulsa: fat?.valorDevolucaoAvulsa ?? 0,
     devolvidasAvulsas: fat?.devolvidasAvulsas ?? 0,
     taxaValor: fat ? taxaDevolucao(fat) : 0,
     taxaNotas: fat ? taxaDevolucaoNotas(fat) : 0,
+    taxaLogistica: fat && fat.vendaFaturada > 0 ? valorLogistica / fat.vendaFaturada : 0,
     devolvidas: fat?.devolvidas ?? 0,
     emitidas: fat?.emitidas ?? 0,
     positivados: fat?.positivados ?? 0,
@@ -126,13 +134,15 @@ export async function carregarDevBairrosRMR(mes: string): Promise<BairroDevoluca
 export interface GrupoAFaturar {
   chave: string;
   nome: string;
-  qtd: number;
+  clientes: number; // clientes distintos com pedido parado
+  peso: number; // kg
   valor: number;
 }
 
 export interface ResumoAFaturar {
   disponivel: boolean; // false = Winthor fora da rede
   totalPedidos: number; // pedidos a faturar (carteira)
+  totalClientes: number; // clientes distintos na carteira
   valorTotal: number; // R$ da carteira
   pesoTotal: number; // kg da carteira
   topCidades: GrupoAFaturar[];
@@ -143,7 +153,7 @@ export interface ResumoAFaturar {
 export async function carregarAFaturar(): Promise<ResumoAFaturar> {
   const pedidos = await getPedidosPendentes();
   if (pedidos === null) {
-    return { disponivel: false, totalPedidos: 0, valorTotal: 0, pesoTotal: 0, topCidades: [], porRegiao: [] };
+    return { disponivel: false, totalPedidos: 0, totalClientes: 0, valorTotal: 0, pesoTotal: 0, topCidades: [], porRegiao: [] };
   }
 
   const agrupar = (
@@ -151,10 +161,15 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
     ordenar: (itens: GrupoAFaturar[]) => GrupoAFaturar[],
   ) => {
     const mapa = new Map<string, GrupoAFaturar>();
+    const clientes = new Map<string, Set<number>>();
     for (const p of pedidos) {
       const { id, nome } = chave(p);
-      const atual = mapa.get(id) ?? { chave: id, nome, qtd: 0, valor: 0 };
-      atual.qtd += 1;
+      const atual = mapa.get(id) ?? { chave: id, nome, clientes: 0, peso: 0, valor: 0 };
+      const vistos = clientes.get(id) ?? new Set<number>();
+      vistos.add(p.codigoCliente);
+      clientes.set(id, vistos);
+      atual.clientes = vistos.size;
+      atual.peso += p.pesoPedido;
       atual.valor += p.valorPedido;
       mapa.set(id, atual);
     }
@@ -166,7 +181,7 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
       id: p.cidadeCliente ?? "—",
       nome: p.cidadeCliente ? `${p.cidadeCliente}${p.ufCliente ? `/${p.ufCliente}` : ""}` : "Sem cidade",
     }),
-    (itens) => itens.sort((a, b) => b.valor - a.valor).slice(0, 8),
+    (itens) => itens.sort((a, b) => b.clientes - a.clientes || b.peso - a.peso).slice(0, 8),
   );
 
   const porRegiao = agrupar(
@@ -180,6 +195,7 @@ export async function carregarAFaturar(): Promise<ResumoAFaturar> {
   return {
     disponivel: true,
     totalPedidos: pedidos.length,
+    totalClientes: new Set(pedidos.map((p) => p.codigoCliente)).size,
     valorTotal: pedidos.reduce((t, p) => t + p.valorPedido, 0),
     pesoTotal: pedidos.reduce((t, p) => t + p.pesoPedido, 0),
     topCidades,

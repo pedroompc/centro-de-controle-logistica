@@ -62,6 +62,8 @@ export interface KpiDelta {
   texto: string; // ex.: "+8,2% vs Ago"
   subindo: boolean; // direção da seta
   positivo: boolean; // essa direção é boa? (cor: neutro se sim, rose se não)
+  // Exceção pedida pelo Pedro: devolução caindo fica verde (não neutra) na TV.
+  verdeSeBom?: boolean;
 }
 
 export function Kpi({
@@ -70,12 +72,14 @@ export function Kpi({
   hint,
   tone = "white",
   delta,
+  detalhe,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: "white" | "rose" | "amber" | "emerald";
   delta?: KpiDelta;
+  detalhe?: string; // linha extra abaixo da variação (ex.: peso devolvido)
 }) {
   const cor = { white: "text-white", rose: "text-rose-300", amber: "text-amber-300", emerald: "text-emerald-300" }[tone];
   return (
@@ -87,13 +91,14 @@ export function Kpi({
         <ValorVivo valor={numeroDoTexto(value)} texto={value} formatarDelta={(d) => deltaNoFormato(value, d)} />
       </div>
       {delta ? (
-        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${delta.positivo ? "text-white/70" : "text-rose-300"}`}>
+        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${delta.positivo ? (delta.verdeSeBom ? "text-emerald-300" : "text-white/70") : "text-rose-300"}`}>
           <span>{delta.subindo ? "▲" : "▼"}</span>
           <span>{delta.texto}</span>
         </div>
       ) : hint ? (
         <div className="mt-1.5 text-xs text-white/40">{hint}</div>
       ) : null}
+      {detalhe && <div className="mt-1 truncate text-xs font-semibold tabular-nums text-white/55">{detalhe}</div>}
     </div>
   );
 }
@@ -414,7 +419,7 @@ export function SecaoMotivos({ porMotivo }: { porMotivo: DevolucaoPorMotivo[] })
   );
 }
 
-/** A faturar · pedidos parados (topo por cidade e por RCA). */
+/** A faturar · clientes com pedido parado e peso, por cidade e por região. */
 export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
   if (!dados.disponivel) {
     return <div className="flex h-full items-center justify-center text-lg text-white/40">Sem conexão com o Winthor.</div>;
@@ -422,7 +427,7 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="grid grid-cols-2 gap-3">
-        <Kpi label="Pedidos a faturar" value={inteiro.format(dados.totalPedidos)} tone="amber" hint="liberados/montados sem NF" />
+        <Kpi label="Clientes a faturar" value={inteiro.format(dados.totalClientes)} tone="amber" hint={`${inteiro.format(dados.totalPedidos)} pedidos liberados/montados sem NF`} />
         <Kpi label="Peso em carteira" value={formatKg(dados.pesoTotal)} />
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
@@ -434,7 +439,7 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
           <div className="min-h-0 flex-1 overflow-hidden">
             <BigRanking
               denso
-              linhas={[...dados.topCidades].sort((a, b) => b.qtd - a.qtd).map((c) => ({ chave: c.chave, nome: c.nome, principal: inteiro.format(c.qtd), secundario: "pedidos" }))}
+              linhas={dados.topCidades.map((c) => ({ chave: c.chave, nome: c.nome, principal: inteiro.format(c.clientes), secundario: `clientes · ${formatKg(c.peso)}` }))}
             />
           </div>
         </div>
@@ -446,7 +451,7 @@ export function SecaoAFaturar({ dados }: { dados: ResumoAFaturar }) {
           <div className="min-h-0 flex-1 overflow-hidden">
             <BigRanking
               denso
-              linhas={dados.porRegiao.map((r) => ({ chave: r.chave, nome: r.nome, principal: inteiro.format(r.qtd), secundario: "pedidos" }))}
+              linhas={dados.porRegiao.map((r) => ({ chave: r.chave, nome: r.nome, principal: inteiro.format(r.clientes), secundario: `clientes · ${formatKg(r.peso)}` }))}
             />
           </div>
         </div>
