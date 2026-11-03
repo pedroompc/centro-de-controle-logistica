@@ -3,7 +3,7 @@ import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/fatu
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { lerViagensMes, lerEntregasMeses, type EntregasDoMes } from "@/data/winthor-entregas";
-import { carregarMotoristas } from "../../devolucoes/actions";
+import { getDevolucaoLogisticaPorFaturamento } from "@/data/devolucoes";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
@@ -26,7 +26,10 @@ export interface PontoHistoricoMot {
   parcial: boolean;
 }
 
-/** Devolução do mês por motorista: taxa só dos motivos da LOGÍSTICA (data da devolução). */
+/**
+ * Devolução por motorista POR PERÍODO DE FATURAMENTO: das notas saídas no mês,
+ * quantas voltaram por motivo da LOGÍSTICA (em qualquer data depois).
+ */
 export interface DevolucaoMot {
   porMotorista: DevolucaoPorMotorista[];
   expedidas: number;
@@ -61,6 +64,11 @@ export interface DadosBIMotoristas {
   motoristas: MotoristaBI[] | null;
 }
 
+function ultimoDiaDoMes(mes: string): string {
+  const [a, m] = mes.split("-").map(Number);
+  return `${mes.slice(0, 7)}-${String(new Date(a, m, 0).getDate()).padStart(2, "0")}`;
+}
+
 const erroMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function carregarBIMotoristas(setor: { id: string; nome: string }, funcionarios: Funcionario[], mes: string): Promise<DadosBIMotoristas> {
@@ -85,7 +93,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     lembrar(`lerEntregasMeses:${mes}`, ttl, () => lerEntregasMeses(INICIO_HISTORICO, mes)).catch(() => null as EntregasDoMes[] | null),
     lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes)).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
-    lembrar(`devolucaoMotoristasLogistica:${mes}`, ttl, () => carregarMotoristas(mes, undefined, "Logística")).catch(() => null),
+    lembrar(`devolucaoLogisticaPorFaturamento:${mes}`, ttl, () => getDevolucaoLogisticaPorFaturamento(mes, ultimoDiaDoMes(mes))).catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -131,7 +139,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
       };
     });
 
-  const listaDev = devol?.itens ?? [];
+  const listaDev = devol ?? [];
   const devolucao: DevolucaoMot | null = devol
     ? {
         porMotorista: listaDev,

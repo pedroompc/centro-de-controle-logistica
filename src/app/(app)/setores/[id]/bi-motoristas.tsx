@@ -4,8 +4,8 @@
  * BI dos Motoristas em tela cheia. A entrega vem do Winthor: nota de venda em
  * carga → carga (motorista, ajudante, veículo) → capacidade do veículo. VIAGEM =
  * veículo + motorista + dia de saída da nota; peso pelas notas. Clicar num dia
- * filtra Custo, Entregas e Frota; Esc limpa. Devolução segue o mês (data da
- * devolução, só motivos da Logística — a mesma conta da tela Devoluções).
+ * filtra Custo, Entregas e Frota; Esc limpa. Devolução segue o mês POR PERÍODO DE
+ * FATURAMENTO: das notas saídas no mês, as que voltaram por motivo da Logística.
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
@@ -572,7 +572,7 @@ function VisaoDevolucao({ dados }: { dados: DadosBIMotoristas }) {
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_minmax(22rem,1fr)]`}>
       <div className={GRADE_CARDS}>
-        <Mini rotulo="Taxa (notas)" valor={tx === null ? "—" : formatPercent(tx, 2)} sub={`${n0(dv.devolvidas)} de ${n0(dv.expedidas)} notas`} />
+        <Mini rotulo="Taxa (notas)" valor={tx === null ? "—" : formatPercent(tx, 2)} sub={`${n0(dv.devolvidas)} de ${n0(dv.expedidas)} notas faturadas`} />
         <Mini rotulo="Valor devolvido" valor={semCentavos(Math.round(dv.valorDevolvido))} sub={dv.valorExpedido > 0 ? `${formatPercent(dv.valorDevolvido / dv.valorExpedido, 2)} do expedido` : undefined} />
         <Mini rotulo="Motoristas com devolução" valor={n0(dv.porMotorista.filter((m) => m.devolvidas > 0).length)} sub={`de ${n0(dv.porMotorista.length)}`} />
       </div>

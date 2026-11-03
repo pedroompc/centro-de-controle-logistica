@@ -538,3 +538,64 @@ export const getDevolucaoPorBairroRMR = cache(async (
     return [];
   }
 });
+
+// --- Devolução por motorista POR PERÍODO DE FATURAMENTO (BI dos Motoristas) ----
+// Coorte: as notas de venda em carga SAÍDAS no período (mesmo universo de
+// `sqlMotorista`); devolvida = a nota que voltou por motivo da LOGÍSTICA em
+// QUALQUER data a partir do início do período (devolução não antecede a venda).
+// Diferente da tela Devoluções, que conta pela data da devolução: aqui a taxa do
+// mês corrente ainda sobe conforme as devoluções das notas dele entram.
+const sqlMotoristaFaturamento = `
+WITH vendas AS (
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, NVL(nf.VLTOTAL, 0) VLVENDA
+  FROM PCNFSAID nf
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.NUMCAR, 0) != 0
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+),
+ed AS (
+  SELECT ne.NUMTRANSENT, MAX(ne.CODDEVOL) CODDEVOL, MAX(vlink.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${NET}) VL
+  FROM PCMOV m
+  JOIN PCNFENT ne ON ne.NUMTRANSENT = m.NUMTRANSENT
+  JOIN (SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVENDA
+          FROM PCESTCOM GROUP BY NUMTRANSENT) vlink ON vlink.NUMTRANSENT = ne.NUMTRANSENT
+  WHERE ${filialIn("m.CODFILIAL")} AND m.DTMOV >= TO_DATE(:ini,'YYYY-MM-DD') AND m.CODOPER = 'ED'
+    AND m.DTCANCEL IS NULL
+    AND vlink.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
+  GROUP BY ne.NUMTRANSENT
+),
+devv AS (
+  SELECT ed.NUMTRANSVENDA, SUM(ed.VL) VL_DEVOLVIDO
+  FROM ed LEFT JOIN PCTABDEV td ON td.CODDEVOL = ed.CODDEVOL
+  WHERE ${SETOR} = 'Logística'
+  GROUP BY ed.NUMTRANSVENDA
+)
+SELECT car.CODMOTORISTA,
+       MAX(emp.NOME) NOME,
+       MAX(emp.TIPOMOTORISTA) TIPO_MOTORISTA,
+       COUNT(DISTINCT v.NUMTRANSVENDA) EXPEDIDAS,
+       COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) DEVOLVIDAS,
+       ROUND(COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) * 100
+             / NULLIF(COUNT(DISTINCT v.NUMTRANSVENDA), 0), 2) TAXA,
+       ROUND(SUM(NVL(v.VLVENDA, 0)), 2) VALOR_EXPEDIDO,
+       ROUND(SUM(NVL(devv.VL_DEVOLVIDO, 0)), 2) VALOR_DEVOLVIDO
+FROM vendas v
+JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
+LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
+LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
+WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+GROUP BY car.CODMOTORISTA
+ORDER BY VALOR_DEVOLVIDO DESC`;
+
+/** Devolução LOGÍSTICA por motorista das notas faturadas (saídas) entre `ini` e `fim`. */
+export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: string): Promise<DevolucaoPorMotorista[]> {
+  const rows = await queryWinthor<LinhaMotorista>(sqlMotoristaFaturamento, { ini, fim });
+  return rows.map((r) => ({
+    codMotorista: n(r.CODMOTORISTA),
+    nome: r.NOME ?? `Motorista ${r.CODMOTORISTA}`,
+    tipo: r.TIPO_MOTORISTA === "F" || r.TIPO_MOTORISTA === "T" ? r.TIPO_MOTORISTA : null,
+    expedidas: n(r.EXPEDIDAS), devolvidas: n(r.DEVOLVIDAS), taxa: n(r.TAXA),
+    valorExpedido: n(r.VALOR_EXPEDIDO), valorDevolvido: n(r.VALOR_DEVOLVIDO),
+  }));
+}
