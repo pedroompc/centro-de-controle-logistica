@@ -523,7 +523,7 @@ function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: stri
               alinhar={["l", "r", "r", "r", "r", "r", "r"]}
               linhas={km.porVeiculo.map((v) => [
                 <span key="v" className="block max-w-[18rem] truncate" title={v.descricao ?? undefined}>
-                  {v.placa} <span className="text-white/40">{(v.descricao ?? "").replace(/^[A-Z0-9-]+\s*-\s*/, "")}</span>
+                  {v.placa} <span className="text-white/40">{(v.descricao ?? "").replace(v.placa, "").replace(/^\s*-\s*/, "").trim()}</span>
                 </span>,
                 v.km === null ? <span key="k" className="text-white/40">sem rastreador</span> : n0(v.km),
                 v.km === null ? "—" : n0(v.diasRodados),
