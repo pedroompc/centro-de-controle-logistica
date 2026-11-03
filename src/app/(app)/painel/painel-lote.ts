@@ -57,10 +57,10 @@ export async function carregarPainelLote(mes: string, comPlacar: boolean): Promi
 
   const [mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, devAnterior, placar] =
     await Promise.all([
-      bloco("mapa", () => carregarMapa(mes)),
-      bloco("motoristas", () => carregarMotoristas(mes)),
-      bloco("clientes", () => carregarClientes(mes)),
-      bloco("vendedores", () => carregarVendedores(mes)),
+      bloco("mapa", () => carregarMapa({ mes })),
+      bloco("motoristas", () => carregarMotoristas({ mes })),
+      bloco("clientes", () => carregarClientes({ mes })),
+      bloco("vendedores", () => carregarVendedores({ mes })),
       bloco("bairros RMR", () => carregarDevBairrosRMR(mes)),
       bloco("a faturar", () => carregarAFaturar()),
       bloco("tempo até faturar", () => carregarTempoFaturar(mes)),

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Card, PanelHeader } from "@/components/ui";
-import { formatBRL } from "@/domain/format";
+import { formatBRL, formatKg } from "@/domain/format";
 import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { IconePredio, IconeBusca } from "./icons";
@@ -12,7 +12,7 @@ import { IconePredio, IconeBusca } from "./icons";
  * pela data da devolução (bate com o 111). Mostra o R$ devolvido, nº de notas
  * e o motivo predominante (o de maior R$) — sem taxa, que no bairro engana.
  */
-export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao[] }) {
+export default function TabelaBairrosRMR({ bairros, titulo }: { bairros: BairroDevolucao[]; titulo?: string }) {
   const [busca, setBusca] = useState("");
   const lista = useMemo(
     () => filtrarPorBusca(bairros, busca, (b) => [b.bairro, b.cidade, b.motivo]),
@@ -39,7 +39,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
     <Card className="overflow-hidden">
       <PanelHeader
         icon={<IconePredio />}
-        title="Devolução por bairro · RMR"
+        title={titulo ?? "Devolução por bairro · RMR"}
         context={`${lista.length} bairros · por R$ devolvido`}
         right={campoBusca}
       />
@@ -63,14 +63,15 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
               <th className="px-3 py-2.5 text-left font-semibold">Motivo predominante</th>
               <th className="px-3 py-2.5 text-right font-semibold">Faturado</th>
               <th className="px-3 py-2.5 text-right font-semibold">Notas</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Peso</th>
               <th className="px-3 py-2.5 text-right font-semibold">Devolvido</th>
             </tr>
           </thead>
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-10 text-center text-sm text-slate-400">
-                  {busca ? `Nenhum bairro para "${busca}".` : "Sem devolução por bairro na RMR no período."}
+                <td colSpan={7} className="py-10 text-center text-sm text-slate-400">
+                  {busca ? `Nenhum bairro para "${busca}".` : "Sem devolução por bairro no período."}
                 </td>
               </tr>
             ) : (
@@ -87,6 +88,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{formatBRL(b.faturado)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{b.notas}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-500">{formatKg(b.peso)}</td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(b.devolvido)}</td>
                 </tr>
               ))
@@ -99,7 +101,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
       <ul className="divide-y divide-slate-100 md:hidden">
         {lista.length === 0 ? (
           <li className="py-10 text-center text-sm text-slate-400">
-            {busca ? `Nenhum bairro para "${busca}".` : "Sem devolução por bairro na RMR no período."}
+            {busca ? `Nenhum bairro para "${busca}".` : "Sem devolução por bairro no período."}
           </li>
         ) : (
           lista.map((b, i) => (
@@ -112,7 +114,7 @@ export default function TabelaBairrosRMR({ bairros }: { bairros: BairroDevolucao
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="font-semibold tabular-nums text-[#141a4d]">{formatBRL(b.devolvido)}</p>
-                  <p className="text-[11px] tabular-nums text-slate-500">{b.notas} notas</p>
+                  <p className="text-[11px] tabular-nums text-slate-500">{b.notas} notas · {formatKg(b.peso)}</p>
                 </div>
               </div>
               <p className="mt-1.5 pl-[1.9rem] text-xs text-slate-500">

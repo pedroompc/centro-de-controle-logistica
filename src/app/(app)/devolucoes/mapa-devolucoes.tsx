@@ -32,13 +32,18 @@ const rotulo = (c: CidadeDevolucao, m: Metrica) =>
 export function MapaDevolucoes({
   municipios,
   cidades,
+  cidadeAtual,
+  onAbrirCidade,
 }: {
   municipios: MunicipioMapa[];
   cidades: CidadeDevolucao[]; // todas as cidades com dado (colorível ou não)
+  cidadeAtual?: string; // cidade já filtrada na página (vem marcada)
+  onAbrirCidade?: (c: CidadeDevolucao) => void; // sem ele, o mapa só destaca
 }) {
   const [metrica, setMetrica] = useState<Metrica>("valor");
   const [hover, setHover] = useState<MunicipioMapa | null>(null);
-  const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [selecionado, setSelecionado] = useState<string | null>(cidadeAtual ?? null);
+  const escolhida = cidades.find((c) => c.ibge === selecionado) ?? null;
 
   const teto = tetoMetrica(cidades, metrica);
   const ranking = rankingMetrica(cidades, metrica);
@@ -122,6 +127,15 @@ export function MapaDevolucoes({
         </div>
 
         <div>
+          {onAbrirCidade && escolhida && escolhida.ibge !== cidadeAtual && (
+            <button
+              onClick={() => onAbrirCidade(escolhida)}
+              className="mb-3 flex w-full items-center justify-between gap-2 rounded-lg bg-[#181d55] px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-[#10143f]"
+            >
+              <span className="truncate">Ver devoluções de {escolhida.cidade}</span>
+              <span aria-hidden>→</span>
+            </button>
+          )}
           <h3 className="mb-2 text-sm font-semibold text-[#141a4d]">
             {metrica === "taxa" ? "Maiores taxas" : "Maiores volumes (R$)"}
           </h3>

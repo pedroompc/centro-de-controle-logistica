@@ -9,7 +9,15 @@ import type { CidadeDevolucao } from "@/domain/devolucoes-mapa";
  * mapa é aberta — e mescla com as cidades (com dado) para desenhar o mapa. Assim
  * a geometria não pesa no bundle inicial da página.
  */
-export default function MapaLazy({ cidades }: { cidades: CidadeDevolucao[] }) {
+export default function MapaLazy({
+  cidades,
+  cidadeAtual,
+  onAbrirCidade,
+}: {
+  cidades: CidadeDevolucao[];
+  cidadeAtual?: string;
+  onAbrirCidade?: (c: CidadeDevolucao) => void;
+}) {
   const [municipios, setMunicipios] = useState<MunicipioMapa[] | null>(null);
 
   useEffect(() => {
@@ -30,5 +38,5 @@ export default function MapaLazy({ cidades }: { cidades: CidadeDevolucao[] }) {
   if (!municipios) {
     return <p className="py-8 text-center text-sm text-slate-400">Carregando mapa…</p>;
   }
-  return <MapaDevolucoes municipios={municipios} cidades={cidades} />;
+  return <MapaDevolucoes municipios={municipios} cidades={cidades} cidadeAtual={cidadeAtual} onAbrirCidade={onAbrirCidade} />;
 }

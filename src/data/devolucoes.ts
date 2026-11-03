@@ -16,6 +16,7 @@ import type {
 } from "@/domain/devolucoes";
 import type { LinhaCidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import type { DevolucaoMotDia } from "@/domain/motoristas";
+import { montarDiasSemana, type BaseDevolucao, type DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
 
 // Códigos IBGE dos municípios da RMR, derivados da MESMA classificação do painel
 // (a geometria de PE + o classificador de região) — evita hardcode de código e
@@ -24,21 +25,34 @@ const RMR_IBGE = (geoRaw as { ibge: string; nome: string }[])
   .filter((g) => classificarRegiao(g.nome, "PE") === "RMR")
   .map((g) => g.ibge);
 
+/** Nome do município de PE pelo código IBGE (geometria do mapa); `undefined` se não existir. */
+export const nomeCidadePE = (ibge: string): string | undefined =>
+  (geoRaw as { ibge: string; nome: string }[]).find((g) => g.ibge === ibge)?.nome;
+
 const faixa = (col: string) =>
   `${col} >= TO_DATE(:ini,'YYYY-MM-DD') AND ${col} < TO_DATE(:fim,'YYYY-MM-DD') + 1`;
 
-/** Filtros aplicados no SQL — estreitam motivo, clientes e motoristas de uma vez. */
+/**
+ * Filtros aplicados no SQL — estreitam todas as seções de uma vez.
+ * `ibge` = cidade do cliente da nota de venda (clique no mapa); `base` = qual data
+ * define o período (ver `BaseDevolucao`).
+ */
 export interface FiltrosDevolucao {
   motivo?: string;
   setor?: string;
+  ibge?: string;
+  base?: BaseDevolucao;
 }
 
-// Valor líquido do item de devolução: preço praticado menos ST. Na devolução, o
-// IPI NÃO é deduzido — é como a VIEW_BI_FATURAMENTO (fonte oficial) trata a
-// devolução, e assim a soma da quebra fica a ~0,003% do total oficial (deduzir
-// IPI cheio erra ~R$700; sem IPI erra ~R$29 — resíduo irredutível de IPI parcial
-// item a item, que só a view reproduz). Ver [[devolucao-regra]] na memória.
-const NET = `(m.PUNIT - NVL(m.ST,0)) * m.QT`;
+// Valor líquido da devolução = VLDEVOLUCAO − IPI − ST da VIEW_DEVOL_RESUMO_FATURAMENTO,
+// a mesma base da rotina 111: bate com a VIEW_BI_FATURAMENTO.DEVOLUCAO em até R$ 2
+// por mês (jul–nov/2026). O cálculo antigo pelo PCMOV ((PUNIT − ST) × QT) ficava
+// até R$ 4,6 mil acima. A view também traz o peso (TOTPESO = QT × PESOBRUTO).
+const VL_VIEW = `NVL(v.VLDEVOLUCAO,0) - NVL(v.VLIPI,0) - NVL(v.VLST,0)`;
+
+// Notas de venda faturadas (saídas) no período — o universo da base "faturamento".
+const VENDAS_DO_PERIODO = `SELECT nf.NUMTRANSVENDA FROM PCNFSAID nf
+      WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")} AND nf.DTCANCEL IS NULL`;
 
 // Motivo (CODDEVOL) → setor responsável, conforme o cadastro de motivos do Winthor.
 // Override por NOME: o motivo de "coleta" conta como Comercial (decisão do
@@ -50,53 +64,77 @@ const SETOR = `CASE
     WHEN ed.CODDEVOL IN (92,105) THEN 'Faturamento'
     ELSE 'Não classificado' END`;
 
-// Base única (rotina 111 líquido, por DATA DA DEVOLUÇÃO): uma linha por nota de
-// entrada de devolução (movimento ED do período), com valor líquido, motivo e o
-// vínculo com a NF de venda de origem. `NUMTRANSVENDA = 0` ⇒ devolução avulsa
-// (sem venda de origem) — excluída da quebra abaixo, como o 111 faz. O vínculo
-// é pré-agregado por NUMTRANSENT p/ não multiplicar a soma dos itens.
-const ED_CTE = `
+// Base única: uma linha por nota de entrada de devolução VINCULADA a uma venda
+// (a avulsa não entra na view e fica no card próprio, vindo da VIEW_BI_FATURAMENTO).
+// O período depende da base:
+// - "devolucao": devoluções que entraram no período (DTENT) — rotina 111;
+// - "faturamento": devoluções, de qualquer data a partir do início do período,
+//   das notas de venda saídas no período.
+// A view é por item; agrega por NUMTRANSENT p/ não multiplicar as junções.
+const edCte = (base: BaseDevolucao = "devolucao") => `
 ed AS (
-  SELECT ne.NUMTRANSENT,
-         MAX(ne.CODDEVOL) CODDEVOL,
-         NVL(MAX(vlink.NUMTRANSVENDA), 0) NUMTRANSVENDA,
-         SUM(${NET}) VL -- sem arredondar aqui: só na agregação final, p/ bater centavo a centavo com o card
-  FROM PCMOV m
-  JOIN PCNFENT ne ON ne.NUMTRANSENT = m.NUMTRANSENT
-  LEFT JOIN (SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVENDA
-               FROM PCESTCOM GROUP BY NUMTRANSENT) vlink ON vlink.NUMTRANSENT = ne.NUMTRANSENT
-  WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
-    AND m.DTCANCEL IS NULL
-  GROUP BY ne.NUMTRANSENT
+  SELECT v.NUMTRANSENT,
+         MAX(v.CODDEVOL) CODDEVOL,
+         MAX(v.NUMTRANSVENDA) NUMTRANSVENDA,
+         MAX(TRUNC(v.DTENT)) DTENT,
+         SUM(${VL_VIEW}) VL, -- sem arredondar aqui: só na agregação final
+         SUM(NVL(v.TOTPESO, 0)) PESO
+  FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
+  WHERE ${filialIn("v.CODFILIAL")} AND v.DTCANCEL IS NULL AND NVL(v.NUMTRANSVENDA, 0) > 0
+    AND ${base === "faturamento"
+      ? `v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD') AND v.NUMTRANSVENDA IN (${VENDAS_DO_PERIODO})`
+      : faixa("v.DTENT")}
+  GROUP BY v.NUMTRANSENT
 )`;
+
+// Cliente da nota de venda pertence à cidade `:ibge` (PCCLIENT → PCCIDADE.CODIBGE).
+const naCidade = (colCliente: string) => `EXISTS (
+      SELECT 1 FROM PCCLIENT cx JOIN PCCIDADE cix ON cix.CODCIDADE = cx.CODCIDADE
+      WHERE cx.CODCLI = ${colCliente} AND cix.CODIBGE = TO_NUMBER(:ibge))`;
 
 /**
  * `edf` = `ed` com motivo/setor resolvidos e os filtros aplicados num ÚNICO ponto
- * — as três queries (motivo/cliente/motorista) leem daqui, então o filtro
- * estreita todas de uma vez. As cláusulas só entram quando há filtro (o Oracle
- * recusa bind que não aparece na query).
+ * — todas as queries leem daqui, então o filtro estreita todas de uma vez. As
+ * cláusulas só entram quando há filtro (o Oracle recusa bind que não aparece na
+ * query). `CODCLI`/`DTSAIDA` vêm da nota de venda de origem.
  */
 function ctes(f: FiltrosDevolucao): string {
   const cond = [
     f.motivo ? `AND NVL(td.MOTIVO, 'Não informado') = :motivo` : "",
     f.setor ? `AND ${SETOR} = :setor` : "",
+    f.ibge ? `AND ${naCidade("sv.CODCLI")}` : "",
   ].join("\n    ");
-  return `${ED_CTE},
+  return `${edCte(f.base)},
 edf AS (
-  SELECT ed.NUMTRANSENT, ed.NUMTRANSVENDA, ed.VL,
+  SELECT ed.NUMTRANSENT, ed.NUMTRANSVENDA, ed.VL, ed.PESO, ed.DTENT,
+         sv.CODCLI, TRUNC(sv.DTSAIDA) DTVENDA,
          NVL(td.MOTIVO, 'Não informado') MOTIVO, ${SETOR} SETOR
-  FROM ed LEFT JOIN PCTABDEV td ON td.CODDEVOL = ed.CODDEVOL
+  FROM ed
+  JOIN PCNFSAID sv ON sv.NUMTRANSVENDA = ed.NUMTRANSVENDA
+  LEFT JOIN PCTABDEV td ON td.CODDEVOL = ed.CODDEVOL
   WHERE 1 = 1
     ${cond}
 )`;
 }
 
 const sqlMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
-  SELECT MOTIVO, SETOR, COUNT(*) NOTAS, ROUND(SUM(VL), 2) VALOR
+  SELECT MOTIVO, SETOR, COUNT(*) NOTAS, ROUND(SUM(VL), 2) VALOR, ROUND(SUM(PESO), 1) PESO
   FROM edf
   WHERE NUMTRANSVENDA > 0
   GROUP BY MOTIVO, SETOR
   ORDER BY VALOR DESC`;
+
+// Devolução por DIA DA SEMANA (0 = segunda … 6 = domingo, independente do NLS).
+// Na base "devolucao" o dia é o da entrada da devolução; na "faturamento", o dia
+// em que a nota de venda saiu.
+const sqlDiaSemana = (f: FiltrosDevolucao) => {
+  const dia = f.base === "faturamento" ? "DTVENDA" : "DTENT";
+  return `WITH ${ctes(f)}
+  SELECT ${dia} - TRUNC(${dia}, 'IW') DIA,
+         ROUND(SUM(VL), 2) VALOR, ROUND(SUM(PESO), 1) PESO, COUNT(*) NOTAS
+  FROM edf
+  GROUP BY ${dia} - TRUNC(${dia}, 'IW')`;
+};
 
 // Ordena por Nº DE NOTAS (quem "mais volta com entregas"), desempatando por valor
 // — casa com o subtítulo do painel e destaca quem reincide, não só quem tem ticket alto.
@@ -134,7 +172,7 @@ vendas AS (
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
     AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
+    AND nf.DTCANCEL IS NULL${f.ibge ? `\n    AND ${naCidade("nf.CODCLI")}` : ""}
 ),
 devv AS (
   SELECT NUMTRANSVENDA, SUM(VL) VL_DEVOLVIDO
@@ -169,7 +207,7 @@ vendas AS (
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
     AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
+    AND nf.DTCANCEL IS NULL${f.ibge ? `\n    AND ${naCidade("nf.CODCLI")}` : ""}
 )
 SELECT car.CODMOTORISTA,
        edf.MOTIVO,
@@ -204,7 +242,7 @@ const sqlVendedorMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
   GROUP BY s.CODUSUR, edf.MOTIVO, edf.SETOR
   ORDER BY s.CODUSUR, NOTAS DESC, VALOR DESC`;
 
-interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
+interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number; PESO: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaVendedor { CODUSUR: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_EXPEDIDO: number; VALOR_DEVOLVIDO: number }
@@ -220,30 +258,34 @@ const n = (v: unknown): number => Number(v) || 0;
  * já renderizou). A conexão pendente fecha sozinha no `finally` do queryWinthor.
  */
 function secaoOpcional<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
-  const porTempo = new Promise<T>((resolve) =>
-    setTimeout(() => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const porTempo = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
       console.error(`[devolucoes] seção "${label}" passou de ${ms}ms — omitida desta vez`);
       resolve(fallback);
-    }, ms),
-  );
+    }, ms);
+  });
   return Promise.race([
     p.catch((erro) => {
       console.error(`[devolucoes] seção "${label}" indisponível:`, (erro as Error).message);
       return fallback;
     }),
     porTempo,
-  ]);
+  ]).finally(() => clearTimeout(timer));
 }
 
 /**
  * Motivos que tiveram devolução no período — popula o `select` do filtro. Sempre
  * SEM filtro (senão, ao filtrar, o dropdown ficaria com uma opção só).
  */
-export const listarMotivosDoMes = cache(async (ini: string, fim: string): Promise<string[]> => {
-  const binds = { ini, fim };
+export const listarMotivosDoMes = cache(async (
+  ini: string, fim: string, ibge?: string, base?: BaseDevolucao,
+): Promise<string[]> => {
+  const f: FiltrosDevolucao = { ibge, base };
+  const binds = bindsDe(ini, fim, f);
   try {
     const rows = await queryWinthor<{ MOTIVO: string }>(
-      `WITH ${ctes({})}
+      `WITH ${ctes(f)}
        SELECT DISTINCT MOTIVO FROM edf WHERE NUMTRANSVENDA > 0 ORDER BY MOTIVO`,
       binds,
     );
@@ -255,10 +297,11 @@ export const listarMotivosDoMes = cache(async (ini: string, fim: string): Promis
 });
 
 // Bind só do que aparece na query — o Oracle recusa bind não referenciado.
-function bindsDe(ini: string, fim: string, motivo?: string, setor?: string): Record<string, string> {
+function bindsDe(ini: string, fim: string, f: FiltrosDevolucao): Record<string, string> {
   const b: Record<string, string> = { ini, fim };
-  if (motivo) b.motivo = motivo;
-  if (setor) b.setor = setor;
+  if (f.motivo) b.motivo = f.motivo;
+  if (f.setor) b.setor = f.setor;
+  if (f.ibge) b.ibge = f.ibge;
   return b;
 }
 
@@ -280,14 +323,20 @@ function agruparPorCod(rows: LinhaEntidadeMotivo[]): Record<number, MotivoDetalh
  * `null` se o Winthor estiver indisponível (a página mostra o aviso).
  */
 export const getNucleoDevolucao = cache(async (
-  ini: string, fim: string, motivo?: string, setor?: string,
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
 ): Promise<NucleoDevolucao | null> => {
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
   try {
-    const motivosRaw = await queryWinthor<LinhaMotivo>(sqlMotivo({ motivo, setor }), bindsDe(ini, fim, motivo, setor));
+    const motivosRaw = await queryWinthor<LinhaMotivo>(sqlMotivo(f), bindsDe(ini, fim, f));
     const porMotivo: DevolucaoPorMotivo[] = motivosRaw.map((r) => ({
       motivo: r.MOTIVO, setor: r.SETOR as SetorDevolucao, notas: n(r.NOTAS), valor: n(r.VALOR),
     }));
-    return { total: porMotivo.reduce((t, m) => t + m.valor, 0), porSetor: agregarPorSetor(porMotivo), porMotivo };
+    return {
+      total: porMotivo.reduce((t, m) => t + m.valor, 0),
+      peso: Math.round(motivosRaw.reduce((t, r) => t + n(r.PESO), 0) * 10) / 10,
+      porSetor: agregarPorSetor(porMotivo),
+      porMotivo,
+    };
   } catch (erro) {
     console.error("[devolucoes] núcleo indisponível:", (erro as Error).message);
     return null;
@@ -296,10 +345,10 @@ export const getNucleoDevolucao = cache(async (
 
 /** Aba CLIENTES (sob demanda): ranking por nº de notas + drill-down por motivo. */
 export const getClientesDevolucao = cache(async (
-  ini: string, fim: string, motivo?: string, setor?: string,
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
 ): Promise<SecaoRanking<DevolucaoPorCliente>> => {
-  const f: FiltrosDevolucao = { motivo, setor };
-  const binds = bindsDe(ini, fim, motivo, setor);
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
+  const binds = bindsDe(ini, fim, f);
   const [rankingRaw, motivoRaw] = await Promise.all([
     secaoOpcional(queryWinthor<LinhaCliente>(sqlCliente(f), binds), 15000, [], "clientes"),
     secaoOpcional(queryWinthor<LinhaEntidadeMotivo>(sqlClienteMotivo(f), binds), 15000, [], "motivos por cliente"),
@@ -312,10 +361,10 @@ export const getClientesDevolucao = cache(async (
 
 /** Aba VENDEDORES (sob demanda): ranking + drill-down por motivo. */
 export const getVendedoresDevolucao = cache(async (
-  ini: string, fim: string, motivo?: string, setor?: string,
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
 ): Promise<SecaoRanking<DevolucaoPorVendedor>> => {
-  const f: FiltrosDevolucao = { motivo, setor };
-  const binds = bindsDe(ini, fim, motivo, setor);
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
+  const binds = bindsDe(ini, fim, f);
   const [rankingRaw, motivoRaw] = await Promise.all([
     secaoOpcional(queryWinthor<LinhaVendedor>(sqlVendedor(f), binds), 15000, [], "vendedores"),
     secaoOpcional(queryWinthor<LinhaEntidadeMotivo>(sqlVendedorMotivo(f), binds), 15000, [], "motivos por vendedor"),
@@ -328,10 +377,10 @@ export const getVendedoresDevolucao = cache(async (
 
 /** Aba MOTORISTAS (sob demanda): taxa por motorista + drill-down por motivo. */
 export const getMotoristasDevolucao = cache(async (
-  ini: string, fim: string, motivo?: string, setor?: string,
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
 ): Promise<SecaoRanking<DevolucaoPorMotorista>> => {
-  const f: FiltrosDevolucao = { motivo, setor };
-  const binds = bindsDe(ini, fim, motivo, setor);
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
+  const binds = bindsDe(ini, fim, f);
   const [rankingRaw, motivoRaw] = await Promise.all([
     secaoOpcional(queryWinthor<LinhaMotorista>(sqlMotorista(f), binds), 20000, [], "motoristas"),
     secaoOpcional(queryWinthor<LinhaMotoristaMotivo>(sqlMotoristaMotivo(f), binds), 20000, [], "motivos por motorista"),
@@ -354,6 +403,18 @@ export const getMotoristasDevolucao = cache(async (
   };
 });
 
+/** Aba DIA DA SEMANA (sob demanda): valor, peso e notas devolvidos por dia (seg → dom). */
+export const getDevolucaoPorDiaSemana = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
+): Promise<DevolucaoDiaSemana[]> => {
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
+  const rows = await secaoOpcional(
+    queryWinthor<{ DIA: number; VALOR: number; PESO: number; NOTAS: number }>(sqlDiaSemana(f), bindsDe(ini, fim, f)),
+    15000, [], "dia da semana",
+  );
+  return montarDiasSemana(rows.map((r) => ({ dia: n(r.DIA), valor: n(r.VALOR), peso: n(r.PESO), notas: n(r.NOTAS) })));
+});
+
 // --- Devolução por cidade (PE) ------------------------------------------------
 // Faturado e devolvido atribuídos à CIDADE DO CLIENTE DA VENDA. O faturado usa os
 // mesmos filtros da query de motorista (condvenda de bonificação/brinde fora); o
@@ -364,8 +425,8 @@ export const getMotoristasDevolucao = cache(async (
 // Colunas confirmadas no Winthor (dicionário de dados): cliente → cidade via
 // PCCLIENT.CODCIDADE → PCCIDADE (CODCIDADE, NOMECIDADE, CODIBGE numérico de 7
 // dígitos, UF de 2 letras). O CODIBGE casa 1:1 com as chaves da geometria de PE.
-const sqlCidade = () => `
-WITH ${ctes({})},
+const sqlCidade = (base?: BaseDevolucao) => `
+WITH ${ctes({ base })},
 fat AS (
   SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, SUM(nf.VLTOTAL) FATURADO,
          COUNT(DISTINCT nf.NUMTRANSVENDA) NOTAS_FAT
@@ -428,9 +489,10 @@ interface LinhaCidadeRaw {
 export const getDevolucaoPorCidade = cache(async (
   ini: string,
   fim: string,
+  base?: BaseDevolucao,
 ): Promise<LinhaCidadeDevolucao[]> => {
   try {
-    const rows = await queryWinthor<LinhaCidadeRaw>(sqlCidade(), { ini, fim });
+    const rows = await queryWinthor<LinhaCidadeRaw>(sqlCidade(base), { ini, fim });
     return rows
       .filter((r) => r.IBGE)
       .map((r) => ({
@@ -449,17 +511,19 @@ export const getDevolucaoPorCidade = cache(async (
   }
 });
 
-// --- Devolução por BAIRRO na RMR ---------------------------------------------
-// Devolvido por CIDADE + BAIRRO (PCCLIENT.BAIRROENT), restrito à RMR, PELA DATA
-// DA DEVOLUÇÃO (mesma regra do 111 — não muda o número oficial). Também traz o
+// --- Devolução por BAIRRO (RMR ou uma cidade) ---------------------------------
+// Devolvido por CIDADE + BAIRRO (PCCLIENT.BAIRROENT), restrito à RMR — ou à cidade
+// escolhida no mapa (`:ibge`) —, na base de data escolhida. Também traz o
 // MOTIVO PREDOMINANTE do bairro (o de maior R$ devolvido) e o valor dele. Sem
 // faturado/taxa: no bairro a taxa não é confiável (numerador e denominador de
 // safras diferentes), então mostramos o volume + o motivo que puxa. O bairro é
 // normalizado (UPPER/TRIM); a chave separa homônimos por cidade (CODIBGE).
 const BAIRRO_EXPR = "UPPER(TRIM(NVL(cli.BAIRROENT,'SEM BAIRRO')))";
 
-const sqlBairroRMR = () => `
-WITH ${ctes({})},
+const sqlBairro = (base?: BaseDevolucao, ibge?: string) => {
+  const cidades = ibge ? `= TO_NUMBER(:ibge)` : `IN (${RMR_IBGE.join(",")})`;
+  return `
+WITH ${ctes({ base })},
 fat AS (
   SELECT ci.CODIBGE, ${BAIRRO_EXPR} BAIRRO, SUM(nf.VLTOTAL) FATURADO,
          COUNT(DISTINCT nf.NUMTRANSVENDA) NOTAS_FAT
@@ -469,22 +533,23 @@ fat AS (
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
     AND nf.DTCANCEL IS NULL
-    AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
+    AND ci.CODIBGE ${cidades}
   GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
 ),
 base AS (
   SELECT ci.CODIBGE, MAX(ci.NOMECIDADE) CIDADE, ${BAIRRO_EXPR} BAIRRO, edf.MOTIVO,
-         SUM(edf.VL) VL, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
+         SUM(edf.VL) VL, SUM(edf.PESO) PESO, COUNT(DISTINCT edf.NUMTRANSENT) NOTAS
   FROM edf
   JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
   JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
-  WHERE edf.NUMTRANSVENDA > 0 AND ci.CODIBGE IN (${RMR_IBGE.join(",")})
+  WHERE edf.NUMTRANSVENDA > 0 AND ci.CODIBGE ${cidades}
   GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}, edf.MOTIVO
 ),
 ranked AS (
   SELECT CODIBGE, CIDADE, BAIRRO, MOTIVO, VL,
          SUM(VL) OVER (PARTITION BY CODIBGE, BAIRRO) DEVOLVIDO,
+         SUM(PESO) OVER (PARTITION BY CODIBGE, BAIRRO) PESO,
          SUM(NOTAS) OVER (PARTITION BY CODIBGE, BAIRRO) NOTAS,
          ROW_NUMBER() OVER (PARTITION BY CODIBGE, BAIRRO ORDER BY VL DESC) RN
   FROM base
@@ -493,6 +558,7 @@ SELECT r.CIDADE, r.BAIRRO,
        ROUND(NVL(f.FATURADO, 0), 2) FATURADO,
        NVL(f.NOTAS_FAT, 0) NOTAS_FAT,
        ROUND(r.DEVOLVIDO, 2) DEVOLVIDO,
+       ROUND(r.PESO, 1) PESO,
        r.NOTAS,
        r.MOTIVO MOTIVO_TOP,
        ROUND(r.VL, 2) MOTIVO_VALOR
@@ -500,6 +566,7 @@ FROM ranked r
 LEFT JOIN fat f ON f.CODIBGE = r.CODIBGE AND f.BAIRRO = r.BAIRRO
 WHERE r.RN = 1 AND r.DEVOLVIDO > 0
 ORDER BY DEVOLVIDO DESC`;
+};
 
 interface LinhaBairroRaw {
   CIDADE: string | null;
@@ -507,38 +574,45 @@ interface LinhaBairroRaw {
   FATURADO: number;
   NOTAS_FAT: number;
   DEVOLVIDO: number;
+  PESO: number;
   NOTAS: number;
   MOTIVO_TOP: string | null;
   MOTIVO_VALOR: number;
 }
 
 /**
- * Devolução por bairro (cidade + bairro) da RMR no período, pela data da
- * devolução (bate com o 111), com o motivo predominante e o valor dele. Só
- * bairros com devolução > 0. Winthor indisponível ⇒ `[]`.
+ * Devolução por bairro (cidade + bairro) no período — da RMR ou, com `ibge`, de
+ * uma cidade —, com o motivo predominante e o valor dele. Só bairros com
+ * devolução > 0. Winthor indisponível ⇒ `[]`.
  */
-export const getDevolucaoPorBairroRMR = cache(async (
+export const getDevolucaoPorBairro = cache(async (
   ini: string,
   fim: string,
+  base?: BaseDevolucao,
+  ibge?: string,
 ): Promise<BairroDevolucao[]> => {
-  if (RMR_IBGE.length === 0) return [];
+  if (!ibge && RMR_IBGE.length === 0) return [];
   try {
-    const rows = await queryWinthor<LinhaBairroRaw>(sqlBairroRMR(), { ini, fim });
+    const rows = await queryWinthor<LinhaBairroRaw>(sqlBairro(base, ibge), ibge ? { ini, fim, ibge } : { ini, fim });
     return rows.map((r) => ({
       cidade: r.CIDADE ?? "—",
       bairro: r.BAIRRO ?? "SEM BAIRRO",
       faturado: n(r.FATURADO),
       notasFaturadas: n(r.NOTAS_FAT),
       devolvido: n(r.DEVOLVIDO),
+      peso: n(r.PESO),
       notas: n(r.NOTAS),
       motivo: r.MOTIVO_TOP ?? "Não informado",
       motivoValor: n(r.MOTIVO_VALOR),
     }));
   } catch (erro) {
-    console.error("[devolucoes] bairros RMR indisponível:", (erro as Error).message);
+    console.error("[devolucoes] bairros indisponível:", (erro as Error).message);
     return [];
   }
 });
+
+/** Bairros da RMR pela data da devolução (Painel TV). */
+export const getDevolucaoPorBairroRMR = (ini: string, fim: string) => getDevolucaoPorBairro(ini, fim);
 
 // --- Devolução por motorista POR PERÍODO DE FATURAMENTO (BI dos Motoristas) ----
 // Coorte: as notas de venda em carga SAÍDAS no período (mesmo universo de
@@ -556,15 +630,11 @@ WITH vendas AS (
     AND nf.DTCANCEL IS NULL
 ),
 ed AS (
-  SELECT ne.NUMTRANSENT, MAX(ne.CODDEVOL) CODDEVOL, MAX(vlink.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${NET}) VL
-  FROM PCMOV m
-  JOIN PCNFENT ne ON ne.NUMTRANSENT = m.NUMTRANSENT
-  JOIN (SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVENDA
-          FROM PCESTCOM GROUP BY NUMTRANSENT) vlink ON vlink.NUMTRANSENT = ne.NUMTRANSENT
-  WHERE ${filialIn("m.CODFILIAL")} AND m.DTMOV >= TO_DATE(:ini,'YYYY-MM-DD') AND m.CODOPER = 'ED'
-    AND m.DTCANCEL IS NULL
-    AND vlink.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
-  GROUP BY ne.NUMTRANSENT
+  SELECT v.NUMTRANSENT, MAX(v.CODDEVOL) CODDEVOL, MAX(v.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${VL_VIEW}) VL
+  FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
+  WHERE ${filialIn("v.CODFILIAL")} AND v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD') AND v.DTCANCEL IS NULL
+    AND v.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
+  GROUP BY v.NUMTRANSENT
 ),
 devv AS (
   SELECT ed.NUMTRANSVENDA, SUM(ed.VL) VL_DEVOLVIDO

@@ -34,6 +34,7 @@ export interface BairroDevolucao {
   faturado: number; // R$ faturado no bairro no período (painel TV mostra taxa indicativa)
   notasFaturadas: number; // nº de NFs de venda faturadas no bairro
   devolvido: number;
+  peso: number; // kg devolvidos
   notas: number; // nº de notas devolvidas
   motivo: string; // motivo de devolução predominante
   motivoValor: number; // R$ devolvido desse motivo

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card, PanelHeader } from "@/components/ui";
 import { formatBRL } from "@/domain/format";
 import type {
@@ -12,20 +13,23 @@ import type {
 } from "@/domain/devolucoes";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { setorPill } from "@/domain/devolucoes-ui";
-import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa, carregarBairrosRMR } from "./actions";
+import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa, carregarBairros, carregarDiaSemana } from "./actions";
+import type { BaseDevolucao, DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
+import PainelDiaSemana from "./painel-dia-semana";
 import TabelaMotoristas from "./tabela-motoristas";
 import PainelRanking, { type ItemRanking } from "./painel-ranking";
 import TabelaBairrosRMR from "./tabela-bairros-rmr";
 import MapaLazy from "./mapa-lazy";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "./icons";
 
-type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "mapa" | "bairros";
+type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "dias" | "mapa" | "bairros";
 
 /** Cache client-side das abas já carregadas (some ao trocar mês/filtro via `key`). */
 interface Cache {
   clientes?: SecaoRanking<DevolucaoPorCliente>;
   vendedores?: SecaoRanking<DevolucaoPorVendedor>;
   motoristas?: SecaoRanking<DevolucaoPorMotorista>;
+  dias?: DevolucaoDiaSemana[];
   mapa?: CidadeDevolucao[];
   bairros?: BairroDevolucao[];
 }
@@ -76,13 +80,20 @@ export default function SecoesDevolucao({
   mes,
   motivo,
   setor,
+  ibge,
+  cidadeNome,
+  base,
   porMotivo,
 }: {
   mes: string;
   motivo?: string;
   setor?: string;
+  ibge?: string;
+  cidadeNome?: string;
+  base: BaseDevolucao;
   porMotivo: DevolucaoPorMotivo[];
 }) {
+  const router = useRouter();
   const [aba, setAba] = useState<Aba>("motoristas");
   const [cache, setCache] = useState<Cache>({});
   const [carregando, setCarregando] = useState<Aba | null>(null);
@@ -95,21 +106,25 @@ export default function SecoesDevolucao({
     if (cache[alvo] !== undefined) return; // já carregado — usa o cache
     setCarregando(alvo);
     setErro((e) => ({ ...e, [alvo]: false }));
+    const ctx = { mes, motivo, setor, ibge, base };
     try {
       if (alvo === "clientes") {
-        const d = await carregarClientes(mes, motivo, setor);
+        const d = await carregarClientes(ctx);
         setCache((c) => ({ ...c, clientes: d }));
       } else if (alvo === "vendedores") {
-        const d = await carregarVendedores(mes, motivo, setor);
+        const d = await carregarVendedores(ctx);
         setCache((c) => ({ ...c, vendedores: d }));
       } else if (alvo === "motoristas") {
-        const d = await carregarMotoristas(mes, motivo, setor);
+        const d = await carregarMotoristas(ctx);
         setCache((c) => ({ ...c, motoristas: d }));
+      } else if (alvo === "dias") {
+        const d = await carregarDiaSemana(ctx);
+        setCache((c) => ({ ...c, dias: d }));
       } else if (alvo === "mapa") {
-        const d = await carregarMapa(mes);
+        const d = await carregarMapa(ctx);
         setCache((c) => ({ ...c, mapa: d }));
       } else if (alvo === "bairros") {
-        const d = await carregarBairrosRMR(mes);
+        const d = await carregarBairros(ctx);
         setCache((c) => ({ ...c, bairros: d }));
       }
     } catch {
@@ -117,7 +132,7 @@ export default function SecoesDevolucao({
     } finally {
       setCarregando((atual) => (atual === alvo ? null : atual));
     }
-  }, [cache, mes, motivo, setor]);
+  }, [cache, mes, motivo, setor, ibge, base]);
 
   // Carrega a aba ativa quando ela muda (inclui a aba inicial ao montar). É uma
   // busca sob demanda: o setState (spinner) faz parte do fluxo, por isso a regra
@@ -135,9 +150,17 @@ export default function SecoesDevolucao({
     { id: "clientes", label: "Clientes", icon: <IconePredio className="h-4 w-4" /> },
     { id: "vendedores", label: "Vendedores", icon: <IconeUsuario className="h-4 w-4" /> },
     { id: "motivos", label: "Motivos", icon: <IconeEtiqueta className="h-4 w-4" /> },
+    { id: "dias", label: "Dia da semana", icon: <IconeEtiqueta className="h-4 w-4" /> },
     { id: "mapa", label: "Mapa PE", icon: <IconePredio className="h-4 w-4" /> },
-    { id: "bairros", label: "RMR/Bairros", icon: <IconePredio className="h-4 w-4" /> },
+    { id: "bairros", label: ibge ? "Bairros" : "RMR/Bairros", icon: <IconePredio className="h-4 w-4" /> },
   ];
+
+  // Clique numa cidade do mapa → a página inteira passa a mostrar só ela (?cidade=IBGE).
+  const abrirCidade = (c: CidadeDevolucao) => {
+    const p = new URLSearchParams(window.location.search);
+    p.set("cidade", c.ibge);
+    router.push(`/devolucoes?${p.toString()}`);
+  };
 
   const estaCarregando = carregando === aba && cache[aba as keyof Cache] === undefined;
   const falhou = erro[aba];
@@ -226,12 +249,19 @@ export default function SecoesDevolucao({
               {(cache.mapa?.length ?? 0) === 0 ? (
                 <p className="text-sm text-slate-400">Mapa indisponível — sem dado de cidade no período.</p>
               ) : (
-                <MapaLazy cidades={cache.mapa ?? []} />
+                <MapaLazy cidades={cache.mapa ?? []} cidadeAtual={ibge} onAbrirCidade={abrirCidade} />
               )}
             </Card>
           )}
 
-          {aba === "bairros" && <TabelaBairrosRMR bairros={cache.bairros ?? []} />}
+          {aba === "dias" && <PainelDiaSemana dias={cache.dias ?? []} base={base} />}
+
+          {aba === "bairros" && (
+            <TabelaBairrosRMR
+              bairros={cache.bairros ?? []}
+              titulo={cidadeNome ? `Devolução por bairro · ${cidadeNome}` : undefined}
+            />
+          )}
         </>
       )}
     </div>

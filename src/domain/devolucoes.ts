@@ -59,6 +59,7 @@ export interface DevolucaoPorMotorista {
 /** Núcleo buscado no SSR: total, por setor e a lista de motivos (leve). */
 export interface NucleoDevolucao {
   total: number;
+  peso: number; // kg devolvidos (TOTPESO da view = QT × PESOBRUTO)
   porSetor: DevolucaoPorSetor[];
   porMotivo: DevolucaoPorMotivo[];
 }

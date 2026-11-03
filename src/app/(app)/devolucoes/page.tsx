@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { getNucleoDevolucao, listarMotivosDoMes } from "@/data/devolucoes";
+import { getNucleoDevolucao, listarMotivosDoMes, nomeCidadePE } from "@/data/devolucoes";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
-import { formatBRL, formatPercent } from "@/domain/format";
+import { formatBRL, formatKg, formatPercent } from "@/domain/format";
+import { baseDevolucao } from "@/domain/devolucoes-dia-semana";
 import { primeiroDiaDoMes, formatMesAno, inicioFimDoMes, limitarAoHistorico } from "@/domain/periodo";
 import type { SetorDevolucao } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard } from "@/components/ui";
@@ -26,7 +27,7 @@ const CORES: Record<SetorDevolucao, { barra: string; pill: string }> = {
 export default async function DevolucoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; motivo?: string; setor?: string }>;
+  searchParams: Promise<{ mes?: string; motivo?: string; setor?: string; cidade?: string; base?: string }>;
 }) {
   const sp = await searchParams;
   const mesSel = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
@@ -36,14 +37,18 @@ export default async function DevolucoesPage({
   const { inicio, fim } = inicioFimDoMes(mesSel);
   const motivo = sp.motivo || undefined;
   const setor = sp.setor || undefined;
-  const temFiltro = Boolean(motivo || setor);
+  // Cidade escolhida no mapa (IBGE de 7 dígitos de PE) e base de data da análise.
+  const cidadeNome = sp.cidade && /^\d{7}$/.test(sp.cidade) ? nomeCidadePE(sp.cidade) : undefined;
+  const ibge = cidadeNome ? sp.cidade : undefined;
+  const base = baseDevolucao(sp.base);
+  const temFiltro = Boolean(motivo || setor || ibge);
 
   // SSR busca só o NÚCLEO (leve): total, por setor e a lista de motivos. As abas
   // pesadas (clientes/vendedores/motoristas/mapa) carregam sob demanda no cliente.
   const [r, fat, motivosDisponiveis] = await Promise.all([
-    getNucleoDevolucao(inicio, fim, motivo, setor),
+    getNucleoDevolucao(inicio, fim, motivo, setor, ibge, base),
     getResumoFaturamentoDashboard(mesSel),
-    listarMotivosDoMes(inicio, fim),
+    listarMotivosDoMes(inicio, fim, ibge, base),
   ]);
   const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
 
@@ -51,7 +56,7 @@ export default async function DevolucoesPage({
   const url = (over: Record<string, string | undefined> = {}) => {
     const atual: Record<string, string | undefined> = {
       mes: mesFechado ? mesSel : undefined, // mês corrente = URL limpa
-      motivo, setor, ...over,
+      motivo, setor, cidade: ibge, base: base === "faturamento" ? base : undefined, ...over,
     };
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(atual)) if (v) p.set(k, v);
@@ -97,7 +102,7 @@ export default async function DevolucoesPage({
 
       {/* Números OFICIAIS do mês = rotina 111. NÃO reagem ao filtro (âncora). */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Valor devolução" value={formatBRL(r.total)} hint="= soma por setor · ~igual ao 111" accent="red" />
+        <StatCard label="Valor devolução" value={formatBRL(fat?.valorDevolucao ?? r.total)} hint="rotina 111 · pela data da devolução" accent="red" />
         <StatCard
           label="Devolução avulsa"
           value={fat ? formatBRL(fat.valorDevolucaoAvulsa) : "—"}
@@ -123,9 +128,44 @@ export default async function DevolucoesPage({
           Análise · de onde vêm
         </h2>
         {temFiltro && (
-          <Link href={url({ motivo: undefined, setor: undefined })} className="text-xs font-medium text-amber-600 hover:text-amber-700">limpar filtros</Link>
+          <Link href={url({ motivo: undefined, setor: undefined, cidade: undefined })} className="text-xs font-medium text-amber-600 hover:text-amber-700">limpar filtros</Link>
         )}
+        <div
+          className="ml-auto inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-semibold"
+          role="group"
+          aria-label="Base de data da análise"
+        >
+          <Link
+            href={url({ base: undefined })}
+            title="Devoluções que entraram no mês (rotina 111)"
+            className={`rounded-md px-3 py-1.5 transition ${base === "devolucao" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            Data da devolução
+          </Link>
+          <Link
+            href={url({ base: "faturamento" })}
+            title="Das notas faturadas no mês, as que voltaram até hoje — o mês recente ainda sobe"
+            className={`rounded-md px-3 py-1.5 transition ${base === "faturamento" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            Dia faturado
+          </Link>
+        </div>
       </div>
+
+      {cidadeNome && (
+        <div className="mb-4 flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[#eef0fb] py-1 pl-3 pr-1 text-sm font-semibold text-[#1b2168]">
+            Cidade: {cidadeNome}
+            <Link
+              href={url({ cidade: undefined })}
+              aria-label="Remover filtro de cidade"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#1b2168] transition hover:bg-white"
+            >
+              ✕
+            </Link>
+          </span>
+        </div>
+      )}
 
       {/* Filtro: motivo/setor vão no SQL e estreitam as três seções. */}
       <Card className="mb-4 p-3">
@@ -148,7 +188,12 @@ export default async function DevolucoesPage({
 
       {/* Responsabilidade por setor: barra empilhada + cards clicáveis (filtram). */}
       <Card className="mb-6 p-5">
-        <h3 className="mb-3 text-sm font-semibold text-[#141a4d]">Responsabilidade por setor (no período)</h3>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-[#141a4d]">Responsabilidade por setor</h3>
+          <span className="text-xs tabular-nums text-slate-500">
+            {formatBRL(r.total)} · {formatKg(r.peso)} · {r.porSetor.reduce((t, s) => t + s.notas, 0)} notas
+          </span>
+        </div>
         <div className="mb-4 flex h-3 overflow-hidden rounded-full">
           {r.porSetor.map((s) => (
             <div
@@ -188,18 +233,20 @@ export default async function DevolucoesPage({
       {/* Detalhe em ABAS que carregam SOB DEMANDA (cache por sessão). A `key`
           zera o cache do cliente quando muda o mês ou o filtro. */}
       <SecoesDevolucao
-        key={`${mesSel}|${motivo ?? ""}|${setor ?? ""}`}
+        key={`${mesSel}|${motivo ?? ""}|${setor ?? ""}|${ibge ?? ""}|${base}`}
         mes={mesSel}
         motivo={motivo}
         setor={setor}
+        ibge={ibge}
+        cidadeNome={cidadeNome}
+        base={base}
         porMotivo={r.porMotivo}
       />
 
       <p className="mt-4 text-xs text-slate-400">
-        Os indicadores no topo são sempre o total do mês (não reagem ao filtro). Motivo e setor
-        estreitam todas as abas; a busca dentro de cada aba filtra só ela. Clique num motorista,
-        cliente ou vendedor para ver a quebra por motivo. Valor líquido da devolução (rotina 111),
-        pela data da devolução.
+        Os indicadores no topo são sempre o total do mês pela rotina 111 (não reagem a filtro nem
+        à base). Motivo, setor, cidade e a base (data da devolução ou dia faturado) estreitam
+        todas as abas; no mapa, escolha uma cidade para ver só ela.
       </p>
     </div>
   );
