@@ -22,6 +22,9 @@ import { BISeparacao } from "./bi-separacao";
 import { ehSetorAbastecimento } from "@/domain/abastecimento";
 import { carregarBIAbastecimento } from "./abastecimento-dados";
 import { BIAbastecimento } from "./bi-abastecimento";
+import { ehSetorMotoristas } from "@/domain/motoristas";
+import { carregarBIMotoristas } from "./motoristas-dados";
+import { BIMotoristas } from "./bi-motoristas";
 import { EsqueletoBI } from "./esqueleto-bi";
 import type { HrefMes } from "./bi-shell";
 import type { Funcionario, Setor } from "@/domain/types";
@@ -39,6 +42,7 @@ const ABAS_SEPARACAO = [
 ] as const;
 
 const ABAS_ABASTECIMENTO = ABAS_SEPARACAO;
+const ABAS_MOTORISTAS = ABAS_SEPARACAO;
 
 /** Abas do setor (mesmo visual das abas de Tendências). */
 function AbasSetor({ id, ativa, abas }: { id: string; ativa: string; abas: readonly { aba: string; label: string }[] }) {
@@ -87,6 +91,7 @@ export default async function SetorDetalhe({
   const recebimento = ehSetorRecebimento(setor.nome);
   const separacao = !recebimento && ehSetorSeparacao(setor.nome);
   const abastecimento = !recebimento && !separacao && ehSetorAbastecimento(setor.nome);
+  const motoristas = !recebimento && !separacao && !abastecimento && ehSetorMotoristas(setor.nome);
   // Mês do BI (?mes=), limitado ao histórico, e a navegação ‹ mês ›.
   const mesBI = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
   const mesAtual = primeiroDiaDoMes();
@@ -110,6 +115,14 @@ export default async function SetorDetalhe({
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
         <ConteudoBIAbastecimento setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
+      </Suspense>
+    );
+  }
+
+  if (motoristas && abaParam === "bi") {
+    return (
+      <Suspense key={chave} fallback={<EsqueletoBI />}>
+        <ConteudoBIMotoristas setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
       </Suspense>
     );
   }
@@ -147,6 +160,7 @@ export default async function SetorDetalhe({
       {recebimento && <AbasSetor id={id} ativa="" abas={ABAS_RECEBIMENTO} />}
       {separacao && <AbasSetor id={id} ativa="" abas={ABAS_SEPARACAO} />}
       {abastecimento && <AbasSetor id={id} ativa="" abas={ABAS_ABASTECIMENTO} />}
+      {motoristas && <AbasSetor id={id} ativa="" abas={ABAS_MOTORISTAS} />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Custo mensal (ativos)" value={formatBRL(custoDoSetor(funcionarios, id))} accent="gold" />
@@ -277,6 +291,11 @@ async function ConteudoBISeparacao({ setor, funcionarios, mes, hrefMes }: { seto
 async function ConteudoBIAbastecimento({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
   const dados = await carregarBIAbastecimento(setor, funcionarios, mes);
   return <BIAbastecimento key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
+}
+
+async function ConteudoBIMotoristas({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
+  const dados = await carregarBIMotoristas(setor, funcionarios, mes);
+  return <BIMotoristas key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
 }
 
 async function ConteudoBIRecebimento({ id, mes, hrefMes }: { id: string; mes: string; hrefMes: HrefMes }) {
