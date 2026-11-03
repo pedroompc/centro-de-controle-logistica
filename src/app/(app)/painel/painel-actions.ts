@@ -1,6 +1,12 @@
 "use server";
 
-import { assertAdmin } from "@/data/auth";
+import { assertAdmin, isAdmin } from "@/data/auth";
+import { lerViagensMes } from "@/data/winthor-entregas";
+import { lerHodometroPeriodo } from "@/data/frota-km";
+import { lerCadastroFrota } from "@/data/frota-custos";
+import { mapaKmDia, resumoKm, type ResumoKm } from "@/domain/frota";
+import { custoFrota } from "@/domain/frota-custo";
+import { totaisEntregas } from "@/domain/motoristas";
 import { getNucleoDevolucao, getDevolucaoPorBairroRMR } from "@/data/devolucoes";
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
@@ -503,4 +509,56 @@ export async function carregarFatosDescarrego(mes: string): Promise<FatoDescarre
   const { inicio, fim } = inicioFimDoMes(m);
   const [lancs, totais, carros] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m), listarCarrosDia(inicio, fim)]);
   return fatosDoMes(lancs, totais, carros);
+}
+
+// --- Frota (telemetria Fulltrack) ---------------------------------------------
+
+export interface ResumoFrotaTV {
+  km: number;
+  kmPorEntrega: number | null;
+  rastreados: number;
+  veiculos: number;
+  kmPorVeiculoDia: number | null;
+  porDia: { data: string; km: number }[];
+  top: { placa: string; descricao: string | null; km: number; diasRodados: number; kmPorEntrega: number | null }[];
+  anterior: { km: number; kmPorEntrega: number | null; kmPorVeiculoDia: number | null } | null;
+  /** Custo ESTIMADO (Custos › Frota) — só admin; null para a conta de leitura da TV. */
+  custo: { total: number; diesel: number; porKm: number | null; porEntrega: number | null } | null;
+}
+
+const fimDoMes = (m: string) => inicioFimDoMes(m).fim;
+
+async function kmDoMes(m: string): Promise<{ r: ResumoKm; entregas: number } | null> {
+  const [vs, hod] = await Promise.all([lerViagensMes(m), lerHodometroPeriodo(m, fimDoMes(m))]);
+  if (!hod) return null;
+  return { r: resumoKm(vs, mapaKmDia(hod), null), entregas: totaisEntregas(vs).entregas };
+}
+
+function porVeiculoDia(r: ResumoKm): number | null {
+  const dias = r.porVeiculo.reduce((s, v) => s + (v.km !== null ? v.diasRodados : 0), 0);
+  return dias > 0 ? r.km / dias : null;
+}
+
+/** KM real da frota de entrega no mês, vs o mês anterior. `null` = sem telemetria. */
+export async function carregarFrotaTV(mes: string): Promise<ResumoFrotaTV | null> {
+  const m = mesNorm(mes);
+  const [atual, ant, admin] = await Promise.all([kmDoMes(m), m > INICIO_HISTORICO ? kmDoMes(mesAnterior(m)).catch(() => null) : null, isAdmin()]);
+  if (!atual || atual.r.rastreados === 0) return null;
+  const { r, entregas } = atual;
+  const cadastro = admin ? await lerCadastroFrota().catch(() => null) : null;
+  const c = cadastro ? custoFrota(r, cadastro, fracaoDoMes(m)) : null;
+  return {
+    km: r.km,
+    kmPorEntrega: r.kmPorEntrega,
+    rastreados: r.rastreados,
+    veiculos: r.veiculos,
+    kmPorVeiculoDia: porVeiculoDia(r),
+    porDia: [...r.porDia.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([data, km]) => ({ data, km })),
+    top: r.porVeiculo
+      .filter((v) => v.km !== null)
+      .slice(0, 8)
+      .map((v) => ({ placa: v.placa, descricao: v.descricao, km: v.km!, diasRodados: v.diasRodados, kmPorEntrega: v.kmPorEntrega })),
+    anterior: ant && ant.r.rastreados > 0 ? { km: ant.r.km, kmPorEntrega: ant.r.kmPorEntrega, kmPorVeiculoDia: porVeiculoDia(ant.r) } : null,
+    custo: c ? { total: c.total, diesel: c.diesel, porKm: c.custoPorKm, porEntrega: entregas > 0 ? c.total / entregas : null } : null,
+  };
 }

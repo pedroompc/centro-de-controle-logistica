@@ -20,6 +20,7 @@ import {
   type ResumoReceitas,
   type ResumoDescarregos,
   type MesReceitaDetalhe,
+  type ResumoFrotaTV,
 } from "./painel-actions";
 import { carregarPainelLote, type LotePainel } from "./painel-lote";
 import { SeloVivo } from "@/components/movimento";
@@ -35,6 +36,7 @@ import {
   SecaoTempoFaturar,
   SecaoReceitas,
   SecaoDescarregos,
+  SecaoFrota,
 } from "./secoes";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "../devolucoes/icons";
 
@@ -97,6 +99,7 @@ interface Dados {
   descarregos: ResumoDescarregos | null;
   serieDescarrego: PontoDescarregoMensal[];
   recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
+  frota: ResumoFrotaTV | null;
 }
 
 // Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
@@ -133,6 +136,8 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSe
     s.push({ id: "bairros-rmr", titulo: "Devolução · Mapa da RMR por bairro", contexto: "notas entregues / devolvidas e motivo predominante, bairro a bairro", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <MapaRMR cidades={d.cidades} bairros={d.bairrosRMR} /> });
   if (d.aFaturar && d.aFaturar.disponivel)
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
+  if (d.frota)
+    s.push({ id: "frota", titulo: "Frota · KM rodado", contexto: "telemetria dos caminhões de entrega no mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoFrota dados={d.frota} mesLabel={mesLabel} prevLabel={prevLabel} /> });
   if (d.tempoFaturar && d.tempoFaturar.pedidos > 0)
     s.push({ id: "tempo-faturar", titulo: "Tempo até faturar", contexto: "do pedido liberado à nota emitida · calendário de rotas incluído", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoTempoFaturar dados={d.tempoFaturar} prevLabel={prevLabel} /> });
   if (admin && d.receitas)
@@ -269,7 +274,7 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, tempoFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [],
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, tempoFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], frota: null,
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
@@ -309,6 +314,7 @@ export default function PainelView({
       descarregos: r.descarregos ?? d.descarregos,
       serieDescarrego: r.serieDescarrego ?? d.serieDescarrego,
       recebimento: r.recebimento ?? d.recebimento,
+      frota: r.frota === undefined ? d.frota : r.frota,
     }));
     if (r.devAnterior) setDevAnt(r.devAnterior);
     if (r.placar) setDev(r.placar);
