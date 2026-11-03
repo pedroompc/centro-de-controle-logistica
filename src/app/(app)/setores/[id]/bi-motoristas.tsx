@@ -4,15 +4,15 @@
  * BI dos Motoristas em tela cheia. A entrega vem do Winthor: nota de venda em
  * carga → carga (motorista, ajudante, veículo) → capacidade do veículo. VIAGEM =
  * veículo + motorista + dia de saída da nota; peso pelas notas. Clicar num dia
- * filtra Custo, Entregas e Frota; Esc limpa. Devolução segue o mês POR PERÍODO DE
- * FATURAMENTO: das notas saídas no mês, as que voltaram por motivo da Logística.
+ * filtra Custo, Entregas, Frota e Devolução; Esc limpa. Devolução é POR PERÍODO
+ * DE FATURAMENTO: das notas saídas no dia/mês, as que voltaram por motivo da Logística.
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
 import { custoDoPeriodo, custoSobreFaturamento } from "@/domain/separacao";
-import { totaisEntregas, porDiaEntregas, porVeiculo, faixasOcupacao, type ViagemEntrega, type DiaEntregas } from "@/domain/motoristas";
+import { totaisEntregas, porDiaEntregas, porVeiculo, faixasOcupacao, resumoDevolucao, devolucaoPorDia, type ViagemEntrega, type DiaEntregas } from "@/domain/motoristas";
 import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
@@ -71,7 +71,6 @@ function anteriorDe(d: DadosBIMotoristas): PontoHistoricoMot | null {
   return i > 0 ? d.historico[i - 1] : null;
 }
 
-const taxaDev = (dv: DadosBIMotoristas["devolucao"]) => (dv && dv.expedidas > 0 ? dv.devolvidas / dv.expedidas : null);
 
 export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string }) {
   const [visao, setVisao] = useState<VisaoMot | null>(null);
@@ -87,7 +86,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
   const entDiaVar = h?.entregas && h.dias && ant?.entregas && ant.dias ? varRel(h.entregas / h.dias, ant.entregas / ant.dias) : null;
   const deltaCusto = h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
   const semDado = vs ? null : "sem acesso ao Winthor";
-  const tx = taxaDev(dados.devolucao);
+  const dev = dados.devolucao ? resumoDevolucao(dados.devolucao, dia) : null;
   const sufixo = (r: string) => (dia ? `${r} · ${ddmm(dia)}` : r);
 
   const menu = (
@@ -115,9 +114,9 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
       )}
       <Quadro
         {...q("devolucao")}
-        rotulo="Devolução logística"
-        valor={tx === null ? "—" : formatPercent(tx, 2)}
-        sub={dados.devolucao ? `${n0(dados.devolucao.devolvidas)} notas · ${semCentavos(Math.round(dados.devolucao.valorDevolvido))}` : "sem acesso ao Winthor"}
+        rotulo={sufixo("Devolução logística")}
+        valor={dev ? pct(dev.taxa, 2) : "—"}
+        sub={dev ? `${n0(dev.devolvidas)} notas · ${semCentavos(Math.round(dev.valorDevolvido))}` : "sem acesso ao Winthor"}
       />
     </div>
   );
@@ -151,7 +150,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
                 visao === "custo" ? (
                   <VisaoCusto dados={dados} dia={dia} />
                 ) : visao === "devolucao" ? (
-                  <VisaoDevolucao dados={dados} />
+                  <VisaoDevolucao dados={dados} dia={dia} onDia={setDia} />
                 ) : !vs ? (
                   <SemWinthor erro={"erro" in dados.entregas ? dados.entregas.erro : ""} />
                 ) : visao === "entregas" ? (
@@ -550,7 +549,7 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
               m.dias ? n1(m.entregas / m.dias) : "—",
               t1(m.kg),
               pct(m.ocupacao, 0),
-              m.devolucao ? <span key="d" title={`${m.devolucao.devolvidas} de ${m.devolucao.expedidas} notas`}>{formatPercent(m.devolucao.taxa / 100, 2)}</span> : "—",
+              m.devolucao ? <span key="d" title={`${m.devolucao.devolvidas} de ${m.devolucao.expedidas} notas`}>{pct(m.devolucao.taxa, 2)}</span> : "—",
               brl(m.custoPorEntrega),
             ])}
           />
@@ -562,44 +561,58 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
 
 // --- DEVOLUÇÃO LOGÍSTICA --------------------------------------------------------
 
-function VisaoDevolucao({ dados }: { dados: DadosBIMotoristas }) {
-  const dv = dados.devolucao;
-  if (!dv) return <SemWinthor erro="" />;
-  const tx = taxaDev(dv);
-  const comVolume = dv.porMotorista.filter((m) => m.expedidas >= 50);
-  const piores = [...comVolume].sort((a, b) => b.taxa - a.taxa).slice(0, 12);
-  const lista = [...dv.porMotorista].sort((a, b) => b.devolvidas - a.devolvidas || b.valorDevolvido - a.valorDevolvido);
+function VisaoDevolucao({ dados, dia, onDia }: { dados: DadosBIMotoristas; dia: string | null; onDia: (d: string | null) => void }) {
+  if (!dados.devolucao) return <SemWinthor erro="" />;
+  const r = resumoDevolucao(dados.devolucao, dia);
+  const porDia = devolucaoPorDia(dados.devolucao);
+  const minimo = dia ? 10 : 50;
+  const piores = r.porMotorista.filter((m) => m.expedidas >= minimo).sort((a, b) => (b.taxa ?? 0) - (a.taxa ?? 0)).slice(0, 12);
+  const pior = [...porDia.entries()].filter(([, x]) => x.expedidas >= 200).sort(([, a], [, b]) => (b.taxa ?? 0) - (a.taxa ?? 0))[0] ?? null;
   return (
-    <div className={`${VISAO} xl:grid-rows-[auto_minmax(22rem,1fr)]`}>
+    <div className={`${VISAO} xl:grid-rows-[auto_minmax(26rem,1fr)]`}>
       <div className={GRADE_CARDS}>
-        <Mini rotulo="Taxa (notas)" valor={tx === null ? "—" : formatPercent(tx, 2)} sub={`${n0(dv.devolvidas)} de ${n0(dv.expedidas)} notas faturadas`} />
-        <Mini rotulo="Valor devolvido" valor={semCentavos(Math.round(dv.valorDevolvido))} sub={dv.valorExpedido > 0 ? `${formatPercent(dv.valorDevolvido / dv.valorExpedido, 2)} do expedido` : undefined} />
-        <Mini rotulo="Motoristas com devolução" valor={n0(dv.porMotorista.filter((m) => m.devolvidas > 0).length)} sub={`de ${n0(dv.porMotorista.length)}`} />
+        <Mini rotulo={dia ? `Taxa · ${ddmm(dia)}` : "Taxa (notas)"} valor={pct(r.taxa, 2)} sub={`${n0(r.devolvidas)} de ${n0(r.expedidas)} notas faturadas`} />
+        <Mini rotulo="Valor devolvido" valor={semCentavos(Math.round(r.valorDevolvido))} sub={r.valorExpedido > 0 ? `${formatPercent(r.valorDevolvido / r.valorExpedido, 2)} do expedido` : undefined} />
+        <Mini rotulo="Motoristas com devolução" valor={n0(r.porMotorista.filter((m) => m.devolvidas > 0).length)} sub={`de ${n0(r.porMotorista.length)}`} />
+        {!dia && pior && <Mini rotulo="Pior dia" valor={pct(pior[1].taxa, 2)} sub={`${ddmm(pior[0])} · ${n0(pior[1].devolvidas)} de ${n0(pior[1].expedidas)} notas`} onClick={() => onDia(pior[0])} />}
       </div>
-      <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]`}>
-        <Bloco titulo="Maior taxa" direita={<Dica>50+ notas no mês</Dica>}>
-          <BarrasTV
-            altura={240}
-            fmt={(v) => formatPercent(v / 100, 1)}
-            itens={piores.map((m) => ({ chave: String(m.codMotorista), rotulo: nomeCurto(m.nome), valor: m.taxa, cor: "#e11d48", detalhe: `${m.nome} · ${m.devolvidas} de ${m.expedidas} notas` }))}
+      <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]`}>
+        <Bloco className="min-h-[22rem] xl:min-h-0" titulo="Taxa por dia de faturamento">
+          <CalendarioBI
+            mes={dados.mes}
+            porDia={new Map([...porDia.entries()].flatMap(([d, x]) => (x.taxa === null ? [] : [[d, x.taxa] as [string, number]])))}
+            fmt={(v) => formatPercent(v, 1)}
+            selecionado={dia}
+            onSelecionar={onDia}
+            vazio="sem nota"
+            menorEhMelhor
           />
         </Bloco>
-        <Bloco titulo="Por motorista">
-          <div className="h-full overflow-auto pr-1">
-            <Tabela
-              cab={["Motorista", "Tipo", "Notas", "Devolvidas", "Taxa", "Valor devolvido"]}
-              alinhar={["l", "l", "r", "r", "r", "r"]}
-              linhas={lista.map((m) => [
-                m.nome,
-                <span key="t" className="text-white/50">{m.tipo ? ROT_TIPO[m.tipo] : "—"}</span>,
-                n0(m.expedidas),
-                n0(m.devolvidas),
-                formatPercent(m.taxa / 100, 2),
-                formatBRL(m.valorDevolvido),
-              ])}
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]">
+          <Bloco titulo="Maior taxa" direita={<Dica>{minimo}+ notas {dia ? "no dia" : "no mês"}</Dica>}>
+            <BarrasTV
+              altura={150}
+              fmt={(v) => formatPercent(v, 1)}
+              itens={piores.map((m) => ({ chave: String(m.codMotorista), rotulo: nomeCurto(m.nome), valor: m.taxa, cor: "#e11d48", detalhe: `${m.nome} · ${m.devolvidas} de ${m.expedidas} notas` }))}
             />
-          </div>
-        </Bloco>
+          </Bloco>
+          <Bloco titulo="Por motorista">
+            <div className="h-full overflow-auto pr-1">
+              <Tabela
+                cab={["Motorista", "Tipo", "Notas", "Devolvidas", "Taxa", "Valor devolvido"]}
+                alinhar={["l", "l", "r", "r", "r", "r"]}
+                linhas={r.porMotorista.map((m) => [
+                  m.nome,
+                  <span key="t" className="text-white/50">{m.tipo ? ROT_TIPO[m.tipo] : "—"}</span>,
+                  n0(m.expedidas),
+                  n0(m.devolvidas),
+                  pct(m.taxa, 2),
+                  formatBRL(m.valorDevolvido),
+                ])}
+              />
+            </div>
+          </Bloco>
+        </div>
       </div>
     </div>
   );

@@ -7,9 +7,8 @@ import { getDevolucaoLogisticaPorFaturamento } from "@/data/devolucoes";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
-import { papelMotoristas, porMotorista, type ResumoMotorista, type ViagemEntrega } from "@/domain/motoristas";
+import { papelMotoristas, porMotorista, resumoDevolucao, type DevolucaoMotDia, type ResumoMotorista, type ViagemEntrega } from "@/domain/motoristas";
 import { sugerirFuncionario } from "@/domain/turno";
-import type { DevolucaoPorMotorista } from "@/domain/devolucoes";
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
 import { lembrar, ttlDoMes } from "@/lib/cache-memoria";
@@ -26,24 +25,12 @@ export interface PontoHistoricoMot {
   parcial: boolean;
 }
 
-/**
- * Devolução por motorista POR PERÍODO DE FATURAMENTO: das notas saídas no mês,
- * quantas voltaram por motivo da LOGÍSTICA (em qualquer data depois).
- */
-export interface DevolucaoMot {
-  porMotorista: DevolucaoPorMotorista[];
-  expedidas: number;
-  devolvidas: number;
-  valorExpedido: number;
-  valorDevolvido: number;
-}
-
 export interface MotoristaBI extends ResumoMotorista {
   /** Funcionário do Efetivo casado pelo nome (só da casa); null = terceiro ou sem cadastro. */
   funcionarioId: string | null;
   custoPeriodo: number | null;
   custoPorEntrega: number | null;
-  devolucao: { expedidas: number; devolvidas: number; taxa: number; valorDevolvido: number } | null;
+  devolucao: { expedidas: number; devolvidas: number; taxa: number | null; valorDevolvido: number } | null;
 }
 
 export interface DadosBIMotoristas {
@@ -59,7 +46,11 @@ export interface DadosBIMotoristas {
   historico: PontoHistoricoMot[];
   /** Viagens do mês no Winthor; `erro` = não conseguiu ler. */
   entregas: { viagens: ViagemEntrega[] } | { erro: string };
-  devolucao: DevolucaoMot | null;
+  /**
+   * Devolução POR PERÍODO DE FATURAMENTO, motorista × dia: das notas saídas no
+   * dia, quantas voltaram por motivo da LOGÍSTICA (em qualquer data depois).
+   */
+  devolucao: DevolucaoMotDia[] | null;
   /** Individual por motorista — SÓ admin (quem não é admin recebe null). */
   motoristas: MotoristaBI[] | null;
 }
@@ -93,7 +84,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     lembrar(`lerEntregasMeses:${mes}`, ttl, () => lerEntregasMeses(INICIO_HISTORICO, mes)).catch(() => null as EntregasDoMes[] | null),
     lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes)).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
-    lembrar(`devolucaoLogisticaPorFaturamento:${mes}`, ttl, () => getDevolucaoLogisticaPorFaturamento(mes, ultimoDiaDoMes(mes))).catch(() => null),
+    lembrar(`devolucaoLogisticaPorFaturamentoDia:${mes}`, ttl, () => getDevolucaoLogisticaPorFaturamento(mes, ultimoDiaDoMes(mes))).catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -139,16 +130,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
       };
     });
 
-  const listaDev = devol ?? [];
-  const devolucao: DevolucaoMot | null = devol
-    ? {
-        porMotorista: listaDev,
-        expedidas: listaDev.reduce((t, m) => t + m.expedidas, 0),
-        devolvidas: listaDev.reduce((t, m) => t + m.devolvidas, 0),
-        valorExpedido: listaDev.reduce((t, m) => t + m.valorExpedido, 0),
-        valorDevolvido: listaDev.reduce((t, m) => t + m.valorDevolvido, 0),
-      }
-    : null;
+  const listaDev = devol ? resumoDevolucao(devol).porMotorista : [];
 
   // Individual (admin): motorista do Winthor → funcionário do Efetivo pelo nome
   // (casamento automático, mesmo critério do Harpia; só gente do setor).
@@ -184,7 +166,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     faturamentoLiquido: fatMes?.vendaLiquida ?? null,
     historico,
     entregas: viagens,
-    devolucao,
+    devolucao: devol,
     motoristas,
   };
 }

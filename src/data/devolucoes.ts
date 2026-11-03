@@ -15,6 +15,7 @@ import type {
   SetorDevolucao,
 } from "@/domain/devolucoes";
 import type { LinhaCidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
+import type { DevolucaoMotDia } from "@/domain/motoristas";
 
 // Códigos IBGE dos municípios da RMR, derivados da MESMA classificação do painel
 // (a geometria de PE + o classificador de região) — evita hardcode de código e
@@ -547,7 +548,7 @@ export const getDevolucaoPorBairroRMR = cache(async (
 // mês corrente ainda sobe conforme as devoluções das notas dele entram.
 const sqlMotoristaFaturamento = `
 WITH vendas AS (
-  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, NVL(nf.VLTOTAL, 0) VLVENDA
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, TRUNC(nf.DTSAIDA) DIA, NVL(nf.VLTOTAL, 0) VLVENDA
   FROM PCNFSAID nf
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
@@ -571,13 +572,11 @@ devv AS (
   WHERE ${SETOR} = 'Logística'
   GROUP BY ed.NUMTRANSVENDA
 )
-SELECT car.CODMOTORISTA,
+SELECT car.CODMOTORISTA, TO_CHAR(v.DIA, 'YYYY-MM-DD') DIA,
        MAX(emp.NOME) NOME,
        MAX(emp.TIPOMOTORISTA) TIPO_MOTORISTA,
        COUNT(DISTINCT v.NUMTRANSVENDA) EXPEDIDAS,
        COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) DEVOLVIDAS,
-       ROUND(COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) * 100
-             / NULLIF(COUNT(DISTINCT v.NUMTRANSVENDA), 0), 2) TAXA,
        ROUND(SUM(NVL(v.VLVENDA, 0)), 2) VALOR_EXPEDIDO,
        ROUND(SUM(NVL(devv.VL_DEVOLVIDO, 0)), 2) VALOR_DEVOLVIDO
 FROM vendas v
@@ -585,17 +584,17 @@ JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
 LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
 LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
 WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
-GROUP BY car.CODMOTORISTA
-ORDER BY VALOR_DEVOLVIDO DESC`;
+GROUP BY car.CODMOTORISTA, v.DIA`;
 
-/** Devolução LOGÍSTICA por motorista das notas faturadas (saídas) entre `ini` e `fim`. */
-export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: string): Promise<DevolucaoPorMotorista[]> {
-  const rows = await queryWinthor<LinhaMotorista>(sqlMotoristaFaturamento, { ini, fim });
+/** Devolução LOGÍSTICA por motorista × dia das notas faturadas (saídas) entre `ini` e `fim`. */
+export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: string): Promise<DevolucaoMotDia[]> {
+  const rows = await queryWinthor<Omit<LinhaMotorista, "TAXA"> & { DIA: string }>(sqlMotoristaFaturamento, { ini, fim });
   return rows.map((r) => ({
+    dia: String(r.DIA),
     codMotorista: n(r.CODMOTORISTA),
     nome: r.NOME ?? `Motorista ${r.CODMOTORISTA}`,
     tipo: r.TIPO_MOTORISTA === "F" || r.TIPO_MOTORISTA === "T" ? r.TIPO_MOTORISTA : null,
-    expedidas: n(r.EXPEDIDAS), devolvidas: n(r.DEVOLVIDAS), taxa: n(r.TAXA),
+    expedidas: n(r.EXPEDIDAS), devolvidas: n(r.DEVOLVIDAS),
     valorExpedido: n(r.VALOR_EXPEDIDO), valorDevolvido: n(r.VALOR_DEVOLVIDO),
   }));
 }

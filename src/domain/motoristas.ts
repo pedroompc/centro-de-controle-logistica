@@ -201,3 +201,69 @@ export function faixasOcupacao(viagens: ViagemEntrega[]): { chave: string; rotul
   const os = viagens.flatMap((x) => (x.capacidadeKg && x.capacidadeKg > 0 ? [x.kg / x.capacidadeKg] : []));
   return FAIXAS_OCUPACAO.map((f) => ({ chave: f.chave, rotulo: f.rotulo, qtd: os.filter(f.teste).length }));
 }
+
+// --- Devolução logística POR PERÍODO DE FATURAMENTO ----------------------------
+
+/** Uma linha por motorista × dia de saída da nota: notas saídas e quantas voltaram (Logística). */
+export interface DevolucaoMotDia {
+  dia: string;
+  codMotorista: number;
+  nome: string;
+  tipo: TipoMotorista;
+  expedidas: number;
+  devolvidas: number;
+  valorExpedido: number;
+  valorDevolvido: number;
+}
+
+export interface DevolucaoMotResumo {
+  codMotorista: number;
+  nome: string;
+  tipo: TipoMotorista;
+  expedidas: number;
+  devolvidas: number;
+  taxa: number | null; // fração (devolvidas ÷ expedidas)
+  valorExpedido: number;
+  valorDevolvido: number;
+}
+
+export interface ResumoDevolucao {
+  expedidas: number;
+  devolvidas: number;
+  valorExpedido: number;
+  valorDevolvido: number;
+  taxa: number | null;
+  porMotorista: DevolucaoMotResumo[];
+}
+
+export function resumoDevolucao(linhas: DevolucaoMotDia[], dia: string | null = null): ResumoDevolucao {
+  const ls = dia ? linhas.filter((l) => l.dia === dia) : linhas;
+  const g = new Map<number, DevolucaoMotResumo>();
+  for (const l of ls) {
+    const m = g.get(l.codMotorista) ?? { codMotorista: l.codMotorista, nome: l.nome, tipo: l.tipo, expedidas: 0, devolvidas: 0, taxa: null, valorExpedido: 0, valorDevolvido: 0 };
+    m.expedidas += l.expedidas;
+    m.devolvidas += l.devolvidas;
+    m.valorExpedido += l.valorExpedido;
+    m.valorDevolvido += l.valorDevolvido;
+    g.set(l.codMotorista, m);
+  }
+  const porMotorista = [...g.values()]
+    .map((m) => ({ ...m, taxa: div(m.devolvidas, m.expedidas) }))
+    .sort((a, b) => b.devolvidas - a.devolvidas || b.valorDevolvido - a.valorDevolvido);
+  const soma = (k: "expedidas" | "devolvidas" | "valorExpedido" | "valorDevolvido") => porMotorista.reduce((t, m) => t + m[k], 0);
+  const expedidas = soma("expedidas");
+  const devolvidas = soma("devolvidas");
+  return { expedidas, devolvidas, valorExpedido: soma("valorExpedido"), valorDevolvido: soma("valorDevolvido"), taxa: div(devolvidas, expedidas), porMotorista };
+}
+
+export function devolucaoPorDia(linhas: DevolucaoMotDia[]): Map<string, { expedidas: number; devolvidas: number; taxa: number | null }> {
+  const m = new Map<string, { expedidas: number; devolvidas: number; taxa: number | null }>();
+  for (const l of linhas) {
+    const d = m.get(l.dia) ?? { expedidas: 0, devolvidas: 0, taxa: null };
+    d.expedidas += l.expedidas;
+    d.devolvidas += l.devolvidas;
+    d.taxa = div(d.devolvidas, d.expedidas);
+    m.set(l.dia, d);
+  }
+  return m;
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  ehSetorMotoristas, papelMotoristas, totaisEntregas, porMotorista, porVeiculo, porDiaEntregas, faixasOcupacao, type ViagemEntrega,
+  ehSetorMotoristas, papelMotoristas, resumoDevolucao, devolucaoPorDia, type DevolucaoMotDia, totaisEntregas, porMotorista, porVeiculo, porDiaEntregas, faixasOcupacao, type ViagemEntrega,
 } from "./motoristas";
 
 const v = (x: Partial<ViagemEntrega>): ViagemEntrega => ({
@@ -87,5 +87,37 @@ describe("motoristas", () => {
     const f = faixasOcupacao(vs);
     expect(f.map((x) => x.qtd)).toEqual([1, 0, 1, 0, 1]);
     expect(f.reduce((s, x) => s + x.qtd, 0)).toBe(3);
+  });
+});
+
+const dv = (x: Partial<DevolucaoMotDia>): DevolucaoMotDia => ({
+  dia: "2026-10-06", codMotorista: 10, nome: "JOÃO", tipo: "F", expedidas: 100, devolvidas: 2, valorExpedido: 10_000, valorDevolvido: 300, ...x,
+});
+
+describe("devolução por faturamento", () => {
+  const ls = [
+    dv({}),
+    dv({ dia: "2026-10-07", devolvidas: 8, valorDevolvido: 900 }),
+    dv({ codMotorista: 20, nome: "ANA", tipo: "T", expedidas: 50, devolvidas: 0, valorDevolvido: 0 }),
+  ];
+  it("resume o mês e soma por motorista (taxa em fração)", () => {
+    const r = resumoDevolucao(ls);
+    expect(r).toMatchObject({ expedidas: 250, devolvidas: 10, valorDevolvido: 1200 });
+    expect(r.taxa).toBeCloseTo(0.04);
+    expect(r.porMotorista[0]).toMatchObject({ codMotorista: 10, expedidas: 200, devolvidas: 10 });
+    expect(r.porMotorista[0].taxa).toBeCloseTo(0.05);
+    expect(r.porMotorista[1].taxa).toBe(0);
+  });
+  it("recorta um dia", () => {
+    const r = resumoDevolucao(ls, "2026-10-07");
+    expect(r).toMatchObject({ expedidas: 100, devolvidas: 8 });
+    expect(r.porMotorista).toHaveLength(1);
+    expect(resumoDevolucao([]).taxa).toBeNull();
+  });
+  it("taxa por dia", () => {
+    const m = devolucaoPorDia(ls);
+    expect(m.get("2026-10-06")).toMatchObject({ expedidas: 150, devolvidas: 2 });
+    expect(m.get("2026-10-06")!.taxa).toBeCloseTo(2 / 150);
+    expect(m.get("2026-10-07")!.taxa).toBeCloseTo(0.08);
   });
 });
