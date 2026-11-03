@@ -19,13 +19,15 @@ import {
 } from "./bi-ui";
 import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel, ou } from "./bi-separacao-comum";
 import type { DadosBIMotoristas, MotoristaBI, PontoHistoricoMot } from "./motoristas-dados";
+import { mapaKmDia, resumoKm, type ResumoKm } from "@/domain/frota";
 
-type VisaoMot = "custo" | "entregas" | "frota" | "motoristas" | "devolucao";
+type VisaoMot = "custo" | "entregas" | "frota" | "km" | "motoristas" | "devolucao";
 
 const VISOES: { id: VisaoMot; titulo: string; admin?: boolean }[] = [
   { id: "custo", titulo: "Custo e equipe" },
   { id: "entregas", titulo: "Entregas" },
   { id: "frota", titulo: "Frota e ocupação" },
+  { id: "km", titulo: "KM rodado · telemetria" },
   { id: "motoristas", titulo: "Motoristas", admin: true },
   { id: "devolucao", titulo: "Devolução logística" },
 ];
@@ -88,6 +90,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
   const semDado = vs ? null : "sem acesso ao Winthor";
   const dev = dados.devolucao ? resumoDevolucao(dados.devolucao, dia) : null;
   const sufixo = (r: string) => (dia ? `${r} · ${ddmm(dia)}` : r);
+  const km = vs && dados.hodometro ? resumoKm(vs, mapaKmDia(dados.hodometro), dia) : null;
 
   const menu = (
     <div className={`mt-4 ${GRADE_MENU}`}>
@@ -108,6 +111,14 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
         rotulo={sufixo("Ocupação da frota")}
         valor={tot ? pct(tot.ocupacao, 0) : "—"}
         sub={semDado ?? `${tot!.veiculos} veículos · ${ou(tot!.kgPorViagem, n0)} kg/viagem`}
+      />
+      <Quadro
+        {...q("km")}
+        rotulo={sufixo("KM rodado")}
+        valor={km && km.rastreados > 0 ? `${n0(km.km)} km` : "—"}
+        sub={
+          !vs ? "sem acesso ao Winthor" : !km ? "sem telemetria" : `${km.rastreados} de ${km.veiculos} veículos rastreados · ${ou(km.kmPorEntrega, n1)} km/entrega`
+        }
       />
       {dados.admin && dados.motoristas && (
         <Quadro {...q("motoristas")} rotulo="Motoristas" valor={`${dados.motoristas.length}`} sub={`${dados.motoristas.filter((m) => m.tipo === "F").length} da casa · ${dados.motoristas.filter((m) => m.tipo === "T").length} terceiros`} />
@@ -157,6 +168,8 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
                   <VisaoEntregas dados={dados} vs={vs} dia={dia} onDia={setDia} />
                 ) : visao === "frota" ? (
                   <VisaoFrota vs={vs} dia={dia} />
+                ) : visao === "km" ? (
+                  km ? <VisaoKm km={km} mes={dados.mes} dia={dia} onDia={setDia} /> : <Vazio>Sem telemetria da frota para este mês.</Vazio>
                 ) : visao === "motoristas" && dados.motoristas ? (
                   <VisaoMotoristas lista={dados.motoristas} mes={dados.mes} />
                 ) : null,
@@ -485,15 +498,58 @@ function VisaoFrota({ vs, dia }: { vs: ViagemEntrega[]; dia: string | null }) {
   );
 }
 
+// --- KM RODADO (telemetria Fulltrack) ---------------------------------------------
+
+function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: string | null; onDia: (d: string | null) => void }) {
+  if (km.veiculos === 0) return <Vazio>Nenhuma viagem no recorte.</Vazio>;
+  const rastreados = km.porVeiculo.filter((v) => v.km !== null);
+  const diasFrota = rastreados.reduce((s, v) => s + v.diasRodados, 0);
+  return (
+    <div className={`${VISAO} xl:grid-rows-[auto_minmax(24rem,1fr)]`}>
+      <div className={GRADE_CARDS}>
+        <Mini rotulo="KM rodado" valor={`${n0(km.km)} km`} sub="frota de entrega rastreada" />
+        <Mini rotulo="KM por entrega" valor={ou(km.kmPorEntrega, n1)} sub="nos dias com viagem" />
+        <Mini rotulo="KM por veículo/dia" valor={diasFrota ? n0(km.km / diasFrota) : "—"} sub={`${n0(diasFrota)} dias rodados`} />
+        <Mini rotulo="Rastreados" valor={`${km.rastreados} de ${km.veiculos}`} sub="veículos com viagem" />
+      </div>
+      <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]`}>
+        <Bloco className="min-h-[22rem] xl:min-h-0" titulo="KM por dia">
+          <CalendarioBI mes={mes} porDia={km.porDia} fmt={(v) => `${n0(v)} km`} selecionado={dia} onSelecionar={onDia} vazio="sem telemetria" />
+        </Bloco>
+        <Bloco titulo="Por veículo" direita={<Dica>{rastreados.length} com telemetria</Dica>}>
+          <div className="h-full overflow-auto pr-1">
+            <Tabela
+              cab={["Veículo", "KM", "Dias rodados", "KM/dia", "Viagens", "Entregas", "KM/entrega"]}
+              alinhar={["l", "r", "r", "r", "r", "r", "r"]}
+              linhas={km.porVeiculo.map((v) => [
+                <span key="v" className="block max-w-[18rem] truncate" title={v.descricao ?? undefined}>
+                  {v.placa} <span className="text-white/40">{(v.descricao ?? "").replace(/^[A-Z0-9-]+\s*-\s*/, "")}</span>
+                </span>,
+                v.km === null ? <span key="k" className="text-white/40">sem rastreador</span> : n0(v.km),
+                v.km === null ? "—" : n0(v.diasRodados),
+                v.km !== null && v.diasRodados ? n0(v.km / v.diasRodados) : "—",
+                n0(v.viagens),
+                n0(v.entregas),
+                ou(v.kmPorEntrega, n1),
+              ])}
+            />
+          </div>
+        </Bloco>
+      </div>
+    </div>
+  );
+}
+
 // --- MOTORISTAS (admin) ---------------------------------------------------------
 
-type OrdemMot = "entregas" | "kg" | "ocupacao" | "devolucao" | "custo";
+type OrdemMot = "entregas" | "kg" | "ocupacao" | "devolucao" | "custo" | "km";
 const ORDENS: Record<OrdemMot, { rotulo: string; valor: (m: MotoristaBI) => number | null; desc: boolean }> = {
   entregas: { rotulo: "Entregas", valor: (m) => m.entregas, desc: true },
   kg: { rotulo: "Peso", valor: (m) => m.kg, desc: true },
   ocupacao: { rotulo: "Ocupação", valor: (m) => m.ocupacao, desc: true },
   devolucao: { rotulo: "Devolução", valor: (m) => m.devolucao?.taxa ?? null, desc: true },
   custo: { rotulo: "Custo/entrega", valor: (m) => m.custoPorEntrega, desc: false },
+  km: { rotulo: "KM", valor: (m) => m.km, desc: true },
 };
 
 function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) {
@@ -538,8 +594,8 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
       >
         <div className="h-full overflow-auto pr-1">
           <Tabela
-            cab={["Motorista", "Tipo", "Dias", "Viagens", "Entregas", "Entregas/dia", "Peso", "Ocupação", "Devolução", "Custo/entrega"]}
-            alinhar={["l", "l", "r", "r", "r", "r", "r", "r", "r", "r"]}
+            cab={["Motorista", "Tipo", "Dias", "Viagens", "Entregas", "Entregas/dia", "Peso", "Ocupação", "KM", "KM/entrega", "Devolução", "Custo/entrega"]}
+            alinhar={["l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]}
             linhas={itens.map((m) => [
               m.nome,
               <span key="t" className="text-white/50">{m.tipo ? ROT_TIPO[m.tipo] : "—"}</span>,
@@ -549,6 +605,8 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
               m.dias ? n1(m.entregas / m.dias) : "—",
               t1(m.kg),
               pct(m.ocupacao, 0),
+              m.km === null ? "—" : n0(m.km),
+              ou(m.kmPorEntrega, n1),
               m.devolucao ? <span key="d" title={`${m.devolucao.devolvidas} de ${m.devolucao.expedidas} notas`}>{pct(m.devolucao.taxa, 2)}</span> : "—",
               brl(m.custoPorEntrega),
             ])}

@@ -4,6 +4,8 @@ import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { lerViagensMes, lerEntregasMeses, type EntregasDoMes } from "@/data/winthor-entregas";
 import { getDevolucaoLogisticaPorFaturamento } from "@/data/devolucoes";
+import { lerHodometroPeriodo } from "@/data/frota-km";
+import { kmDasViagens, mapaKmDia, type LinhaHodometro } from "@/domain/frota";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
@@ -31,6 +33,9 @@ export interface MotoristaBI extends ResumoMotorista {
   custoPeriodo: number | null;
   custoPorEntrega: number | null;
   devolucao: { expedidas: number; devolvidas: number; taxa: number | null; valorDevolvido: number } | null;
+  /** km das viagens dele pela telemetria (null = nenhum veículo dele rastreado). */
+  km: number | null;
+  kmPorEntrega: number | null;
 }
 
 export interface DadosBIMotoristas {
@@ -51,6 +56,8 @@ export interface DadosBIMotoristas {
    * dia, quantas voltaram por motivo da LOGÍSTICA (em qualquer data depois).
    */
   devolucao: DevolucaoMotDia[] | null;
+  /** Hodômetro diário da frota no mês (telemetria Fulltrack); null = sem telemetria. */
+  hodometro: LinhaHodometro[] | null;
   /** Individual por motorista — SÓ admin (quem não é admin recebe null). */
   motoristas: MotoristaBI[] | null;
 }
@@ -70,7 +77,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   const fechados = meses.filter((m) => m < atual && m !== mes);
   const ttl = ttlDoMes(mes);
 
-  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol] = await Promise.all([
+  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro] = await Promise.all([
     isAdmin(),
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
@@ -85,6 +92,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes)).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
     lembrar(`devolucaoLogisticaPorFaturamentoDia:${mes}`, ttl, () => getDevolucaoLogisticaPorFaturamento(mes, ultimoDiaDoMes(mes))).catch(() => null),
+    lerHodometroPeriodo(mes, ultimoDiaDoMes(mes)).catch(() => null), // Supabase: sem cache
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -139,6 +147,19 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     const candidatos = ativos.map((f) => ({ id: f.id, nome: f.nome, turno: f.turno }));
     const funcPorId = new Map(ativos.map((f) => [f.id, f]));
     const devPorMot = new Map(listaDev.map((m) => [m.codMotorista, m]));
+    // km de cada viagem pela telemetria, somado por motorista (entregas só das viagens com km).
+    const kmMot = new Map<number, { km: number; entregas: number }>();
+    if (hodometro) {
+      const kms = kmDasViagens(viagens.viagens, mapaKmDia(hodometro));
+      viagens.viagens.forEach((v, i) => {
+        const km = kms[i];
+        if (km === null) return;
+        const t = kmMot.get(v.motorista) ?? { km: 0, entregas: 0 };
+        t.km += km;
+        t.entregas += v.entregas;
+        kmMot.set(v.motorista, t);
+      });
+    }
     motoristas = porMotorista(viagens.viagens).map((m) => {
       const fid = m.tipo === "T" ? null : sugerirFuncionario(m.nome, candidatos);
       const f = fid ? funcPorId.get(fid) ?? null : null;
@@ -150,6 +171,11 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
         custoPeriodo: custo,
         custoPorEntrega: custo !== null && m.entregas > 0 ? custo / m.entregas : null,
         devolucao: d ? { expedidas: d.expedidas, devolvidas: d.devolvidas, taxa: d.taxa, valorDevolvido: d.valorDevolvido } : null,
+        km: kmMot.get(m.motorista)?.km ?? null,
+        kmPorEntrega: (() => {
+          const t = kmMot.get(m.motorista);
+          return t && t.entregas > 0 ? t.km / t.entregas : null;
+        })(),
       };
     });
   }
@@ -167,6 +193,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     historico,
     entregas: viagens,
     devolucao: devol,
+    hodometro,
     motoristas,
   };
 }
