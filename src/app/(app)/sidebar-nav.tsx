@@ -90,6 +90,18 @@ export const items: Item[] = [
     ),
   },
   {
+    href: "/cortes",
+    label: "Cortes",
+    short: "Cortes",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="6" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12" />
+      </svg>
+    ),
+  },
+  {
     href: "/pedidos-a-faturar",
     label: "Pedidos a Faturar",
     short: "Pedidos",
