@@ -20,6 +20,7 @@ import {
 import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel, ou } from "./bi-separacao-comum";
 import type { DadosBIMotoristas, MotoristaBI, PontoHistoricoMot } from "./motoristas-dados";
 import { mapaKmDia, resumoKm, type ResumoKm } from "@/domain/frota";
+import { custoFrota, type CustoFrota } from "@/domain/frota-custo";
 
 type VisaoMot = "custo" | "entregas" | "frota" | "km" | "motoristas" | "devolucao";
 
@@ -61,6 +62,8 @@ function indicadores(d: DadosBIMotoristas, dia: string | null) {
     h,
     tot,
     custo,
+    /** parte do custo mensal que cabe ao recorte (mesma regra do custo da equipe) */
+    fracaoCusto: custoDoPeriodo(1, d.fracaoMes, totMes?.dias ?? 0, !!dia) ?? 0,
     porEntrega: por(tot?.entregas),
     porViagem: por(tot?.viagens),
     porTonelada: tot && tot.kg > 0 && custo !== null ? custo / (tot.kg / 1000) : null,
@@ -91,6 +94,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
   const dev = dados.devolucao ? resumoDevolucao(dados.devolucao, dia) : null;
   const sufixo = (r: string) => (dia ? `${r} · ${ddmm(dia)}` : r);
   const km = vs && dados.hodometro ? resumoKm(vs, mapaKmDia(dados.hodometro), dia) : null;
+  const custoKm = km && km.rastreados > 0 && dados.cadastroFrota ? custoFrota(km, dados.cadastroFrota, ind.fracaoCusto) : null;
 
   const menu = (
     <div className={`mt-4 ${GRADE_MENU}`}>
@@ -169,7 +173,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
                 ) : visao === "frota" ? (
                   <VisaoFrota vs={vs} dia={dia} />
                 ) : visao === "km" ? (
-                  km ? <VisaoKm km={km} mes={dados.mes} dia={dia} onDia={setDia} /> : <Vazio>Sem telemetria da frota para este mês.</Vazio>
+                  km ? <VisaoKm km={km} custo={custoKm} entregas={tot?.entregas ?? 0} mes={dados.mes} dia={dia} onDia={setDia} /> : <Vazio>Sem telemetria da frota para este mês.</Vazio>
                 ) : visao === "motoristas" && dados.motoristas ? (
                   <VisaoMotoristas lista={dados.motoristas} mes={dados.mes} />
                 ) : null,
@@ -500,7 +504,21 @@ function VisaoFrota({ vs, dia }: { vs: ViagemEntrega[]; dia: string | null }) {
 
 // --- KM RODADO (telemetria Fulltrack) ---------------------------------------------
 
-function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: string | null; onDia: (d: string | null) => void }) {
+function VisaoKm({
+  km,
+  custo,
+  entregas,
+  mes,
+  dia,
+  onDia,
+}: {
+  km: ResumoKm;
+  custo: CustoFrota | null;
+  entregas: number;
+  mes: string;
+  dia: string | null;
+  onDia: (d: string | null) => void;
+}) {
   if (km.veiculos === 0) return <Vazio>Nenhuma viagem no recorte.</Vazio>;
   const rastreados = km.porVeiculo.filter((v) => v.km !== null);
   const diasFrota = rastreados.reduce((s, v) => s + v.diasRodados, 0);
@@ -511,6 +529,14 @@ function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: stri
         <Mini rotulo="KM por entrega" valor={ou(km.kmPorEntrega, n1)} sub="nos dias com viagem" />
         <Mini rotulo="KM por veículo/dia" valor={diasFrota ? n0(km.km / diasFrota) : "—"} sub={`${n0(diasFrota)} dias rodados`} />
         <Mini rotulo="Rastreados" valor={`${km.rastreados} de ${km.veiculos}`} sub="veículos com viagem" />
+        {custo && (
+          <>
+            <Mini rotulo="Diesel" valor={semCentavos(Math.round(custo.diesel))} sub={`estimado · ${n0(custo.litros)} L a ${brl(custo.precoDiesel)}`} />
+            <Mini rotulo="Desgaste + manutenção" valor={semCentavos(Math.round(custo.desgaste + custo.manutencao))} sub="média da oficina · estimado" />
+            <Mini rotulo="Custo da frota" valor={semCentavos(Math.round(custo.total))} sub={`estimado · ${custo.custoPorKm === null ? "—" : brl(custo.custoPorKm)}/km`} />
+            <Mini rotulo="Frota por entrega" valor={entregas > 0 ? brl(custo.total / entregas) : "—"} sub={`estimado · ${n0(entregas)} entregas`} />
+          </>
+        )}
       </div>
       <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]`}>
         <Bloco className="min-h-[22rem] xl:min-h-0" titulo="KM por dia">
@@ -519,8 +545,8 @@ function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: stri
         <Bloco titulo="Por veículo" direita={<Dica>{rastreados.length} com telemetria</Dica>}>
           <div className="h-full overflow-auto pr-1">
             <Tabela
-              cab={["Veículo", "KM", "Dias rodados", "KM/dia", "Viagens", "Entregas", "KM/entrega"]}
-              alinhar={["l", "r", "r", "r", "r", "r", "r"]}
+              cab={["Veículo", "KM", "Dias rodados", "KM/dia", "Viagens", "Entregas", "KM/entrega", ...(custo ? ["Diesel est."] : [])]}
+              alinhar={["l", "r", "r", "r", "r", "r", "r", "r"]}
               linhas={km.porVeiculo.map((v) => [
                 <span key="v" className="block max-w-[18rem] truncate" title={v.descricao ?? undefined}>
                   {v.placa} <span className="text-white/40">{(v.descricao ?? "").replace(v.placa, "").replace(/^\s*-\s*/, "").trim()}</span>
@@ -531,6 +557,7 @@ function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: stri
                 n0(v.viagens),
                 n0(v.entregas),
                 ou(v.kmPorEntrega, n1),
+                ...(custo ? [dieselVeiculo(custo, v.placa, v.km)] : []),
               ])}
             />
           </div>
@@ -538,6 +565,12 @@ function VisaoKm({ km, mes, dia, onDia }: { km: ResumoKm; mes: string; dia: stri
       </div>
     </div>
   );
+}
+
+function dieselVeiculo(custo: CustoFrota, placa: string, km: number | null) {
+  const c = custo.porVeiculo.get(placa);
+  if (c) return <span key="d" title={`${c.modelo} · ${c.tipo} · ${n0(c.litros)} L`}>{semCentavos(Math.round(c.diesel))}</span>;
+  return km ? <span key="d" className="text-white/40" title="placa fora do cadastro em Custos › Frota">sem cadastro</span> : "—";
 }
 
 // --- MOTORISTAS (admin) ---------------------------------------------------------

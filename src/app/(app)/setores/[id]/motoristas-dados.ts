@@ -5,6 +5,8 @@ import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { lerViagensMes, lerEntregasMeses, type EntregasDoMes } from "@/data/winthor-entregas";
 import { getDevolucaoLogisticaPorFaturamento } from "@/data/devolucoes";
 import { lerHodometroPeriodo } from "@/data/frota-km";
+import { lerCadastroFrota } from "@/data/frota-custos";
+import type { CadastroFrota } from "@/domain/frota-custo";
 import { kmDasViagens, mapaKmDia, type LinhaHodometro } from "@/domain/frota";
 import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
@@ -58,6 +60,8 @@ export interface DadosBIMotoristas {
   devolucao: DevolucaoMotDia[] | null;
   /** Hodômetro diário da frota no mês (telemetria Fulltrack); null = sem telemetria. */
   hodometro: LinhaHodometro[] | null;
+  /** Cadastro do custo estimado da frota (Custos › Frota); null = não migrado. */
+  cadastroFrota: CadastroFrota | null;
   /** Individual por motorista — SÓ admin (quem não é admin recebe null). */
   motoristas: MotoristaBI[] | null;
 }
@@ -77,7 +81,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   const fechados = meses.filter((m) => m < atual && m !== mes);
   const ttl = ttlDoMes(mes);
 
-  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro] = await Promise.all([
+  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro, cadastroFrota] = await Promise.all([
     isAdmin(),
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
@@ -93,6 +97,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
     lembrar(`devolucaoLogisticaPorFaturamentoDia:${mes}`, ttl, () => getDevolucaoLogisticaPorFaturamento(mes, ultimoDiaDoMes(mes))).catch(() => null),
     lerHodometroPeriodo(mes, ultimoDiaDoMes(mes)).catch(() => null), // Supabase: sem cache
+    lerCadastroFrota().catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -194,6 +199,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     entregas: viagens,
     devolucao: devol,
     hodometro,
+    cadastroFrota,
     motoristas,
   };
 }

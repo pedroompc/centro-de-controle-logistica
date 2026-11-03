@@ -71,6 +71,9 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
             <Link href="/custos/equipamentos" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-50">
               Equipamentos
             </Link>
+            <Link href="/custos/frota" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-50">
+              Frota
+            </Link>
             <Link href="/custos/fixos" className="rounded-xl bg-[#181d55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#10143f]">
               {admin ? "Gerenciar fixos" : "Ver fixos"}
             </Link>
