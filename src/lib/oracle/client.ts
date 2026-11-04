@@ -24,6 +24,13 @@ function pool(): Promise<oracledb.Pool> {
       poolIncrement: 2,
       poolTimeout: 600,
       queueTimeout: 60_000,
+      // O Oracle fica atrás de rede pública/NAT: conexão ociosa (as 4 do poolMin)
+      // é derrubada em silêncio e a próxima leitura nela dá "Attempt to access
+      // memory outside buffer bounds" / NJS-521. Keepalive TCP a cada 1 min
+      // mantém o caminho vivo; o ping antes de entregar uma conexão parada há
+      // 20 s pega a que morreu mesmo assim (descartada e trocada pelo pool).
+      expireTime: 1,
+      poolPingInterval: 20,
     })
     .then((p) => (g.__poolWinthorAtual = p))
     .catch((e) => {
