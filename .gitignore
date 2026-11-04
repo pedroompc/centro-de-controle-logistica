@@ -57,3 +57,5 @@ sqlnet.ora
 
 # capturas e logs do Playwright (têm dado real da operação)
 /.playwright-mcp/
+/.next-anterior/
+/logs/
