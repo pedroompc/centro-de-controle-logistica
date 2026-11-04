@@ -6,7 +6,7 @@ import { primeiroDiaDoMes, limitarAoHistorico, inicioFimDoMes } from "@/domain/p
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /cortes/export?mes=…&motivo=…&fornecedor=… → planilha (CSV) do mês com os
+// GET /cortes/export?mes=…&dia=…&motivo=…&fornecedor=… → planilha (CSV) do mês com os
 // mesmos filtros da página. Protegido pelo proxy.ts (sem sessão vai ao /login).
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -17,9 +17,13 @@ export async function GET(req: NextRequest) {
     if (v) filtros[d] = v;
   }
   const { inicio, fim } = inicioFimDoMes(mes);
+  // Dia escolhido no gráfico da página (só vale dentro do mês).
+  const diaParam = sp.get("dia");
+  const dia = diaParam && /^\d{4}-\d{2}-\d{2}$/.test(diaParam) && diaParam >= inicio && diaParam <= fim ? diaParam : null;
   let linhas;
   try {
     linhas = filtrarCortes(await lerCortes(inicio, fim), filtros);
+    if (dia) linhas = linhas.filter((l) => l.dia === dia);
   } catch (e) {
     return new Response(`Sem acesso ao Winthor agora: ${(e as Error).message}`, { status: 502 });
   }

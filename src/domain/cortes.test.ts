@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, type LinhaCorte } from "./cortes";
+import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, type LinhaCorte } from "./cortes";
 
 describe("lerMotivo", () => {
   it("separa motivo e usuário do texto do Harpia", () => {
@@ -95,5 +95,38 @@ describe("cortesParaCsv", () => {
     expect(l1).toContain(";1234,57;");
     expect(l1).toContain(';"Falta de mercadoria";"ADM GABRIEL"');
     expect(l2).toContain('"BISCOITO ""RECHEADO"""');
+  });
+});
+
+describe("comparação com o mês anterior", () => {
+  it("variação relativa: subir piora, cair não", () => {
+    expect(variacaoCorte(50650, 92382, "set")).toEqual({ texto: "−45% vs set", piorou: false });
+    expect(variacaoCorte(120, 100, "set")).toEqual({ texto: "+20% vs set", piorou: true });
+    expect(variacaoCorte(100, 100, "set")).toEqual({ texto: "0% vs set", piorou: false });
+    expect(variacaoCorte(10, 0, "set")).toBeNull();
+  });
+
+  it("taxa compara em pontos percentuais, não em %", () => {
+    expect(variacaoTaxaCorte(0.0009, 0.002, "set")).toEqual({ texto: "−0,11 p.p. vs set", piorou: false });
+    expect(variacaoTaxaCorte(0.003, 0.002, "set")).toEqual({ texto: "+0,10 p.p. vs set", piorou: true });
+    expect(variacaoTaxaCorte(null, 0.002, "set")).toBeNull();
+  });
+});
+
+describe("serieDiaria", () => {
+  it("preenche os dias sem corte com zero, inclusive a virada de mês", () => {
+    const s = serieDiaria(new Map([["2026-10-31", 5]]), "2026-10-30", "2026-11-01");
+    expect(s).toEqual([
+      { dia: "2026-10-30", valor: 0 },
+      { dia: "2026-10-31", valor: 5 },
+      { dia: "2026-11-01", valor: 0 },
+    ]);
+  });
+});
+
+describe("filtro de origem", () => {
+  it("separa o que veio do Harpia do que foi digitado no Winthor", () => {
+    const ls = [linha({}), linha({ numped: 9, motivo: "ERRO DE DIGITACAO", valor: 7 })];
+    expect(filtrarCortes(ls, { origem: "Winthor" }).map((l) => l.numped)).toEqual([9]);
   });
 });

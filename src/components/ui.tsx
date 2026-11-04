@@ -46,12 +46,18 @@ export function StatCard({
   hint,
   accent = "navy",
   href,
+  hintRuim = false,
+  title,
 }: {
   label: string;
   value: string;
   hint?: string;
   accent?: "navy" | "gold" | "green" | "red";
   href?: string;
+  /** Dado de apoio é uma piora (ex.: corte subiu vs mês anterior): fica em rose. */
+  hintRuim?: boolean;
+  /** Detalhe extra no hover, para não poluir o card. */
+  title?: string;
 }) {
   const bar = {
     navy: "bg-[#1b2168]",
@@ -61,7 +67,7 @@ export function StatCard({
   }[accent];
 
   const inner = (
-    <div className="entrar levantar @container relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+    <div title={title} className="entrar levantar @container relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
       {/* Fonte fluida: escala com a largura real do card (cqi) e nunca quebra
@@ -69,7 +75,7 @@ export function StatCard({
       <p className="mt-2 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.875rem)] font-extrabold leading-tight tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
         <NumeroAnimado texto={value} />
       </p>
-      {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+      {hint && <p className={`mt-1 text-xs ${hintRuim ? "font-medium text-rose-600" : "text-slate-400"}`}>{hint}</p>}
     </div>
   );
 

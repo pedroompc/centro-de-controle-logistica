@@ -67,6 +67,7 @@ export interface GrupoCorte {
 
 export interface ResumoCortes {
   valor: number;
+  qt: number; // unidades cortadas
   itens: number;
   pedidos: number;
   skus: number;
@@ -101,7 +102,7 @@ function agrupar(linhas: LinhaCorte[], chave: (l: LinhaCorte) => [string, string
 }
 
 /** Dimensões clicáveis do painel de cortes (cada uma vira filtro na URL). */
-export const DIMENSOES_CORTE = ["motivo", "usuario", "fornecedor", "comprador", "produto", "cliente"] as const;
+export const DIMENSOES_CORTE = ["origem", "motivo", "usuario", "fornecedor", "comprador", "produto", "cliente"] as const;
 export type DimensaoCorte = (typeof DIMENSOES_CORTE)[number];
 export type FiltrosCorte = Partial<Record<DimensaoCorte, string>>;
 
@@ -109,6 +110,7 @@ type Chave = (l: LinhaCorte, m: MotivoLido) => [string, string] | null;
 
 // Mesma chave para agrupar e para filtrar: o clique numa barra estreita exatamente aquele grupo.
 const CHAVES: Record<DimensaoCorte, Chave> = {
+  origem: (_l, m) => [m.origem, m.origem],
   motivo: (_l, m) => [m.motivo, m.motivo],
   usuario: (_l, m) => (m.usuario ? [m.usuario, m.usuario] : null),
   fornecedor: (l) => (l.codfornec === null ? ["0", "Sem fornecedor"] : [String(l.codfornec), l.fornecedor ?? String(l.codfornec)]),
@@ -145,6 +147,7 @@ export function resumoCortes(linhas: LinhaCorte[], dia: string | null = null): R
   const por = (d: DimensaoCorte) => agrupar(ls, (l) => CHAVES[d](l, lidos.get(l)!));
   return {
     valor: soma((l) => l.valor),
+    qt: soma((l) => l.qt),
     itens: ls.length,
     pedidos: new Set(ls.map((l) => l.numped)).size,
     skus: new Set(ls.map((l) => l.codprod)).size,
@@ -152,7 +155,7 @@ export function resumoCortes(linhas: LinhaCorte[], dia: string | null = null): R
     kg: soma((l) => l.kg),
     harpia: soma((l) => (lidos.get(l)!.origem === "Winthor" ? 0 : l.valor)),
     porDia,
-    porOrigem: agrupar(ls, (l) => [lidos.get(l)!.origem, lidos.get(l)!.origem]),
+    porOrigem: por("origem"),
     porMotivo: por("motivo"),
     porUsuario: por("usuario"),
     porProduto: por("produto"),
@@ -167,6 +170,49 @@ export function taxaCorte(valorCortado: number, vendaLiquida: number | null): nu
   if (vendaLiquida === null) return null;
   const base = valorCortado + vendaLiquida;
   return base > 0 ? valorCortado / base : null;
+}
+
+// --- Comparação e série diária -------------------------------------------------
+
+/** Comparação de um card com o mês anterior. Em corte, subir é sempre piorar. */
+export interface VariacaoCorte {
+  texto: string; // "+12% vs set" / "−0,11 p.p. vs set"
+  piorou: boolean;
+}
+
+const sinal = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "");
+
+/** Variação relativa (%) contra o mês anterior. `null` sem base (anterior zero). */
+export function variacaoCorte(atual: number, anterior: number, mesCurto: string): VariacaoCorte | null {
+  if (!(anterior > 0)) return null;
+  const v = (atual - anterior) / anterior;
+  const pct = Math.round(Math.abs(v) * 100);
+  return { texto: `${pct === 0 ? "" : sinal(v)}${pct}% vs ${mesCurto}`, piorou: v > 0 && pct > 0 };
+}
+
+/**
+ * Variação de uma TAXA em pontos percentuais (0,20% → 0,09% = −0,11 p.p.).
+ * Taxa pequena variando em "%" engana (−55%); p.p. é a leitura honesta.
+ */
+export function variacaoTaxaCorte(atual: number | null, anterior: number | null, mesCurto: string): VariacaoCorte | null {
+  if (atual === null || anterior === null) return null;
+  const pp = (atual - anterior) * 100;
+  const txt = Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const zero = txt === "0,00";
+  return { texto: `${zero ? "" : sinal(pp)}${txt} p.p. vs ${mesCurto}`, piorou: pp > 0 && !zero };
+}
+
+/** Todos os dias de `inicio` a `fim` ("yyyy-mm-dd", inclusivos), com 0 nos dias sem corte. */
+export function serieDiaria(porDia: Map<string, number>, inicio: string, fim: string): { dia: string; valor: number }[] {
+  const out: { dia: string; valor: number }[] = [];
+  const d = new Date(`${inicio}T12:00:00Z`);
+  const ate = new Date(`${fim}T12:00:00Z`);
+  while (d <= ate) {
+    const dia = d.toISOString().slice(0, 10);
+    out.push({ dia, valor: porDia.get(dia) ?? 0 });
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
 }
 
 // --- Exportação (planilha) ----------------------------------------------------

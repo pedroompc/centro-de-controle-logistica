@@ -1,10 +1,13 @@
+import { Suspense, type CSSProperties } from "react";
 import { lerCortes, lerCortesMensais } from "@/data/cortes";
-import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import Link from "next/link";
-import { resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte } from "@/domain/cortes";
+import {
+  resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, variacaoCorte, variacaoTaxaCorte, serieDiaria,
+  DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte, type VariacaoCorte,
+} from "@/domain/cortes";
 import { formatBRL, formatPercent, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
-import { variacaoPercentual } from "@/domain/tendencias";
 import { PageHeader, Card, StatCard, SectionTitle, BarList } from "@/components/ui";
 import { MesNav } from "@/components/mes-nav";
 
@@ -12,10 +15,17 @@ const inteiro = new Intl.NumberFormat("pt-BR");
 const brl0 = (v: number) => formatBRL(Math.round(v)).replace(/,00$/, "");
 
 const NOME_DIM: Record<DimensaoCorte, string> = {
-  motivo: "Motivo", usuario: "Quem cortou", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
+  origem: "Origem", motivo: "Motivo", usuario: "Quem cortou", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
 };
 
-type Params = { mes?: string } & FiltrosCorte;
+// Par de cores de gráfico da marca (navy/âmbar que passam no validador de dataviz).
+const COR_BARRA = "#3d47a8";
+const COR_SELECIONADA = "#c2820a";
+
+type Params = { mes?: string; dia?: string } & FiltrosCorte;
+
+/** Hoje em Recife ("yyyy-mm-dd") — o gráfico do mês corrente para no dia de hoje. */
+const hojeRecife = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
 
 /** Pedido no Winthor: abre a consulta de pedidos já filtrada (o pedido é anterior ao corte). */
 function hrefPedido(l: LinhaCorte): string {
@@ -37,24 +47,37 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
   const mesFechado = mes < primeiroDiaDoMes();
   const { inicio, fim } = inicioFimDoMes(mes);
+  // Dia só vale dentro do mês escolhido.
+  const dia = typeof sp.dia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.dia) && sp.dia >= inicio && sp.dia <= fim ? sp.dia : null;
+  const mesAnt = mesAnterior(mes);
+  const mesAntCurto = formatMesAno(mesAnt).slice(0, 3);
   const mesLabel = `${formatMesAno(mes)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
   const url = (over: Partial<Params>) => {
-    const p = { mes, ...filtros, ...over };
+    const p = { mes, dia: dia ?? undefined, ...filtros, ...over };
     const q = new URLSearchParams();
     if (p.mes && p.mes !== primeiroDiaDoMes()) q.set("mes", p.mes);
+    if (p.dia) q.set("dia", p.dia);
     for (const d of DIMENSOES_CORTE) if (p[d]) q.set(d, p[d]!);
     const s = q.toString();
     return s ? `/cortes?${s}` : "/cortes";
   };
-  // Mudar de mês mantém os filtros; clicar de novo na barra ativa tira o filtro.
-  const href = (m: string) => url({ mes: m });
+  // Mudar de mês mantém os filtros (o dia não: é daquele mês); clicar de novo no item ativo tira o filtro.
+  const href = (m: string) => url({ mes: m, dia: undefined });
   const alternar = (d: DimensaoCorte, chave: string) => url({ [d]: filtros[d] === chave ? undefined : chave });
+  const alternarDia = (d: string) => url({ dia: dia === d ? undefined : d });
 
+  // Tudo do Oracle em paralelo (~0,5 s). O faturamento (view lenta, ~7 s) NÃO
+  // entra aqui: o card da taxa carrega à parte, num <Suspense>.
   let linhas: LinhaCorte[];
+  let linhasAnt: LinhaCorte[];
   let meses: Awaited<ReturnType<typeof lerCortesMensais>>;
-  let fat: Awaited<ReturnType<typeof getResumoFaturamentoDashboard>> | null;
   try {
-    [linhas, meses, fat] = await Promise.all([lerCortes(inicio, fim), lerCortesMensais(mesAnterior(INICIO_HISTORICO), fim), getResumoFaturamentoDashboard(mes).catch(() => null)]);
+    const ant = inicioFimDoMes(mesAnt);
+    [linhas, linhasAnt, meses] = await Promise.all([
+      lerCortes(inicio, fim),
+      lerCortes(ant.inicio, ant.fim),
+      lerCortesMensais(mesAnterior(INICIO_HISTORICO), fim),
+    ]);
   } catch (e) {
     console.error("[cortes]", e);
     return (
@@ -69,13 +92,21 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
 
   const total = resumoCortes(linhas);
   const filtradas = filtrarCortes(linhas, filtros);
-  const r = temFiltro ? resumoCortes(filtradas) : total;
-  const taxa = taxaCorte(total.valor, fat?.vendaLiquida ?? null);
-  const ant = meses.find((m) => m.mes === mesAnterior(mes));
-  // Mês anterior é total (SQL agregado): só compara quando não há filtro.
-  const delta = !temFiltro && ant && ant.valor > 0 ? variacaoPercentual(r.valor, ant.valor) : null;
-  const vsAnt = delta === null ? undefined : `${delta >= 0 ? "+" : "−"}${formatPercent(Math.abs(delta))} vs ${formatMesAno(mesAnterior(mes)).slice(0, 3)}`;
-  const top = [...filtradas].sort((a, b) => b.valor - a.valor).slice(0, 20);
+  // Mês inteiro com os filtros (o gráfico por dia mostra todos os dias) e o recorte do dia, se houver.
+  const rMes = temFiltro ? resumoCortes(filtradas) : total;
+  const r = dia ? resumoCortes(filtradas, dia) : rMes;
+  const doDia = dia ? filtradas.filter((l) => l.dia === dia) : filtradas;
+  // Mês anterior com os MESMOS filtros: a comparação vale também com filtro ligado.
+  // Com um dia escolhido não compara (dia × mês não é comparação justa).
+  const rAnt = resumoCortes(filtrarCortes(linhasAnt, filtros));
+  const vs = (atual: number, anterior: number) => (dia ? null : variacaoCorte(atual, anterior, mesAntCurto));
+  const vValor = vs(r.valor, rAnt.valor);
+  const vItens = vs(r.itens, rAnt.itens);
+  const vSkus = vs(r.skus, rAnt.skus);
+  const top = [...doDia].sort((a, b) => b.valor - a.valor).slice(0, 20);
+  const serie = serieDiaria(rMes.porDia, inicio, mesFechado ? fim : hojeRecife() < fim ? hojeRecife() : fim);
+  const detalheItens = `${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`;
+  const detalheProdutos = `${inteiro.format(r.qt)} un · ${formatKg(r.kg)} · ${r.valor > 0 ? formatPercent(r.harpia / r.valor, 0) : "—"} na separação`;
 
   return (
     <div>
@@ -94,18 +125,39 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
       </PageHeader>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Valor cortado" value={brl0(r.valor)} hint={vsAnt ?? (temFiltro ? `de ${brl0(total.valor)} no mês` : "venda que não saiu")} accent="red" />
-        {temFiltro ? (
-          <StatCard label="Do corte do mês" value={total.valor > 0 ? formatPercent(r.valor / total.valor, 1) : "—"} hint="participação do filtro" />
+        <CardVariacao
+          label="Valor cortado"
+          value={brl0(r.valor)}
+          variacao={vValor}
+          semVariacao={dia ? `de ${brl0(rMes.valor)} no mês` : temFiltro ? `de ${brl0(total.valor)} no mês` : "venda que não saiu"}
+          title={temFiltro || dia ? `${brl0(total.valor)} de corte no mês, sem filtro` : "Quantidade cortada × preço de venda do item no pedido"}
+          accent="red"
+        />
+        {temFiltro || dia ? (
+          <StatCard
+            label="Do corte do mês"
+            value={total.valor > 0 ? formatPercent(r.valor / total.valor, 1) : "—"}
+            hint={dia ? `dia ${formatDataBR(dia).slice(0, 5)}` : "participação do filtro"}
+          />
         ) : (
-          <StatCard label="Do que foi pedido" value={taxa === null ? "—" : formatPercent(taxa, 2)} hint="corte ÷ (corte + venda líquida)" />
+          <Suspense fallback={<div className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
+            <CardTaxa mes={mes} mesAnt={mesAnt} mesAntCurto={mesAntCurto} valor={total.valor} valorAnt={rAnt.valor} />
+          </Suspense>
         )}
-        <StatCard label="Itens cortados" value={inteiro.format(r.itens)} hint={`${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`} />
-        <StatCard label="Produtos" value={inteiro.format(r.skus)} hint={`${formatKg(r.kg)} · ${r.valor > 0 ? formatPercent(r.harpia / r.valor, 0) : "—"} na separação`} />
+        <CardVariacao label="Itens cortados" value={inteiro.format(r.itens)} variacao={vItens} semVariacao={detalheItens} title={detalheItens} />
+        <CardVariacao label="Produtos" value={inteiro.format(r.skus)} variacao={vSkus} semVariacao={detalheProdutos} title={detalheProdutos} />
       </div>
 
-      {temFiltro && (
+      {(temFiltro || dia) && (
         <div className="mb-6 flex flex-wrap items-center gap-2">
+          {dia && (
+            <span className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eef0fb] py-1 pl-3 pr-1 text-sm font-semibold text-[#1b2168]">
+              <span className="truncate">Dia: {formatDataBR(dia)}</span>
+              <Link href={url({ dia: undefined })} scroll={false} aria-label="Remover filtro de dia" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-white">
+                ✕
+              </Link>
+            </span>
+          )}
           {DIMENSOES_CORTE.filter((d) => filtros[d]).map((d) => (
             <span key={d} className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eef0fb] py-1 pl-3 pr-1 text-sm font-semibold text-[#1b2168]">
               <span className="truncate">
@@ -121,7 +173,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
               </Link>
             </span>
           ))}
-          <Link href={url(Object.fromEntries(DIMENSOES_CORTE.map((d) => [d, undefined])))} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
+          <Link href={url({ dia: undefined, ...Object.fromEntries(DIMENSOES_CORTE.map((d) => [d, undefined])) })} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
             limpar filtros
           </Link>
         </div>
@@ -131,6 +183,16 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
         <Card className="p-8 text-center text-sm text-slate-400">{temFiltro ? "Nenhum corte com esses filtros neste mês." : "Nenhum corte neste mês."}</Card>
       ) : (
         <>
+          <div className="mb-6 grid gap-6 lg:grid-cols-3">
+            <section className="min-w-0 lg:col-span-2">
+              <SectionTitle>Dia a dia</SectionTitle>
+              <Card className="p-5">
+                <BarrasDia serie={serie} ativo={dia} hrefDia={alternarDia} />
+              </Card>
+            </section>
+            <Bloco titulo="Origem" grupos={r.porOrigem} dim="origem" ativo={filtros.origem} alternar={alternar} />
+          </div>
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Bloco titulo="Motivos" grupos={r.porMotivo} dim="motivo" ativo={filtros.motivo} alternar={alternar} />
             <Bloco titulo="Quem cortou (Harpia)" grupos={r.porUsuario} dim="usuario" ativo={filtros.usuario} alternar={alternar} vazio="Nenhum corte registrado pelo Harpia." />
@@ -156,7 +218,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
           </section>
 
           <section className="mt-6">
-            <SectionTitle>Maiores cortes</SectionTitle>
+            <SectionTitle>{dia ? `Maiores cortes · ${formatDataBR(dia)}` : "Maiores cortes"}</SectionTitle>
             <Card className="overflow-hidden">
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[860px] text-left text-sm">
@@ -230,6 +292,112 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+/** Card com a comparação contra o mês anterior como dado de apoio (rose só quando piora). */
+function CardVariacao({
+  label, value, variacao, semVariacao, title, accent,
+}: {
+  label: string;
+  value: string;
+  variacao: VariacaoCorte | null;
+  semVariacao: string;
+  title: string;
+  accent?: "red";
+}) {
+  return (
+    <StatCard
+      label={label}
+      value={value}
+      accent={accent}
+      hint={variacao?.texto ?? semVariacao}
+      hintRuim={variacao?.piorou ?? false}
+      title={variacao ? `${title} · ${variacao.texto}` : title}
+    />
+  );
+}
+
+/**
+ * Taxa de corte (corte ÷ (corte + venda líquida)) e a variação em p.p. contra o
+ * mês anterior. Fica num <Suspense>: a venda líquida vem ao vivo da view de
+ * faturamento (~7 s), e o resto da página não espera por ela. O mês anterior
+ * (fechado) usa a foto do Supabase — sem segunda varredura da view.
+ */
+async function CardTaxa({
+  mes, mesAnt, mesAntCurto, valor, valorAnt,
+}: {
+  mes: string;
+  mesAnt: string;
+  mesAntCurto: string;
+  valor: number;
+  valorAnt: number;
+}) {
+  const [fat, fotos] = await Promise.all([
+    getResumoFaturamentoDashboard(mes).catch(() => null),
+    vendaLiquidaDasFotos([mesAnt]).catch(() => new Map<string, number>()),
+  ]);
+  const taxa = taxaCorte(valor, fat?.vendaLiquida ?? null);
+  const taxaAnt = taxaCorte(valorAnt, fotos.get(mesAnt) ?? null);
+  const v = variacaoTaxaCorte(taxa, taxaAnt, mesAntCurto);
+  const base = "Corte ÷ (corte + venda líquida da 111)";
+  return (
+    <StatCard
+      label="Do que foi pedido"
+      value={taxa === null ? "—" : formatPercent(taxa, 2)}
+      hint={fat?.foto ? "Winthor fora · foto do mês" : (v?.texto ?? "corte ÷ (corte + venda líquida)")}
+      hintRuim={!fat?.foto && (v?.piorou ?? false)}
+      title={v ? `${base} · ${v.texto}` : base}
+    />
+  );
+}
+
+/**
+ * Valor cortado por dia do mês. Cada barra é um link: clica filtra o dia,
+ * clica de novo tira. Detalhe do dia no hover (title), sem legenda na tela.
+ */
+function BarrasDia({ serie, ativo, hrefDia }: { serie: { dia: string; valor: number }[]; ativo: string | null; hrefDia: (dia: string) => string }) {
+  const max = Math.max(1, ...serie.map((d) => d.valor));
+  return (
+    <div>
+      <div className="flex h-40 items-end gap-[3px]">
+        {serie.map((d, i) => {
+          const sel = ativo === d.dia;
+          const barra = (
+            <div
+              className="crescer-y w-full rounded-t-sm transition group-hover:brightness-125"
+              style={{
+                "--i": i,
+                height: d.valor > 0 ? `${Math.max(3, (d.valor / max) * 100)}%` : "0",
+                background: sel ? COR_SELECIONADA : COR_BARRA,
+                opacity: ativo && !sel ? 0.35 : 1,
+              } as CSSProperties}
+            />
+          );
+          const dica = `${formatDataBR(d.dia)} · ${d.valor > 0 ? brl0(d.valor) : "sem corte"}`;
+          return d.valor > 0 ? (
+            <Link key={d.dia} href={hrefDia(d.dia)} scroll={false} title={`${dica} · clique para ${sel ? "tirar o filtro" : "filtrar"}`} aria-current={sel ? "true" : undefined} className="group flex h-full min-w-0 flex-1 flex-col justify-end">
+              {barra}
+            </Link>
+          ) : (
+            <div key={d.dia} title={dica} className="flex h-full min-w-0 flex-1 flex-col justify-end border-b border-slate-200">
+              {barra}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex gap-[3px]">
+        {serie.map((d) => {
+          const n = Number(d.dia.slice(8));
+          const mostra = ativo === d.dia || (!ativo && (n === 1 || n % 5 === 0));
+          return (
+            <span key={d.dia} className={`min-w-0 flex-1 text-center text-[0.65rem] font-semibold tabular-nums ${ativo === d.dia ? "text-[#c2820a]" : "text-slate-400"}`}>
+              {mostra ? n : ""}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
