@@ -2,6 +2,8 @@ import Link from "next/link";
 import { carregarFrotaTV } from "./painel/painel-actions";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { StatCard, Card } from "@/components/ui";
+import { lerSaudeTelemetria } from "@/data/frota-km";
+import { haQuanto, type SaudeTelemetria } from "@/domain/frota-saude";
 
 const inteiro = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const km1 = (v: number | null) => (v === null ? "—" : v.toLocaleString("pt-BR", { maximumFractionDigits: 1 }));
@@ -13,12 +15,40 @@ function delta(atual: number | null, ant: number | null | undefined): string {
   return `${f >= 0 ? "+" : "−"}${formatPercent(Math.abs(f))} vs mês anterior`;
 }
 
-function Heading({ href }: { href?: string }) {
+// Selo de saúde do coletor (Fulltrack → Supabase a cada 10 min). Sem verde:
+// verde é só receita. Atrasado/parado = o KM do mês está saindo incompleto.
+const COR_SAUDE = {
+  ok: "bg-[#1b2168]",
+  atrasado: "bg-amber-500",
+  parado: "bg-rose-500",
+  "sem-dados": "bg-rose-500",
+} as const;
+
+function SeloColetor({ s }: { s: SaudeTelemetria }) {
+  const texto =
+    s.estado === "sem-dados"
+      ? "coletor sem leitura recente"
+      : `${s.estado === "parado" ? "coletor parado · " : ""}última leitura ${haQuanto(s.minutos ?? 0)} · ${s.comunicando} veículos comunicando`;
   return (
-    <div className="mb-4 flex items-baseline justify-between gap-3">
-      <h2 className="font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]">
-        Frota · KM rodado
-      </h2>
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs ${s.estado === "ok" ? "text-slate-400" : s.estado === "atrasado" ? "font-medium text-amber-700" : "font-semibold text-rose-600"}`}
+      title="Coletor da telemetria (Fulltrack) — grava as posições a cada 10 min"
+    >
+      <span className={`h-2 w-2 rounded-full ${COR_SAUDE[s.estado]}`} />
+      {texto}
+    </span>
+  );
+}
+
+function Heading({ href, saude }: { href?: string; saude?: SaudeTelemetria | null }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]">
+          Frota · KM rodado
+        </h2>
+        {saude && <SeloColetor s={saude} />}
+      </div>
       {href && (
         <Link href={href} className="text-xs font-medium text-amber-600 hover:text-amber-700">
           ver no BI dos Motoristas →
@@ -34,12 +64,12 @@ function Heading({ href }: { href?: string }) {
  * Custo estimado só aparece para admin (igual à TV).
  */
 export async function FrotaCards({ mes, hrefBi }: { mes: string; hrefBi?: string }) {
-  const d = await carregarFrotaTV(mes).catch(() => null);
+  const [d, saude] = await Promise.all([carregarFrotaTV(mes).catch(() => null), lerSaudeTelemetria().catch(() => null)]);
 
   if (!d) {
     return (
       <div>
-        <Heading href={hrefBi} />
+        <Heading href={hrefBi} saude={saude} />
         <Card className="p-6">
           <p className="text-sm text-slate-500">Sem telemetria da frota para este mês.</p>
         </Card>
@@ -52,7 +82,7 @@ export async function FrotaCards({ mes, hrefBi }: { mes: string; hrefBi?: string
 
   return (
     <div>
-      <Heading href={hrefBi} />
+      <Heading href={hrefBi} saude={saude} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="KM rodado"

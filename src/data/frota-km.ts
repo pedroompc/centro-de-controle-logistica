@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { LinhaHodometro } from "@/domain/frota";
+import { saudeColetor, type SaudeTelemetria } from "@/domain/frota-saude";
 
 const PAGINA = 1000; // limite padrão de linhas por resposta do Supabase
 const numOuNull = (v: unknown): number | null => (v == null ? null : Number(v));
@@ -36,4 +37,34 @@ export async function lerHodometroPeriodo(ini: string, fim: string): Promise<Lin
     }
     if ((data ?? []).length < PAGINA) return linhas;
   }
+}
+
+/**
+ * Saúde do coletor: última gravação e placas que comunicaram nas últimas 24h,
+ * lidas de frota_hodometro_diario (só ontem e hoje — a tabela é por dia).
+ * `null` = tabela indisponível.
+ */
+export async function lerSaudeTelemetria(): Promise<SaudeTelemetria | null> {
+  const supabase = await createClient();
+  const ontem = new Date(Date.now() - 36 * 3600_000).toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
+  const { data, error } = await supabase
+    .from("frota_hodometro_diario")
+    .select("placa, ultima_leitura, atualizado_em")
+    .gte("dia", ontem)
+    .limit(PAGINA);
+  if (error) {
+    if (error.code !== "42P01" && error.code !== "PGRST205") console.error("[frota-km] saúde indisponível:", error.message);
+    return null;
+  }
+  const data_ = (v: unknown) => (v ? new Date(String(v)) : null);
+  let ultimaGravacao: Date | null = null;
+  const porPlaca = new Map<string, Date | null>();
+  for (const r of data ?? []) {
+    const g = data_(r.atualizado_em);
+    if (g && (!ultimaGravacao || g > ultimaGravacao)) ultimaGravacao = g;
+    const l = data_(r.ultima_leitura);
+    const atual = porPlaca.get(String(r.placa)) ?? null;
+    if (!porPlaca.has(String(r.placa)) || (l && (!atual || l > atual))) porPlaca.set(String(r.placa), l);
+  }
+  return saudeColetor(ultimaGravacao, [...porPlaca.values()].map((ultimaLeitura) => ({ ultimaLeitura })));
 }
