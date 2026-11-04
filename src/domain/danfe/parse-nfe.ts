@@ -28,6 +28,7 @@ export interface DanfeItem {
   valorTotal: string | null;
   baseIcms: string | null;
   valorIcms: string | null;
+  valorIcmsSt: string | null;
   aliqIcms: string | null;
   valorIpi: string | null;
   aliqIpi: string | null;
@@ -58,6 +59,7 @@ export interface DanfeData {
     nome: string | null;
     fantasia: string | null;
     ie: string | null;
+    iest: string | null;
     endereco: DanfeEndereco;
   };
   destinatario: {
@@ -174,6 +176,7 @@ export function parseNfe(xml: string): DanfeData {
       valorTotal: s(get(prod, "vProd")),
       baseIcms: s(get(icmsGrp, "vBC")),
       valorIcms: s(get(icmsGrp, "vICMS")),
+      valorIcmsSt: s(get(icmsGrp, "vICMSST")),
       aliqIcms: s(get(icmsGrp, "pICMS")),
       valorIpi: s(get(ipiTrib, "vIPI")),
       aliqIpi: s(get(ipiTrib, "pIPI")),
@@ -211,6 +214,7 @@ export function parseNfe(xml: string): DanfeData {
       nome: s(get(emit, "xNome")),
       fantasia: s(get(emit, "xFant")),
       ie: s(get(emit, "IE")),
+      iest: s(get(emit, "IEST")),
       endereco: endereco(get(emit, "enderEmit")),
     },
     destinatario: {

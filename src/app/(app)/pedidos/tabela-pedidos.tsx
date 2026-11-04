@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useRef, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { Card, PanelHeader } from "@/components/ui";
 import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import { formatBRL, formatKg } from "@/domain/format";
@@ -51,7 +52,70 @@ function Selo({ posicao }: { posicao: string }) {
   return <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${info.badge}`}>{info.label}</span>;
 }
 
+// DANFE no layout da nota impressa (Winthor), num modal com "Imprimir / Salvar PDF".
+// A nota é uma página própria (/pedidos/:numped/danfe) carregada num iframe: o
+// botão imprime só o iframe, então sai só o documento, em A4.
+function ModalDanfe({ numped, notaFiscal, onFechar }: { numped: number; notaFiscal: number; onFechar: () => void }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [carregado, setCarregado] = useState(false);
+
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", esc);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", esc); document.body.style.overflow = overflow; };
+  }, [onFechar]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:p-4"
+      // React propaga eventos do portal até a linha da tabela: barra aqui pra não abrir/fechar o pedido.
+      onClick={(e) => { e.stopPropagation(); onFechar(); }}
+    >
+      <div
+        className="flex h-full w-full max-w-[860px] flex-col bg-slate-100 shadow-2xl sm:h-auto sm:max-h-[95vh] sm:rounded-2xl sm:border sm:border-slate-300"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <h3 className="text-sm font-black text-slate-800 sm:text-base">DANFE · NF-e Nº {notaFiscal}</h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!carregado}
+              onClick={() => frame.current?.contentWindow?.print()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#141a4d] px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-[#1b2168] disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2" /><path d="M6 14h12v7H6z" />
+              </svg>
+              Imprimir / Salvar PDF
+            </button>
+            <button type="button" onClick={onFechar} aria-label="Fechar" className="px-1 text-2xl font-bold leading-none text-slate-400 hover:text-slate-600">
+              &times;
+            </button>
+          </div>
+        </div>
+        <div className="relative min-h-0 flex-1 sm:h-[80vh] sm:flex-none">
+          {!carregado && (
+            <p className="absolute inset-x-0 top-16 text-center text-sm text-slate-400">Obtendo XML autorizado e montando o DANFE…</p>
+          )}
+          <iframe
+            ref={frame}
+            src={`/pedidos/${numped}/danfe`}
+            title={`DANFE NF-e ${notaFiscal}`}
+            onLoad={() => setCarregado(true)}
+            className={`h-full w-full border-0 ${carregado ? "" : "opacity-0"}`}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens: ItemPedido[] | undefined; carregando: boolean }) {
+  const [danfeAberto, setDanfeAberto] = useState(false);
   const endereco = [pedido.endereco, pedido.bairro].filter(Boolean).join(", ");
   const local = [pedido.cidade, pedido.uf].filter(Boolean).join(" · ");
   return (
@@ -91,18 +155,19 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
 
       {pedido.notaFiscal != null && (
         <div>
-          <a
-            href={`/pedidos/${pedido.numped}/danfe`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setDanfeAberto(true); }}
             className="inline-flex items-center gap-2 rounded-lg bg-[#181d55] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#10143f]"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" />
             </svg>
-            Baixar DANFE (PDF)
-          </a>
+            Ver DANFE
+          </button>
+          {danfeAberto && (
+            <ModalDanfe numped={pedido.numped} notaFiscal={pedido.notaFiscal} onFechar={() => setDanfeAberto(false)} />
+          )}
         </div>
       )}
 
