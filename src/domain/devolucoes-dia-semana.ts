@@ -6,8 +6,10 @@
  */
 export type BaseDevolucao = "devolucao" | "faturamento";
 
+// Padrão = "faturamento" (Dia faturado), igual ao Painel TV; ?base=devolucao
+// volta para a data da devolução (rotina 111).
 export const baseDevolucao = (v: string | undefined): BaseDevolucao =>
-  v === "faturamento" ? "faturamento" : "devolucao";
+  v === "devolucao" ? "devolucao" : "faturamento";
 
 export const ROTULOS_DIA = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 

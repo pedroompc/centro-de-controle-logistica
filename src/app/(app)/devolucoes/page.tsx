@@ -58,7 +58,7 @@ export default async function DevolucoesPage({
   const url = (over: Record<string, string | undefined> = {}) => {
     const atual: Record<string, string | undefined> = {
       mes: mesFechado ? mesSel : undefined, // mês corrente = URL limpa
-      motivo, setor, cidade: ibge, base: base === "faturamento" ? base : undefined, ...over,
+      motivo, setor, cidade: ibge, base: base === "devolucao" ? base : undefined, ...over, // padrão = dia faturado (URL limpa)
     };
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(atual)) if (v) p.set(k, v);
@@ -92,14 +92,14 @@ export default async function DevolucoesPage({
       aria-label="Base de data: muda os cards e a análise"
     >
       <Link
-        href={url({ base: undefined })}
+        href={url({ base: "devolucao" })}
         title="Devoluções que entraram no mês (rotina 111)"
         className={`rounded-md px-3 py-1.5 transition ${base === "devolucao" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
       >
         Data da devolução
       </Link>
       <Link
-        href={url({ base: "faturamento" })}
+        href={url({ base: undefined })}
         title="Das notas faturadas no mês, as que voltaram até hoje — o mês recente ainda sobe"
         className={`rounded-md px-3 py-1.5 transition ${base === "faturamento" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
       >
@@ -208,6 +208,7 @@ export default async function DevolucoesPage({
         <form method="get" className="flex flex-wrap gap-2">
           {/* Preserva o mês selecionado ao submeter o filtro (GET só envia os campos do form). */}
           {mesFechado && <input type="hidden" name="mes" value={mesSel} />}
+          {base === "devolucao" && <input type="hidden" name="base" value="devolucao" />}
           <select name="motivo" defaultValue={motivo ?? ""} className={`${inputCls} min-w-[12rem] flex-1`}>
             <option value="">Todos os motivos</option>
             {motivosDisponiveis.map((m) => <option key={m} value={m}>{m}</option>)}

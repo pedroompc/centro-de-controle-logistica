@@ -35,9 +35,10 @@ describe("montarDiasSemana", () => {
 });
 
 describe("baseDevolucao", () => {
-  it("só aceita 'faturamento'; qualquer outro valor cai na data da devolução", () => {
+  it("padrão é o dia faturado; só 'devolucao' muda para a data da devolução", () => {
+    expect(baseDevolucao("devolucao")).toBe("devolucao");
     expect(baseDevolucao("faturamento")).toBe("faturamento");
-    expect(baseDevolucao(undefined)).toBe("devolucao");
-    expect(baseDevolucao("x")).toBe("devolucao");
+    expect(baseDevolucao(undefined)).toBe("faturamento");
+    expect(baseDevolucao("x")).toBe("faturamento");
   });
 });
