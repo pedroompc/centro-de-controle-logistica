@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getNucleoDevolucao, listarMotivosDoMes, nomeCidadePE } from "@/data/devolucoes";
+import { getNucleoDevolucao, getResumoCoorteFaturamento, listarMotivosDoMes, nomeCidadePE } from "@/data/devolucoes";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
@@ -45,10 +45,12 @@ export default async function DevolucoesPage({
 
   // SSR busca só o NÚCLEO (leve): total, por setor e a lista de motivos. As abas
   // pesadas (clientes/vendedores/motoristas/mapa) carregam sob demanda no cliente.
-  const [r, fat, motivosDisponiveis] = await Promise.all([
+  const porFaturamento = base === "faturamento";
+  const [r, fat, motivosDisponiveis, coorte] = await Promise.all([
     getNucleoDevolucao(inicio, fim, motivo, setor, ibge, base),
     getResumoFaturamentoDashboard(mesSel),
     listarMotivosDoMes(inicio, fim, ibge, base),
+    porFaturamento ? getResumoCoorteFaturamento(inicio, fim) : Promise.resolve(null),
   ]);
   const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
 
@@ -100,28 +102,56 @@ export default async function DevolucoesPage({
         <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
       </PageHeader>
 
-      {/* Números OFICIAIS do mês = rotina 111. NÃO reagem ao filtro (âncora). */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Valor devolução" value={formatBRL(fat?.valorDevolucao ?? r.total)} hint="rotina 111 · pela data da devolução" accent="red" />
-        <StatCard
-          label="Devolução avulsa"
-          value={fat ? formatBRL(fat.valorDevolucaoAvulsa) : "—"}
-          hint={fat ? `${fat.devolvidasAvulsas} NFs · sem venda de origem` : "—"}
-          accent="navy"
-        />
-        <StatCard
-          label="Taxa de devolução (valor)"
-          value={fat ? formatPercent(taxaDevolucao(fat)) : "—"}
-          hint="R$ devolvido / venda faturada"
-          accent="gold"
-        />
-        <StatCard
-          label="Taxa de devolução (notas)"
-          value={fat ? formatPercent(taxaDevolucaoNotas(fat)) : "—"}
-          hint={fat ? `${fat.devolvidas} de ${fat.emitidas} NFs emitidas` : "—"}
-          accent="gold"
-        />
-      </div>
+      {/* Âncora do mês: NÃO reage a motivo/setor/cidade, só à base de data.
+          "Data da devolução" = números oficiais da rotina 111; "Dia faturado" =
+          das notas saídas no mês, o que voltou até hoje (denominadores = venda
+          faturada e NFs emitidas do mesmo mês). A avulsa não tem venda de origem,
+          então não tem dia faturado. */}
+      {porFaturamento ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Valor devolução"
+            value={coorte ? formatBRL(coorte.valor) : "—"}
+            hint={mesFechado ? "notas faturadas no mês · devolvidas até hoje" : "notas faturadas no mês · ainda sobe"}
+            accent="red"
+          />
+          <StatCard label="Devolução avulsa" value="—" hint="sem venda de origem · só na data da devolução" accent="navy" />
+          <StatCard
+            label="Taxa de devolução (valor)"
+            value={fat && coorte ? formatPercent(taxaDevolucao({ valorDevolucao: coorte.valor, vendaFaturada: fat.vendaFaturada })) : "—"}
+            hint="R$ devolvido / venda faturada do mês"
+            accent="gold"
+          />
+          <StatCard
+            label="Taxa de devolução (notas)"
+            value={fat && coorte ? formatPercent(taxaDevolucaoNotas({ devolvidas: coorte.notas, emitidas: fat.emitidas })) : "—"}
+            hint={fat && coorte ? `${coorte.notas} de ${fat.emitidas} NFs emitidas` : "—"}
+            accent="gold"
+          />
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Valor devolução" value={formatBRL(fat?.valorDevolucao ?? r.total)} hint="rotina 111 · pela data da devolução" accent="red" />
+          <StatCard
+            label="Devolução avulsa"
+            value={fat ? formatBRL(fat.valorDevolucaoAvulsa) : "—"}
+            hint={fat ? `${fat.devolvidasAvulsas} NFs · sem venda de origem` : "—"}
+            accent="navy"
+          />
+          <StatCard
+            label="Taxa de devolução (valor)"
+            value={fat ? formatPercent(taxaDevolucao(fat)) : "—"}
+            hint="R$ devolvido / venda faturada"
+            accent="gold"
+          />
+          <StatCard
+            label="Taxa de devolução (notas)"
+            value={fat ? formatPercent(taxaDevolucaoNotas(fat)) : "—"}
+            hint={fat ? `${fat.devolvidas} de ${fat.emitidas} NFs emitidas` : "—"}
+            accent="gold"
+          />
+        </div>
+      )}
 
       <div className="mt-8 mb-4 flex items-baseline gap-3">
         <h2 className="font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]">

@@ -343,6 +343,31 @@ export const getNucleoDevolucao = cache(async (
   }
 });
 
+// Cards do topo na base "faturamento": total da coorte (notas saídas no período,
+// devolvidas até hoje) SEM os filtros de motivo/setor/cidade — continua sendo a
+// âncora do mês, só que olhando pelo dia faturado. `notas` = vendas distintas que
+// voltaram (numerador da taxa por notas; o denominador são as NFs emitidas no mês).
+const sqlResumoCoorte = `WITH ${ctes({ base: "faturamento" })}
+  SELECT ROUND(SUM(VL), 2) VALOR, COUNT(DISTINCT NUMTRANSVENDA) NOTAS
+  FROM edf
+  WHERE NUMTRANSVENDA > 0`;
+
+export interface ResumoCoorteFaturamento {
+  valor: number;
+  notas: number;
+}
+
+/** Total devolvido das notas faturadas no período (base "Dia faturado"); `null` se o Winthor cair. */
+export const getResumoCoorteFaturamento = cache(async (ini: string, fim: string): Promise<ResumoCoorteFaturamento | null> => {
+  try {
+    const [r] = await queryWinthor<{ VALOR: number | null; NOTAS: number | null }>(sqlResumoCoorte, { ini, fim });
+    return { valor: n(r?.VALOR), notas: n(r?.NOTAS) };
+  } catch (erro) {
+    console.error("[devolucoes] resumo da coorte indisponível:", (erro as Error).message);
+    return null;
+  }
+});
+
 /** Aba CLIENTES (sob demanda): ranking por nº de notas + drill-down por motivo. */
 export const getClientesDevolucao = cache(async (
   ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
