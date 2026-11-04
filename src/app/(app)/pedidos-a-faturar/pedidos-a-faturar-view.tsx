@@ -6,13 +6,18 @@ import { Card, StatCard, Pill } from "@/components/ui";
 import { formatBRL, formatKg } from "@/domain/format";
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
 
-/** Pedido enriquecido com a região operacional (do calendário, só p/ filtro). */
-export interface PedidoLista extends PedidoPendente {
-  regiao: string | null;
-}
+/**
+ * O que a tela usa de cada pedido, mais a região operacional (do calendário, só
+ * p/ filtro). A lista inteira vai para o navegador (filtros instantâneos), então
+ * só viajam os campos exibidos/filtrados — ~2,7 mil pedidos por leitura.
+ */
+export type PedidoLista = Pick<
+  PedidoPendente,
+  "numeroPedido" | "nomeCliente" | "cidadeCliente" | "nomeRca" | "nomeSupervisor" | "valorPedido" | "pesoPedido" | "horasParado" | "statusWinthor" | "reentrega"
+> & { regiao: string | null };
 
-/** Máximo de linhas renderizadas de uma vez — acima disso, refine com os filtros. */
-const LIMITE_LINHAS = 200;
+/** Linhas renderizadas por vez; "Mostrar mais" soma outro lote. */
+const LOTE_LINHAS = 200;
 
 /** Colunas ordenáveis: chave do pedido, rótulo, tipo (p/ comparador) e alinhamento. */
 const COLUNAS = [
@@ -72,6 +77,11 @@ export function PedidosAFaturarView({
   const [status, setStatus] = useState(""); // "" = todos | "L" | "M"
   const [ordenarPor, setOrdenarPor] = useState<ColunaChave>("horasParado");
   const [direcao, setDirecao] = useState<Direcao>("desc");
+  // "Mostrar mais" vale para o recorte atual: mudou filtro/ordem, volta a um lote.
+  const recorte = [busca, regiao, cidade, rca, status, ordenarPor, direcao].join("|");
+  const [extra, setExtra] = useState({ recorte, n: 0 });
+  const limite = LOTE_LINHAS * (1 + (extra.recorte === recorte ? extra.n : 0));
+  const mostrarMais = () => setExtra((e) => ({ recorte, n: (e.recorte === recorte ? e.n : 0) + 1 }));
 
   const regioes = useMemo(() => distintos(pedidos.map((p) => p.regiao)), [pedidos]);
   const cidades = useMemo(() => distintos(pedidos.map((p) => p.cidadeCliente)), [pedidos]);
@@ -133,7 +143,8 @@ export function PedidosAFaturarView({
   );
 
   const temFiltro = !!(busca || regiao || cidade || rca || status);
-  const visiveis = ordenados.slice(0, LIMITE_LINHAS);
+  const visiveis = ordenados.slice(0, limite);
+  const restantes = ordenados.length - visiveis.length;
 
   return (
     <div className="space-y-6">
@@ -310,11 +321,7 @@ export function PedidosAFaturarView({
         {filtrados.length === 0 && (
           <p className="px-4 py-6 text-sm text-slate-500">Nenhum pedido encontrado com esses filtros.</p>
         )}
-        {filtrados.length > LIMITE_LINHAS && (
-          <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
-            Mostrando {LIMITE_LINHAS} de {filtrados.length} (pela ordenação atual). Use os filtros para refinar.
-          </p>
-        )}
+        {restantes > 0 && <MostrarMais mostrando={visiveis.length} total={ordenados.length} onClick={mostrarMais} className="border-t border-slate-100" />}
       </Card>
 
       {/* Lista — mobile */}
@@ -380,14 +387,21 @@ export function PedidosAFaturarView({
                 </div>
               </div>
             ))}
-            {filtrados.length > LIMITE_LINHAS && (
-              <p className="px-1 py-2 text-center text-xs text-slate-400">
-                Mostrando {LIMITE_LINHAS} de {filtrados.length}. Use os filtros para refinar.
-              </p>
-            )}
+            {restantes > 0 && <MostrarMais mostrando={visiveis.length} total={ordenados.length} onClick={mostrarMais} />}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function MostrarMais({ mostrando, total, onClick, className = "" }: { mostrando: number; total: number; onClick: () => void; className?: string }) {
+  return (
+    <div className={`flex items-center justify-center gap-3 px-4 py-3 text-xs text-slate-400 ${className}`}>
+      <span className="tabular-nums">{mostrando} de {total}</span>
+      <button type="button" onClick={onClick} className="rounded-lg px-2.5 py-1 font-semibold text-[#1b2168] ring-1 ring-slate-200 transition hover:bg-slate-50">
+        Mostrar mais {Math.min(LOTE_LINHAS, total - mostrando)}
+      </button>
     </div>
   );
 }

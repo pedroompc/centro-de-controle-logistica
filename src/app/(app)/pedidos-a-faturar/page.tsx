@@ -26,7 +26,19 @@ async function Conteudo() {
   // a região fica nula e o filtro de região aparece indisponível.
   const indice = criarIndiceCalendario(rotas ?? []);
   const enriquecidos: PedidoLista[] = pedidos
-    .map((p) => ({ ...p, regiao: indice.buscar(p.cidadeCliente)?.regiaoOperacional ?? null }))
+    .map((p) => ({
+      numeroPedido: p.numeroPedido,
+      nomeCliente: p.nomeCliente,
+      cidadeCliente: p.cidadeCliente,
+      nomeRca: p.nomeRca,
+      nomeSupervisor: p.nomeSupervisor,
+      valorPedido: Math.round(p.valorPedido * 100) / 100,
+      pesoPedido: Math.round(p.pesoPedido * 10) / 10,
+      horasParado: Math.round(p.horasParado * 10) / 10,
+      statusWinthor: p.statusWinthor,
+      reentrega: p.reentrega,
+      regiao: indice.buscar(p.cidadeCliente)?.regiaoOperacional ?? null,
+    }))
     // Do mais antigo (mais tempo parado) ao mais recente.
     .sort((a, b) => b.horasParado - a.horasParado);
 
