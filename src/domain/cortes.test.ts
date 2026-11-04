@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, type LinhaCorte } from "./cortes";
+import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado, type LinhaCorte } from "./cortes";
 
 describe("lerMotivo", () => {
   it("separa motivo e usuário do texto do Harpia", () => {
@@ -22,7 +22,7 @@ describe("lerMotivo", () => {
 const linha = (over: Partial<LinhaCorte>): LinhaCorte => ({
   dia: "2026-10-05", numped: 1, numcar: 10, codprod: 100, produto: "ARROZ", codfornec: 5, fornecedor: "FORN A",
   comprador: "JOAO", codcli: 7, cliente: "MERCADO X", qt: 2, valor: 50, kg: 10,
-  motivo: "1.HARPIA - FALTA DE MERCADORIA - Usuário: 3-ADM GABRIEL", temPedido: true, ...over,
+  motivo: "1.HARPIA - FALTA DE MERCADORIA - Usuário: 3-ADM GABRIEL", temPedido: true, hora: 22, ...over,
 });
 
 describe("resumoCortes", () => {
@@ -87,11 +87,11 @@ describe("cortesParaCsv", () => {
 
   it("abre com BOM e cabeçalho separado por ;", () => {
     expect(csv.startsWith("﻿")).toBe(true);
-    expect(cab.split(";")).toHaveLength(16);
+    expect(cab.split(";")).toHaveLength(17);
   });
 
   it("ordena por data, formata data/decimais e lê motivo e usuário", () => {
-    expect(l1.startsWith("05/10/2026;1;10;100;")).toBe(true);
+    expect(l1.startsWith("05/10/2026;22h;1;10;100;")).toBe(true);
     expect(l1).toContain(";1234,57;");
     expect(l1).toContain(';"Falta de mercadoria";"ADM GABRIEL"');
     expect(l2).toContain('"BISCOITO ""RECHEADO"""');
@@ -128,5 +128,30 @@ describe("filtro de origem", () => {
   it("separa o que veio do Harpia do que foi digitado no Winthor", () => {
     const ls = [linha({}), linha({ numped: 9, motivo: "ERRO DE DIGITACAO", valor: 7 })];
     expect(filtrarCortes(ls, { origem: "Winthor" }).map((l) => l.numped)).toEqual([9]);
+  });
+});
+
+describe("por hora", () => {
+  it("filtra pela hora do corte e a série começa às 7h", () => {
+    const ls = [linha({}), linha({ numped: 2, hora: 3, valor: 5 }), linha({ numped: 3, hora: null })];
+    expect(filtrarCortes(ls, { hora: "03" }).map((l) => l.numped)).toEqual([2]);
+    const s = serieHoraria(resumoCortes(ls).porHora);
+    expect(s).toHaveLength(24);
+    expect(s[0]).toEqual({ chave: "07", hora: 7, valor: 0 });
+    expect(s.find((h) => h.hora === 22)?.valor).toBe(50);
+    expect(s.find((h) => h.hora === 3)?.valor).toBe(5);
+  });
+});
+
+describe("porProdutoDetalhado", () => {
+  it("junta por produto com cargas, pedidos, clientes, último dia e motivo de maior valor", () => {
+    const ls = [
+      linha({}),
+      linha({ numped: 2, numcar: 11, codcli: 8, dia: "2026-10-09", valor: 30, motivo: "ERRO DE DIGITACAO" }),
+      linha({ numped: 2, numcar: 11, codprod: 200, produto: "FEIJAO", valor: 5 }),
+    ];
+    const [arroz, feijao] = porProdutoDetalhado(ls);
+    expect(arroz).toMatchObject({ codprod: 100, valor: 80, itens: 2, pedidos: 2, clientes: 2, cargas: 2, ultimoDia: "2026-10-09", motivo: "Falta de mercadoria" });
+    expect(feijao).toMatchObject({ codprod: 200, valor: 5, pedidos: 1 });
   });
 });

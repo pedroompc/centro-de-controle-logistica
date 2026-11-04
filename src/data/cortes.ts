@@ -7,7 +7,7 @@ import type { LinhaCorte } from "@/domain/cortes";
 const SQL_CORTES = `
 SELECT TO_CHAR(TRUNC(i.DATA), 'YYYY-MM-DD') DIA, i.NUMPED, NULLIF(i.NUMCAR, 0) NUMCAR, i.CODPROD, p.DESCRICAO PRODUTO,
        p.CODFORNEC, f.FORNECEDOR, e.NOME COMPRADOR, i.CODCLI, c.CLIENTE,
-       NVL(i.QTCORTADA, 0) QT, NVL(i.QTCORTADA, 0) * NVL(i.PVENDA, 0) VALOR, NVL(i.QTCORTADA, 0) * NVL(p.PESOBRUTO, 0) KG, i.MOTIVO,
+       NVL(i.QTCORTADA, 0) QT, NVL(i.QTCORTADA, 0) * NVL(i.PVENDA, 0) VALOR, NVL(i.QTCORTADA, 0) * NVL(p.PESOBRUTO, 0) KG, i.MOTIVO, i.HORA,
        CASE WHEN EXISTS (SELECT 1 FROM PCPEDC c2 WHERE c2.NUMPED = i.NUMPED) THEN 1 ELSE 0 END TEM_PEDIDO
 FROM PCCORTEI i
 JOIN PCPRODUT p ON p.CODPROD = i.CODPROD
@@ -53,6 +53,7 @@ export async function lerCortes(ini: string, fim: string): Promise<LinhaCorte[]>
     kg: num(r.KG),
     motivo: str(r.MOTIVO),
     temPedido: num(r.TEM_PEDIDO) === 1,
+    hora: numOuNull(r.HORA),
   }));
 }
 
@@ -66,4 +67,23 @@ export interface CorteMensal {
 export async function lerCortesMensais(ini: string, fim: string): Promise<CorteMensal[]> {
   const rows = await queryWinthor<Record<string, unknown>>(SQL_MESES, { ini, fim });
   return rows.map((r) => ({ mes: String(r.MES), valor: num(r.VALOR), itens: num(r.ITENS), pedidos: num(r.PEDIDOS) }));
+}
+
+// Estoque gerencial de hoje (PCEST.QTESTGER) dos produtos cortados no período,
+// na filial do corte. Só roda na visão "por produto".
+const SQL_ESTOQUE = `
+SELECT e.CODPROD, SUM(NVL(e.QTESTGER, 0)) QTESTGER
+FROM PCEST e
+WHERE ${filialIn("e.CODFILIAL")}
+  AND (e.CODPROD, e.CODFILIAL) IN (
+    SELECT DISTINCT i.CODPROD, i.CODFILIAL FROM PCCORTEI i
+    WHERE ${filialIn("i.CODFILIAL")}
+      AND i.DATA >= TO_DATE(:ini, 'YYYY-MM-DD') AND i.DATA < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+      AND i.QTCORTADA > 0)
+GROUP BY e.CODPROD`;
+
+/** Estoque de hoje por produto cortado entre `ini` e `fim`. */
+export async function lerEstoqueDosCortados(ini: string, fim: string): Promise<Map<number, number>> {
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_ESTOQUE, { ini, fim });
+  return new Map(rows.map((r) => [num(r.CODPROD), num(r.QTESTGER)]));
 }

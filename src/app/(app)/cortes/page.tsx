@@ -1,10 +1,10 @@
 import { Suspense, type CSSProperties } from "react";
-import { lerCortes, lerCortesMensais } from "@/data/cortes";
+import { lerCortes, lerCortesMensais, lerEstoqueDosCortados } from "@/data/cortes";
 import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import Link from "next/link";
 import {
-  resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, variacaoCorte, variacaoTaxaCorte, serieDiaria,
-  DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte, type VariacaoCorte,
+  resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado,
+  DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte, type VariacaoCorte, type ProdutoCortado,
 } from "@/domain/cortes";
 import { formatBRL, formatPercent, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
@@ -15,14 +15,14 @@ const inteiro = new Intl.NumberFormat("pt-BR");
 const brl0 = (v: number) => formatBRL(Math.round(v)).replace(/,00$/, "");
 
 const NOME_DIM: Record<DimensaoCorte, string> = {
-  origem: "Origem", motivo: "Motivo", usuario: "Quem cortou", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
+  origem: "Origem", hora: "Hora", motivo: "Motivo", usuario: "Quem cortou", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
 };
 
 // Par de cores de gráfico da marca (navy/âmbar que passam no validador de dataviz).
 const COR_BARRA = "#3d47a8";
 const COR_SELECIONADA = "#c2820a";
 
-type Params = { mes?: string; dia?: string } & FiltrosCorte;
+type Params = { mes?: string; dia?: string; ver?: string } & FiltrosCorte;
 
 /** Hoje em Recife ("yyyy-mm-dd") — o gráfico do mês corrente para no dia de hoje. */
 const hojeRecife = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
@@ -50,13 +50,16 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   // Dia só vale dentro do mês escolhido.
   const dia = typeof sp.dia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.dia) && sp.dia >= inicio && sp.dia <= fim ? sp.dia : null;
   const mesAnt = mesAnterior(mes);
+  // Tabela de baixo: "Maiores cortes" (linhas) ou "por produto" (todos, com estoque de hoje).
+  const porProduto = sp.ver === "produtos";
   const mesAntCurto = formatMesAno(mesAnt).slice(0, 3);
   const mesLabel = `${formatMesAno(mes)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
   const url = (over: Partial<Params>) => {
-    const p = { mes, dia: dia ?? undefined, ...filtros, ...over };
+    const p = { mes, dia: dia ?? undefined, ver: porProduto ? "produtos" : undefined, ...filtros, ...over };
     const q = new URLSearchParams();
     if (p.mes && p.mes !== primeiroDiaDoMes()) q.set("mes", p.mes);
     if (p.dia) q.set("dia", p.dia);
+    if (p.ver) q.set("ver", p.ver);
     for (const d of DIMENSOES_CORTE) if (p[d]) q.set(d, p[d]!);
     const s = q.toString();
     return s ? `/cortes?${s}` : "/cortes";
@@ -71,12 +74,14 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   let linhas: LinhaCorte[];
   let linhasAnt: LinhaCorte[];
   let meses: Awaited<ReturnType<typeof lerCortesMensais>>;
+  let estoque: Map<number, number> | null;
   try {
     const ant = inicioFimDoMes(mesAnt);
-    [linhas, linhasAnt, meses] = await Promise.all([
+    [linhas, linhasAnt, meses, estoque] = await Promise.all([
       lerCortes(inicio, fim),
       lerCortes(ant.inicio, ant.fim),
       lerCortesMensais(mesAnterior(INICIO_HISTORICO), fim),
+      porProduto ? lerEstoqueDosCortados(inicio, fim).catch(() => null) : Promise.resolve(null),
     ]);
   } catch (e) {
     console.error("[cortes]", e);
@@ -104,6 +109,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   const vItens = vs(r.itens, rAnt.itens);
   const vSkus = vs(r.skus, rAnt.skus);
   const top = [...doDia].sort((a, b) => b.valor - a.valor).slice(0, 20);
+  const produtos = porProdutoDetalhado(doDia);
   const serie = serieDiaria(rMes.porDia, inicio, mesFechado ? fim : hojeRecife() < fim ? hojeRecife() : fim);
   const detalheItens = `${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`;
   const detalheProdutos = `${inteiro.format(r.qt)} un · ${formatKg(r.kg)} · ${r.valor > 0 ? formatPercent(r.harpia / r.valor, 0) : "—"} na separação`;
@@ -187,10 +193,39 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
             <section className="min-w-0 lg:col-span-2">
               <SectionTitle>Dia a dia</SectionTitle>
               <Card className="p-5">
-                <BarrasDia serie={serie} ativo={dia} hrefDia={alternarDia} />
+                <Barras
+                  ativo={dia}
+                  href={alternarDia}
+                  itens={serie.map((d) => ({
+                    chave: d.dia,
+                    valor: d.valor,
+                    rotulo: String(Number(d.dia.slice(8))),
+                    marco: Number(d.dia.slice(8)) === 1 || Number(d.dia.slice(8)) % 5 === 0,
+                    dica: formatDataBR(d.dia),
+                  }))}
+                />
               </Card>
             </section>
-            <Bloco titulo="Origem" grupos={r.porOrigem} dim="origem" ativo={filtros.origem} alternar={alternar} />
+            <div className="flex min-w-0 flex-col gap-6">
+              <Bloco titulo="Origem" grupos={r.porOrigem} dim="origem" ativo={filtros.origem} alternar={alternar} />
+              <section className="min-w-0">
+                <SectionTitle>Por hora</SectionTitle>
+                <Card className="p-5">
+                  <Barras
+                    altura="h-24"
+                    ativo={filtros.hora ?? null}
+                    href={(h) => alternar("hora", h)}
+                    itens={serieHoraria(r.porHora).map((h) => ({
+                      chave: h.chave,
+                      valor: h.valor,
+                      rotulo: `${h.hora}h`,
+                      marco: h.hora % 6 === 1,
+                      dica: `${h.chave}h–${String((h.hora + 1) % 24).padStart(2, "0")}h`,
+                    }))}
+                  />
+                </Card>
+              </section>
+            </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -218,7 +253,17 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
           </section>
 
           <section className="mt-6">
-            <SectionTitle>{dia ? `Maiores cortes · ${formatDataBR(dia)}` : "Maiores cortes"}</SectionTitle>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+              <SectionTitle>
+                {porProduto ? `Todos os produtos cortados · ${inteiro.format(produtos.length)}` : dia ? `Maiores cortes · ${formatDataBR(dia)}` : "Maiores cortes"}
+              </SectionTitle>
+              <Link href={url({ ver: porProduto ? undefined : "produtos" })} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
+                {porProduto ? "ver maiores cortes" : `ver todos os produtos (${inteiro.format(produtos.length)})`}
+              </Link>
+            </div>
+            {porProduto ? (
+              <TabelaProdutos produtos={produtos} estoque={estoque} filtrar={(c) => alternar("produto", String(c))} />
+            ) : (
             <Card className="overflow-hidden">
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[860px] text-left text-sm">
@@ -289,6 +334,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
                 })}
               </ul>
             </Card>
+            )}
           </section>
         </>
       )}
@@ -354,16 +400,24 @@ async function CardTaxa({
 }
 
 /**
- * Valor cortado por dia do mês. Cada barra é um link: clica filtra o dia,
- * clica de novo tira. Detalhe do dia no hover (title), sem legenda na tela.
+ * Barras verticais clicáveis (dia do mês, hora do corte): clica filtra, clica de
+ * novo tira. Detalhe no hover (title), sem legenda na tela. Barra sem corte não
+ * é link — não há o que filtrar.
  */
-function BarrasDia({ serie, ativo, hrefDia }: { serie: { dia: string; valor: number }[]; ativo: string | null; hrefDia: (dia: string) => string }) {
-  const max = Math.max(1, ...serie.map((d) => d.valor));
+function Barras({
+  itens, ativo, href, altura = "h-40",
+}: {
+  itens: { chave: string; valor: number; rotulo: string; marco: boolean; dica: string }[];
+  ativo: string | null;
+  href: (chave: string) => string;
+  altura?: string;
+}) {
+  const max = Math.max(1, ...itens.map((d) => d.valor));
   return (
     <div>
-      <div className="flex h-40 items-end gap-[3px]">
-        {serie.map((d, i) => {
-          const sel = ativo === d.dia;
+      <div className={`flex ${altura} items-end gap-[3px]`}>
+        {itens.map((d, i) => {
+          const sel = ativo === d.chave;
           const barra = (
             <div
               className="crescer-y w-full rounded-t-sm transition group-hover:brightness-125"
@@ -375,30 +429,84 @@ function BarrasDia({ serie, ativo, hrefDia }: { serie: { dia: string; valor: num
               } as CSSProperties}
             />
           );
-          const dica = `${formatDataBR(d.dia)} · ${d.valor > 0 ? brl0(d.valor) : "sem corte"}`;
+          const dica = `${d.dica} · ${d.valor > 0 ? brl0(d.valor) : "sem corte"}`;
           return d.valor > 0 ? (
-            <Link key={d.dia} href={hrefDia(d.dia)} scroll={false} title={`${dica} · clique para ${sel ? "tirar o filtro" : "filtrar"}`} aria-current={sel ? "true" : undefined} className="group flex h-full min-w-0 flex-1 flex-col justify-end">
+            <Link key={d.chave} href={href(d.chave)} scroll={false} title={`${dica} · clique para ${sel ? "tirar o filtro" : "filtrar"}`} aria-current={sel ? "true" : undefined} className="group flex h-full min-w-0 flex-1 flex-col justify-end">
               {barra}
             </Link>
           ) : (
-            <div key={d.dia} title={dica} className="flex h-full min-w-0 flex-1 flex-col justify-end border-b border-slate-200">
+            <div key={d.chave} title={dica} className="flex h-full min-w-0 flex-1 flex-col justify-end border-b border-slate-200">
               {barra}
             </div>
           );
         })}
       </div>
       <div className="mt-1 flex gap-[3px]">
-        {serie.map((d) => {
-          const n = Number(d.dia.slice(8));
-          const mostra = ativo === d.dia || (!ativo && (n === 1 || n % 5 === 0));
-          return (
-            <span key={d.dia} className={`min-w-0 flex-1 text-center text-[0.65rem] font-semibold tabular-nums ${ativo === d.dia ? "text-[#c2820a]" : "text-slate-400"}`}>
-              {mostra ? n : ""}
-            </span>
-          );
-        })}
+        {itens.map((d) => (
+          <span key={d.chave} className={`min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[0.65rem] font-semibold tabular-nums ${ativo === d.chave ? "text-[#c2820a]" : "text-slate-400"}`}>
+            {ativo === d.chave || (!ativo && d.marco) ? d.rotulo : ""}
+          </span>
+        ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Todos os produtos cortados (a "auditoria" do mês), com o estoque gerencial de
+ * hoje. Tabela completa fica atrás do botão — a tela principal não vira planilha.
+ */
+function TabelaProdutos({ produtos, estoque, filtrar }: { produtos: ProdutoCortado[]; estoque: Map<number, number> | null; filtrar: (codprod: number) => string }) {
+  const est = (c: number) => (estoque ? inteiro.format(estoque.get(c) ?? 0) : "—");
+  return (
+    <Card className="overflow-hidden">
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-max text-left text-sm">
+          <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Produto</th>
+              <th className="px-4 py-3 font-semibold">Fornecedor</th>
+              <th className="px-4 py-3 text-right font-semibold">Valor</th>
+              <th className="px-4 py-3 text-right font-semibold">Qtd</th>
+              <th className="px-4 py-3 text-right font-semibold" title="Pedidos · clientes · carregamentos atingidos">Ped. · cli. · cargas</th>
+              <th className="px-4 py-3 font-semibold">Último</th>
+              <th className="px-4 py-3 font-semibold">Motivo principal</th>
+              <th className="px-4 py-3 text-right font-semibold" title="Estoque gerencial de hoje (PCEST.QTESTGER) na filial do corte">Estoque hoje</th>
+            </tr>
+          </thead>
+          <tbody>
+            {produtos.map((p) => (
+              <tr key={p.codprod} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                <td className="max-w-[18rem] truncate px-4 py-2.5 font-medium text-[#141a4d]" title={`${p.codprod} · ${p.produto}`}>
+                  <Link href={filtrar(p.codprod)} scroll={false} className="hover:underline">{p.codprod} · {p.produto}</Link>
+                </td>
+                <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600" title={p.comprador ? `Comprador: ${p.comprador}` : undefined}>{p.fornecedor ?? "—"}</td>
+                <td className="px-4 py-2.5 text-right font-semibold whitespace-nowrap tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{inteiro.format(p.qt)}</td>
+                <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums text-slate-600">{p.pedidos} · {p.clientes} · {p.cargas}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(p.ultimoDia).slice(0, 5)}</td>
+                <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-500" title={p.motivo}>{p.motivo}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{est(p.codprod)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ul className="divide-y divide-slate-100 md:hidden">
+        {produtos.map((p) => (
+          <li key={p.codprod} className="px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <Link href={filtrar(p.codprod)} scroll={false} className="min-w-0 truncate font-medium text-[#141a4d]">{p.produto}</Link>
+              <span className="shrink-0 font-semibold tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</span>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {inteiro.format(p.qt)} un · {p.pedidos} ped. · estoque hoje {est(p.codprod)}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-400">{p.motivo}</p>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

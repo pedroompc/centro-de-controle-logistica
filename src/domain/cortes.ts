@@ -25,6 +25,7 @@ export interface LinhaCorte {
   kg: number;
   motivo: string | null; // texto cru
   temPedido: boolean; // pedido ainda existe no PCPEDC (cortado inteiro some de lá)
+  hora: number | null; // hora do corte (PCCORTEI.HORA, 0–23)
 }
 
 export interface MotivoLido {
@@ -76,6 +77,7 @@ export interface ResumoCortes {
   harpia: number; // valor cortado na separação
   porDia: Map<string, number>;
   porOrigem: GrupoCorte[];
+  porHora: GrupoCorte[];
   porMotivo: GrupoCorte[];
   porUsuario: GrupoCorte[];
   porProduto: GrupoCorte[];
@@ -102,7 +104,7 @@ function agrupar(linhas: LinhaCorte[], chave: (l: LinhaCorte) => [string, string
 }
 
 /** Dimensões clicáveis do painel de cortes (cada uma vira filtro na URL). */
-export const DIMENSOES_CORTE = ["origem", "motivo", "usuario", "fornecedor", "comprador", "produto", "cliente"] as const;
+export const DIMENSOES_CORTE = ["origem", "hora", "motivo", "usuario", "fornecedor", "comprador", "produto", "cliente"] as const;
 export type DimensaoCorte = (typeof DIMENSOES_CORTE)[number];
 export type FiltrosCorte = Partial<Record<DimensaoCorte, string>>;
 
@@ -111,6 +113,7 @@ type Chave = (l: LinhaCorte, m: MotivoLido) => [string, string] | null;
 // Mesma chave para agrupar e para filtrar: o clique numa barra estreita exatamente aquele grupo.
 const CHAVES: Record<DimensaoCorte, Chave> = {
   origem: (_l, m) => [m.origem, m.origem],
+  hora: (l) => (l.hora === null ? null : [String(l.hora).padStart(2, "0"), `${String(l.hora).padStart(2, "0")}h`]),
   motivo: (_l, m) => [m.motivo, m.motivo],
   usuario: (_l, m) => (m.usuario ? [m.usuario, m.usuario] : null),
   fornecedor: (l) => (l.codfornec === null ? ["0", "Sem fornecedor"] : [String(l.codfornec), l.fornecedor ?? String(l.codfornec)]),
@@ -156,6 +159,7 @@ export function resumoCortes(linhas: LinhaCorte[], dia: string | null = null): R
     harpia: soma((l) => (lidos.get(l)!.origem === "Winthor" ? 0 : l.valor)),
     porDia,
     porOrigem: por("origem"),
+    porHora: por("hora"),
     porMotivo: por("motivo"),
     porUsuario: por("usuario"),
     porProduto: por("produto"),
@@ -227,7 +231,7 @@ const csvNum = (n: number) => String(Math.round(n * 100) / 100).replace(".", ","
  */
 export function cortesParaCsv(linhas: LinhaCorte[]): string {
   const header = [
-    "Data", "Pedido", "Carregamento", "Cód. produto", "Produto", "Cód. fornecedor", "Fornecedor",
+    "Data", "Hora", "Pedido", "Carregamento", "Cód. produto", "Produto", "Cód. fornecedor", "Fornecedor",
     "Comprador", "Cód. cliente", "Cliente", "Quantidade", "Kg", "Valor", "Origem", "Motivo", "Quem cortou",
   ];
   const corpo = [...linhas]
@@ -236,6 +240,7 @@ export function cortesParaCsv(linhas: LinhaCorte[]): string {
       const m = lerMotivo(l.motivo);
       return [
         l.dia.split("-").reverse().join("/"),
+        l.hora === null ? "" : `${String(l.hora).padStart(2, "0")}h`,
         l.numped,
         l.numcar ?? "",
         l.codprod,
@@ -254,4 +259,63 @@ export function cortesParaCsv(linhas: LinhaCorte[]): string {
       ].join(";");
     });
   return "﻿" + [header.join(";"), ...corpo].join("\n");
+}
+
+/**
+ * As 24 horas na ordem do dia operacional (começa às `inicio` h, padrão 7h como
+ * na Separação), com o valor cortado de cada uma — a noite fica contínua.
+ */
+export function serieHoraria(porHora: GrupoCorte[], inicio = 7): { chave: string; hora: number; valor: number }[] {
+  const v = new Map(porHora.map((g) => [g.chave, g.valor]));
+  return Array.from({ length: 24 }, (_, i) => {
+    const hora = (inicio + i) % 24;
+    const chave = String(hora).padStart(2, "0");
+    return { chave, hora, valor: v.get(chave) ?? 0 };
+  });
+}
+
+/** Uma linha por produto cortado: a auditoria do mês (visão "por produto"). */
+export interface ProdutoCortado {
+  codprod: number;
+  produto: string;
+  fornecedor: string | null;
+  comprador: string | null;
+  qt: number;
+  valor: number;
+  itens: number;
+  pedidos: number;
+  clientes: number;
+  cargas: number;
+  ultimoDia: string;
+  motivo: string; // motivo de maior valor no produto
+}
+
+export function porProdutoDetalhado(linhas: LinhaCorte[]): ProdutoCortado[] {
+  const m = new Map<number, ProdutoCortado & { _p: Set<number>; _c: Set<number>; _k: Set<number>; _mot: Map<string, number> }>();
+  for (const l of linhas) {
+    const g = m.get(l.codprod) ?? {
+      codprod: l.codprod, produto: l.produto, fornecedor: l.fornecedor, comprador: l.comprador,
+      qt: 0, valor: 0, itens: 0, pedidos: 0, clientes: 0, cargas: 0, ultimoDia: l.dia, motivo: "",
+      _p: new Set<number>(), _c: new Set<number>(), _k: new Set<number>(), _mot: new Map<string, number>(),
+    };
+    g.qt += l.qt;
+    g.valor += l.valor;
+    g.itens += 1;
+    g._p.add(l.numped);
+    if (l.codcli !== null) g._c.add(l.codcli);
+    if (l.numcar !== null) g._k.add(l.numcar);
+    if (l.dia > g.ultimoDia) g.ultimoDia = l.dia;
+    const mot = lerMotivo(l.motivo).motivo;
+    g._mot.set(mot, (g._mot.get(mot) ?? 0) + l.valor);
+    m.set(l.codprod, g);
+  }
+  return [...m.values()]
+    .map(({ _p, _c, _k, _mot, ...g }) => ({
+      ...g,
+      pedidos: _p.size,
+      clientes: _c.size,
+      cargas: _k.size,
+      motivo: [..._mot.entries()].sort((a, b) => b[1] - a[1])[0][0],
+    }))
+    .sort((a, b) => b.valor - a.valor);
 }
