@@ -80,6 +80,16 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageHeader title="Cortes" subtitle={`${mesLabel} · filiais 1 e 11`}>
+        {/* Planilha do mês com os mesmos filtros da tela. <a> e não <Link>: é download. */}
+        <a
+          href={url({}).replace(/^\/cortes/, "/cortes/export")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+          </svg>
+          Exportar planilha
+        </a>
         <MesNav mes={mes} hrefFor={href} />
       </PageHeader>
 

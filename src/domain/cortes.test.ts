@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, type LinhaCorte } from "./cortes";
+import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, type LinhaCorte } from "./cortes";
 
 describe("lerMotivo", () => {
   it("separa motivo e usuário do texto do Harpia", () => {
@@ -75,5 +75,25 @@ describe("filtrarCortes", () => {
     expect(rotuloFiltro(ls, "fornecedor", "9")).toBe("FORN B");
     expect(rotuloFiltro(ls, "produto", "200")).toBe("200 · FEIJAO");
     expect(rotuloFiltro(ls, "cliente", "999")).toBe("999");
+  });
+});
+
+describe("cortesParaCsv", () => {
+  const csv = cortesParaCsv([
+    linha({ dia: "2026-10-06", valor: 12.5, produto: 'BISCOITO "RECHEADO"' }),
+    linha({ dia: "2026-10-05", valor: 1234.567, cliente: null, codcli: null }),
+  ]);
+  const [cab, l1, l2] = csv.replace("﻿", "").split("\n");
+
+  it("abre com BOM e cabeçalho separado por ;", () => {
+    expect(csv.startsWith("﻿")).toBe(true);
+    expect(cab.split(";")).toHaveLength(16);
+  });
+
+  it("ordena por data, formata data/decimais e lê motivo e usuário", () => {
+    expect(l1.startsWith("05/10/2026;1;10;100;")).toBe(true);
+    expect(l1).toContain(";1234,57;");
+    expect(l1).toContain(';"Falta de mercadoria";"ADM GABRIEL"');
+    expect(l2).toContain('"BISCOITO ""RECHEADO"""');
   });
 });

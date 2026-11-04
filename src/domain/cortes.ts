@@ -168,3 +168,44 @@ export function taxaCorte(valorCortado: number, vendaLiquida: number | null): nu
   const base = valorCortado + vendaLiquida;
   return base > 0 ? valorCortado / base : null;
 }
+
+// --- Exportação (planilha) ----------------------------------------------------
+
+const csvTxt = (s: string | number | null | undefined) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+const csvNum = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
+
+/**
+ * CSV das linhas de corte (separador ";", vírgula decimal e BOM — abre direto
+ * no Excel PT-BR). Uma linha por item cortado, já com motivo e quem cortou
+ * lidos do texto do Harpia/Winthor. Ordem: data, depois maior valor.
+ */
+export function cortesParaCsv(linhas: LinhaCorte[]): string {
+  const header = [
+    "Data", "Pedido", "Carregamento", "Cód. produto", "Produto", "Cód. fornecedor", "Fornecedor",
+    "Comprador", "Cód. cliente", "Cliente", "Quantidade", "Kg", "Valor", "Origem", "Motivo", "Quem cortou",
+  ];
+  const corpo = [...linhas]
+    .sort((a, b) => a.dia.localeCompare(b.dia) || b.valor - a.valor)
+    .map((l) => {
+      const m = lerMotivo(l.motivo);
+      return [
+        l.dia.split("-").reverse().join("/"),
+        l.numped,
+        l.numcar ?? "",
+        l.codprod,
+        csvTxt(l.produto),
+        l.codfornec ?? "",
+        csvTxt(l.fornecedor),
+        csvTxt(l.comprador),
+        l.codcli ?? "",
+        csvTxt(l.cliente),
+        csvNum(l.qt),
+        csvNum(l.kg),
+        csvNum(l.valor),
+        csvTxt(m.origem),
+        csvTxt(m.motivo),
+        csvTxt(m.usuario),
+      ].join(";");
+    });
+  return "﻿" + [header.join(";"), ...corpo].join("\n");
+}
