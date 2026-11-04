@@ -5,11 +5,11 @@ import {
   tipoPredominante,
 } from "@/domain/descarregamento-tendencia";
 import { ROTULO_TIPO } from "@/domain/descarregamento";
-import { variacaoPercentual } from "@/domain/tendencias";
+import { compararPct } from "@/domain/comparacao";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import { Card, SectionTitle } from "@/components/ui";
-import { CORES, KpiCard, type Delta } from "../widgets";
+import { CORES, KpiCard } from "../widgets";
 import { EvolucaoChart, type SeriePainel } from "../evolucao-chart";
 import { TendenciasTabs } from "../tabs";
 import { MixTipoChart } from "./mix-tipo-chart";
@@ -21,16 +21,7 @@ const rotuloMes = (mes: string) => {
 };
 
 const inteiro = new Intl.NumberFormat("pt-BR");
-const pctComSinal = (frac: number) => `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`;
 const pesoPorCarro = (v: number) => `${formatKg(v)}/carro`;
-
-// "Mais é melhor" para o pátio: subir fica NEUTRO (slate) e cair ganha cor (rose),
-// pela regra de identidade do site (verde nunca; só o ruim é destacado).
-const deltaBom = (frac: number): Delta => ({
-  texto: pctComSinal(frac),
-  subindo: frac > 0,
-  positivo: frac >= 0,
-});
 
 const IcCaminhao = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 6h11v9H3z" /><path d="M14 9h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.6" /><circle cx="17" cy="18" r="1.6" /></svg>
@@ -94,14 +85,13 @@ export default async function DescarregoTendenciaPage() {
   const vReceita = serie.map((p) => p.receita);
   const vPesoCarro = serie.map((p) => pesoMedioPorCarro(p));
 
-  // Deltas do último mês vs o anterior (0 quando ainda não há dois meses).
-  const dCarros = deltaBom(temAnterior ? variacaoPercentual(atual.carros, ant.carros) : 0);
-  const dCaixas = deltaBom(temAnterior ? variacaoPercentual(atual.caixas, ant.caixas) : 0);
-  const dPeso = deltaBom(temAnterior ? variacaoPercentual(atual.pesoKg, ant.pesoKg) : 0);
-  const dReceita = deltaBom(temAnterior ? variacaoPercentual(atual.receita, ant.receita) : 0);
-  const dPesoCarro = deltaBom(
-    temAnterior ? variacaoPercentual(pesoMedioPorCarro(atual), pesoMedioPorCarro(ant)) : 0,
-  );
+  // Último mês vs o anterior. "Mais é melhor" no pátio: subir neutro, cair rose.
+  const d = (a: number, b: number) => (temAnterior ? compararPct(a, b, true) : null);
+  const dCarros = d(atual.carros, ant.carros);
+  const dCaixas = d(atual.caixas, ant.caixas);
+  const dPeso = d(atual.pesoKg, ant.pesoKg);
+  const dReceita = d(atual.receita, ant.receita);
+  const dPesoCarro = d(pesoMedioPorCarro(atual), pesoMedioPorCarro(ant));
 
   const series: SeriePainel[] = [
     { nome: "Carros descarregados", cor: CORES.pdv, valores: vCarros, abs: vCarros.map((v) => inteiro.format(v)) },

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
-import { variacaoPercentual, variacaoPP } from "@/domain/tendencias";
+import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { Card, SectionTitle } from "@/components/ui";
 import { CORES } from "./widgets";
 
@@ -14,9 +14,6 @@ export interface MesComparavel {
   taxa: number; // 0..1
 }
 
-const pctComSinal = (frac: number) => `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`;
-const ppComSinal = (pp: number) =>
-  `${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} p.p.`;
 
 function Select({ valor, onChange, meses }: { valor: number; onChange: (i: number) => void; meses: MesComparavel[] }) {
   return (
@@ -41,11 +38,11 @@ export function CompararMeses({ meses }: { meses: MesComparavel[] }) {
 
   // Deriva uma vez os valores exibidos (usados tanto na tabela quanto nos cards).
   const linhasCalc = linhas.map((l) => {
-    const subindo = l.vb > l.va;
+    const c = l.pp ? compararTaxa(l.vb, l.va, l.maiorMelhor) : compararPct(l.vb, l.va, l.maiorMelhor);
+    const subindo = c?.subindo ?? false;
     const iguais = l.va === l.vb;
-    const positivo = l.maiorMelhor ? subindo : !subindo;
-    const texto = l.pp ? ppComSinal(variacaoPP(l.vb, l.va)) : pctComSinal(variacaoPercentual(l.vb, l.va));
-    const corDiff = iguais ? "#64748b" : positivo ? CORES.positivo : CORES.negativo;
+    const texto = c?.texto ?? "—";
+    const corDiff = !c || c.positivo ? CORES.positivo : CORES.negativo;
     return { ...l, subindo, iguais, texto, corDiff };
   });
 

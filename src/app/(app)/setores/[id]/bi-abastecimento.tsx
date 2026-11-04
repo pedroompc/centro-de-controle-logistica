@@ -18,6 +18,7 @@ import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { ROTULO_TURNO } from "@/domain/metrics";
 import { variacaoPercentual } from "@/domain/tendencias";
+import { pctComSinal } from "@/domain/comparacao";
 import { BIShell, type HrefMes } from "./bi-shell";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao,
@@ -105,7 +106,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("custo")}
           rotulo="Custo e equipe"
           valor={custo === null ? "—" : semCentavos(custo)}
-          sub={`${sobreFat !== null ? `${formatPercent(sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${delta > 0 ? "+" : ""}${formatPercent(delta, 1)} vs mês anterior` : ""}`}
+          sub={`${sobreFat !== null ? `${formatPercent(sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${pctComSinal(delta)} vs mês anterior` : ""}`}
         />
         <Quadro
           {...q("volume")}

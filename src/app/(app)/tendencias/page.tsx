@@ -1,11 +1,12 @@
 import { getSerieTendencias } from "@/data/faturamento-mensal";
 import {
-  taxaDevolucaoMensal, resumoPeriodo, variacaoPercentual, variacaoPP, media,
+  taxaDevolucaoMensal, resumoPeriodo, media,
   topPorDevolucao,
 } from "@/domain/tendencias";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
+import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { PageHeader, Card, SectionTitle } from "@/components/ui";
-import { CORES, KpiCard, RankingBars, ComparativoRow, type Delta } from "./widgets";
+import { CORES, KpiCard, RankingBars, ComparativoRow } from "./widgets";
 import { EvolucaoChart, type SeriePainel } from "./evolucao-chart";
 import { CompararMeses, type MesComparavel } from "./comparar-meses";
 import { ExportButton } from "./export-button";
@@ -18,9 +19,6 @@ const rotuloMes = (mes: string) => {
 };
 
 // Variação formatada com sinal (− U+2212), a partir de uma fração / de p.p.
-const pctComSinal = (frac: number) => `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`;
-const ppComSinal = (pp: number) =>
-  `${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} p.p.`;
 const numBR = (v: number, casas = 2) =>
   v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
 
@@ -71,18 +69,12 @@ export default async function TendenciasPage() {
   const taxaAnt = taxaDevolucaoMensal(ant);
 
   // KPIs — valor do último mês fechado + variação vs mês anterior.
-  const deltaVenda = variacaoPercentual(atual.vendaLiquida, ant.vendaLiquida);
-  const deltaValor = variacaoPercentual(atual.valorDevolucao, ant.valorDevolucao);
-  const deltaPeso = variacaoPercentual(atual.pesoDevolucao, ant.pesoDevolucao);
-  const deltaTaxaPP = variacaoPP(taxaAtual, taxaAnt);
-  const deltaAtend = variacaoPercentual(atual.atendimentos, ant.atendimentos);
-
-  const dTaxa: Delta = { texto: ppComSinal(deltaTaxaPP), subindo: taxaAtual > taxaAnt, positivo: taxaAtual < taxaAnt };
-  // Mais PDVs atendidos é bom: subir fica neutro, cair ganha cor (regra de identidade).
-  const dAtend: Delta = { texto: pctComSinal(deltaAtend), subindo: deltaAtend > 0, positivo: deltaAtend >= 0 };
-  const dVenda: Delta = { texto: pctComSinal(deltaVenda), subindo: deltaVenda > 0, positivo: deltaVenda > 0 };
-  const dValor: Delta = { texto: pctComSinal(deltaValor), subindo: deltaValor > 0, positivo: deltaValor < 0 };
-  const dPeso: Delta = { texto: pctComSinal(deltaPeso), subindo: deltaPeso > 0, positivo: deltaPeso < 0 };
+  // Mais venda e mais PDVs = bom; devolução (valor, peso, taxa) subindo = ruim.
+  const dTaxa = compararTaxa(taxaAtual, taxaAnt, false);
+  const dAtend = compararPct(atual.atendimentos, ant.atendimentos, true);
+  const dVenda = compararPct(atual.vendaLiquida, ant.vendaLiquida, true);
+  const dValor = compararPct(atual.valorDevolucao, ant.valorDevolucao, false);
+  const dPeso = compararPct(atual.pesoDevolucao, ant.pesoDevolucao, false);
 
   // Um painel por indicador, cada um na sua unidade real (sem índice).
   const series: SeriePainel[] = [
@@ -109,9 +101,9 @@ export default async function TendenciasPage() {
 
   // Comparativos: último mês vs média dos 12 meses.
   const mediaVenda = media(vVenda), mediaTaxa = media(vTaxa), mediaPeso = media(vPeso);
-  const cVenda = variacaoPercentual(atual.vendaLiquida, mediaVenda);
-  const cPeso = variacaoPercentual(atual.pesoDevolucao, mediaPeso);
-  const cTaxaPP = variacaoPP(taxaAtual, mediaTaxa);
+  const cVenda = compararPct(atual.vendaLiquida, mediaVenda, true);
+  const cPeso = compararPct(atual.pesoDevolucao, mediaPeso, false);
+  const cTaxa = compararTaxa(taxaAtual, mediaTaxa, false);
 
   // Exportação CSV.
   const cabecalho = ["Mês", "PDVs atendidos", "Venda líquida", "Valor devolução", "Devolução avulsa", "Peso devolvido (kg)", "NFs devolvidas", "Taxa devolução (%)"];
@@ -190,11 +182,11 @@ export default async function TendenciasPage() {
           <SectionTitle>Comparativo · vs média 12 meses</SectionTitle>
           <div className="mt-1 divide-y divide-slate-100">
             <ComparativoRow icone={IcVenda} nome="Venda líquida" base="vs média 12 meses" cor={CORES.venda}
-              delta={{ texto: pctComSinal(cVenda), subindo: cVenda > 0, positivo: cVenda > 0 }} />
+              delta={cVenda} />
             <ComparativoRow icone={IcTaxa} nome="Taxa de devolução" base="vs média 12 meses" cor={CORES.taxa}
-              delta={{ texto: ppComSinal(cTaxaPP), subindo: taxaAtual > mediaTaxa, positivo: taxaAtual < mediaTaxa }} />
+              delta={cTaxa} />
             <ComparativoRow icone={IcPeso} nome="Peso devolvido" base="vs média 12 meses" cor={CORES.peso}
-              delta={{ texto: pctComSinal(cPeso), subindo: cPeso > 0, positivo: cPeso < 0 }} />
+              delta={cPeso} />
           </div>
         </Card>
       </div>

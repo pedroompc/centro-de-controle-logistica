@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Card } from "@/components/ui";
+import { Variacao } from "@/components/variacao";
+import type { Comparacao } from "@/domain/comparacao";
 
 /**
  * Paleta semântica, não categórica: navy = operação normal, âmbar = devolução
@@ -24,19 +26,8 @@ export const CORES = {
   negativo: "#e11d48", // rose-600
 } as const;
 
-export interface Delta {
-  texto: string; // já formatado com sinal, ex.: "−29%" ou "+12,7%" ou "−1,9 p.p."
-  subindo: boolean; // o valor cresceu? (direção da seta)
-  positivo: boolean; // essa direção é boa? (cor)
-}
-
-function Seta({ subindo }: { subindo: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
-      {subindo ? <path d="M8 13V3M8 3l-4 4M8 3l4 4" /> : <path d="M8 3v10M8 13l-4-4M8 13l4-4" />}
-    </svg>
-  );
-}
+/** Variação vs período anterior — a regra única de `@/domain/comparacao`. */
+export type Delta = Comparacao;
 
 /** Barrinhas (sparkline) — último mês em destaque, demais esmaecidos. */
 export function MiniBars({ valores, cor }: { valores: number[]; cor: string }) {
@@ -59,9 +50,8 @@ export function MiniBars({ valores, cor }: { valores: number[]; cor: string }) {
 }
 
 export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
-  icone: ReactNode; nome: string; valor: string; delta: Delta; valores: number[]; cor: string;
+  icone: ReactNode; nome: string; valor: string; delta: Delta | null; valores: number[]; cor: string;
 }) {
-  const deltaCor = delta.positivo ? CORES.positivo : CORES.negativo;
   return (
     <Card className="@container overflow-hidden p-5">
       <div className="flex items-start gap-3">
@@ -79,10 +69,8 @@ export function KpiCard({ icone, nome, valor, delta, valores, cor }: {
       <p className="mt-3 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.625rem)] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
         {valor}
       </p>
-      <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold" style={{ color: deltaCor }}>
-        <Seta subindo={delta.subindo} />
-        {delta.texto}
-        <span className="font-normal text-slate-400">vs mês anterior</span>
+      <p className="mt-2">
+        <Variacao c={delta} referencia="vs mês anterior" />
       </p>
     </Card>
   );
@@ -115,9 +103,8 @@ export function RankingBars({ itens }: { itens: { rotulo: string; valor: number;
  * como sparkline nos KpiCard do topo, então nada se perde ao tirá-las daqui.
  */
 export function ComparativoRow({ icone, nome, base, delta, cor }: {
-  icone: ReactNode; nome: string; base: string; delta: Delta; cor: string;
+  icone: ReactNode; nome: string; base: string; delta: Delta | null; cor: string;
 }) {
-  const deltaCor = delta.positivo ? CORES.positivo : CORES.negativo;
   return (
     <div className="flex items-center gap-3 py-3.5">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
@@ -126,9 +113,7 @@ export function ComparativoRow({ icone, nome, base, delta, cor }: {
         <p className="text-sm font-semibold text-[#141a4d]">{nome}</p>
         <p className="text-xs text-slate-400">{base}</p>
       </div>
-      <span className="flex shrink-0 items-center gap-1 text-sm font-bold tabular-nums" style={{ color: deltaCor }}>
-        <Seta subindo={delta.subindo} />{delta.texto}
-      </span>
+      <Variacao c={delta} tamanho="sm" className="shrink-0" />
     </div>
   );
 }

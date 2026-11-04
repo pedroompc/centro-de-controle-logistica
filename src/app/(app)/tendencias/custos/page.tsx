@@ -3,10 +3,10 @@ import { serieCustosMensais, listarLancamentosDoMes } from "@/data/custos-mensai
 import { serieEfetivoMensal } from "@/data/efetivo-mensal";
 import { montarCustosMensais, type EntradaCustoMes } from "@/domain/custos-tendencia";
 import { somaLancamentos } from "@/domain/custos-metrics";
-import { variacaoPercentual, variacaoPP } from "@/domain/tendencias";
+import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { Card, SectionTitle } from "@/components/ui";
-import { CORES, KpiCard, type Delta } from "../widgets";
+import { CORES, KpiCard } from "../widgets";
 import { EvolucaoChart, type SeriePainel } from "../evolucao-chart";
 import { TendenciasTabs } from "../tabs";
 
@@ -14,21 +14,6 @@ const MES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set"
 const rotuloMes = (mes: string) => `${MES_ABREV[Number(mes.slice(5, 7)) - 1]}/${mes.slice(2, 4)}`;
 
 const rsKg = (v: number) => `${formatBRL(v)}/kg`;
-const pctComSinal = (frac: number) => `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`;
-const ppComSinal = (pp: number) =>
-  `${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} p.p.`;
-
-// Custo subindo é RUIM (rose); caindo/estável é neutro (slate). Verde nunca.
-const deltaCustoPct = (frac: number, tem: boolean): Delta => ({
-  texto: tem ? pctComSinal(frac) : "—",
-  subindo: frac > 0,
-  positivo: frac <= 0,
-});
-const deltaCustoPP = (pp: number, tem: boolean): Delta => ({
-  texto: tem ? ppComSinal(pp) : "—",
-  subindo: pp > 0,
-  positivo: pp <= 0,
-});
 
 const IcCusto = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="6" width="18" height="13" rx="2.5" /><path d="M3 10h18" /><circle cx="16.5" cy="14.5" r="1.3" fill="currentColor" stroke="none" /></svg>
@@ -135,9 +120,9 @@ export default async function CustosTendenciaPage() {
 
       {/* KPIs — último mês fechado + variação */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <KpiCard icone={IcCusto} nome="Custo total" valor={formatBRL(atual.custoTotal)} delta={deltaCustoPct(temAnt ? variacaoPercentual(atual.custoTotal, ant.custoTotal) : 0, temAnt)} valores={vTotal} cor={CORES.venda} />
-        <KpiCard icone={IcPercent} nome="Custo logístico" valor={atual.custoLogistico > 0 ? formatPercent(atual.custoLogistico) : "—"} delta={deltaCustoPP(temAnt ? variacaoPP(atual.custoLogistico, ant.custoLogistico) : 0, temAnt && atual.custoLogistico > 0)} valores={vLog} cor="#c2820a" />
-        <KpiCard icone={IcPeso} nome="R$ por kg faturado" valor={atual.rsPorKg > 0 ? rsKg(atual.rsPorKg) : "—"} delta={deltaCustoPct(temAnt ? variacaoPercentual(atual.rsPorKg, ant.rsPorKg) : 0, temAnt && atual.rsPorKg > 0)} valores={vKg} cor="#8b5cf6" />
+        <KpiCard icone={IcCusto} nome="Custo total" valor={formatBRL(atual.custoTotal)} delta={temAnt ? compararPct(atual.custoTotal, ant.custoTotal, false) : null} valores={vTotal} cor={CORES.venda} />
+        <KpiCard icone={IcPercent} nome="Custo logístico" valor={atual.custoLogistico > 0 ? formatPercent(atual.custoLogistico) : "—"} delta={temAnt && atual.custoLogistico > 0 ? compararTaxa(atual.custoLogistico, ant.custoLogistico, false) : null} valores={vLog} cor="#c2820a" />
+        <KpiCard icone={IcPeso} nome="R$ por kg faturado" valor={atual.rsPorKg > 0 ? rsKg(atual.rsPorKg) : "—"} delta={temAnt && atual.rsPorKg > 0 ? compararPct(atual.rsPorKg, ant.rsPorKg, false) : null} valores={vKg} cor="#8b5cf6" />
       </div>
 
       <Card className="p-6">

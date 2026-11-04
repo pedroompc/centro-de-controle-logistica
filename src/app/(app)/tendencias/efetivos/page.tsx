@@ -5,11 +5,11 @@ import { serieEfetivoMensal, registrarFotoEfetivoSetor } from "@/data/efetivo-me
 import { fotoAtual, composicaoFolha, fotoSetorAtual } from "@/domain/efetivo";
 import { absenteismoPorMes } from "@/domain/absenteismo-mensal";
 import { custoDoSetor } from "@/domain/metrics";
-import { variacaoPercentual } from "@/domain/tendencias";
-import { formatBRL, formatPercent } from "@/domain/format";
+import { compararPct, compararAbs } from "@/domain/comparacao";
+import { formatBRL } from "@/domain/format";
 import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
 import { Card, SectionTitle } from "@/components/ui";
-import { CORES, KpiCard, type Delta } from "../widgets";
+import { CORES, KpiCard } from "../widgets";
 import { EvolucaoChart, type SeriePainel } from "../evolucao-chart";
 import { TendenciasTabs } from "../tabs";
 
@@ -20,21 +20,6 @@ const rotuloMes = (mes: string) => {
 };
 
 const inteiro = new Intl.NumberFormat("pt-BR");
-const pctComSinal = (frac: number) => `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`;
-const absComSinal = (n: number) => `${n >= 0 ? "+" : "−"}${inteiro.format(Math.abs(n))}`;
-
-// Variação em CONTAGEM (nº de pessoas): mostra "+3"/"−2", não %.
-const deltaAbs = (dif: number, subirEhBom: boolean): Delta => ({
-  texto: absComSinal(dif),
-  subindo: dif > 0,
-  positivo: subirEhBom ? dif >= 0 : dif <= 0,
-});
-// Variação da folha (R$): custo subindo é ruim (rose); caindo é neutro.
-const deltaCustoPct = (frac: number): Delta => ({
-  texto: pctComSinal(frac),
-  subindo: frac > 0,
-  positivo: frac <= 0,
-});
 
 /** Meses da janela (mais antigo → mais novo), do histórico até o mês corrente. */
 function janelaMeses(qtd: number): string[] {
@@ -96,16 +81,17 @@ export default async function EfetivosTendenciaPage() {
   const vAbs = absent.map((p) => p.total);
   const absAtual = absent[absent.length - 1];
   const absAnt = absent[absent.length - 2];
-  const dAbs = deltaAbs(absAtual && absAnt ? absAtual.total - absAnt.total : 0, false);
+  // Contagem (pessoas, faltas) compara em número ("+3"), não em %.
+  const dAbs = absAtual && absAnt ? compararAbs(absAtual.total, absAnt.total, false) : null;
 
   // Deltas do efetivo/folha a partir das fotos (quando já há duas).
   const snapAtual = snapshots[snapshots.length - 1];
   const snapAnt = snapshots[snapshots.length - 2];
   const temSnapHist = Boolean(snapAtual && snapAnt);
 
-  const dAtivos = deltaAbs(temSnapHist ? snapAtual.ativos - snapAnt.ativos : 0, true);
-  const dAfast = deltaAbs(temSnapHist ? snapAtual.afastados - snapAnt.afastados : 0, false);
-  const dFolha = deltaCustoPct(temSnapHist ? variacaoPercentual(snapAtual.folhaTotal, snapAnt.folhaTotal) : 0);
+  const dAtivos = temSnapHist ? compararAbs(snapAtual.ativos, snapAnt.ativos, true) : null;
+  const dAfast = temSnapHist ? compararAbs(snapAtual.afastados, snapAnt.afastados, false) : null;
+  const dFolha = temSnapHist ? compararPct(snapAtual.folhaTotal, snapAnt.folhaTotal, false) : null;
 
   // Sparklines: usa o histórico de fotos; se ainda não há, o ponto de hoje.
   const vAtivos = snapshots.length ? snapshots.map((s) => s.ativos) : [foto.ativos];

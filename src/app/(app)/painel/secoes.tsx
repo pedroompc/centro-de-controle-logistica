@@ -16,10 +16,10 @@ import type {
 import { setorPredominante, motivoPredominante } from "@/domain/devolucoes-ui";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import { pesoMedioPorCarro, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
-import { variacaoPercentual } from "@/domain/tendencias";
 import type { DescarregamentoTipo } from "@/domain/types";
 import type { ResumoAFaturar, ResumoReceitas, ResumoDescarregos, MesReceitaDetalhe, ResumoTempoFaturar, ResumoFrotaTV } from "./painel-actions";
 import type { CortesTV, FatiaCorteTV } from "@/domain/cortes";
+import { compararPct, compararTaxa, comRotulo, type Comparacao } from "@/domain/comparacao";
 import { indicesMelhores, ehMelhorDaJanela, type IndicadoresRecebimento, type IndicadorComparavel } from "@/domain/recebimento";
 
 // Cores dos tipos de descarrego no painel escuro (mesma família do mapa de mix).
@@ -757,23 +757,8 @@ function TileTrimestre({
  * KPI comparativo do painel escuro: valor grande + variação vs o mês anterior.
  * "Mais é melhor" (descarrego): subir fica neutro (branco), cair ganha rose.
  */
-function KpiComp({ label, value, frac, temAnt, prevLabel }: { label: string; value: string; frac: number; temAnt: boolean; prevLabel: string }) {
-  const subindo = frac >= 0;
-  return (
-    <div className="@container rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">
-      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">{label}</div>
-      <div className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.25rem,9cqi,2.25rem)] font-extrabold leading-none tabular-nums whitespace-nowrap text-amber-300">{value}</div>
-      {temAnt ? (
-        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${subindo ? "text-white/75" : "text-rose-300"}`}>
-          <span>{subindo ? "▲" : "▼"}</span>
-          <span>{`${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`}</span>
-          <span className="font-normal text-white/35">vs {prevLabel}</span>
-        </div>
-      ) : (
-        <div className="mt-2 text-xs text-white/35">sem mês anterior</div>
-      )}
-    </div>
-  );
+function KpiComp({ label, value, atual, ant, prevLabel }: { label: string; value: string; atual: number; ant: number | null | undefined; prevLabel: string }) {
+  return <KpiTV label={label} value={value} c={compararPct(atual, ant, true)} prevLabel={prevLabel} sub="sem mês anterior" />;
 }
 
 /** Descarregamento · comparação vs mês anterior + dia a dia do mês corrente. */
@@ -783,24 +768,19 @@ export function SecaoDescarregos({ dados, serie, mesLabel }: { dados: ResumoDesc
 
   const atual = serie.length > 0 ? serie[serie.length - 1] : null;
   const ant = serie.length > 1 ? serie[serie.length - 2] : null;
-  const temAnt = Boolean(atual && ant);
   const prevLabel = ant ? formatMesAno(ant.mes).slice(0, 3) : "";
   const carros = atual?.carros ?? dados.totalMes;
   const caixas = atual?.caixas ?? 0;
   const peso = atual?.pesoKg ?? 0;
   const pesoCarro = atual ? pesoMedioPorCarro(atual) : 0;
-  const dCarros = temAnt ? variacaoPercentual(atual!.carros, ant!.carros) : 0;
-  const dCaixas = temAnt ? variacaoPercentual(atual!.caixas, ant!.caixas) : 0;
-  const dPeso = temAnt ? variacaoPercentual(atual!.pesoKg, ant!.pesoKg) : 0;
-  const dPesoCarro = temAnt ? variacaoPercentual(pesoMedioPorCarro(atual!), pesoMedioPorCarro(ant!)) : 0;
 
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiComp label="Carros no mês" value={inteiro.format(carros)} frac={dCarros} temAnt={temAnt} prevLabel={prevLabel} />
-        <KpiComp label="Caixas (volume)" value={inteiro.format(caixas)} frac={dCaixas} temAnt={temAnt} prevLabel={prevLabel} />
-        <KpiComp label="Peso total" value={formatKg(peso)} frac={dPeso} temAnt={temAnt} prevLabel={prevLabel} />
-        <KpiComp label="Peso por carro" value={`${formatKg(pesoCarro)}/carro`} frac={dPesoCarro} temAnt={temAnt} prevLabel={prevLabel} />
+        <KpiComp label="Carros no mês" value={inteiro.format(carros)} atual={carros} ant={atual && ant?.carros} prevLabel={prevLabel} />
+        <KpiComp label="Caixas (volume)" value={inteiro.format(caixas)} atual={caixas} ant={atual && ant?.caixas} prevLabel={prevLabel} />
+        <KpiComp label="Peso total" value={formatKg(peso)} atual={peso} ant={atual && ant?.pesoKg} prevLabel={prevLabel} />
+        <KpiComp label="Peso por carro" value={`${formatKg(pesoCarro)}/carro`} atual={pesoCarro} ant={atual && ant ? pesoMedioPorCarro(ant) : null} prevLabel={prevLabel} />
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 lg:grid-cols-[2fr_1fr]">
         <div className="flex min-h-0 flex-col">
@@ -834,17 +814,24 @@ export function SecaoDescarregos({ dados, serie, mesLabel }: { dados: ResumoDesc
  * sobe (km por entrega); km total não é bom nem ruim — fica neutro.
  */
 function KpiFrota({ label, value, atual, ant, prevLabel, ruimSubir = false, sub }: { label: string; value: string; atual?: number | null; ant?: number | null; prevLabel: string; ruimSubir?: boolean; sub?: string }) {
-  const temAnt = atual != null && ant != null && ant > 0;
-  const frac = temAnt ? (atual! - ant!) / ant! : 0;
-  const ruim = ruimSubir && frac > 0;
+  // KM total não é bom nem ruim: sem `ruimSubir` a variação fica neutra nos dois sentidos.
+  const c = atual == null ? null : compararPct(atual, ant, !ruimSubir);
+  return <KpiTV label={label} value={value} c={c && (ruimSubir ? c : { ...c, positivo: true })} prevLabel={prevLabel} sub={sub} />;
+}
+
+/**
+ * KPI do painel escuro com valor âmbar e a variação vs mês anterior embaixo
+ * (regra única de `@/domain/comparacao`): direção ruim em rose, boa neutra.
+ */
+function KpiTV({ label, value, c, prevLabel, sub }: { label: string; value: string; c: Comparacao | null; prevLabel: string; sub?: string }) {
   return (
     <div className="@container rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">
       <div className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">{label}</div>
       <div className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.25rem,9cqi,2.25rem)] font-extrabold leading-none tabular-nums whitespace-nowrap text-amber-300">{value}</div>
-      {temAnt ? (
-        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${ruim ? "text-rose-300" : "text-white/75"}`}>
-          <span>{frac >= 0 ? "▲" : "▼"}</span>
-          <span>{`${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))}`}</span>
+      {c ? (
+        <div className={`mt-2 flex items-center gap-1 text-sm font-bold tabular-nums ${c.positivo ? "text-white/75" : "text-rose-300"}`}>
+          <span>{c.subindo ? "▲" : "▼"}</span>
+          <span>{c.texto}</span>
           <span className="font-normal text-white/35">vs {prevLabel}</span>
         </div>
       ) : (
@@ -1007,7 +994,7 @@ export function SecaoCortes({
   taxaAnt: number | null;
   prevLabel: string;
 }) {
-  const dif = taxa !== null && taxaAnt !== null ? taxa - taxaAnt : null;
+  const delta = comRotulo(compararTaxa(taxa, taxaAnt, false, { casas: 2, pp: false }), prevLabel) ?? undefined;
   const porDia = dados.porDia.map((d) => ({ rotulo: d.dia.slice(8, 10), valor: d.itens }));
   return (
     <div className="flex h-full flex-col gap-6">
@@ -1017,11 +1004,7 @@ export function SecaoCortes({
           value={taxa === null ? "—" : formatPercent(taxa, 2)}
           tone="rose"
           hint="corte ÷ (corte + venda líquida)"
-          delta={
-            dif === null
-              ? undefined
-              : { texto: `${dif >= 0 ? "+" : "−"}${formatPercent(Math.abs(dif), 2)} vs ${prevLabel}`, subindo: dif > 0, positivo: dif <= 0 }
-          }
+          delta={delta}
         />
         <Kpi label="Itens cortados" value={inteiro.format(dados.itens)} hint={`${inteiro.format(dados.skus)} produtos diferentes`} />
         <Kpi label="Pedidos afetados" value={inteiro.format(dados.pedidos)} hint={`${inteiro.format(dados.clientes)} clientes`} />

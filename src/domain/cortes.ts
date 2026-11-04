@@ -7,6 +7,8 @@
  * O resto é digitado no Winthor (ex.: "ERRO DE DIGITACAO").
  */
 
+import { compararPct, compararTaxa, comRotulo, type Comparacao } from "./comparacao";
+
 export type OrigemCorte = "Separação (Harpia)" | "Winthor";
 
 export interface LinhaCorte {
@@ -184,14 +186,9 @@ export interface VariacaoCorte {
   piorou: boolean;
 }
 
-const sinal = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "");
-
 /** Variação relativa (%) contra o mês anterior. `null` sem base (anterior zero). */
 export function variacaoCorte(atual: number, anterior: number, mesCurto: string): VariacaoCorte | null {
-  if (!(anterior > 0)) return null;
-  const v = (atual - anterior) / anterior;
-  const pct = Math.round(Math.abs(v) * 100);
-  return { texto: `${pct === 0 ? "" : sinal(v)}${pct}% vs ${mesCurto}`, piorou: v > 0 && pct > 0 };
+  return paraCorte(comRotulo(compararPct(atual, anterior, false, 0), mesCurto));
 }
 
 /**
@@ -199,12 +196,11 @@ export function variacaoCorte(atual: number, anterior: number, mesCurto: string)
  * Taxa pequena variando em "%" engana (−55%); p.p. é a leitura honesta.
  */
 export function variacaoTaxaCorte(atual: number | null, anterior: number | null, mesCurto: string): VariacaoCorte | null {
-  if (atual === null || anterior === null) return null;
-  const pp = (atual - anterior) * 100;
-  const txt = Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const zero = txt === "0,00";
-  return { texto: `${zero ? "" : sinal(pp)}${txt} p.p. vs ${mesCurto}`, piorou: pp > 0 && !zero };
+  return paraCorte(comRotulo(compararTaxa(atual, anterior, false, { casas: 2 }), mesCurto));
 }
+
+// Corte: subir é sempre piorar — mas só pinta quando o número exibido mudou.
+const paraCorte = (c: Comparacao | null): VariacaoCorte | null => c && { texto: c.texto, piorou: !c.positivo && /[1-9]/.test(c.texto.split(" vs ")[0]) };
 
 /** Todos os dias de `inicio` a `fim` ("yyyy-mm-dd", inclusivos), com 0 nos dias sem corte. */
 export function serieDiaria(porDia: Map<string, number>, inicio: string, fim: string): { dia: string; valor: number }[] {

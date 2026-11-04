@@ -40,6 +40,7 @@ import {
   SecaoCortes,
 } from "./secoes";
 import { taxaCorte, type CortesTV } from "@/domain/cortes";
+import { compararPct, compararTaxa, comRotulo } from "@/domain/comparacao";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "../devolucoes/icons";
 
 // Cadência: o mapa fica mais no ar (leitura à distância). Refresh dos dados é
@@ -54,30 +55,15 @@ const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";
 // Contagens (positivados, entregas, pedidos) com separador de milhar pt-BR.
 const inteiro = new Intl.NumberFormat("pt-BR");
 
-// Variação vs mês anterior para o rodapé dos KPIs do cabeçalho. `maiorEhBom`
-// decide a cor (regra do site: bom = neutro, ruim = rose).
+// Variação vs mês anterior no rodapé dos KPIs do cabeçalho — regra única de
+// `@/domain/comparacao`. Taxa compara % com % (diferença direta, sem "p.p.":
+// confunde na TV). `verdeSeBom` só na devolução (exceção pedida para a TV).
 function deltaPct(atual: number, ant: number | undefined, maiorEhBom: boolean, prevLabel: string) {
-  if (ant === undefined || ant <= 0) return undefined;
-  const frac = (atual - ant) / ant;
-  return {
-    texto: `${frac >= 0 ? "+" : "−"}${formatPercent(Math.abs(frac))} vs ${prevLabel}`,
-    subindo: frac >= 0,
-    positivo: maiorEhBom ? frac >= 0 : frac <= 0,
-  };
+  return comRotulo(compararPct(atual, ant, maiorEhBom), prevLabel) ?? undefined;
 }
-// Para uma TAXA, compara % com %: a diferença direta entre as taxas (5,3% hoje vs
-// 3,9% no mês passado → "+1,4% vs Ago"). Sem "p.p." (confunde na TV). A seta e a
-// cor dão a direção. `maiorEhBom=false` na devolução.
 function deltaTaxa(atualFrac: number, antFrac: number | undefined, maiorEhBom: boolean, prevLabel: string, verdeSeBom = false) {
-  if (antFrac === undefined) return undefined;
-  const dif = atualFrac - antFrac;
-  const subiu = dif > 0;
-  return {
-    texto: `${dif >= 0 ? "+" : "−"}${formatPercent(Math.abs(dif))} vs ${prevLabel}`,
-    subindo: subiu,
-    positivo: maiorEhBom ? subiu : !subiu,
-    verdeSeBom,
-  };
+  const c = comRotulo(compararTaxa(atualFrac, antFrac, maiorEhBom, { pp: false }), prevLabel);
+  return c ? { ...c, verdeSeBom } : undefined;
 }
 
 // Taxa de devolução: vermelha subindo, verde caindo (exceção à regra "verde só

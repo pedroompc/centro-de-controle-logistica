@@ -1,11 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-// Regra de identidade do site: variação boa/neutra fica slate; só a ruim ganha
-// cor (rose). Verde nunca (reservado a receita). A direção vem da seta.
-const COR_POS = "#64748b"; // slate-500
-const COR_NEG = "#e11d48"; // rose-600
+import { Variacao } from "@/components/variacao";
 
 export interface SerieMes {
   rotulo: string;
@@ -29,22 +25,9 @@ export interface LinhaComparativa {
   destaque?: boolean; // linha em destaque (ex.: Total)
 }
 
-function Seta({ subindo }: { subindo: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
-      {subindo ? <path d="M8 13V3M8 3l-4 4M8 3l4 4" /> : <path d="M8 3v10M8 13l-4-4M8 13l4-4" />}
-    </svg>
-  );
-}
-
+/** Variação vs mês anterior — mesma regra/visual do site todo (`Variacao`). */
 function DeltaBadge({ texto, subindo, positivo }: { texto: string | null; subindo: boolean; positivo: boolean }) {
-  if (!texto) return <span className="text-xs text-slate-300" title="sem mês anterior para comparar">—</span>;
-  return (
-    <span className="inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums" style={{ color: positivo ? COR_POS : COR_NEG }}>
-      <Seta subindo={subindo} />
-      {texto}
-    </span>
-  );
+  return <Variacao c={texto ? { texto, subindo, positivo } : null} />;
 }
 
 function Chip({ children }: { children: React.ReactNode }) {

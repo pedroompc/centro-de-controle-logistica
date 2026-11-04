@@ -1,3 +1,4 @@
+import { pctComSinal } from "@/domain/comparacao";
 import type { ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import type { TurnoSep } from "@/domain/turnos-separacao";
@@ -8,7 +9,7 @@ export const t1 = (kg: number) => `${(kg / 1000).toLocaleString("pt-BR", { maxim
 export const ou = <T,>(v: T | null | undefined, f: (x: T) => string) => (v === null || v === undefined ? "—" : f(v));
 export const brl = (v: number | null) => ou(v, formatBRL);
 export const pct = (v: number | null, casas = 1) => ou(v, (x) => formatPercent(x, casas));
-export const sinalPct = (v: number | null) => ou(v, (x) => `${x > 0 ? "+" : ""}${formatPercent(x, 1)}`);
+export const sinalPct = (v: number | null) => ou(v, (x) => pctComSinal(x));
 export const varRel = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b - 1);
 
 // Grades que se ajustam à largura (tela, janela ou zoom) sem quebrar em breakpoint fixo.

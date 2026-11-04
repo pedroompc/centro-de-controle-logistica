@@ -30,6 +30,7 @@ import {
 } from "./faturamento-cards";
 import { FrotaCards, FrotaSkeleton } from "./frota-cards";
 import { ehSetorMotoristas } from "@/domain/motoristas";
+import { compararPct, compararAbs } from "@/domain/comparacao";
 import { ListaComparativa, type LinhaComparativa, type SerieMes } from "./dashboard-comparativos";
 
 const inteiro = new Intl.NumberFormat("pt-BR");
@@ -42,15 +43,10 @@ interface DeltaProps {
   deltaPositivo: boolean;
 }
 
-/** Variação de um valor vs o mês anterior, já formatada (regra: custo ↑ = ruim). */
+/** Variação de um valor vs o mês anterior (regra única de `@/domain/comparacao`); base zero cai para a diferença em R$. */
 function fmtDelta(atual: number, anterior: number | null, maiorEhBom: boolean): DeltaProps {
-  if (anterior === null) return { deltaTexto: null, deltaSubindo: false, deltaPositivo: true };
-  const dif = atual - anterior;
-  const subindo = dif > 0;
-  const positivo = maiorEhBom ? dif >= 0 : dif <= 0;
-  const sinal = dif >= 0 ? "+" : "−";
-  const texto = anterior !== 0 ? `${sinal}${formatPercent(Math.abs(dif / anterior))}` : `${sinal}${formatBRL(Math.abs(dif))}`;
-  return { deltaTexto: texto, deltaSubindo: subindo, deltaPositivo: positivo };
+  const c = compararPct(atual, anterior, maiorEhBom) ?? compararAbs(atual, anterior, maiorEhBom, formatBRL);
+  return { deltaTexto: c?.texto ?? null, deltaSubindo: c?.subindo ?? false, deltaPositivo: c?.positivo ?? true };
 }
 
 /** Série mês a mês (drill-down), com a variação de cada mês vs o anterior. */
@@ -59,25 +55,12 @@ function serieMeses(
   maiorEhBom: boolean,
   subPorMes?: Map<string, string>,
 ): SerieMes[] {
-  return compararSerie(pontos).map((p) => {
-    const temDelta = p.deltaAbs !== null;
-    const subindo = (p.deltaAbs ?? 0) > 0;
-    const positivo = maiorEhBom ? (p.deltaAbs ?? 0) >= 0 : (p.deltaAbs ?? 0) <= 0;
-    const sinal = (p.deltaAbs ?? 0) >= 0 ? "+" : "−";
-    const texto = !temDelta
-      ? null
-      : p.deltaFrac !== null
-        ? `${sinal}${formatPercent(Math.abs(p.deltaFrac))}`
-        : `${sinal}${formatBRL(Math.abs(p.deltaAbs ?? 0))}`;
-    return {
-      rotulo: rotuloMes(p.mes),
-      display: formatBRL(p.valor),
-      sub: subPorMes?.get(p.mes),
-      deltaTexto: texto,
-      deltaSubindo: subindo,
-      deltaPositivo: positivo,
-    };
-  });
+  return compararSerie(pontos).map((p) => ({
+    rotulo: rotuloMes(p.mes),
+    display: formatBRL(p.valor),
+    sub: subPorMes?.get(p.mes),
+    ...fmtDelta(p.valor, p.deltaAbs === null ? null : p.valor - p.deltaAbs, maiorEhBom),
+  }));
 }
 
 export default async function Dashboard({
