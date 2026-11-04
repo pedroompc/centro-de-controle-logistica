@@ -11,6 +11,18 @@ function Heading() {
   );
 }
 
+/**
+ * Winthor fora: os números são da última foto do mês, não os ao vivo — podem
+ * divergir uns reais da 111. Uma linha só, porque é algo a corrigir (rede).
+ */
+export function AvisoFoto() {
+  return (
+    <p className="mb-3 text-xs font-medium text-amber-700" title="O Winthor não respondeu; a foto se atualiza sozinha quando ele voltar.">
+      Winthor fora agora · mostrando a última foto do mês
+    </p>
+  );
+}
+
 /** Linha de um detalhamento chave→valor. */
 function Linha({ label, valor }: { label: string; valor: string }) {
   return (
@@ -49,6 +61,7 @@ export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; cu
   return (
     <div>
       <Heading />
+      {r.foto && <AvisoFoto />}
 
       {/* Herói = Venda faturada (headline pedido pela gerência) + o contraponto
           direto dele (o que voltou). A Venda líquida continua visível abaixo. */}

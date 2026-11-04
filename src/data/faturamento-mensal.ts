@@ -48,6 +48,9 @@ function resumoToPonto(mes: string, r: ResumoFaturamento): PontoTendencia {
 
 type SB = Awaited<ReturnType<typeof createClient>>;
 
+/** Resumo do mês; `foto` = Winthor fora, valores da última foto do Supabase. */
+export type ResumoFaturamentoDoMes = ResumoFaturamento & { foto?: boolean };
+
 /**
  * Grava/atualiza a foto de um mês FECHADO. `onConflict` sem `ignoreDuplicates`
  * = UPSERT que SOBRESCREVE: a foto se auto-cura quando o valor ao vivo muda
@@ -160,7 +163,7 @@ export const getSerieTendencias = cache(
  * única leitura por request.
  */
 export const getResumoFaturamentoDashboard = cache(
-  async (mes: string): Promise<ResumoFaturamento | null> => {
+  async (mes: string): Promise<ResumoFaturamentoDoMes | null> => {
     const supabase = await createClient();
     const { inicio, fim } = inicioFimDoMes(mes);
 
@@ -174,8 +177,11 @@ export const getResumoFaturamentoDashboard = cache(
       return r;
     }
 
-    // Oracle fora: cai na última foto conhecida (só existe p/ mês fechado).
-    return mes < primeiroDiaDoMes() ? lerSnapshot(supabase, mes) : null;
+    // Oracle fora: cai na última foto conhecida (só existe p/ mês fechado),
+    // marcada como foto para a tela avisar que não é o número ao vivo.
+    if (mes >= primeiroDiaDoMes()) return null;
+    const foto = await lerSnapshot(supabase, mes);
+    return foto ? { ...foto, foto: true } : null;
   },
 );
 
