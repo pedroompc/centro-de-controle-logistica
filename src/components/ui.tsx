@@ -115,7 +115,7 @@ export function BarList({
   items,
   tone = "gold",
 }: {
-  items: { label: string; value: number; display: string; href?: string }[];
+  items: { label: string; value: number; display: string; href?: string; active?: boolean }[];
   tone?: "gold" | "navy";
 }) {
   const max = Math.max(1, ...items.map((i) => i.value));
@@ -138,7 +138,13 @@ export function BarList({
           </div>
         );
         return it.href ? (
-          <Link key={it.label} href={it.href} className="block rounded-md hover:bg-slate-50">
+          <Link
+            key={it.label}
+            href={it.href}
+            scroll={it.active === undefined ? undefined : false} // filtro na mesma página: não pula pro topo
+            aria-current={it.active ? "true" : undefined}
+            className={`block rounded-md ${it.active ? "bg-[#eef0fb] ring-1 ring-[#2a327f]/30" : "hover:bg-slate-50"}`}
+          >
             {row}
           </Link>
         ) : (

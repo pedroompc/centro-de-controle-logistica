@@ -7,7 +7,8 @@ import type { LinhaCorte } from "@/domain/cortes";
 const SQL_CORTES = `
 SELECT TO_CHAR(TRUNC(i.DATA), 'YYYY-MM-DD') DIA, i.NUMPED, NULLIF(i.NUMCAR, 0) NUMCAR, i.CODPROD, p.DESCRICAO PRODUTO,
        p.CODFORNEC, f.FORNECEDOR, e.NOME COMPRADOR, i.CODCLI, c.CLIENTE,
-       NVL(i.QTCORTADA, 0) QT, NVL(i.QTCORTADA, 0) * NVL(i.PVENDA, 0) VALOR, NVL(i.QTCORTADA, 0) * NVL(p.PESOBRUTO, 0) KG, i.MOTIVO
+       NVL(i.QTCORTADA, 0) QT, NVL(i.QTCORTADA, 0) * NVL(i.PVENDA, 0) VALOR, NVL(i.QTCORTADA, 0) * NVL(p.PESOBRUTO, 0) KG, i.MOTIVO,
+       CASE WHEN EXISTS (SELECT 1 FROM PCPEDC c2 WHERE c2.NUMPED = i.NUMPED) THEN 1 ELSE 0 END TEM_PEDIDO
 FROM PCCORTEI i
 JOIN PCPRODUT p ON p.CODPROD = i.CODPROD
 LEFT JOIN PCFORNEC f ON f.CODFORNEC = p.CODFORNEC
@@ -51,6 +52,7 @@ export async function lerCortes(ini: string, fim: string): Promise<LinhaCorte[]>
     valor: num(r.VALOR),
     kg: num(r.KG),
     motivo: str(r.MOTIVO),
+    temPedido: num(r.TEM_PEDIDO) === 1,
   }));
 }
 

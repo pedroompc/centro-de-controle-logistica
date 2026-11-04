@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerMotivo, resumoCortes, taxaCorte, type LinhaCorte } from "./cortes";
+import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, type LinhaCorte } from "./cortes";
 
 describe("lerMotivo", () => {
   it("separa motivo e usuário do texto do Harpia", () => {
@@ -22,7 +22,7 @@ describe("lerMotivo", () => {
 const linha = (over: Partial<LinhaCorte>): LinhaCorte => ({
   dia: "2026-10-05", numped: 1, numcar: 10, codprod: 100, produto: "ARROZ", codfornec: 5, fornecedor: "FORN A",
   comprador: "JOAO", codcli: 7, cliente: "MERCADO X", qt: 2, valor: 50, kg: 10,
-  motivo: "1.HARPIA - FALTA DE MERCADORIA - Usuário: 3-ADM GABRIEL", ...over,
+  motivo: "1.HARPIA - FALTA DE MERCADORIA - Usuário: 3-ADM GABRIEL", temPedido: true, ...over,
 });
 
 describe("resumoCortes", () => {
@@ -53,5 +53,27 @@ describe("taxaCorte", () => {
     expect(taxaCorte(50, 950)).toBeCloseTo(0.05);
     expect(taxaCorte(10, null)).toBeNull();
     expect(taxaCorte(0, 0)).toBeNull();
+  });
+});
+
+describe("filtrarCortes", () => {
+  const ls = [
+    linha({}),
+    linha({ numped: 2, codprod: 200, produto: "FEIJAO", valor: 30, motivo: "1.HARPIA - AVARIA - Usuário: 3-ADM GABRIEL" }),
+    linha({ numped: 3, valor: 20, motivo: "ERRO DE DIGITACAO", codfornec: 9, fornecedor: "FORN B" }),
+  ];
+
+  it("usa a mesma chave do agrupamento e combina filtros", () => {
+    expect(filtrarCortes(ls, {}).length).toBe(3);
+    expect(filtrarCortes(ls, { usuario: "ADM GABRIEL" }).map((l) => l.numped)).toEqual([1, 2]);
+    expect(filtrarCortes(ls, { usuario: "ADM GABRIEL", motivo: "Avaria" }).map((l) => l.numped)).toEqual([2]);
+    expect(filtrarCortes(ls, { fornecedor: "9" }).map((l) => l.numped)).toEqual([3]);
+    expect(filtrarCortes(ls, { produto: "100" }).length).toBe(2);
+  });
+
+  it("rótulo do filtro vem do dado", () => {
+    expect(rotuloFiltro(ls, "fornecedor", "9")).toBe("FORN B");
+    expect(rotuloFiltro(ls, "produto", "200")).toBe("200 · FEIJAO");
+    expect(rotuloFiltro(ls, "cliente", "999")).toBe("999");
   });
 });

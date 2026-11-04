@@ -1,6 +1,7 @@
 import { lerCortes, lerCortesMensais } from "@/data/cortes";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
-import { resumoCortes, taxaCorte, lerMotivo, type GrupoCorte, type LinhaCorte } from "@/domain/cortes";
+import Link from "next/link";
+import { resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte } from "@/domain/cortes";
 import { formatBRL, formatPercent, formatKg, formatDataBR } from "@/domain/format";
 import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -10,17 +11,44 @@ import { MesNav } from "@/components/mes-nav";
 const inteiro = new Intl.NumberFormat("pt-BR");
 const brl0 = (v: number) => formatBRL(Math.round(v)).replace(/,00$/, "");
 
+const NOME_DIM: Record<DimensaoCorte, string> = {
+  motivo: "Motivo", usuario: "Quem cortou", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
+};
+
+type Params = { mes?: string } & FiltrosCorte;
+
+/** Pedido no Winthor: abre a consulta de pedidos já filtrada (o pedido é anterior ao corte). */
+function hrefPedido(l: LinhaCorte): string {
+  const d = new Date(`${l.dia}T12:00:00`);
+  d.setDate(d.getDate() - 90);
+  const ini = d.toISOString().slice(0, 10);
+  return `/pedidos?buscar=1&numped=${l.numped}&ini=${ini}&fim=${l.dia}`;
+}
+
 /**
  * Cortes: o que foi pedido e não saiu (PCCORTEI). Valor = quantidade cortada ×
  * preço de venda do item. Ao vivo do Winthor, filiais 1 e 11.
  */
-export default async function CortesPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
+export default async function CortesPage({ searchParams }: { searchParams: Promise<Params> }) {
   const sp = await searchParams;
+  const filtros: FiltrosCorte = {};
+  for (const d of DIMENSOES_CORTE) if (typeof sp[d] === "string" && sp[d]) filtros[d] = sp[d];
+  const temFiltro = Object.keys(filtros).length > 0;
   const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
   const mesFechado = mes < primeiroDiaDoMes();
   const { inicio, fim } = inicioFimDoMes(mes);
   const mesLabel = `${formatMesAno(mes)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
-  const href = (m: string) => (m === primeiroDiaDoMes() ? "/cortes" : `/cortes?mes=${m}`);
+  const url = (over: Partial<Params>) => {
+    const p = { mes, ...filtros, ...over };
+    const q = new URLSearchParams();
+    if (p.mes && p.mes !== primeiroDiaDoMes()) q.set("mes", p.mes);
+    for (const d of DIMENSOES_CORTE) if (p[d]) q.set(d, p[d]!);
+    const s = q.toString();
+    return s ? `/cortes?${s}` : "/cortes";
+  };
+  // Mudar de mês mantém os filtros; clicar de novo na barra ativa tira o filtro.
+  const href = (m: string) => url({ mes: m });
+  const alternar = (d: DimensaoCorte, chave: string) => url({ [d]: filtros[d] === chave ? undefined : chave });
 
   let linhas: LinhaCorte[];
   let meses: Awaited<ReturnType<typeof lerCortesMensais>>;
@@ -39,12 +67,15 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
     );
   }
 
-  const r = resumoCortes(linhas);
-  const taxa = taxaCorte(r.valor, fat?.vendaLiquida ?? null);
+  const total = resumoCortes(linhas);
+  const filtradas = filtrarCortes(linhas, filtros);
+  const r = temFiltro ? resumoCortes(filtradas) : total;
+  const taxa = taxaCorte(total.valor, fat?.vendaLiquida ?? null);
   const ant = meses.find((m) => m.mes === mesAnterior(mes));
-  const delta = ant && ant.valor > 0 ? variacaoPercentual(r.valor, ant.valor) : null;
+  // Mês anterior é total (SQL agregado): só compara quando não há filtro.
+  const delta = !temFiltro && ant && ant.valor > 0 ? variacaoPercentual(r.valor, ant.valor) : null;
   const vsAnt = delta === null ? undefined : `${delta >= 0 ? "+" : "−"}${formatPercent(Math.abs(delta))} vs ${formatMesAno(mesAnterior(mes)).slice(0, 3)}`;
-  const top = [...linhas].sort((a, b) => b.valor - a.valor).slice(0, 20);
+  const top = [...filtradas].sort((a, b) => b.valor - a.valor).slice(0, 20);
 
   return (
     <div>
@@ -53,27 +84,54 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
       </PageHeader>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Valor cortado" value={brl0(r.valor)} hint={vsAnt ?? "venda que não saiu"} accent="red" />
-        <StatCard label="Do que foi pedido" value={taxa === null ? "—" : formatPercent(taxa, 2)} hint="corte ÷ (corte + venda líquida)" />
+        <StatCard label="Valor cortado" value={brl0(r.valor)} hint={vsAnt ?? (temFiltro ? `de ${brl0(total.valor)} no mês` : "venda que não saiu")} accent="red" />
+        {temFiltro ? (
+          <StatCard label="Do corte do mês" value={total.valor > 0 ? formatPercent(r.valor / total.valor, 1) : "—"} hint="participação do filtro" />
+        ) : (
+          <StatCard label="Do que foi pedido" value={taxa === null ? "—" : formatPercent(taxa, 2)} hint="corte ÷ (corte + venda líquida)" />
+        )}
         <StatCard label="Itens cortados" value={inteiro.format(r.itens)} hint={`${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`} />
         <StatCard label="Produtos" value={inteiro.format(r.skus)} hint={`${formatKg(r.kg)} · ${r.valor > 0 ? formatPercent(r.harpia / r.valor, 0) : "—"} na separação`} />
       </div>
 
-      {linhas.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-slate-400">Nenhum corte neste mês.</Card>
+      {temFiltro && (
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          {DIMENSOES_CORTE.filter((d) => filtros[d]).map((d) => (
+            <span key={d} className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eef0fb] py-1 pl-3 pr-1 text-sm font-semibold text-[#1b2168]">
+              <span className="truncate">
+                {NOME_DIM[d]}: {rotuloFiltro(linhas, d, filtros[d]!)}
+              </span>
+              <Link
+                href={url({ [d]: undefined })}
+                scroll={false}
+                aria-label={`Remover filtro de ${NOME_DIM[d].toLowerCase()}`}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-white"
+              >
+                ✕
+              </Link>
+            </span>
+          ))}
+          <Link href={url(Object.fromEntries(DIMENSOES_CORTE.map((d) => [d, undefined])))} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
+            limpar filtros
+          </Link>
+        </div>
+      )}
+
+      {filtradas.length === 0 ? (
+        <Card className="p-8 text-center text-sm text-slate-400">{temFiltro ? "Nenhum corte com esses filtros neste mês." : "Nenhum corte neste mês."}</Card>
       ) : (
         <>
           <div className="grid gap-6 lg:grid-cols-2">
-            <Bloco titulo="Motivos" grupos={r.porMotivo} />
-            <Bloco titulo="Quem cortou (Harpia)" grupos={r.porUsuario} vazio="Nenhum corte registrado pelo Harpia." />
-            <Bloco titulo="Fornecedores" grupos={r.porFornecedor} />
-            <Bloco titulo="Compradores" grupos={r.porComprador} />
-            <Bloco titulo="Produtos" grupos={r.porProduto} />
-            <Bloco titulo="Clientes" grupos={r.porCliente} />
+            <Bloco titulo="Motivos" grupos={r.porMotivo} dim="motivo" ativo={filtros.motivo} alternar={alternar} />
+            <Bloco titulo="Quem cortou (Harpia)" grupos={r.porUsuario} dim="usuario" ativo={filtros.usuario} alternar={alternar} vazio="Nenhum corte registrado pelo Harpia." />
+            <Bloco titulo="Fornecedores" grupos={r.porFornecedor} dim="fornecedor" ativo={filtros.fornecedor} alternar={alternar} />
+            <Bloco titulo="Compradores" grupos={r.porComprador} dim="comprador" ativo={filtros.comprador} alternar={alternar} />
+            <Bloco titulo="Produtos" grupos={r.porProduto} dim="produto" ativo={filtros.produto} alternar={alternar} />
+            <Bloco titulo="Clientes" grupos={r.porCliente} dim="cliente" ativo={filtros.cliente} alternar={alternar} />
           </div>
 
           <section className="mt-6">
-            <SectionTitle>Mês a mês</SectionTitle>
+            <SectionTitle>{temFiltro ? "Mês a mês · todos os cortes" : "Mês a mês"}</SectionTitle>
             <Card className="p-5">
               <BarList
                 tone="navy"
@@ -109,7 +167,13 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
                       return (
                         <tr key={i} className="border-b border-slate-50 last:border-0">
                           <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(l.dia)}</td>
-                          <td className="px-4 py-2.5 tabular-nums text-slate-500">{l.numped}</td>
+                          <td className="px-4 py-2.5 tabular-nums">
+                            {l.temPedido ? (
+                              <Link href={hrefPedido(l)} className="text-[#2a327f] hover:underline">{l.numped}</Link>
+                            ) : (
+                              <span className="text-slate-400" title="Pedido cortado inteiro: não está mais no Winthor">{l.numped}</span>
+                            )}
+                          </td>
                           <td className="max-w-[16rem] truncate px-4 py-2.5 font-medium text-[#141a4d]" title={l.produto}>
                             {l.codprod} · {l.produto}
                           </td>
@@ -136,7 +200,13 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
                         <span className="shrink-0 font-semibold tabular-nums text-[#141a4d]">{formatBRL(l.valor)}</span>
                       </div>
                       <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {formatDataBR(l.dia)} · {inteiro.format(l.qt)} un · {l.cliente ?? "—"}
+                        {formatDataBR(l.dia)} ·{" "}
+                        {l.temPedido ? (
+                          <Link href={hrefPedido(l)} className="text-[#2a327f] underline-offset-2 hover:underline">ped. {l.numped}</Link>
+                        ) : (
+                          <span>ped. {l.numped}</span>
+                        )}{" "}
+                        · {inteiro.format(l.qt)} un · {l.cliente ?? "—"}
                       </p>
                       <p className="mt-0.5 truncate text-xs text-slate-400">
                         {m.motivo}
@@ -154,7 +224,16 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   );
 }
 
-function Bloco({ titulo, grupos, vazio = "Sem dados." }: { titulo: string; grupos: GrupoCorte[]; vazio?: string }) {
+function Bloco({
+  titulo, grupos, dim, ativo, alternar, vazio = "Sem dados.",
+}: {
+  titulo: string;
+  grupos: GrupoCorte[];
+  dim: DimensaoCorte;
+  ativo?: string;
+  alternar: (d: DimensaoCorte, chave: string) => string;
+  vazio?: string;
+}) {
   const itens = grupos.slice(0, 8);
   return (
     <section>
@@ -163,7 +242,9 @@ function Bloco({ titulo, grupos, vazio = "Sem dados." }: { titulo: string; grupo
         {itens.length === 0 ? (
           <p className="text-sm text-slate-400">{vazio}</p>
         ) : (
-          <BarList items={itens.map((g) => ({ label: g.rotulo, value: g.valor, display: brl0(g.valor) }))} />
+          <BarList
+            items={itens.map((g) => ({ label: g.rotulo, value: g.valor, display: brl0(g.valor), href: alternar(dim, g.chave), active: ativo === g.chave }))}
+          />
         )}
       </Card>
     </section>

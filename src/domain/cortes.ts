@@ -24,6 +24,7 @@ export interface LinhaCorte {
   valor: number;
   kg: number;
   motivo: string | null; // texto cru
+  temPedido: boolean; // pedido ainda existe no PCPEDC (cortado inteiro some de lá)
 }
 
 export interface MotivoLido {
@@ -99,12 +100,49 @@ function agrupar(linhas: LinhaCorte[], chave: (l: LinhaCorte) => [string, string
     .sort((a, b) => b.valor - a.valor || b.itens - a.itens);
 }
 
+/** Dimensões clicáveis do painel de cortes (cada uma vira filtro na URL). */
+export const DIMENSOES_CORTE = ["motivo", "usuario", "fornecedor", "comprador", "produto", "cliente"] as const;
+export type DimensaoCorte = (typeof DIMENSOES_CORTE)[number];
+export type FiltrosCorte = Partial<Record<DimensaoCorte, string>>;
+
+type Chave = (l: LinhaCorte, m: MotivoLido) => [string, string] | null;
+
+// Mesma chave para agrupar e para filtrar: o clique numa barra estreita exatamente aquele grupo.
+const CHAVES: Record<DimensaoCorte, Chave> = {
+  motivo: (_l, m) => [m.motivo, m.motivo],
+  usuario: (_l, m) => (m.usuario ? [m.usuario, m.usuario] : null),
+  fornecedor: (l) => (l.codfornec === null ? ["0", "Sem fornecedor"] : [String(l.codfornec), l.fornecedor ?? String(l.codfornec)]),
+  comprador: (l) => [l.comprador ?? "Sem comprador", l.comprador ?? "Sem comprador"],
+  produto: (l) => [String(l.codprod), `${l.codprod} · ${l.produto}`],
+  cliente: (l) => (l.codcli === null ? null : [String(l.codcli), `${l.codcli} · ${l.cliente ?? ""}`.trim()]),
+};
+
+/** Linhas que batem com todos os filtros ativos. */
+export function filtrarCortes(linhas: LinhaCorte[], filtros: FiltrosCorte): LinhaCorte[] {
+  const ativos = DIMENSOES_CORTE.filter((d) => filtros[d]);
+  if (ativos.length === 0) return linhas;
+  return linhas.filter((l) => {
+    const m = lerMotivo(l.motivo);
+    return ativos.every((d) => CHAVES[d](l, m)?.[0] === filtros[d]);
+  });
+}
+
+/** Rótulo legível do valor filtrado (ex.: código do fornecedor → nome). */
+export function rotuloFiltro(linhas: LinhaCorte[], dim: DimensaoCorte, chave: string): string {
+  for (const l of linhas) {
+    const k = CHAVES[dim](l, lerMotivo(l.motivo));
+    if (k && k[0] === chave) return k[1];
+  }
+  return chave;
+}
+
 export function resumoCortes(linhas: LinhaCorte[], dia: string | null = null): ResumoCortes {
   const ls = dia ? linhas.filter((l) => l.dia === dia) : linhas;
   const lidos = new Map(ls.map((l) => [l, lerMotivo(l.motivo)]));
   const porDia = new Map<string, number>();
   for (const l of linhas) porDia.set(l.dia, (porDia.get(l.dia) ?? 0) + l.valor);
   const soma = (f: (l: LinhaCorte) => number) => ls.reduce((s, l) => s + f(l), 0);
+  const por = (d: DimensaoCorte) => agrupar(ls, (l) => CHAVES[d](l, lidos.get(l)!));
   return {
     valor: soma((l) => l.valor),
     itens: ls.length,
@@ -115,15 +153,12 @@ export function resumoCortes(linhas: LinhaCorte[], dia: string | null = null): R
     harpia: soma((l) => (lidos.get(l)!.origem === "Winthor" ? 0 : l.valor)),
     porDia,
     porOrigem: agrupar(ls, (l) => [lidos.get(l)!.origem, lidos.get(l)!.origem]),
-    porMotivo: agrupar(ls, (l) => [lidos.get(l)!.motivo, lidos.get(l)!.motivo]),
-    porUsuario: agrupar(ls, (l) => {
-      const u = lidos.get(l)!.usuario;
-      return u ? [u, u] : null;
-    }),
-    porProduto: agrupar(ls, (l) => [String(l.codprod), `${l.codprod} · ${l.produto}`]),
-    porFornecedor: agrupar(ls, (l) => (l.codfornec === null ? ["0", "Sem fornecedor"] : [String(l.codfornec), l.fornecedor ?? String(l.codfornec)])),
-    porComprador: agrupar(ls, (l) => [l.comprador ?? "Sem comprador", l.comprador ?? "Sem comprador"]),
-    porCliente: agrupar(ls, (l) => (l.codcli === null ? null : [String(l.codcli), `${l.codcli} · ${l.cliente ?? ""}`.trim()])),
+    porMotivo: por("motivo"),
+    porUsuario: por("usuario"),
+    porProduto: por("produto"),
+    porFornecedor: por("fornecedor"),
+    porComprador: por("comprador"),
+    porCliente: por("cliente"),
   };
 }
 
