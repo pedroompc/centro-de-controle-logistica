@@ -54,3 +54,6 @@ sqlnet.ora
 
 # logs (podem conter query/dado sensível)
 *.log
+
+# capturas e logs do Playwright (têm dado real da operação)
+/.playwright-mcp/
