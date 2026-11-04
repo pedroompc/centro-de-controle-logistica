@@ -588,7 +588,9 @@ const ORDENS: Record<OrdemMot, { rotulo: string; valor: (m: MotoristaBI) => numb
 function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) {
   const [tipo, setTipo] = useState<"F" | "T" | null>(null);
   const [ordem, setOrdem] = useState<OrdemMot>("entregas");
+  const [sel, setSel] = useState<number | null>(null);
   const o = ORDENS[ordem];
+  const aberto = sel === null ? null : lista.find((m) => m.motorista === sel) ?? null;
   const itens = lista
     .filter((m) => !tipo || m.tipo === tipo)
     .sort((a, b) => ((o.valor(b) ?? (o.desc ? -Infinity : Infinity)) - (o.valor(a) ?? (o.desc ? -Infinity : Infinity))) * (o.desc ? 1 : -1));
@@ -626,11 +628,20 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
         }
       >
         <div className="h-full overflow-auto pr-1">
+          {aberto && <CidadesMotorista m={aberto} onFechar={() => setSel(null)} />}
           <Tabela
-            cab={["Motorista", "Tipo", "Dias", "Viagens", "Entregas", "Entregas/dia", "Peso", "Ocupação", "KM", "KM/entrega", "Devolução", "Custo/entrega"]}
-            alinhar={["l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]}
+            cab={["Motorista", "Tipo", "Dias", "Viagens", "Entregas", "Entregas/dia", "Peso", "Ocupação", "KM", "KM/entrega", "Devolução", "Cidades", "Clientes c/ dev.", "Custo/entrega"]}
+            alinhar={["l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]}
             linhas={itens.map((m) => [
-              m.nome,
+              <button
+                key="n"
+                type="button"
+                onClick={() => setSel(sel === m.motorista ? null : m.motorista)}
+                className={`text-left underline-offset-2 hover:underline ${sel === m.motorista ? "text-amber-300" : ""}`}
+                title="Ver as cidades atendidas"
+              >
+                {m.nome}
+              </button>,
               <span key="t" className="text-white/50">{m.tipo ? ROT_TIPO[m.tipo] : "—"}</span>,
               n0(m.dias),
               n0(m.viagens),
@@ -641,11 +652,52 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
               m.km === null ? "—" : n0(m.km),
               ou(m.kmPorEntrega, n1),
               m.devolucao ? <span key="d" title={`${m.devolucao.devolvidas} de ${m.devolucao.expedidas} notas`}>{pct(m.devolucao.taxa, 2)}</span> : "—",
+              m.cidades ? (
+                <span key="c" title={m.cidades.cidades.slice(0, 5).map((c) => `${c.cidade}: ${c.notas} notas`).join("\n")}>
+                  {m.cidades.cidades.length}
+                </span>
+              ) : "—",
+              m.cidades ? `${n0(m.cidades.clientesDevolveram)} de ${n0(m.cidades.clientes)}` : "—",
               brl(m.custoPorEntrega),
             ])}
           />
         </div>
       </Bloco>
+    </div>
+  );
+}
+
+// Drill-down do motorista: onde ele entrega (cidade do cliente) e quem devolveu
+// (motivo da Logística), pelas notas saídas no mês.
+function CidadesMotorista({ m, onFechar }: { m: MotoristaBI; onFechar: () => void }) {
+  const c = m.cidades;
+  return (
+    <div className="mb-4 rounded-xl bg-white/[0.04] p-3 ring-1 ring-white/10">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <span className="text-sm font-semibold text-white">
+          {m.nome}
+          <span className="ml-2 text-xs font-normal text-white/45">
+            {c ? `${c.cidades.length} cidades · ${n0(c.clientes)} clientes · ${n0(c.clientesDevolveram)} devolveram` : "sem dado de cidade"}
+          </span>
+        </span>
+        <button type="button" onClick={onFechar} aria-label="Fechar" className="text-lg leading-none text-white/40 hover:text-white">
+          &times;
+        </button>
+      </div>
+      {c && (
+        <Tabela
+          cab={["Cidade", "Notas", "Clientes", "Notas devolvidas", "Clientes c/ dev.", "Devolvido"]}
+          alinhar={["l", "r", "r", "r", "r", "r"]}
+          linhas={c.cidades.map((x) => [
+            x.cidade,
+            n0(x.notas),
+            n0(x.clientes),
+            x.devolvidas ? <span key="d" className="text-rose-300">{n0(x.devolvidas)}</span> : "—",
+            x.clientesDevolveram ? n0(x.clientesDevolveram) : "—",
+            x.valorDevolvido ? brl(x.valorDevolvido) : "—",
+          ])}
+        />
+      )}
     </div>
   );
 }

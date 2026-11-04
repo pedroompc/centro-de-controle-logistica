@@ -216,6 +216,41 @@ export interface DevolucaoMotDia {
   valorDevolvido: number;
 }
 
+/** Uma linha por motorista × cidade do cliente (notas saídas no mês, devolução logística delas). */
+export interface MotoristaCidade {
+  codMotorista: number;
+  cidade: string; // "RECIFE · PE"
+  notas: number;
+  clientes: number;
+  devolvidas: number;
+  clientesDevolveram: number;
+  valorDevolvido: number;
+}
+
+export interface CidadesDoMotorista {
+  /** Cidades por nº de notas entregues (maior primeiro). */
+  cidades: Omit<MotoristaCidade, "codMotorista">[];
+  clientes: number;
+  clientesDevolveram: number;
+}
+
+/**
+ * Agrupa as linhas motorista × cidade por motorista. Um cliente pertence a uma
+ * cidade só, então somar os clientes das cidades dá os clientes distintos dele.
+ */
+export function cidadesPorMotorista(linhas: MotoristaCidade[]): Map<number, CidadesDoMotorista> {
+  const m = new Map<number, CidadesDoMotorista>();
+  for (const { codMotorista, ...c } of linhas) {
+    const g = m.get(codMotorista) ?? { cidades: [], clientes: 0, clientesDevolveram: 0 };
+    g.cidades.push(c);
+    g.clientes += c.clientes;
+    g.clientesDevolveram += c.clientesDevolveram;
+    m.set(codMotorista, g);
+  }
+  for (const g of m.values()) g.cidades.sort((a, b) => b.notas - a.notas || a.cidade.localeCompare(b.cidade));
+  return m;
+}
+
 export interface DevolucaoMotResumo {
   codMotorista: number;
   nome: string;

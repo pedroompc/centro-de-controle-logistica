@@ -15,7 +15,7 @@ import type {
   SetorDevolucao,
 } from "@/domain/devolucoes";
 import type { LinhaCidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
-import type { DevolucaoMotDia } from "@/domain/motoristas";
+import type { DevolucaoMotDia, MotoristaCidade } from "@/domain/motoristas";
 import { montarDiasSemana, type BaseDevolucao, type DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
 
 // Códigos IBGE dos municípios da RMR, derivados da MESMA classificação do painel
@@ -679,6 +679,64 @@ LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
 LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
 WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
 GROUP BY car.CODMOTORISTA, v.DIA`;
+
+// Motorista × CIDADE do cliente, no mesmo universo de `sqlMotoristaFaturamento`
+// (notas de venda em carga saídas no período; devolução LOGÍSTICA dessas notas,
+// em qualquer data a partir do início do período). Mostra onde cada motorista
+// entrega e quais clientes devolveram.
+const sqlMotoristaCidade = `
+WITH vendas AS (
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, nf.CODCLI
+  FROM PCNFSAID nf
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+    AND NVL(nf.NUMCAR, 0) != 0
+    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
+    AND nf.DTCANCEL IS NULL
+),
+ed AS (
+  SELECT v.NUMTRANSENT, MAX(v.CODDEVOL) CODDEVOL, MAX(v.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${VL_VIEW}) VL
+  FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
+  WHERE ${filialIn("v.CODFILIAL")} AND v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD') AND v.DTCANCEL IS NULL
+    AND v.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
+  GROUP BY v.NUMTRANSENT
+),
+devv AS (
+  SELECT ed.NUMTRANSVENDA, SUM(ed.VL) VL_DEVOLVIDO
+  FROM ed LEFT JOIN PCTABDEV td ON td.CODDEVOL = ed.CODDEVOL
+  WHERE ${SETOR} = 'Logística'
+  GROUP BY ed.NUMTRANSVENDA
+)
+SELECT car.CODMOTORISTA,
+       NVL(ci.NOMECIDADE, 'Sem cidade') CIDADE, ci.UF,
+       COUNT(DISTINCT v.NUMTRANSVENDA) NOTAS,
+       COUNT(DISTINCT v.CODCLI) CLIENTES,
+       COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) DEVOLVIDAS,
+       COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.CODCLI END) CLIENTES_DEV,
+       ROUND(SUM(NVL(devv.VL_DEVOLVIDO, 0)), 2) VALOR_DEVOLVIDO
+FROM vendas v
+JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
+LEFT JOIN PCCLIENT cli ON cli.CODCLI = v.CODCLI
+LEFT JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
+LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
+WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+GROUP BY car.CODMOTORISTA, NVL(ci.NOMECIDADE, 'Sem cidade'), ci.UF`;
+
+/** Motorista × cidade das notas faturadas (saídas) entre `ini` e `fim`, com a devolução logística delas. */
+export async function getMotoristaCidades(ini: string, fim: string): Promise<MotoristaCidade[]> {
+  const rows = await queryWinthor<{
+    CODMOTORISTA: number; CIDADE: string; UF: string | null; NOTAS: number; CLIENTES: number;
+    DEVOLVIDAS: number; CLIENTES_DEV: number; VALOR_DEVOLVIDO: number;
+  }>(sqlMotoristaCidade, { ini, fim });
+  return rows.map((r) => ({
+    codMotorista: n(r.CODMOTORISTA),
+    cidade: r.UF ? `${r.CIDADE} · ${r.UF}` : r.CIDADE,
+    notas: n(r.NOTAS),
+    clientes: n(r.CLIENTES),
+    devolvidas: n(r.DEVOLVIDAS),
+    clientesDevolveram: n(r.CLIENTES_DEV),
+    valorDevolvido: n(r.VALOR_DEVOLVIDO),
+  }));
+}
 
 /** Devolução LOGÍSTICA por motorista × dia das notas faturadas (saídas) entre `ini` e `fim`. */
 export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: string): Promise<DevolucaoMotDia[]> {

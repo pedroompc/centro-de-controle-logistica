@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  ehSetorMotoristas, papelMotoristas, resumoDevolucao, devolucaoPorDia, type DevolucaoMotDia, totaisEntregas, porMotorista, porVeiculo, porDiaEntregas, faixasOcupacao, type ViagemEntrega,
+  cidadesPorMotorista, ehSetorMotoristas, papelMotoristas, resumoDevolucao, devolucaoPorDia, type DevolucaoMotDia, totaisEntregas, porMotorista, porVeiculo, porDiaEntregas, faixasOcupacao, type ViagemEntrega,
 } from "./motoristas";
 
 const v = (x: Partial<ViagemEntrega>): ViagemEntrega => ({
@@ -119,5 +119,17 @@ describe("devolução por faturamento", () => {
     expect(m.get("2026-10-06")).toMatchObject({ expedidas: 150, devolvidas: 2 });
     expect(m.get("2026-10-06")!.taxa).toBeCloseTo(2 / 150);
     expect(m.get("2026-10-07")!.taxa).toBeCloseTo(0.08);
+  });
+});
+
+describe("cidadesPorMotorista", () => {
+  const l = (codMotorista: number, cidade: string, notas: number, clientes: number, clientesDevolveram = 0) =>
+    ({ codMotorista, cidade, notas, clientes, devolvidas: clientesDevolveram, clientesDevolveram, valorDevolvido: 0 });
+
+  it("agrupa por motorista, soma clientes e ordena cidades por notas", () => {
+    const m = cidadesPorMotorista([l(1, "OLINDA · PE", 5, 4, 1), l(1, "RECIFE · PE", 20, 15, 2), l(2, "PAULISTA · PE", 3, 3)]);
+    expect(m.get(1)).toMatchObject({ clientes: 19, clientesDevolveram: 3 });
+    expect(m.get(1)!.cidades.map((c) => c.cidade)).toEqual(["RECIFE · PE", "OLINDA · PE"]);
+    expect(m.get(2)!.cidades).toHaveLength(1);
   });
 });
