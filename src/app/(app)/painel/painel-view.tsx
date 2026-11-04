@@ -37,7 +37,9 @@ import {
   SecaoReceitas,
   SecaoDescarregos,
   SecaoFrota,
+  SecaoCortes,
 } from "./secoes";
+import { taxaCorte, type CortesTV } from "@/domain/cortes";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "../devolucoes/icons";
 
 // Cadência: o mapa fica mais no ar (leitura à distância). Refresh dos dados é
@@ -100,6 +102,7 @@ interface Dados {
   serieDescarrego: PontoDescarregoMensal[];
   recebimento: IndicadoresRecebimento[]; // julho/2026 → mês corrente
   frota: ResumoFrotaTV | null;
+  cortes: CortesTV | null;
 }
 
 // Slides do recebimento: neles o placar do topo vira o da equipe de descarga.
@@ -122,7 +125,7 @@ function Marca() {
   );
 }
 
-function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean, pausado: boolean, prevLabel: string): Slide[] {
+function construirSlides(d: Dados, dev: ResumoDevolucao, devAnt: ResumoDevolucao | undefined, mesLabel: string, recSerie: IndicadoresRecebimento[], admin: boolean, pausado: boolean, prevLabel: string): Slide[] {
   const s: Slide[] = [];
   if (d.cidades.length > 0)
     s.push({ id: "mapa", titulo: "Devoluções · Mapa de Pernambuco", contexto: "participação no faturamento e taxa de devolução por cidade", icon: <IconePredio className="h-6 w-6" />, dwell: DWELL_MAPA, node: <Mapa cidades={d.cidades} faturamentoGeral={dev.vendaFaturada} taxaGeral={dev.taxaValor} /> });
@@ -138,6 +141,12 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, mesLabel: string, recSe
     s.push({ id: "afaturar", titulo: "A faturar", contexto: "pedidos liberados/montados sem NF", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoAFaturar dados={d.aFaturar} /> });
   if (d.frota)
     s.push({ id: "frota", titulo: "Frota · KM rodado", contexto: "telemetria dos caminhões de entrega no mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: 16_000, node: <SecaoFrota dados={d.frota} mesLabel={mesLabel} prevLabel={prevLabel} /> });
+  if (d.cortes && d.cortes.itens > 0) {
+    // Taxa com a venda líquida que o placar já trouxe (mês e anterior) — sem outra varredura.
+    const taxa = dev.disponivel ? taxaCorte(d.cortes.valor, dev.vendaLiquida) : null;
+    const taxaAnt = devAnt ? taxaCorte(d.cortes.valorAnt, devAnt.vendaLiquida) : null;
+    s.push({ id: "cortes", titulo: "Cortes", contexto: "o que foi pedido e não saiu · Winthor e separação", icon: <IconeEtiqueta className="h-6 w-6" />, dwell: 16_000, node: <SecaoCortes dados={d.cortes} taxa={taxa} taxaAnt={taxaAnt} prevLabel={prevLabel} /> });
+  }
   if (d.tempoFaturar && d.tempoFaturar.pedidos > 0)
     s.push({ id: "tempo-faturar", titulo: "Tempo até faturar", contexto: "do pedido liberado à nota emitida · calendário de rotas incluído", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoTempoFaturar dados={d.tempoFaturar} prevLabel={prevLabel} /> });
   if (admin && d.receitas)
@@ -274,7 +283,7 @@ export default function PainelView({
   const [dev, setDev] = useState<ResumoDevolucao>(devInicial);
   const [devAnt, setDevAnt] = useState<ResumoDevolucao | null>(null);
   const [dados, setDados] = useState<Dados>({
-    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, tempoFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], frota: null,
+    motoristas: [], clientes: [], vendedores: [], clientesMotivos: {}, vendedoresMotivos: {}, cidades: [], bairrosRMR: [], aFaturar: null, tempoFaturar: null, receitas: null, receitasDrivers: [], descarregos: null, serieDescarrego: [], recebimento: [], frota: null, cortes: null,
   });
   const [idx, setIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
@@ -315,6 +324,7 @@ export default function PainelView({
       serieDescarrego: r.serieDescarrego ?? d.serieDescarrego,
       recebimento: r.recebimento ?? d.recebimento,
       frota: r.frota === undefined ? d.frota : r.frota,
+      cortes: r.cortes ?? d.cortes,
     }));
     if (r.devAnterior) setDevAnt(r.devAnterior);
     if (r.placar) setDev(r.placar);
@@ -342,7 +352,7 @@ export default function PainelView({
 
   // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
   const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
-  const slides = construirSlides(dados, dev, mesLabel, recSerie, admin, pausado, prevLabel);
+  const slides = construirSlides(dados, dev, devAnt?.disponivel ? devAnt : undefined, mesLabel, recSerie, admin, pausado, prevLabel);
   const nSlides = slides.length;
   // Módulo sempre positivo: voltar (←) a partir do 1º slide deixa idx negativo.
   const posicao = nSlides > 0 ? ((idx % nSlides) + nSlides) % nSlides : 0;

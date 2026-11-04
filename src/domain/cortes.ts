@@ -319,3 +319,48 @@ export function porProdutoDetalhado(linhas: LinhaCorte[]): ProdutoCortado[] {
     }))
     .sort((a, b) => b.valor - a.valor);
 }
+
+// --- Painel TV ------------------------------------------------------------------
+
+/** Linha de ranking da TV: participação no valor cortado do mês (sem R$ na tela). */
+export interface FatiaCorteTV {
+  rotulo: string;
+  parte: number; // 0..1 do valor cortado do mês
+  itens: number;
+}
+
+export interface CortesTV {
+  valor: number; // só para a taxa (corte ÷ (corte + venda líquida)); a TV não mostra R$
+  valorAnt: number;
+  itens: number;
+  pedidos: number;
+  skus: number;
+  clientes: number;
+  harpia: number; // 0..1 do valor cortado que veio da separação
+  porDia: { dia: string; itens: number }[];
+  motivos: FatiaCorteTV[];
+  usuarios: FatiaCorteTV[];
+}
+
+/**
+ * Resumo enxuto para o slide da TV — só agregados (as linhas ficam no servidor).
+ * `porDia` cobre de `inicio` a `fim` com zero nos dias sem corte.
+ */
+export function cortesParaTV(linhas: LinhaCorte[], linhasAnt: LinhaCorte[], inicio: string, fim: string, top = 8): CortesTV {
+  const r = resumoCortes(linhas);
+  const itensDia = new Map<string, number>();
+  for (const l of linhas) itensDia.set(l.dia, (itensDia.get(l.dia) ?? 0) + 1);
+  const fatia = (g: GrupoCorte): FatiaCorteTV => ({ rotulo: g.rotulo, parte: r.valor > 0 ? g.valor / r.valor : 0, itens: g.itens });
+  return {
+    valor: r.valor,
+    valorAnt: linhasAnt.reduce((s, l) => s + l.valor, 0),
+    itens: r.itens,
+    pedidos: r.pedidos,
+    skus: r.skus,
+    clientes: r.clientes,
+    harpia: r.valor > 0 ? r.harpia / r.valor : 0,
+    porDia: serieDiaria(itensDia, inicio, fim).map((d) => ({ dia: d.dia, itens: d.valor })),
+    motivos: r.porMotivo.slice(0, top).map(fatia),
+    usuarios: r.porUsuario.slice(0, top).map(fatia),
+  };
+}

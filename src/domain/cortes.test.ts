@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado, type LinhaCorte } from "./cortes";
+import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado, cortesParaTV, type LinhaCorte } from "./cortes";
 
 describe("lerMotivo", () => {
   it("separa motivo e usuário do texto do Harpia", () => {
@@ -153,5 +153,33 @@ describe("porProdutoDetalhado", () => {
     const [arroz, feijao] = porProdutoDetalhado(ls);
     expect(arroz).toMatchObject({ codprod: 100, valor: 80, itens: 2, pedidos: 2, clientes: 2, cargas: 2, ultimoDia: "2026-10-09", motivo: "Falta de mercadoria" });
     expect(feijao).toMatchObject({ codprod: 200, valor: 5, pedidos: 1 });
+  });
+});
+
+describe("cortesParaTV", () => {
+  const base = { numcar: null, codfornec: null, fornecedor: null, comprador: null, cliente: null, kg: 0, temPedido: true, hora: 10, produto: "P" };
+  const l = (dia: string, valor: number, motivo: string, codprod = 1, numped = 1, codcli: number | null = 9) => ({ ...base, dia, valor, qt: 1, motivo, codprod, numped, codcli });
+  it("agrega sem R$ nos rankings e preenche os dias sem corte", () => {
+    const tv = cortesParaTV(
+      [
+        l("2026-11-01", 75, "1.HARPIA - FALTA DE MERCADORIA - Usuário: 27-CONF EDIVALDO"),
+        l("2026-11-03", 25, "ERRO DE DIGITACAO", 2, 2),
+      ],
+      [l("2026-10-05", 40, "X")],
+      "2026-11-01",
+      "2026-11-03",
+    );
+    expect(tv.valor).toBe(100);
+    expect(tv.valorAnt).toBe(40);
+    expect(tv.itens).toBe(2);
+    expect(tv.pedidos).toBe(2);
+    expect(tv.harpia).toBe(0.75);
+    expect(tv.porDia).toEqual([
+      { dia: "2026-11-01", itens: 1 },
+      { dia: "2026-11-02", itens: 0 },
+      { dia: "2026-11-03", itens: 1 },
+    ]);
+    expect(tv.motivos[0]).toEqual({ rotulo: "Falta de mercadoria", parte: 0.75, itens: 1 });
+    expect(tv.usuarios).toEqual([{ rotulo: "CONF EDIVALDO", parte: 0.75, itens: 1 }]);
   });
 });

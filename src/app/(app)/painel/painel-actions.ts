@@ -47,6 +47,8 @@ import type { DevolucaoPorSetor, DevolucaoPorMotivo } from "@/domain/devolucoes"
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
 import { lerTemposFaturamento } from "@/data/tempo-faturamento";
 import { resumirTempos, type ResumoTempos } from "@/domain/tempo-faturamento";
+import { lerCortes } from "@/data/cortes";
+import { cortesParaTV, type CortesTV } from "@/domain/cortes";
 
 /** Período no servidor a partir do mês (ISO) — nunca confia em datas do cliente. */
 function periodo(mes: string) {
@@ -573,4 +575,18 @@ export async function carregarFrotaTV(mes: string): Promise<ResumoFrotaTV | null
     anterior: ant && ant.r.rastreados > 0 ? { km: ant.r.km, kmPorEntrega: ant.r.kmPorEntrega, kmPorVeiculoDia: porVeiculoDia(ant.r) } : null,
     custo: c ? { total: c.total, diesel: c.diesel, porKm: c.custoPorKm, porEntrega: entregas > 0 ? c.total / entregas : null } : null,
   };
+}
+
+// --- Cortes ---------------------------------------------------------------------
+
+/**
+ * Cortes do mês para a TV: agregados prontos (as linhas não vão ao navegador) e
+ * o valor do mês anterior só para a taxa — a tela não mostra R$.
+ */
+export async function carregarCortesTV(mes: string): Promise<CortesTV> {
+  const { inicio, fim } = periodo(mes);
+  const ant = inicioFimDoMes(mesAnterior(mesNorm(mes)));
+  const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
+  const [linhas, linhasAnt] = await Promise.all([lerCortes(inicio, fim), lerCortes(ant.inicio, ant.fim)]);
+  return cortesParaTV(linhas, linhasAnt, inicio, hoje < fim ? hoje : fim);
 }

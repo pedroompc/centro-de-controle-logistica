@@ -14,6 +14,7 @@ import {
   carregarRecebimento,
   carregarTempoFaturar,
   carregarFrotaTV,
+  carregarCortesTV,
 } from "./painel-actions";
 
 // Server Actions chamadas do navegador vão uma por vez (fila do Next). Para o
@@ -40,6 +41,7 @@ export interface LotePainel {
   serieDescarrego: Bloco<Awaited<ReturnType<typeof carregarSerieDescarrego>>>;
   recebimento: Bloco<Awaited<ReturnType<typeof carregarRecebimento>>>;
   frota: Bloco<Awaited<ReturnType<typeof carregarFrotaTV>>>;
+  cortes: Bloco<Awaited<ReturnType<typeof carregarCortesTV>>>;
   devAnterior: Bloco<Awaited<ReturnType<typeof carregarResumoDevolucao>>>;
   placar: Bloco<Awaited<ReturnType<typeof carregarResumoDevolucao>>>;
   /** Nome de cada bloco que falhou (vai para o cabeçalho "sem dados: …"). */
@@ -61,7 +63,7 @@ export async function carregarPainelLote(mes: string, comPlacar: boolean): Promi
     }
   };
 
-  const [mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, frota, devAnterior, placar] =
+  const [mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, frota, cortes, devAnterior, placar] =
     await Promise.all([
       bloco("mapa", () => carregarMapa({ mes, base: BASE })),
       bloco("motoristas", () => carregarMotoristas({ mes, base: BASE })),
@@ -77,9 +79,10 @@ export async function carregarPainelLote(mes: string, comPlacar: boolean): Promi
       // Placar do recebimento traz custo da equipe em R$ — só admin.
       bloco("recebimento", () => carregarRecebimento(), admin),
       bloco("frota", () => carregarFrotaTV(mes)),
+      bloco("cortes", () => carregarCortesTV(mes)),
       bloco("mês anterior", () => carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes()))),
       bloco("placar", () => carregarResumoDevolucao(mes), comPlacar),
     ]);
 
-  return { mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, frota, devAnterior, placar, falhas };
+  return { mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, frota, cortes, devAnterior, placar, falhas };
 }
