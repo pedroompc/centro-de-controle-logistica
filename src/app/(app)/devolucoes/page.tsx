@@ -281,9 +281,9 @@ export default async function DevolucoesPage({
       />
 
       <p className="mt-4 text-xs text-slate-400">
-        Os indicadores no topo são sempre o total do mês pela rotina 111 (não reagem a filtro nem
-        à base). Motivo, setor, cidade e a base (data da devolução ou dia faturado) estreitam
-        todas as abas; no mapa, escolha uma cidade para ver só ela.
+        Os indicadores no topo são o total do mês na base escolhida (dia faturado ou data da
+        devolução — esta é a rotina 111) e não reagem a motivo, setor ou cidade. Esses filtros
+        estreitam todas as abas; no mapa, escolha uma cidade para ver só ela.
       </p>
     </div>
   );
