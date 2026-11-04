@@ -83,6 +83,31 @@ export default async function DevolucoesPage({
     );
   }
 
+  // Base de data (devolução × dia faturado): muda os cards do topo E a análise,
+  // por isso fica no cabeçalho, junto do mês.
+  const seletorBase = (
+    <div
+      className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-semibold"
+      role="group"
+      aria-label="Base de data: muda os cards e a análise"
+    >
+      <Link
+        href={url({ base: undefined })}
+        title="Devoluções que entraram no mês (rotina 111)"
+        className={`rounded-md px-3 py-1.5 transition ${base === "devolucao" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
+      >
+        Data da devolução
+      </Link>
+      <Link
+        href={url({ base: "faturamento" })}
+        title="Das notas faturadas no mês, as que voltaram até hoje — o mês recente ainda sobe"
+        className={`rounded-md px-3 py-1.5 transition ${base === "faturamento" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
+      >
+        Dia faturado
+      </Link>
+    </div>
+  );
+
   const totalSetor = Math.max(1, r.porSetor.reduce((t, s) => t + s.valor, 0));
 
   return (
@@ -99,6 +124,7 @@ export default async function DevolucoesPage({
           </svg>
           Modo TV
         </Link>
+        {seletorBase}
         <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
       </PageHeader>
 
@@ -160,26 +186,6 @@ export default async function DevolucoesPage({
         {temFiltro && (
           <Link href={url({ motivo: undefined, setor: undefined, cidade: undefined })} className="text-xs font-medium text-amber-600 hover:text-amber-700">limpar filtros</Link>
         )}
-        <div
-          className="ml-auto inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-semibold"
-          role="group"
-          aria-label="Base de data da análise"
-        >
-          <Link
-            href={url({ base: undefined })}
-            title="Devoluções que entraram no mês (rotina 111)"
-            className={`rounded-md px-3 py-1.5 transition ${base === "devolucao" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
-          >
-            Data da devolução
-          </Link>
-          <Link
-            href={url({ base: "faturamento" })}
-            title="Das notas faturadas no mês, as que voltaram até hoje — o mês recente ainda sobe"
-            className={`rounded-md px-3 py-1.5 transition ${base === "faturamento" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
-          >
-            Dia faturado
-          </Link>
-        </div>
       </div>
 
       {cidadeNome && (
