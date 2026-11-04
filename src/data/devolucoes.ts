@@ -637,7 +637,6 @@ export const getDevolucaoPorBairro = cache(async (
 });
 
 /** Bairros da RMR pela data da devolução (Painel TV). */
-export const getDevolucaoPorBairroRMR = (ini: string, fim: string) => getDevolucaoPorBairro(ini, fim);
 
 // --- Devolução por motorista POR PERÍODO DE FATURAMENTO (BI dos Motoristas) ----
 // Coorte: as notas de venda em carga SAÍDAS no período (mesmo universo de

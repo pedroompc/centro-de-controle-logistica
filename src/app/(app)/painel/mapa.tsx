@@ -36,7 +36,7 @@ interface Geo {
  * faturamento geral,
  * a taxa de devolução e o motivo predominante. `faturamentoGeral` é a venda
  * faturada total do mês (denominador da participação). `taxaGeral` é a taxa
- * OFICIAL do mês (rotina 111, a mesma do placar do topo) — o destaque do mapa
+ * do mês pelo dia faturado (a mesma do placar do topo) — o destaque do mapa
  * mostra ela, para a TV não exibir duas taxas de devolução diferentes.
  */
 export default function TvMapa({ cidades, faturamentoGeral, taxaGeral }: { cidades: CidadeDevolucao[]; faturamentoGeral: number; taxaGeral: number }) {

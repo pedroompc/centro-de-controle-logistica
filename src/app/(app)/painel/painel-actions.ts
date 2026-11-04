@@ -7,7 +7,7 @@ import { lerCadastroFrota } from "@/data/frota-custos";
 import { mapaKmDia, resumoKm, type ResumoKm } from "@/domain/frota";
 import { custoFrota } from "@/domain/frota-custo";
 import { totaisEntregas } from "@/domain/motoristas";
-import { getNucleoDevolucao, getDevolucaoPorBairroRMR } from "@/data/devolucoes";
+import { getNucleoDevolucao, getResumoCoorteFaturamento, getDevolucaoPorBairro } from "@/data/devolucoes";
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
@@ -60,11 +60,11 @@ function mesNorm(mes: string) {
 
 export interface ResumoDevolucao {
   disponivel: boolean;
-  total: number; // valor devolvido oficial (rotina 111)
+  total: number; // devolvido das notas faturadas no mês (base "Dia faturado")
   vendaFaturada: number;
   vendaLiquida: number; // faturamento LÍQUIDO
   pesoFaturado: number; // kg líquido (venda − devolução)
-  pesoDevolucao: number; // kg devolvido no mês
+  pesoDevolucao: number; // kg devolvido das notas faturadas no mês
   valorDevolucaoAvulsa: number;
   devolvidasAvulsas: number;
   taxaValor: number;
@@ -98,30 +98,42 @@ const DEV_VAZIO: ResumoDevolucao = {
   porMotivo: [],
 };
 
-/** Placar de devolução do painel — os mesmos números oficiais da página. */
+/**
+ * Placar de devolução do painel, pela base "Dia faturado": das notas faturadas no
+ * mês, o que voltou até hoje (mesma conta da página de Devoluções com
+ * ?base=faturamento). Venda, peso e emitidas são do mês (denominadores); valor,
+ * peso devolvido, notas devolvidas e a quebra por setor/motivo vêm da coorte.
+ * O mês corrente ainda sobe conforme as devoluções das notas dele entram.
+ */
 export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolucao> {
   const { inicio, fim } = periodo(mes);
-  const [nucleo, fat] = await Promise.all([
-    getNucleoDevolucao(inicio, fim),
+  const [nucleo, coorte, fat] = await Promise.all([
+    getNucleoDevolucao(inicio, fim, undefined, undefined, undefined, "faturamento"),
+    getResumoCoorteFaturamento(inicio, fim),
     getResumoFaturamentoDashboard(mesNorm(mes)),
   ]);
   if (!nucleo && !fat) return DEV_VAZIO;
+  const total = nucleo?.total ?? coorte?.valor ?? 0;
+  const devolvidas = coorte?.notas ?? 0;
+  const venda = fat?.vendaFaturada ?? 0;
+  const emitidas = fat?.emitidas ?? 0;
   // Mesma base da taxa geral (venda faturada), só com os motivos logísticos.
   const valorLogistica = nucleo?.porSetor.find((s) => s.setor === "Logística")?.valor ?? 0;
   return {
     disponivel: true,
-    total: nucleo?.total ?? fat?.valorDevolucao ?? 0,
-    vendaFaturada: fat?.vendaFaturada ?? 0,
+    total,
+    vendaFaturada: venda,
     vendaLiquida: fat?.vendaLiquida ?? 0,
     pesoFaturado: fat?.pesoFaturado ?? 0,
-    pesoDevolucao: fat?.pesoDevolucao ?? 0,
+    pesoDevolucao: nucleo?.peso ?? 0,
+    // A avulsa não tem venda de origem (não tem dia faturado): segue pela data da devolução.
     valorDevolucaoAvulsa: fat?.valorDevolucaoAvulsa ?? 0,
     devolvidasAvulsas: fat?.devolvidasAvulsas ?? 0,
-    taxaValor: fat ? taxaDevolucao(fat) : 0,
-    taxaNotas: fat ? taxaDevolucaoNotas(fat) : 0,
-    taxaLogistica: fat && fat.vendaFaturada > 0 ? valorLogistica / fat.vendaFaturada : 0,
-    devolvidas: fat?.devolvidas ?? 0,
-    emitidas: fat?.emitidas ?? 0,
+    taxaValor: taxaDevolucao({ valorDevolucao: total, vendaFaturada: venda }),
+    taxaNotas: taxaDevolucaoNotas({ devolvidas, emitidas }),
+    taxaLogistica: venda > 0 ? valorLogistica / venda : 0,
+    devolvidas,
+    emitidas,
     positivados: fat?.positivados ?? 0,
     atendimentos: fat?.atendimentos ?? 0,
     porSetor: nucleo?.porSetor ?? [],
@@ -129,10 +141,10 @@ export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolu
   };
 }
 
-/** Devolução por bairro na RMR (cidade + bairro), já ordenada por R$ devolvido. */
+/** Devolução por bairro na RMR (cidade + bairro), pelo dia faturado, já ordenada por R$ devolvido. */
 export async function carregarDevBairrosRMR(mes: string): Promise<BairroDevolucao[]> {
   const { inicio, fim } = periodo(mes);
-  return (await getDevolucaoPorBairroRMR(inicio, fim)).slice(0, 20);
+  return (await getDevolucaoPorBairro(inicio, fim, "faturamento")).slice(0, 20);
 }
 
 // --- A faturar (pedidos parados) ---------------------------------------------

@@ -22,6 +22,10 @@ import {
 
 type Bloco<T> = T | undefined;
 
+// O Painel TV olha a devolução pelo DIA FATURADO (das notas saídas no mês, o que
+// voltou até hoje) — placar, mapa, bairros e rankings na mesma base.
+const BASE = "faturamento";
+
 export interface LotePainel {
   mapa: Bloco<Awaited<ReturnType<typeof carregarMapa>>>;
   motoristas: Bloco<Awaited<ReturnType<typeof carregarMotoristas>>>;
@@ -59,10 +63,10 @@ export async function carregarPainelLote(mes: string, comPlacar: boolean): Promi
 
   const [mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, frota, devAnterior, placar] =
     await Promise.all([
-      bloco("mapa", () => carregarMapa({ mes })),
-      bloco("motoristas", () => carregarMotoristas({ mes })),
-      bloco("clientes", () => carregarClientes({ mes })),
-      bloco("vendedores", () => carregarVendedores({ mes })),
+      bloco("mapa", () => carregarMapa({ mes, base: BASE })),
+      bloco("motoristas", () => carregarMotoristas({ mes, base: BASE })),
+      bloco("clientes", () => carregarClientes({ mes, base: BASE })),
+      bloco("vendedores", () => carregarVendedores({ mes, base: BASE })),
       bloco("bairros RMR", () => carregarDevBairrosRMR(mes)),
       bloco("a faturar", () => carregarAFaturar()),
       bloco("tempo até faturar", () => carregarTempoFaturar(mes)),
