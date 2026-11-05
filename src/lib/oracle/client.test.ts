@@ -9,6 +9,7 @@ vi.mock("oracledb", () => ({
 }));
 
 import { queryWinthor, conexaoSuspeita, TEMPO_MAX_CONSULTA_MS } from "./client";
+import { eventosConsulta } from "./registro";
 
 function poolFalso(conexao: () => Promise<unknown>) {
   return { getConnection: vi.fn(conexao), close: vi.fn(async () => {}) };
@@ -22,6 +23,8 @@ beforeEach(() => {
   mocks.createPool.mockReset();
   delete (globalThis as { __poolWinthor?: unknown }).__poolWinthor;
   delete (globalThis as { __poolWinthorAtual?: unknown }).__poolWinthorAtual;
+  delete (globalThis as { __consultasOracle?: unknown }).__consultasOracle;
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("queryWinthor", () => {
@@ -90,6 +93,19 @@ describe("queryWinthor", () => {
     expect(velho.close).toHaveBeenCalled();
     expect(await queryWinthor("SELECT 1 FROM DUAL")).toEqual([{ X: 1 }]);
     expect(mocks.createPool).toHaveBeenCalledTimes(2);
+  });
+
+  it("registra cada consulta, com o tipo do erro quando falha", async () => {
+    const ruim = conexaoFalsa();
+    ruim.execute.mockRejectedValueOnce(new RangeError("Attempt to access memory outside buffer bounds"));
+    mocks.createPool.mockResolvedValue(poolFalso(async () => ruim));
+
+    await expect(queryWinthor("SELECT X FROM PCNFSAID")).rejects.toThrow();
+    await queryWinthor("SELECT X FROM PCNFSAID");
+    const ev = eventosConsulta();
+    expect(ev).toHaveLength(2);
+    expect(ev[0]).toMatchObject({ rotulo: expect.stringMatching(/^PCNFSAID·/), erro: "buffer-bounds" });
+    expect(ev[1].erro).toBeUndefined();
   });
 
   it("aplica o teto de tempo na conexão", async () => {

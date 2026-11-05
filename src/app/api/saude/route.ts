@@ -1,6 +1,8 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { cronometrar, montarSaude, type EntradaSaude } from "@/domain/saude";
 import { saudeColetor } from "@/domain/frota-saude";
+import { resumirConsultas } from "@/domain/consultas-registro";
+import { eventosConsulta } from "@/lib/oracle/registro";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,9 +42,12 @@ export async function GET() {
     lerColetor().catch(() => ({ estado: "sem-dados" as const, minutos: null })),
   ]);
   const saude = montarSaude({ oracle, supabase, coletor });
+  // Termômetro das últimas 24 h (desde que o serviço subiu): não muda o status,
+  // serve para ver lentidão e quedas de conexão sem abrir o log.
+  const consultas = resumirConsultas([...eventosConsulta()]);
   if (!saude.ok) console.error("[saude] fora do ar:", JSON.stringify(saude));
   return Response.json(
-    { ...saude, verificadoEm: new Date().toISOString() },
+    { ...saude, consultas, verificadoEm: new Date().toISOString() },
     { status: saude.status, headers: { "Cache-Control": "no-store" } },
   );
 }

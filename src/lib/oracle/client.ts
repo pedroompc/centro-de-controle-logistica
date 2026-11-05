@@ -1,3 +1,4 @@
+import { registrarConsulta } from "./registro";
 import oracledb from "oracledb";
 
 // Retorna cada linha como objeto { COLUNA: valor }.
@@ -89,21 +90,26 @@ export async function queryWinthor<T = Record<string, unknown>>(
   sql: string,
   binds: oracledb.BindParameters = {},
 ): Promise<T[]> {
-  const p = await pool();
+  const t0 = Date.now();
   let connection: oracledb.Connection;
+  let p: oracledb.Pool | undefined;
   try {
+    p = await pool();
     connection = await p.getConnection();
   } catch (e) {
-    descartarPool(p);
+    if (p) descartarPool(p);
+    registrarConsulta(sql, Date.now() - t0, e);
     throw e;
   }
   let suspeita = false;
   try {
     connection.callTimeout = TEMPO_MAX_CONSULTA_MS;
     const result = await connection.execute<T>(sql, binds);
+    registrarConsulta(sql, Date.now() - t0);
     return result.rows ?? [];
   } catch (e) {
     suspeita = conexaoSuspeita(e);
+    registrarConsulta(sql, Date.now() - t0, e);
     throw e;
   } finally {
     try {
