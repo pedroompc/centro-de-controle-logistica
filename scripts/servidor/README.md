@@ -7,7 +7,7 @@ sobem no boot, voltam sozinhos se caírem e gravam log em `logs\` com rotação 
 
 1. Baixar o NSSM e pôr o `nssm.exe` no PATH (ou passar `-Nssm C:\caminho\nssm.exe`).
 2. Na pasta do projeto, com `.env.local` completo (Supabase, `DB_*`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `FULLTRACK_*`), `npm ci` e `npm run build` feitos.
+   `SUPABASE_SERVICE_ROLE_KEY`, `FULLTRACK_*`, `CONFERENCIA_TOKEN` com 16+ caracteres), `npm ci` e `npm run build` feitos.
 3. PowerShell **como administrador**:
 
 ```
@@ -50,3 +50,12 @@ Responde **503** quando o Winthor ou o Supabase não respondem, ou quando o cole
 está parado (> 2 h sem gravar). Para receber aviso, cadastrar a URL pública
 `https://gerencialogistica.<tailnet>.ts.net/api/saude` num monitor gratuito
 (ex.: UptimeRobot, checagem a cada 5 min, alerta por e-mail quando não for 200).
+
+## Conferência cruzada
+
+O site confere todo dia às 6h se os números que devem bater entre telas batem
+(devolução Devoluções × Dashboard, notas do BI Motoristas × devolução por
+motorista, foto do mês × Winthor). Resultado resumido em `/api/saude` →
+`conferencia` (só quais pares divergiram). Detalhe com valores:
+`npm run conferir https://<endereço-do-funnel>` (usa o `CONFERENCIA_TOKEN`) ou
+`/api/conferencia` logado como admin.

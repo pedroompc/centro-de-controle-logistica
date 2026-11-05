@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "oracle": "node --env-file=.env.local scripts/consulta-oracle.mjs",
     "validar:separacao": "node --env-file=.env.local scripts/validar-bi-separacao.mjs",
-    "coletor:frota": "node scripts/coletor-frota/index.mjs"
+    "coletor:frota": "node scripts/coletor-frota/index.mjs",
+    "conferir": "node --env-file=.env.local scripts/conferir.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

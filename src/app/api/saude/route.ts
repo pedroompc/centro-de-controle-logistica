@@ -3,6 +3,8 @@ import { cronometrar, montarSaude, type EntradaSaude } from "@/domain/saude";
 import { saudeColetor } from "@/domain/frota-saude";
 import { resumirConsultas } from "@/domain/consultas-registro";
 import { eventosConsulta } from "@/lib/oracle/registro";
+import { resumoPublico } from "@/domain/conferencia";
+import { ultimaConferencia } from "@/lib/conferencia-agenda";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +49,7 @@ export async function GET() {
   const consultas = resumirConsultas([...eventosConsulta()]);
   if (!saude.ok) console.error("[saude] fora do ar:", JSON.stringify(saude));
   return Response.json(
-    { ...saude, consultas, verificadoEm: new Date().toISOString() },
+    { ...saude, consultas, conferencia: resumoPublico(ultimaConferencia()), verificadoEm: new Date().toISOString() },
     { status: saude.status, headers: { "Cache-Control": "no-store" } },
   );
 }

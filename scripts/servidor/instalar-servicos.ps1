@@ -21,12 +21,12 @@ New-Item -ItemType Directory -Force -Path $logs | Out-Null
 if (-not (Test-Path (Join-Path $Projeto ".env.local"))) { throw ".env.local não encontrado em $Projeto" }
 if (-not (Test-Path (Join-Path $Projeto ".next\BUILD_ID"))) { throw "Sem build. Rode 'npm run build' antes." }
 
-function Instalar($nome, $argumentos, $arquivoLog) {
+function Instalar($nome, $argumentos, $arquivoLog, [string[]]$envExtra = @()) {
   & $Nssm stop $nome 2>$null | Out-Null
   & $Nssm remove $nome confirm 2>$null | Out-Null
   & $Nssm install $nome $node $argumentos
   & $Nssm set $nome AppDirectory $Projeto
-  & $Nssm set $nome AppEnvironmentExtra "NODE_ENV=production" "TZ=America/Recife"
+  & $Nssm set $nome AppEnvironmentExtra "NODE_ENV=production" "TZ=America/Recife" @envExtra
   & $Nssm set $nome AppStdout (Join-Path $logs $arquivoLog)
   & $Nssm set $nome AppStderr (Join-Path $logs $arquivoLog)
   & $Nssm set $nome AppRotateFiles 1
@@ -39,7 +39,8 @@ function Instalar($nome, $argumentos, $arquivoLog) {
   & $Nssm start $nome
 }
 
-Instalar "CentroControleSite" "node_modules\next\dist\bin\next start -p $Porta" "site.log"
+# Só o site roda a conferência cruzada diária (6h).
+Instalar "CentroControleSite" "node_modules\next\dist\bin\next start -p $Porta" "site.log" @("CONFERENCIA_AUTOMATICA=1")
 Instalar "ColetorFrota" "scripts\coletor-frota\index.mjs" "coletor-frota.log"
 
 Write-Host ""
