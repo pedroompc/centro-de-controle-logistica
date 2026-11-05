@@ -1,0 +1,36 @@
+# Verificação a cada push/PR na main: tipos, lint e testes. Não precisa de
+# segredo nenhum — os testes não tocam Oracle nem Supabase (tudo mockado).
+name: Verificar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verificar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: America/Recife # mesma zona do servidor: testes de data/mês dependem disso
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tipos
+        run: npx tsc --noEmit -p .
+      - name: Lint
+        run: npm run lint
+      - name: Testes
+        run: npm test
