@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/database.types";
 import { mapReceita } from "./mappers";
 import { buscarTodas } from "./paginar";
 import { assertAdmin } from "./auth";
@@ -219,7 +220,7 @@ export async function editarReceita(formData: FormData): Promise<void> {
   const f = parseForm(formData);
   if (!id || !notaValida(f)) return;
   const { valorMinimo } = await lerConfig();
-  const colunas: Record<string, unknown> = colunasDoValor(f, valorMinimo);
+  const colunas: Database["public"]["Tables"]["receitas_descarregamento"]["Update"] = colunasDoValor(f, valorMinimo);
   if (f.temCarros) colunas.carros = f.tipo === "volume" ? f.carros : null;
   const supabase = await createClient();
   const { error } = await supabase.from("receitas_descarregamento").update(colunas).eq("id", id);

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { umDe } from "@/domain/formulario";
 import { mapFalta } from "./mappers";
 import { revalidarEfetivo } from "./revalidate";
 import { assertAdmin } from "./auth";
@@ -31,7 +32,7 @@ export async function registrarFalta(formData: FormData): Promise<void> {
   const registro = {
     funcionario_id: String(formData.get("funcionario_id") ?? ""),
     data: String(formData.get("data") ?? ""),
-    tipo: String(formData.get("tipo") ?? "injustificada"),
+    tipo: umDe(formData.get("tipo"), ["justificada", "injustificada", "atestado", "folga", "ferias"] as const, "injustificada"),
     observacao: String(formData.get("observacao") ?? "").trim() || null,
   };
   const supabase = await createClient();

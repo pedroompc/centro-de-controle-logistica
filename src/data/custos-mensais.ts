@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { umDe } from "@/domain/formulario";
 import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
 import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
@@ -95,7 +96,7 @@ export async function adicionarLancamento(formData: FormData): Promise<void> {
     // mês correto mesmo que a tela esteja em outro. Sem data, usa o mês da tela.
     mes: data ? primeiroDiaDoMes(data) : String(formData.get("mes") ?? ""),
     nome: String(formData.get("nome") ?? "").trim(),
-    tipo: String(formData.get("tipo") ?? "variavel"),
+    tipo: umDe(formData.get("tipo"), ["fixo", "variavel"] as const, "variavel"),
     valor: Number(formData.get("valor") ?? 0),
     data,
   };

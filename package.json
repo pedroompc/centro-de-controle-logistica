@@ -12,7 +12,8 @@
     "oracle": "node --env-file=.env.local scripts/consulta-oracle.mjs",
     "validar:separacao": "node --env-file=.env.local scripts/validar-bi-separacao.mjs",
     "coletor:frota": "node scripts/coletor-frota/index.mjs",
-    "conferir": "node --env-file=.env.local scripts/conferir.mjs"
+    "conferir": "node --env-file=.env.local scripts/conferir.mjs",
+    "tipos:supabase": "node --env-file=.env.local scripts/gerar-tipos-supabase.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

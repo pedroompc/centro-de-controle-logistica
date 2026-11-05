@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { umDe } from "@/domain/formulario";
 import { mapFuncionario } from "./mappers";
 import { revalidarEfetivo } from "./revalidate";
 import { assertAdmin } from "./auth";
@@ -62,8 +63,8 @@ export async function salvarFuncionario(formData: FormData): Promise<{ erro: str
     setor_id: String(formData.get("setor_id") ?? ""),
     custo_mensal: calculado ?? Number(formData.get("custo_mensal") ?? 0),
     data_admissao: String(formData.get("data_admissao") ?? ""),
-    status: String(formData.get("status") ?? "ativo"),
-    turno: String(formData.get("turno") ?? "manha"),
+    status: umDe(formData.get("status"), ["ativo", "afastado", "desligado"] as const, "ativo"),
+    turno: umDe(formData.get("turno"), ["manha", "tarde", "noite"] as const, "manha"),
     salario_base: composicao.salarioBase,
     passagem: composicao.passagem,
     alimentacao: composicao.alimentacao,
