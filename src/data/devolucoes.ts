@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
+import { notaExpedida, motoristaDeEntrega } from "./regras-winthor";
 import { agregarPorSetor } from "@/domain/devolucoes";
 import { classificarRegiao } from "@/domain/pe-regioes";
 import geoRaw from "@/data/geo/pe-municipios.json";
@@ -171,8 +172,7 @@ vendas AS (
   FROM PCNFSAID nf
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL${f.ibge ? `\n    AND ${naCidade("nf.CODCLI")}` : ""}
+    AND ${notaExpedida("nf")}${f.ibge ? `\n    AND ${naCidade("nf.CODCLI")}` : ""}
 ),
 devv AS (
   SELECT NUMTRANSVENDA, SUM(VL) VL_DEVOLVIDO
@@ -191,7 +191,7 @@ FROM vendas v
 JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
 LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
 LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
-WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+WHERE ${motoristaDeEntrega("car.CODMOTORISTA")}
 GROUP BY car.CODMOTORISTA
 ORDER BY VALOR_DEVOLVIDO DESC`;
 
@@ -206,8 +206,7 @@ vendas AS (
   FROM PCNFSAID nf
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL${f.ibge ? `\n    AND ${naCidade("nf.CODCLI")}` : ""}
+    AND ${notaExpedida("nf")}${f.ibge ? `\n    AND ${naCidade("nf.CODCLI")}` : ""}
 )
 SELECT car.CODMOTORISTA,
        edf.MOTIVO,
@@ -217,7 +216,7 @@ SELECT car.CODMOTORISTA,
 FROM vendas v
 JOIN edf ON edf.NUMTRANSVENDA = v.NUMTRANSVENDA
 JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
-WHERE edf.NUMTRANSVENDA > 0 AND NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+WHERE edf.NUMTRANSVENDA > 0 AND ${motoristaDeEntrega("car.CODMOTORISTA")}
 GROUP BY car.CODMOTORISTA, edf.MOTIVO, edf.SETOR
 ORDER BY car.CODMOTORISTA, NOTAS DESC, VALOR DESC`;
 
@@ -459,8 +458,7 @@ fat AS (
   JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
+    AND ${notaExpedida("nf")}
     AND ci.UF = 'PE'
   GROUP BY ci.CODIBGE
 ),
@@ -556,8 +554,7 @@ fat AS (
   JOIN PCCLIENT cli ON cli.CODCLI = nf.CODCLI
   JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
+    AND ${notaExpedida("nf")}
     AND ci.CODIBGE ${cidades}
   GROUP BY ci.CODIBGE, ${BAIRRO_EXPR}
 ),
@@ -650,8 +647,7 @@ WITH vendas AS (
   FROM PCNFSAID nf
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
+    AND ${notaExpedida("nf")}
 ),
 ed AS (
   SELECT v.NUMTRANSENT, MAX(v.CODDEVOL) CODDEVOL, MAX(v.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${VL_VIEW}) VL
@@ -677,7 +673,7 @@ FROM vendas v
 JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
 LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
 LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
-WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+WHERE ${motoristaDeEntrega("car.CODMOTORISTA")}
 GROUP BY car.CODMOTORISTA, v.DIA`;
 
 // Motorista × CIDADE do cliente, no mesmo universo de `sqlMotoristaFaturamento`
@@ -690,8 +686,7 @@ WITH vendas AS (
   FROM PCNFSAID nf
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
-    AND NVL(nf.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND nf.DTCANCEL IS NULL
+    AND ${notaExpedida("nf")}
 ),
 ed AS (
   SELECT v.NUMTRANSENT, MAX(v.CODDEVOL) CODDEVOL, MAX(v.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${VL_VIEW}) VL
@@ -718,7 +713,7 @@ JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
 LEFT JOIN PCCLIENT cli ON cli.CODCLI = v.CODCLI
 LEFT JOIN PCCIDADE ci ON ci.CODCIDADE = cli.CODCIDADE
 LEFT JOIN devv ON devv.NUMTRANSVENDA = v.NUMTRANSVENDA
-WHERE NVL(car.CODMOTORISTA, 0) != 0 AND car.CODMOTORISTA NOT IN (9996)
+WHERE ${motoristaDeEntrega("car.CODMOTORISTA")}
 GROUP BY car.CODMOTORISTA, NVL(ci.NOMECIDADE, 'Sem cidade'), ci.UF`;
 
 /** Motorista × cidade das notas faturadas (saídas) entre `ini` e `fim`, com a devolução logística delas. */

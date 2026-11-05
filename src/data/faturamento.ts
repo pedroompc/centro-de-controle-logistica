@@ -2,6 +2,7 @@ import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import { filialIn } from "./filiais";
+import { notaDeVenda } from "./regras-winthor";
 import type { ResumoFaturamento } from "@/domain/faturamento";
 
 // Faixa de data indexável: `col >= :ini AND col < :fim + 1` (inclui o dia :fim
@@ -14,7 +15,7 @@ const faixa = (col: string) =>
 // 11 e período. "Todos os tipos de venda" na tela = VP + VV (SR/DF/transferências
 // ficam fora). Usado só para CONTAGENS (Emitidas/Positivados) e PESO — os VALORES
 // (faturada, devolução, avulsa) vêm da VIEW_BI_FATURAMENTO (ver SQL).
-const FILTRO_NF = `${filialIn("n.CODFILIAL")} AND ${faixa("n.DTSAIDA")} AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL`;
+const FILTRO_NF = `${filialIn("n.CODFILIAL")} AND ${faixa("n.DTSAIDA")} AND ${notaDeVenda("n")}`;
 const UNIVERSO_VENDA = `SELECT n.NUMTRANSVENDA FROM PCNFSAID n WHERE ${FILTRO_NF} AND n.NUMTRANSVENDA > 0`;
 
 // Peso do item = PESOBRUTO gravado no PCMOV × QT. Exceção: erro de digitação de

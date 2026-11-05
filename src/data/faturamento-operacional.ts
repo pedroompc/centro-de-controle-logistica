@@ -1,5 +1,6 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
+import { notaDeVenda } from "./regras-winthor";
 import { PESO_ITEM, JOIN_PESO_PRODUTO } from "./faturamento";
 import { EUGENIO } from "@/domain/fechamento-janela";
 
@@ -45,7 +46,7 @@ const BASE_NOTAS = `
   FROM PCNFSAID n
   LEFT JOIN PCCARREG car ON car.NUMCAR = n.NUMCAR
  WHERE ${filialIn("n.CODFILIAL")}
-   AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL
+   AND ${notaDeVenda("n")}
    AND n.DTHORAAUTORIZACAOSEFAZ >= TO_DATE(:iniExt, 'YYYY-MM-DD')
    AND n.DTHORAAUTORIZACAOSEFAZ <  TO_DATE(:fim, 'YYYY-MM-DD') + 1`;
 
@@ -71,7 +72,7 @@ SELECT COUNT(DISTINCT n.CODCLI || '|' || TO_CHAR(${OP_DATE}, 'YYYYMMDD')) ATEND
   FROM PCNFSAID n
   LEFT JOIN PCCARREG car ON car.NUMCAR = n.NUMCAR
  WHERE ${filialIn("n.CODFILIAL")}
-   AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL
+   AND ${notaDeVenda("n")}
    AND n.DTHORAAUTORIZACAOSEFAZ >= TO_DATE(:iniExt, 'YYYY-MM-DD')
    AND n.DTHORAAUTORIZACAOSEFAZ <  TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${OP_DATE} >= TO_DATE(:ini, 'YYYY-MM-DD')
@@ -85,7 +86,7 @@ SELECT NVL(SUM(${PESO_ITEM}), 0) PESO
   JOIN PCNFSAID n ON n.NUMTRANSVENDA = m.NUMTRANSVENDA
   LEFT JOIN PCCARREG car ON car.NUMCAR = n.NUMCAR
  WHERE ${filialIn("m.CODFILIAL")} AND m.CODOPER = 'S'
-   AND n.TIPOVENDA IN ('VP', 'VV') AND n.DTCANCEL IS NULL
+   AND ${notaDeVenda("n")}
    AND n.DTHORAAUTORIZACAOSEFAZ >= TO_DATE(:iniExt, 'YYYY-MM-DD')
    AND n.DTHORAAUTORIZACAOSEFAZ <  TO_DATE(:fim, 'YYYY-MM-DD') + 1
    AND ${OP_DATE} >= TO_DATE(:ini, 'YYYY-MM-DD')

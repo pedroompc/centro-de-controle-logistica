@@ -1,5 +1,6 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
+import { notaExpedida, motoristaDeEntrega } from "./regras-winthor";
 import type { TipoMotorista, ViagemEntrega } from "@/domain/motoristas";
 
 // Universo: notas de VENDA em carga, das filiais do dashboard, pela data de
@@ -13,8 +14,7 @@ nf AS (
   WHERE ${filialIn("n.CODFILIAL")}
     AND n.DTSAIDA >= TO_DATE(:ini, 'YYYY-MM-DD') AND n.DTSAIDA < TO_DATE(:fim, 'YYYY-MM-DD') + 1
     AND NVL(n.NUMCAR, 0) != 0
-    AND NVL(n.CONDVENDA, 0) NOT IN (4,8,10,13,20,98,99)
-    AND n.DTCANCEL IS NULL
+    AND ${notaExpedida("n")}
 ),
 viagem AS (
   SELECT nf.DIA, NVL(c.CODVEICULO, 0) CODVEICULO, c.CODMOTORISTA,
@@ -23,7 +23,7 @@ viagem AS (
          SUM(nf.PESO) KG, SUM(nf.VL) VALOR
   FROM nf
   JOIN PCCARREG c ON c.NUMCAR = nf.NUMCAR
-  WHERE NVL(c.CODMOTORISTA, 0) NOT IN (0, 9996) AND c.DT_CANCEL IS NULL
+  WHERE ${motoristaDeEntrega("c.CODMOTORISTA")} AND c.DT_CANCEL IS NULL
   GROUP BY nf.DIA, NVL(c.CODVEICULO, 0), c.CODMOTORISTA
 )`;
 
