@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { listarSetores, renomearSetor, excluirSetor } from "@/data/setores";
 import { listarFuncionarios } from "@/data/funcionarios";
+import { listarEquipamentos } from "@/data/equipamentos";
+import { custoMensalDoSetor, composicaoDoCusto } from "@/domain/custo-setor";
 import { listarFaltas } from "@/data/faltas";
 import { isAdmin } from "@/data/auth";
-import { custoDoSetor, headcountPorStatus, faltasNoPeriodo, resumoPorTurno, ROTULO_TURNO } from "@/domain/metrics";
+import { headcountPorStatus, faltasNoPeriodo, resumoPorTurno, ROTULO_TURNO } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
 import {
   inicioFimMesAtual, INICIO_HISTORICO, PISO_HARPIA, type Periodo,
@@ -80,11 +82,12 @@ export default async function SetorDetalhe({
   const { id } = await params;
   const sp = await searchParams;
   const abaParam = sp.aba;
-  const [setores, funcionarios, faltas, admin] = await Promise.all([
+  const [setores, funcionarios, faltas, admin, equipamentos] = await Promise.all([
     listarSetores(),
     listarFuncionarios(),
     listarFaltas(),
     isAdmin(),
+    listarEquipamentos().catch(() => null),
   ]);
   const setor = setores.find((s) => s.id === id);
   if (!setor) notFound();
@@ -167,6 +170,7 @@ export default async function SetorDetalhe({
   const head = headcountPorStatus(funcionarios, id);
   const { inicio, fim } = inicioFimMesAtual();
   const totalFaltas = faltasNoPeriodo(faltas, doSetor.map((f) => f.id), inicio, fim);
+  const custo = custoMensalDoSetor(setor, funcionarios, setores, equipamentos);
 
   return (
     <div>
@@ -178,7 +182,12 @@ export default async function SetorDetalhe({
       {motoristas && <AbasSetor id={id} ativa="" abas={ABAS_MOTORISTAS} />}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Custo mensal (ativos)" value={formatBRL(custoDoSetor(funcionarios, id))} accent="gold" />
+        <StatCard
+          label="Custo mensal"
+          value={formatBRL(custo.total)}
+          hint={composicaoDoCusto(custo)}
+          accent="gold"
+        />
         <StatCard
           label="Pessoas"
           value={`${head.ativo}`}

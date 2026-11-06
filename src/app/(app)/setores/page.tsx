@@ -2,7 +2,9 @@ import Link from "next/link";
 import { listarSetores } from "@/data/setores";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarFaltas } from "@/data/faltas";
-import { custoDoSetor, headcountPorStatus, faltasNoPeriodo } from "@/domain/metrics";
+import { headcountPorStatus, faltasNoPeriodo } from "@/domain/metrics";
+import { custoMensalDoSetor, composicaoDoCusto } from "@/domain/custo-setor";
+import { listarEquipamentos } from "@/data/equipamentos";
 import { formatBRL } from "@/domain/format";
 import { inicioFimMesAtual } from "@/domain/periodo";
 import { PageHeader, Pill } from "@/components/ui";
@@ -10,11 +12,12 @@ import { isAdmin } from "@/data/auth";
 import { SetorForm } from "./setor-form";
 
 export default async function SetoresPage() {
-  const [setores, funcionarios, faltas, admin] = await Promise.all([
+  const [setores, funcionarios, faltas, admin, equipamentos] = await Promise.all([
     listarSetores(),
     listarFuncionarios(),
     listarFaltas(),
     isAdmin(),
+    listarEquipamentos().catch(() => null),
   ]);
   const { inicio, fim } = inicioFimMesAtual();
 
@@ -29,6 +32,7 @@ export default async function SetoresPage() {
           const head = headcountPorStatus(funcionarios, setor.id);
           const ids = funcionarios.filter((f) => f.setorId === setor.id).map((f) => f.id);
           const totalFaltas = faltasNoPeriodo(faltas, ids, inicio, fim);
+          const custo = custoMensalDoSetor(setor, funcionarios, setores, equipamentos);
           return (
             <Link
               key={setor.id}
@@ -40,9 +44,9 @@ export default async function SetoresPage() {
                 <span className="text-slate-300 transition group-hover:text-amber-500">→</span>
               </div>
               <p className="mt-3 font-[family-name:var(--font-sora)] text-[clamp(1rem,10cqi,1.5rem)] font-extrabold tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
-                {formatBRL(custoDoSetor(funcionarios, setor.id))}
+                {formatBRL(custo.total)}
               </p>
-              <p className="text-xs text-slate-400">custo mensal (ativos)</p>
+              <p className="text-xs text-slate-400">{composicaoDoCusto(custo)}</p>
               <div className="mt-4 flex flex-wrap gap-1.5">
                 <Pill tone="green">{head.ativo} ativos</Pill>
                 {head.afastado > 0 && <Pill tone="gold">{head.afastado} afastados</Pill>}
