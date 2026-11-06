@@ -25,11 +25,14 @@ export function PeriodoNav({
   hrefFor,
   piso = INICIO_HISTORICO,
   limpar,
+  explicito = false,
 }: {
   periodo: Periodo;
   hrefFor: (params: Record<string, string>) => string;
   piso?: string;
   limpar?: string[];
+  /** Sempre escreve o período na URL (tela cujo padrão não é o mês atual). */
+  explicito?: boolean;
 }) {
   const hoje = hojeISO();
   const ant = deslocarPeriodo(periodo, -1);
@@ -41,16 +44,16 @@ export function PeriodoNav({
   return (
     <div className="flex items-center gap-1">
       {temAnterior ? (
-        <Link href={hrefFor(paramsDoPeriodo(ant))} aria-label="Período anterior" className={btn}>◀</Link>
+        <Link href={hrefFor(paramsDoPeriodo(ant, undefined, explicito))} aria-label="Período anterior" className={btn}>◀</Link>
       ) : (
         <span aria-hidden className={btnOff}>◀</span>
       )}
       {/* useSearchParams no cliente pede um Suspense em volta. */}
       <Suspense fallback={rotulo}>
-        <SeletorPeriodo periodo={periodo} atalhos={atalhos} piso={piso} hoje={hoje} limpar={limpar} />
+        <SeletorPeriodo periodo={periodo} atalhos={atalhos} piso={piso} hoje={hoje} limpar={limpar} explicito={explicito} />
       </Suspense>
       {temProximo ? (
-        <Link href={hrefFor(paramsDoPeriodo(prox))} aria-label="Próximo período" className={btn}>▶</Link>
+        <Link href={hrefFor(paramsDoPeriodo(prox, undefined, explicito))} aria-label="Próximo período" className={btn}>▶</Link>
       ) : (
         <span aria-hidden className={btnOff}>▶</span>
       )}

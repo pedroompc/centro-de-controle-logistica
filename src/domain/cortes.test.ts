@@ -183,3 +183,14 @@ describe("cortesParaTV", () => {
     expect(tv.usuarios).toEqual([{ rotulo: "CONF EDIVALDO", parte: 0.75, itens: 1 }]);
   });
 });
+
+import { serieMensalCortes } from "./cortes";
+
+describe("serieMensalCortes", () => {
+  it("agrupa por mês do período, com zero nos meses sem corte", () => {
+    const porDia = new Map([["2026-07-03", 10], ["2026-07-20", 5], ["2026-09-01", 7]]);
+    expect(serieMensalCortes(porDia, { de: "2026-07-01", ate: "2026-09-30" })).toEqual([
+      { mes: "2026-07-01", valor: 15 }, { mes: "2026-08-01", valor: 0 }, { mes: "2026-09-01", valor: 7 },
+    ]);
+  });
+});

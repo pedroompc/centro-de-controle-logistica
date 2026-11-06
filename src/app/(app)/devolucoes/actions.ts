@@ -10,7 +10,7 @@ import {
 } from "@/data/devolucoes";
 import { comTaxa } from "@/domain/devolucoes-mapa";
 import { baseDevolucao } from "@/domain/devolucoes-dia-semana";
-import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes } from "@/domain/periodo";
+import { lerPeriodo, PISO_WINTHOR } from "@/domain/periodo";
 import type {
   SecaoRanking,
   DevolucaoPorCliente,
@@ -20,15 +20,10 @@ import type {
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import type { DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
 
-// Recalcula o período no servidor a partir do mês (ISO), sem confiar em datas
-// vindas do cliente. `mes` é o mesSel já usado na página; limita ao histórico.
-function periodo(mes: string) {
-  return inicioFimDoMes(limitarAoHistorico(mes || primeiroDiaDoMes()));
-}
-
 /** Contexto comum das abas: filtros da página, saneados no servidor. */
 export interface ContextoDevolucao {
-  mes: string;
+  de: string;
+  ate: string;
   motivo?: string;
   setor?: string;
   ibge?: string;
@@ -36,7 +31,8 @@ export interface ContextoDevolucao {
 }
 
 function contexto(c: ContextoDevolucao) {
-  const { inicio, fim } = periodo(c.mes);
+  // Revalida o período no servidor (mesmo saneamento da página).
+  const { de: inicio, ate: fim } = lerPeriodo({ de: c.de, ate: c.ate }, { piso: PISO_WINTHOR });
   return {
     inicio,
     fim,

@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { getNucleoDevolucao, getResumoCoorteFaturamento, listarMotivosDoMes, nomeCidadePE } from "@/data/devolucoes";
-import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { baseDevolucao } from "@/domain/devolucoes-dia-semana";
-import { primeiroDiaDoMes, formatMesAno, inicioFimDoMes, limitarAoHistorico } from "@/domain/periodo";
+import { lerPeriodo, mesDoPeriodo, paramsDoPeriodo, periodoAberto, rotuloPeriodo, PISO_WINTHOR } from "@/domain/periodo";
 import type { SetorDevolucao } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard } from "@/components/ui";
-import { MesNav } from "@/components/mes-nav";
+import { PeriodoNav } from "@/components/periodo-nav";
 import SecoesDevolucao from "./secoes-devolucao";
 
 const SETORES: SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
@@ -27,14 +27,15 @@ const CORES: Record<SetorDevolucao, { barra: string; pill: string }> = {
 export default async function DevolucoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; motivo?: string; setor?: string; cidade?: string; base?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string; motivo?: string; setor?: string; cidade?: string; base?: string }>;
 }) {
   const sp = await searchParams;
-  const mesSel = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
-  const mesFechado = mesSel < primeiroDiaDoMes();
-  // Intervalo do mês inteiro; no mês corrente não há devolução datada no futuro,
-  // então o `fim` no fim do mês equivale a "1º → hoje".
-  const { inicio, fim } = inicioFimDoMes(mesSel);
+  // Período (mês por padrão). No período corrente não há devolução datada no
+  // futuro, então o `fim` no fim do período equivale a "início → hoje".
+  const periodo = lerPeriodo(sp, { piso: PISO_WINTHOR });
+  const mesUnico = mesDoPeriodo(periodo);
+  const mesFechado = !periodoAberto(periodo);
+  const { de: inicio, ate: fim } = periodo;
   const motivo = sp.motivo || undefined;
   const setor = sp.setor || undefined;
   // Cidade escolhida no mapa (IBGE de 7 dígitos de PE) e base de data da análise.
@@ -48,16 +49,18 @@ export default async function DevolucoesPage({
   const porFaturamento = base === "faturamento";
   const [r, fat, motivosDisponiveis, coorte] = await Promise.all([
     getNucleoDevolucao(inicio, fim, motivo, setor, ibge, base),
-    getResumoFaturamentoDashboard(mesSel),
+    getResumoFaturamentoPeriodo(inicio, fim),
     listarMotivosDoMes(inicio, fim, ibge, base),
     porFaturamento ? getResumoCoorteFaturamento(inicio, fim) : Promise.resolve(null),
   ]);
-  const mesLabel = `${formatMesAno(mesSel)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
+  const mesLabel = `${rotuloPeriodo(periodo)}${mesFechado ? (mesUnico ? " · mês fechado" : " · fechado") : " · em andamento"}`;
+  const paramsPeriodo = paramsDoPeriodo(periodo);
+  const noP = mesUnico ? "no mês" : "no período";
 
   // Monta URL preservando mês e filtro vigentes; `over` sobrescreve/limpa chaves.
   const url = (over: Record<string, string | undefined> = {}) => {
     const atual: Record<string, string | undefined> = {
-      mes: mesFechado ? mesSel : undefined, // mês corrente = URL limpa
+      ...paramsPeriodo, // mês corrente = URL limpa
       motivo, setor, cidade: ibge, base: base === "devolucao" ? base : undefined, ...over, // padrão = dia faturado (URL limpa)
     };
     const p = new URLSearchParams();
@@ -70,11 +73,11 @@ export default async function DevolucoesPage({
     return (
       <div>
         <PageHeader title="Devoluções" subtitle={`${mesLabel} · Winthor`}>
-          <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
+          <PeriodoNav periodo={periodo} piso={PISO_WINTHOR} hrefFor={(p) => url({ mes: undefined, de: undefined, ate: undefined, ...p })} />
         </PageHeader>
         <Card className="p-6">
           <p className="text-sm text-slate-500">
-            Devoluções indisponíveis para {formatMesAno(mesSel)} — sem conexão com o Winthor (o
+            Devoluções indisponíveis para {rotuloPeriodo(periodo)} — sem conexão com o Winthor (o
             banco só responde de dentro da rede da empresa; meses passados não têm foto
             congelada).
           </p>
@@ -93,14 +96,14 @@ export default async function DevolucoesPage({
     >
       <Link
         href={url({ base: "devolucao" })}
-        title="Devoluções que entraram no mês (rotina 111)"
+        title={`Devoluções que entraram ${noP} (rotina 111)`}
         className={`rounded-md px-3 py-1.5 transition ${base === "devolucao" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
       >
         Data da devolução
       </Link>
       <Link
         href={url({ base: undefined })}
-        title="Das notas faturadas no mês, as que voltaram até hoje — o mês recente ainda sobe"
+        title={`Das notas faturadas ${noP}, as que voltaram até hoje — o período recente ainda sobe`}
         className={`rounded-md px-3 py-1.5 transition ${base === "faturamento" ? "bg-[#181d55] text-white" : "text-slate-500 hover:text-slate-700"}`}
       >
         Dia faturado
@@ -114,7 +117,7 @@ export default async function DevolucoesPage({
     <div>
       <PageHeader title="Devoluções" subtitle={`${mesLabel} · filiais 1 e 11`}>
         <Link
-          href={mesFechado ? `/painel?mes=${mesSel}` : "/painel"}
+          href={mesUnico && mesFechado ? `/painel?mes=${mesUnico}` : "/painel"}
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
           title="Painel em tela cheia — roda o mapa, rankings, a faturar, receitas e descarregos"
         >
@@ -125,7 +128,7 @@ export default async function DevolucoesPage({
           Modo TV
         </Link>
         {seletorBase}
-        <MesNav mes={mesSel} hrefFor={(m) => url({ mes: m })} />
+        <PeriodoNav periodo={periodo} piso={PISO_WINTHOR} hrefFor={(p) => url({ mes: undefined, de: undefined, ate: undefined, ...p })} />
       </PageHeader>
 
       {/* Âncora do mês: NÃO reage a motivo/setor/cidade, só à base de data.
@@ -138,14 +141,14 @@ export default async function DevolucoesPage({
           <StatCard
             label="Valor devolução"
             value={coorte ? formatBRL(coorte.valor) : "—"}
-            hint={mesFechado ? "notas faturadas no mês · devolvidas até hoje" : "notas faturadas no mês · ainda sobe"}
+            hint={mesFechado ? `notas faturadas ${noP} · devolvidas até hoje` : `notas faturadas ${noP} · ainda sobe`}
             accent="red"
           />
           <StatCard label="Devolução avulsa" value="—" hint="sem venda de origem · só na data da devolução" accent="navy" />
           <StatCard
             label="Taxa de devolução (valor)"
             value={fat && coorte ? formatPercent(taxaDevolucao({ valorDevolucao: coorte.valor, vendaFaturada: fat.vendaFaturada })) : "—"}
-            hint="R$ devolvido / venda faturada do mês"
+            hint={`R$ devolvido / venda faturada ${mesUnico ? "do mês" : "do período"}`}
             accent="gold"
           />
           <StatCard
@@ -207,7 +210,7 @@ export default async function DevolucoesPage({
       <Card className="mb-4 p-3">
         <form method="get" className="flex flex-wrap gap-2">
           {/* Preserva o mês selecionado ao submeter o filtro (GET só envia os campos do form). */}
-          {mesFechado && <input type="hidden" name="mes" value={mesSel} />}
+          {Object.entries(paramsPeriodo).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
           {base === "devolucao" && <input type="hidden" name="base" value="devolucao" />}
           <select name="motivo" defaultValue={motivo ?? ""} className={`${inputCls} min-w-[12rem] flex-1`}>
             <option value="">Todos os motivos</option>
@@ -270,8 +273,9 @@ export default async function DevolucoesPage({
       {/* Detalhe em ABAS que carregam SOB DEMANDA (cache por sessão). A `key`
           zera o cache do cliente quando muda o mês ou o filtro. */}
       <SecoesDevolucao
-        key={`${mesSel}|${motivo ?? ""}|${setor ?? ""}|${ibge ?? ""}|${base}`}
-        mes={mesSel}
+        key={`${inicio}|${fim}|${motivo ?? ""}|${setor ?? ""}|${ibge ?? ""}|${base}`}
+        de={inicio}
+        ate={fim}
         motivo={motivo}
         setor={setor}
         ibge={ibge}
@@ -281,7 +285,7 @@ export default async function DevolucoesPage({
       />
 
       <p className="mt-4 text-xs text-slate-400">
-        Os indicadores no topo são o total do mês na base escolhida (dia faturado ou data da
+        Os indicadores no topo são o total do período na base escolhida (dia faturado ou data da
         devolução — esta é a rotina 111) e não reagem a motivo, setor ou cidade. Esses filtros
         estreitam todas as abas; no mapa, escolha uma cidade para ver só ela.
       </p>

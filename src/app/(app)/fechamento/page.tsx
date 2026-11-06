@@ -1,6 +1,7 @@
-import { PageHeader, Card } from "@/components/ui";
-import { clampDia, intervaloDias, hojeISO } from "@/domain/fechamento";
-import { SeletorPeriodo } from "./seletor-periodo";
+import { PageHeader } from "@/components/ui";
+import { hojeISO } from "@/domain/fechamento";
+import { lerPeriodo } from "@/domain/periodo";
+import { PeriodoNav } from "@/components/periodo-nav";
 import { CompartilharButton } from "./compartilhar-button";
 
 // "hoje" precisa ser recalculado a cada acesso (senão a página cacheia e o dia
@@ -10,13 +11,17 @@ export const dynamic = "force-dynamic";
 export default async function FechamentoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ini?: string; fim?: string }>;
+  searchParams: Promise<{ ini?: string; fim?: string; de?: string; ate?: string; mes?: string }>;
 }) {
   const sp = await searchParams;
   const hoje = hojeISO();
-  const iniBruto = clampDia(sp.ini ?? hoje);
-  const fimBruto = clampDia(sp.fim ?? iniBruto);
-  const { ini, fim } = intervaloDias(iniBruto, fimBruto);
+  // Padrão = hoje. `ini/fim` (links antigos e a arte) valem como `de/ate`; o
+  // período nunca passa de hoje (a arte é do que já aconteceu).
+  const de = sp.de ?? sp.ini;
+  const ate = sp.ate ?? sp.fim;
+  const lido = de || sp.mes ? lerPeriodo({ de, ate, mes: sp.mes }) : { de: hoje, ate: hoje };
+  const ini = lido.de > hoje ? hoje : lido.de;
+  const fim = lido.ate > hoje ? hoje : lido.ate;
 
   const src = `/fechamento/arte?ini=${ini}&fim=${fim}`;
   // Carimbo por acesso (a página é force-dynamic → renderiza 1x por request):
@@ -27,11 +32,13 @@ export default async function FechamentoPage({
 
   return (
     <div>
-      <PageHeader title="Fechamento" subtitle="Gere e compartilhe o resumo do dia ou período" />
-
-      <Card className="mb-5 p-4">
-        <SeletorPeriodo ini={ini} fim={fim} />
-      </Card>
+      <PageHeader title="Fechamento" subtitle="Gere e compartilhe o resumo do dia ou período">
+        <PeriodoNav
+          periodo={lido}
+          explicito
+          hrefFor={(p) => `/fechamento?${new URLSearchParams(p)}`}
+        />
+      </PageHeader>
 
       <div className="flex flex-col items-center gap-5">
         {/* Preview = a própria arte gerada pela rota (WYSIWYG). key força recarregar ao trocar datas. */}

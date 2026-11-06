@@ -192,10 +192,14 @@ export function lerPeriodo(
   return mesAtual;
 }
 
-/** Parâmetros de URL do período: mês atual = nada; mês = `mes`; resto = `de/ate`. */
-export function paramsDoPeriodo(p: Periodo, hoje: Date = new Date()): Record<string, string> {
+/**
+ * Parâmetros de URL do período: mês atual = nada; mês = `mes`; resto =
+ * `de/ate`. `explicito` escreve o mês atual também (telas cujo padrão não é o
+ * mês, como o Fechamento, que abre no dia).
+ */
+export function paramsDoPeriodo(p: Periodo, hoje: Date = new Date(), explicito = false): Record<string, string> {
   const mes = mesDoPeriodo(p);
-  if (mes) return mes === primeiroDiaDoMes(hoje) ? {} : { mes };
+  if (mes) return mes === primeiroDiaDoMes(hoje) && !explicito ? {} : { mes };
   return { de: p.de, ate: p.ate };
 }
 

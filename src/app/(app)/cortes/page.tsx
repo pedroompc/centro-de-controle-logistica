@@ -1,15 +1,29 @@
 import { Suspense, type CSSProperties } from "react";
 import { lerCortes, lerCortesMensais, lerEstoqueDosCortados } from "@/data/cortes";
-import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import Link from "next/link";
 import {
-  resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado,
+  resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieMensalCortes, serieHoraria, porProdutoDetalhado,
   DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte, type VariacaoCorte, type ProdutoCortado,
 } from "@/domain/cortes";
 import { formatBRL, formatPercent, formatKg, formatDataBR } from "@/domain/format";
-import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
+import {
+  formatMesAno,
+  mesAnterior,
+  INICIO_HISTORICO,
+  lerPeriodo,
+  mesDoPeriodo,
+  paramsDoPeriodo,
+  periodoAberto,
+  periodoAnterior,
+  periodoDoMes,
+  rotuloCurto,
+  rotuloPeriodo,
+  eixoDoPeriodo,
+  type Periodo,
+} from "@/domain/periodo";
 import { PageHeader, Card, StatCard, SectionTitle, BarList } from "@/components/ui";
-import { MesNav } from "@/components/mes-nav";
+import { PeriodoNav } from "@/components/periodo-nav";
 
 const inteiro = new Intl.NumberFormat("pt-BR");
 const brl0 = (v: number) => formatBRL(Math.round(v)).replace(/,00$/, "");
@@ -22,7 +36,7 @@ const NOME_DIM: Record<DimensaoCorte, string> = {
 const COR_BARRA = "#3d47a8";
 const COR_SELECIONADA = "#c2820a";
 
-type Params = { mes?: string; dia?: string; ver?: string } & FiltrosCorte;
+type Params = { mes?: string; de?: string; ate?: string; dia?: string; ver?: string } & FiltrosCorte;
 
 /** Hoje em Recife ("yyyy-mm-dd") — o gráfico do mês corrente para no dia de hoje. */
 const hojeRecife = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
@@ -44,28 +58,35 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   const filtros: FiltrosCorte = {};
   for (const d of DIMENSOES_CORTE) if (typeof sp[d] === "string" && sp[d]) filtros[d] = sp[d];
   const temFiltro = Object.keys(filtros).length > 0;
-  const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
-  const mesFechado = mes < primeiroDiaDoMes();
-  const { inicio, fim } = inicioFimDoMes(mes);
-  // Dia só vale dentro do mês escolhido.
+  // Período (mês por padrão). Piso = histórico (jul/2026): PCCORTEI de 2025
+  // tem o erro da época, então não há corte confiável antes disso.
+  const periodo = lerPeriodo(sp);
+  const mesUnico = mesDoPeriodo(periodo);
+  const mesFechado = !periodoAberto(periodo);
+  const { de: inicio, ate: fim } = periodo;
+  // Dia só vale dentro do período escolhido.
   const dia = typeof sp.dia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.dia) && sp.dia >= inicio && sp.dia <= fim ? sp.dia : null;
-  const mesAnt = mesAnterior(mes);
+  const pAnt = periodoAnterior(periodo);
   // Tabela de baixo: "Maiores cortes" (linhas) ou "por produto" (todos, com estoque de hoje).
   const porProduto = sp.ver === "produtos";
-  const mesAntCurto = formatMesAno(mesAnt).slice(0, 3);
-  const mesLabel = `${formatMesAno(mes)}${mesFechado ? " · mês fechado" : " · em andamento"}`;
+  const mesAntCurto = rotuloCurto(pAnt);
+  const noPeriodo = mesUnico ? "no mês" : "no período";
+  const mesLabel = `${rotuloPeriodo(periodo)}${mesFechado ? (mesUnico ? " · mês fechado" : " · fechado") : " · em andamento"}`;
   const url = (over: Partial<Params>) => {
-    const p = { mes, dia: dia ?? undefined, ver: porProduto ? "produtos" : undefined, ...filtros, ...over };
+    const p = { ...paramsDoPeriodo(periodo), dia: dia ?? undefined, ver: porProduto ? "produtos" : undefined, ...filtros, ...over } as Params;
     const q = new URLSearchParams();
-    if (p.mes && p.mes !== primeiroDiaDoMes()) q.set("mes", p.mes);
+    if (p.mes) q.set("mes", p.mes);
+    if (p.de) q.set("de", p.de);
+    if (p.ate) q.set("ate", p.ate);
     if (p.dia) q.set("dia", p.dia);
     if (p.ver) q.set("ver", p.ver);
     for (const d of DIMENSOES_CORTE) if (p[d]) q.set(d, p[d]!);
     const s = q.toString();
     return s ? `/cortes?${s}` : "/cortes";
   };
-  // Mudar de mês mantém os filtros (o dia não: é daquele mês); clicar de novo no item ativo tira o filtro.
-  const href = (m: string) => url({ mes: m, dia: undefined });
+  // Mudar de período mantém os filtros (o dia não: é daquele período); clicar de novo no item ativo tira o filtro.
+  const hrefPeriodo = (pp: Record<string, string>) => url({ mes: undefined, de: undefined, ate: undefined, dia: undefined, ...pp });
+  const href = (m: string) => hrefPeriodo(paramsDoPeriodo(periodoDoMes(m)));
   const alternar = (d: DimensaoCorte, chave: string) => url({ [d]: filtros[d] === chave ? undefined : chave });
   const alternarDia = (d: string) => url({ dia: dia === d ? undefined : d });
 
@@ -76,10 +97,9 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   let meses: Awaited<ReturnType<typeof lerCortesMensais>>;
   let estoque: Map<number, number> | null;
   try {
-    const ant = inicioFimDoMes(mesAnt);
     [linhas, linhasAnt, meses, estoque] = await Promise.all([
       lerCortes(inicio, fim),
-      lerCortes(ant.inicio, ant.fim),
+      lerCortes(pAnt.de, pAnt.ate),
       lerCortesMensais(mesAnterior(INICIO_HISTORICO), fim),
       porProduto ? lerEstoqueDosCortados(inicio, fim).catch(() => null) : Promise.resolve(null),
     ]);
@@ -88,7 +108,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
     return (
       <div>
         <PageHeader title="Cortes" subtitle={`${mesLabel} · Winthor`}>
-          <MesNav mes={mes} hrefFor={href} />
+          <PeriodoNav periodo={periodo} hrefFor={hrefPeriodo} limpar={["dia"]} />
         </PageHeader>
         <Card className="p-6 text-sm text-slate-500">Sem acesso ao Winthor agora — tente de novo em instantes.</Card>
       </div>
@@ -110,6 +130,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   const vSkus = vs(r.skus, rAnt.skus);
   const top = [...doDia].sort((a, b) => b.valor - a.valor).slice(0, 20);
   const produtos = porProdutoDetalhado(doDia);
+  const porMes = eixoDoPeriodo(periodo) === "mes";
   const serie = serieDiaria(rMes.porDia, inicio, mesFechado ? fim : hojeRecife() < fim ? hojeRecife() : fim);
   const detalheItens = `${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`;
   const detalheProdutos = `${inteiro.format(r.qt)} un · ${formatKg(r.kg)} · ${r.valor > 0 ? formatPercent(r.harpia / r.valor, 0) : "—"} na separação`;
@@ -127,7 +148,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
           </svg>
           Exportar planilha
         </a>
-        <MesNav mes={mes} hrefFor={href} />
+        <PeriodoNav periodo={periodo} hrefFor={hrefPeriodo} limpar={["dia"]} />
       </PageHeader>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -135,19 +156,19 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
           label="Valor cortado"
           value={brl0(r.valor)}
           variacao={vValor}
-          semVariacao={dia ? `de ${brl0(rMes.valor)} no mês` : temFiltro ? `de ${brl0(total.valor)} no mês` : "venda que não saiu"}
-          title={temFiltro || dia ? `${brl0(total.valor)} de corte no mês, sem filtro` : "Quantidade cortada × preço de venda do item no pedido"}
+          semVariacao={dia ? `de ${brl0(rMes.valor)} ${noPeriodo}` : temFiltro ? `de ${brl0(total.valor)} ${noPeriodo}` : "venda que não saiu"}
+          title={temFiltro || dia ? `${brl0(total.valor)} de corte ${noPeriodo}, sem filtro` : "Quantidade cortada × preço de venda do item no pedido"}
           accent="red"
         />
         {temFiltro || dia ? (
           <StatCard
-            label="Do corte do mês"
+            label={mesUnico ? "Do corte do mês" : "Do corte do período"}
             value={total.valor > 0 ? formatPercent(r.valor / total.valor, 1) : "—"}
             hint={dia ? `dia ${formatDataBR(dia).slice(0, 5)}` : "participação do filtro"}
           />
         ) : (
           <Suspense fallback={<div className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
-            <CardTaxa mes={mes} mesAnt={mesAnt} mesAntCurto={mesAntCurto} valor={total.valor} valorAnt={rAnt.valor} />
+            <CardTaxa periodo={periodo} periodoAnt={pAnt} mesAntCurto={mesAntCurto} valor={total.valor} valorAnt={rAnt.valor} />
           </Suspense>
         )}
         <CardVariacao label="Itens cortados" value={inteiro.format(r.itens)} variacao={vItens} semVariacao={detalheItens} title={detalheItens} />
@@ -186,13 +207,26 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
       )}
 
       {filtradas.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-slate-400">{temFiltro ? "Nenhum corte com esses filtros neste mês." : "Nenhum corte neste mês."}</Card>
+        <Card className="p-8 text-center text-sm text-slate-400">{temFiltro ? `Nenhum corte com esses filtros ${mesUnico ? "neste mês" : "neste período"}.` : `Nenhum corte ${mesUnico ? "neste mês" : "neste período"}.`}</Card>
       ) : (
         <>
           <div className="mb-6 grid gap-6 lg:grid-cols-3">
             <section className="min-w-0 lg:col-span-2">
-              <SectionTitle>Dia a dia</SectionTitle>
+              <SectionTitle>{porMes ? "Mês a mês" : "Dia a dia"}</SectionTitle>
               <Card className="p-5">
+                {porMes ? (
+                  <Barras
+                    ativo={null}
+                    href={href}
+                    itens={serieMensalCortes(rMes.porDia, periodo).map((m) => ({
+                      chave: m.mes,
+                      valor: m.valor,
+                      rotulo: formatMesAno(m.mes).slice(0, 3),
+                      marco: true,
+                      dica: formatMesAno(m.mes),
+                    }))}
+                  />
+                ) : (
                 <Barras
                   ativo={dia}
                   href={alternarDia}
@@ -204,6 +238,7 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
                     dica: formatDataBR(d.dia),
                   }))}
                 />
+                )}
               </Card>
             </section>
             <div className="flex min-w-0 flex-col gap-6">
@@ -372,27 +407,27 @@ function CardVariacao({
  * (fechado) usa a foto do Supabase — sem segunda varredura da view.
  */
 async function CardTaxa({
-  mes, mesAnt, mesAntCurto, valor, valorAnt,
+  periodo, periodoAnt, mesAntCurto, valor, valorAnt,
 }: {
-  mes: string;
-  mesAnt: string;
+  periodo: Periodo;
+  periodoAnt: Periodo;
   mesAntCurto: string;
   valor: number;
   valorAnt: number;
 }) {
-  const [fat, fotos] = await Promise.all([
-    getResumoFaturamentoDashboard(mes).catch(() => null),
-    vendaLiquidaDasFotos([mesAnt]).catch(() => new Map<string, number>()),
+  const [fat, fatAnt] = await Promise.all([
+    getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null),
+    getResumoFaturamentoPeriodo(periodoAnt.de, periodoAnt.ate).catch(() => null),
   ]);
   const taxa = taxaCorte(valor, fat?.vendaLiquida ?? null);
-  const taxaAnt = taxaCorte(valorAnt, fotos.get(mesAnt) ?? null);
+  const taxaAnt = taxaCorte(valorAnt, fatAnt?.vendaLiquida ?? null);
   const v = variacaoTaxaCorte(taxa, taxaAnt, mesAntCurto);
   const base = "Corte ÷ (corte + venda líquida da 111)";
   return (
     <StatCard
       label="Do que foi pedido"
       value={taxa === null ? "—" : formatPercent(taxa, 2)}
-      hint={fat?.foto ? "Winthor fora · foto do mês" : (v?.texto ?? "corte ÷ (corte + venda líquida)")}
+      hint={fat?.foto ? "Winthor fora · foto" : (v?.texto ?? "corte ÷ (corte + venda líquida)")}
       hintRuim={!fat?.foto && (v?.piorou ?? false)}
       title={v ? `${base} · ${v.texto}` : base}
     />

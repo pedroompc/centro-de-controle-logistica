@@ -23,12 +23,14 @@ export function SeletorPeriodo({
   piso,
   hoje,
   limpar = [],
+  explicito = false,
 }: {
   periodo: Periodo;
   atalhos: AtalhoPeriodo[];
   piso: string;
   hoje: string; // ISO, vindo do servidor (evita divergência de fuso na hidratação)
   limpar?: string[];
+  explicito?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,7 +55,7 @@ export function SeletorPeriodo({
   function aplicar(p: Periodo) {
     setAberto(false);
     const [a, m, d] = hoje.split("-").map(Number);
-    const qs = trocarPeriodo(sp, paramsDoPeriodo(p, new Date(a, m - 1, d)), limpar).toString();
+    const qs = trocarPeriodo(sp, paramsDoPeriodo(p, new Date(a, m - 1, d), explicito), limpar).toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 

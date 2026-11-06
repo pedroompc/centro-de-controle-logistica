@@ -1,7 +1,7 @@
 "use server";
 
 import { isAdmin } from "@/data/auth";
-import { mesAnterior, primeiroDiaDoMes } from "@/domain/periodo";
+import { mesAnterior, primeiroDiaDoMes, lerPeriodo } from "@/domain/periodo";
 import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa } from "../devolucoes/actions";
 import {
   carregarResumoDevolucao,
@@ -65,10 +65,10 @@ export async function carregarPainelLote(mes: string, comPlacar: boolean): Promi
 
   const [mapa, motoristas, clientes, vendedores, bairrosRMR, aFaturar, tempoFaturar, receitas, receitasDrivers, descarregos, serieDescarrego, recebimento, frota, cortes, devAnterior, placar] =
     await Promise.all([
-      bloco("mapa", () => carregarMapa({ mes, base: BASE })),
-      bloco("motoristas", () => carregarMotoristas({ mes, base: BASE })),
-      bloco("clientes", () => carregarClientes({ mes, base: BASE })),
-      bloco("vendedores", () => carregarVendedores({ mes, base: BASE })),
+      bloco("mapa", () => carregarMapa({ ...lerPeriodo({ mes }), base: BASE })),
+      bloco("motoristas", () => carregarMotoristas({ ...lerPeriodo({ mes }), base: BASE })),
+      bloco("clientes", () => carregarClientes({ ...lerPeriodo({ mes }), base: BASE })),
+      bloco("vendedores", () => carregarVendedores({ ...lerPeriodo({ mes }), base: BASE })),
       bloco("bairros RMR", () => carregarDevBairrosRMR(mes)),
       bloco("a faturar", () => carregarAFaturar()),
       bloco("tempo até faturar", () => carregarTempoFaturar(mes)),

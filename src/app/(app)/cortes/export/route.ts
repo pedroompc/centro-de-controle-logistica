@@ -1,23 +1,24 @@
 import { type NextRequest } from "next/server";
 import { lerCortes } from "@/data/cortes";
 import { cortesParaCsv, filtrarCortes, DIMENSOES_CORTE, type FiltrosCorte } from "@/domain/cortes";
-import { primeiroDiaDoMes, limitarAoHistorico, inicioFimDoMes } from "@/domain/periodo";
+import { lerPeriodo, mesDoPeriodo } from "@/domain/periodo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /cortes/export?mes=…&dia=…&motivo=…&fornecedor=… → planilha (CSV) do mês com os
+// GET /cortes/export?mes=… (ou de=…&ate=…)&dia=…&motivo=…&fornecedor=… → planilha (CSV) do mês com os
 // mesmos filtros da página. Protegido pelo proxy.ts (sem sessão vai ao /login).
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const mes = limitarAoHistorico(sp.get("mes") ? primeiroDiaDoMes(sp.get("mes")!) : primeiroDiaDoMes());
+  const periodo = lerPeriodo({ mes: sp.get("mes") ?? undefined, de: sp.get("de") ?? undefined, ate: sp.get("ate") ?? undefined });
   const filtros: FiltrosCorte = {};
   for (const d of DIMENSOES_CORTE) {
     const v = sp.get(d);
     if (v) filtros[d] = v;
   }
-  const { inicio, fim } = inicioFimDoMes(mes);
-  // Dia escolhido no gráfico da página (só vale dentro do mês).
+  const { de: inicio, ate: fim } = periodo;
+  const mes = mesDoPeriodo(periodo);
+  // Dia escolhido no gráfico da página (só vale dentro do período).
   const diaParam = sp.get("dia");
   const dia = diaParam && /^\d{4}-\d{2}-\d{2}$/.test(diaParam) && diaParam >= inicio && diaParam <= fim ? diaParam : null;
   let linhas;
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
   return new Response(cortesParaCsv(linhas), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="cortes-${mes.slice(0, 7)}.csv"`,
+      "Content-Disposition": `attachment; filename="cortes-${mes ? mes.slice(0, 7) : `${inicio}_a_${fim}`}.csv"`,
       "Cache-Control": "no-store",
     },
   });

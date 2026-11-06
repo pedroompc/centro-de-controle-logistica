@@ -1,3 +1,4 @@
+import { mesesDoPeriodo } from "./periodo";
 /**
  * Cortes: quantidade do pedido que não foi atendida (PCCORTEI do Winthor). Valor
  * perdido = quantidade cortada × preço de venda do item no pedido.
@@ -213,6 +214,16 @@ export function serieDiaria(porDia: Map<string, number>, inicio: string, fim: st
     d.setUTCDate(d.getUTCDate() + 1);
   }
   return out;
+}
+
+/** Valor por mês tocado pelo período (período longo: gráfico mês a mês). */
+export function serieMensalCortes(porDia: Map<string, number>, p: { de: string; ate: string }): { mes: string; valor: number }[] {
+  const porMes = new Map(mesesDoPeriodo(p).map((m) => [m, 0]));
+  for (const [dia, v] of porDia) {
+    const m = `${dia.slice(0, 7)}-01`;
+    if (porMes.has(m)) porMes.set(m, porMes.get(m)! + v);
+  }
+  return [...porMes].map(([mes, valor]) => ({ mes, valor }));
 }
 
 // --- Exportação (planilha) ----------------------------------------------------

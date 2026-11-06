@@ -77,7 +77,8 @@ function PainelMotivos({ motivos }: { motivos: DevolucaoPorMotivo[] }) {
 }
 
 export default function SecoesDevolucao({
-  mes,
+  de,
+  ate,
   motivo,
   setor,
   ibge,
@@ -85,7 +86,8 @@ export default function SecoesDevolucao({
   base,
   porMotivo,
 }: {
-  mes: string;
+  de: string;
+  ate: string;
   motivo?: string;
   setor?: string;
   ibge?: string;
@@ -106,7 +108,7 @@ export default function SecoesDevolucao({
     if (cache[alvo] !== undefined) return; // já carregado — usa o cache
     setCarregando(alvo);
     setErro((e) => ({ ...e, [alvo]: false }));
-    const ctx = { mes, motivo, setor, ibge, base };
+    const ctx = { de, ate, motivo, setor, ibge, base };
     try {
       if (alvo === "clientes") {
         const d = await carregarClientes(ctx);
@@ -132,7 +134,7 @@ export default function SecoesDevolucao({
     } finally {
       setCarregando((atual) => (atual === alvo ? null : atual));
     }
-  }, [cache, mes, motivo, setor, ibge, base]);
+  }, [cache, de, ate, motivo, setor, ibge, base]);
 
   // Carrega a aba ativa quando ela muda (inclui a aba inicial ao montar). É uma
   // busca sob demanda: o setState (spinner) faz parte do fluxo, por isso a regra
