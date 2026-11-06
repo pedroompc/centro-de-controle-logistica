@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertAdmin } from "./auth";
+import { sincronizarEquipamentosAbertos } from "./equipamentos-sync";
 import type { Equipamento } from "@/domain/types";
 
 /**
@@ -39,6 +40,14 @@ function lerForm(formData: FormData) {
   };
 }
 
+/** Mês corrente (e abertos à frente) acompanham o cadastro; depois revalida. */
+async function refletir(supabase: Awaited<ReturnType<typeof createClient>>) {
+  await sincronizarEquipamentosAbertos(supabase);
+  revalidatePath("/custos");
+  revalidatePath("/");
+  revalidar();
+}
+
 function revalidar() {
   revalidatePath("/custos/equipamentos");
   revalidatePath("/painel");
@@ -52,7 +61,7 @@ export async function criarEquipamento(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("equipamentos").insert(row);
   if (error) throw new Error(error.message);
-  revalidar();
+  await refletir(supabase);
 }
 
 export async function editarEquipamento(formData: FormData): Promise<void> {
@@ -63,7 +72,7 @@ export async function editarEquipamento(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("equipamentos").update({ quantidade, custo_unitario }).eq("id", id);
   if (error) throw new Error(error.message);
-  revalidar();
+  await refletir(supabase);
 }
 
 export async function encerrarEquipamento(id: string): Promise<void> {
@@ -71,5 +80,5 @@ export async function encerrarEquipamento(id: string): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.from("equipamentos").update({ ativo: false }).eq("id", id);
   if (error) throw new Error(error.message);
-  revalidar();
+  await refletir(supabase);
 }

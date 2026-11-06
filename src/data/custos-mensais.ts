@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { umDe } from "@/domain/formulario";
 import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
+import { sincronizarEquipamentosDoMes } from "./equipamentos-sync";
 import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
 import type { CustoMensal } from "@/domain/types";
 
@@ -89,15 +90,15 @@ export async function materializarMes(mes: string): Promise<void> {
     .select("nome, valor")
     .eq("ativo", true);
   if (e2) throw new Error(e2.message);
-  if (!fixos || fixos.length === 0) {
-    revalidatePath("/custos");
-    return;
+  if (fixos && fixos.length > 0) {
+    const rows = fixos.map((fx) => ({
+      mes, nome: fx.nome, tipo: "fixo" as const, valor: fx.valor,
+    }));
+    const { error: e3 } = await supabase.from("custos_mensais").insert(rows);
+    if (e3) throw new Error(e3.message);
   }
-  const rows = fixos.map((fx) => ({
-    mes, nome: fx.nome, tipo: "fixo" as const, valor: fx.valor,
-  }));
-  const { error: e3 } = await supabase.from("custos_mensais").insert(rows);
-  if (e3) throw new Error(e3.message);
+  // Equipamentos saem do cadastro (fonte única, a mesma dos BIs), não do molde.
+  await sincronizarEquipamentosDoMes(supabase, mes);
   revalidatePath("/custos");
   revalidatePath("/");
 }
