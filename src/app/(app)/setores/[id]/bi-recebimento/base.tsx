@@ -1,7 +1,7 @@
 "use client";
 
 import { formatKg } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, formatMesAno, mesesDoPeriodo } from "@/domain/periodo";
 import { indicesMelhores, type IndicadoresRecebimento } from "@/domain/recebimento";
 import { filtrarFatos, resumir, custoNoRecorte, type FatoDescarrego, type FiltroBI, type ResumoFatos } from "@/domain/bi-recebimento";
 import type { DescarregamentoTipo } from "@/domain/types";
@@ -41,7 +41,11 @@ export const ORDEM_PAPEL = ["ajudante", "conferente", "empilhador", "outros"] as
 export const PAPEIS: PapelBI[] = ORDEM_PAPEL.map((id) => ({ id, ...PAPEL[id] }));
 
 export interface DadosBI {
-  mes: string; // mês filtrado "yyyy-mm-01"
+  periodo: Periodo; // recorte na tela
+  mensal: boolean; // recorte = um mês inteiro
+  /** Período: indicadores do recorte (fatos do período + custo proporcional). Mês: vem da série. */
+  ref?: IndicadoresRecebimento;
+  mes: string; // mês de referência "yyyy-mm-01" (último do recorte até o corrente)
   serie: IndicadoresRecebimento[]; // julho/2026 → mês corrente (o filtrado já com faturamento ao vivo)
   custo: DetalheCusto | null;
   fatos: FatoDescarrego[] | null; // descarrego do mês, dia × fornecedor × tipo
@@ -65,7 +69,7 @@ export interface Recorte {
 }
 
 export function recortar(dados: DadosBI, filtro: FiltroBI): Recorte | null {
-  const r = dados.serie.find((x) => x.mes === dados.mes);
+  const r = dados.ref ?? dados.serie.find((x) => x.mes === dados.mes);
   if (!r) return null;
   const fatos = dados.fatos ?? [];
   const mes = resumir(fatos);
@@ -82,6 +86,9 @@ export const carrosOuNotas = (x: Recorte, s: ResumoFatos = x.sel) => (x.porNotas
 export type PropsVisao = { dados: DadosBI; x: Recorte } & Filtro;
 
 // --- Peças --------------------------------------------------------------------
+
+/** O mês está no recorte da tela (destaque nas barras mês a mês). */
+export const noRecorte = (dados: DadosBI, mes: string) => mesesDoPeriodo(dados.periodo).includes(mes);
 
 /** O mês filtrado e os 2 anteriores (a janela do "melhor do trimestre"). */
 export function trimestre(serie: IndicadoresRecebimento[], mes: string) {
@@ -101,7 +108,7 @@ export function SerieMeses({ dados, valor, fmt, maiorEhBom, altura = 170 }: { da
         chave: x.mes,
         rotulo: mesCurto(x.mes) + (x.fracaoMes < 1 ? "*" : ""),
         valor: valor(x),
-        cor: melhores.has(i) ? "#10b981" : x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+        cor: melhores.has(i) ? "#10b981" : noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6",
         detalhe: `${formatMesAno(x.mes)}${x.fracaoMes < 1 ? " (em andamento)" : ""}`,
       }))}
     />
@@ -126,10 +133,11 @@ export const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
  * quanto maior o valor (ou quanto MENOR, em custo: `menorEhMelhor` inverte para
  * o dia bom ficar forte). Dia sem valor fica apagado. Clique filtra o dia.
  */
-export function Calendario({ mes, porDia, fmt, filtro, onFiltro, menorEhMelhor = false }: { mes: string; porDia: Map<string, number>; fmt: (v: number) => string; menorEhMelhor?: boolean } & Filtro) {
+export function Calendario({ mes, periodo, porDia, fmt, filtro, onFiltro, menorEhMelhor = false }: { mes: string; periodo?: Periodo; porDia: Map<string, number>; fmt: (v: number) => string; menorEhMelhor?: boolean } & Filtro) {
   return (
     <CalendarioBI
       mes={mes}
+      periodo={periodo}
       porDia={porDia}
       fmt={fmt}
       menorEhMelhor={menorEhMelhor}

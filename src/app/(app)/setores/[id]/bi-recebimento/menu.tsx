@@ -1,7 +1,7 @@
 "use client";
 
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { rotuloPeriodo } from "@/domain/periodo";
 import { ROTULO_TIPO } from "@/domain/descarregamento";
 import { ehMelhorDaJanela, type IndicadorComparavel } from "@/domain/recebimento";
 import { filtroAtivo, type FiltroBI } from "@/domain/bi-recebimento";
@@ -19,7 +19,7 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
   const { r, sel } = x;
   const semFiltro = !filtroAtivo(filtro);
   // Verde = melhor mês do trimestre; só faz sentido no mês inteiro (sem filtro).
-  const janela = trimestre(dados.serie, dados.mes);
+  const janela = dados.mensal ? trimestre(dados.serie, dados.mes) : [];
   const verde = (k: IndicadorComparavel) => semFiltro && ehMelhorDaJanela(janela, r.mes, k);
   const equip = dados.custo?.equipamentos ?? [];
   const resumoEquip = equip
@@ -93,7 +93,7 @@ function BarraFiltros({ filtro, onFiltro }: Filtro) {
 
 export function PalcoBI({ dados, visao, filtro, onFiltro }: { dados: DadosBI; visao: VisaoBI } & Filtro) {
   const x = recortar(dados, filtro);
-  if (!x) return <Vazio>Sem dados de recebimento para {formatMesAno(dados.mes)}.</Vazio>;
+  if (!x) return <Vazio>Sem dados de recebimento para {rotuloPeriodo(dados.periodo)}.</Vazio>;
   const p = { dados, x, filtro, onFiltro };
   switch (visao) {
     case "custo":

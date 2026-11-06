@@ -1,7 +1,7 @@
 "use client";
 
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { rotuloPeriodo } from "@/domain/periodo";
 import { Vazio, Bloco, Mini, Dica, semCentavos } from "../bi-ui";
 import { PropsVisao, SerieMeses, fmtPeso } from "./base";
 import { GraficoDias, ListaTipos, TabelaFornecedores } from "./graficos";
@@ -9,12 +9,12 @@ import { GraficoDias, ListaTipos, TabelaFornecedores } from "./graficos";
 export function VisaoReceita(p: PropsVisao) {
   const { x, dados } = p;
   const { sel } = x;
-  if (!x.temFatos) return <Vazio>Carregando a receita do mês…</Vazio>;
+  if (!x.temFatos) return <Vazio>Carregando a receita do período…</Vazio>;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <Mini rotulo="Receita de descarrego" valor={formatBRL(sel.receita)} sub={formatMesAno(x.r.mes)} />
-        <Mini rotulo="Custo do recebimento" valor={formatBRL(x.custo)} sub={x.criterioCusto ?? "do mês"} />
+        <Mini rotulo="Receita de descarrego" valor={formatBRL(sel.receita)} sub={rotuloPeriodo(p.dados.periodo)} />
+        <Mini rotulo="Custo do recebimento" valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (p.dados.mensal ? "do mês" : "do período")} />
         <Mini rotulo="Sobra (receita − custo)" valor={formatBRL(sel.receita - x.custo)} />
         <Mini rotulo="Custo consome" valor={sel.receita > 0 ? formatPercent(x.custo / sel.receita) : "—"} sub="da receita" />
         <Mini rotulo="Receita por tonelada" valor={sel.pesoKg > 0 ? formatBRL(sel.receita / (sel.pesoKg / 1000)) : "—"} sub={fmtPeso(sel.pesoKg)} />
@@ -49,8 +49,8 @@ export function VisaoEficiencia({ dados, x }: PropsVisao) {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Mini rotulo="Custo por tonelada" valor={sel.pesoKg > 0 ? formatBRL(x.custo / (sel.pesoKg / 1000)) : "—"} sub={x.criterioCusto ?? "o número que mede a equipe"} />
         <Mini rotulo="Custo ÷ descarrego" valor={sel.receita > 0 ? formatPercent(x.custo / sel.receita) : "—"} />
-        <Mini rotulo="Custo ÷ faturamento líquido" valor={r.custoSobreFaturamento === null ? "—" : formatPercent(r.custoSobreFaturamento, 2)} sub="do mês" />
-        <Mini rotulo="Faturamento líquido" valor={r.faturamentoLiquido === null ? "—" : formatBRL(r.faturamentoLiquido)} sub={formatMesAno(r.mes)} />
+        <Mini rotulo="Custo ÷ faturamento líquido" valor={r.custoSobreFaturamento === null ? "—" : formatPercent(r.custoSobreFaturamento, 2)} sub={dados.mensal ? "do mês" : "do período"} />
+        <Mini rotulo="Faturamento líquido" valor={r.faturamentoLiquido === null ? "—" : formatBRL(r.faturamentoLiquido)} sub={rotuloPeriodo(dados.periodo)} />
       </div>
       <div className="grid min-h-0 gap-4 xl:grid-cols-3">
         <Bloco titulo="Custo por tonelada · mês a mês">

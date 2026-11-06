@@ -236,3 +236,31 @@ describe("custoDosEquipamentos", () => {
     expect(e.custoEquipamentos).toBe(8400);
   });
 });
+
+import { indicadoresDoPeriodo, calcularIndicadores as calc } from "./recebimento";
+
+describe("indicadoresDoPeriodo", () => {
+  const eq = (custo: number) => ({ setor: "RECEBIMENTO", total: 10, ajudantes: 6, conferentes: 2, custo });
+  const ponto = (mes: string, custo: number) =>
+    calc({ mes, equipe: eq(custo), equipeEstimada: false, diasDescarrego: 20, carros: 100, pesoKg: 1e6, receitaDescarrego: 50_000, faturamentoLiquido: 1e7, fracaoMes: 1 });
+  const serie = [ponto("2026-07-01", 30_000), ponto("2026-08-01", 30_000), ponto("2026-09-01", 36_000)];
+  it("trimestre: custo soma os meses e as razões usam os fatos do período", () => {
+    const r = indicadoresDoPeriodo({
+      periodo: { de: "2026-07-01", ate: "2026-09-30" },
+      mes: "2026-09-01",
+      serie,
+      fatos: { dias: 60, carros: 300, pesoKg: 3e6, receita: 150_000 },
+      faturamentoLiquido: 3e7,
+      hoje: new Date(2026, 10, 6),
+    })!;
+    expect(r.custoPeriodo).toBeCloseTo(96_000);
+    expect(r.fracaoMes).toBeCloseTo(3);
+    expect(r.custoPorTonelada).toBeCloseTo(96_000 / 3000);
+    expect(r.custoSobreFaturamento).toBeCloseTo(96_000 / 3e7);
+    expect(r.resultado).toBeCloseTo(150_000 - 96_000);
+    expect(r.carrosPorDia).toBeCloseTo(5);
+  });
+  it("sem série = null", () => {
+    expect(indicadoresDoPeriodo({ periodo: { de: "2026-07-01", ate: "2026-07-31" }, mes: "2026-07-01", serie: [], fatos: { dias: 0, carros: 0, pesoKg: 0, receita: 0 }, faturamentoLiquido: null })).toBeNull();
+  });
+});

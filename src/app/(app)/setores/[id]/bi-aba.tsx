@@ -19,7 +19,7 @@ export function BIAba({ dados, hrefMes, hrefSair }: { dados: DadosBI; hrefMes: H
   return (
     <BIShell
       titulo="BI do Recebimento"
-      mes={dados.mes}
+      periodo={dados.periodo}
       hrefMes={hrefMes}
       hrefSair={hrefSair}
       onEsc={() => setFiltro({})}

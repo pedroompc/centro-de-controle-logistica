@@ -9,6 +9,7 @@
  * diferenciar maiúsculas ("Aj." não casa — o cadastro tem que dizer "Ajudante").
  */
 import type { Equipamento, Funcionario } from "./types";
+import { custoDoRecorte } from "./custo-periodo";
 
 export type GrupoCargo = "ajudante" | "conferente" | "outros";
 
@@ -227,6 +228,39 @@ export function calcularIndicadores(p: {
     receitaPorTonelada: div(p.receitaDescarrego, p.pesoKg / 1000),
     resultado: p.receitaDescarrego - custoPeriodo,
   };
+}
+
+/**
+ * Indicadores de um período qualquer (trimestre, ano, intervalo livre): o
+ * descarrego vem dos fatos do período; a equipe é a do último mês do recorte e
+ * o custo soma cada mês na proporção dos seus dias dentro do período. `custo`
+ * da equipe vira o custo médio por mês, de modo que custo × fracaoMes = custo
+ * do período (a mesma conta dos meses).
+ */
+export function indicadoresDoPeriodo(p: {
+  periodo: { de: string; ate: string };
+  mes: string;
+  serie: IndicadoresRecebimento[];
+  fatos: { dias: number; carros: number; pesoKg: number; receita: number };
+  faturamentoLiquido: number | null;
+  hoje?: Date;
+}): IndicadoresRecebimento | null {
+  const ref = p.serie.find((x) => x.mes === p.mes) ?? p.serie.at(-1);
+  if (!ref) return null;
+  const rec = custoDoRecorte(p.periodo, new Map(p.serie.map((x) => [x.mes, x.equipe.custo])), p.hoje);
+  const custoMedio = rec.total === null || rec.fracao <= 0 ? 0 : rec.total / rec.fracao;
+  const doRecorte = p.serie.filter((x) => x.mes >= p.periodo.de.slice(0, 8) + "01" && x.mes <= p.periodo.ate);
+  return calcularIndicadores({
+    mes: p.mes,
+    equipe: { ...ref.equipe, custo: custoMedio },
+    equipeEstimada: doRecorte.some((x) => x.equipeEstimada),
+    diasDescarrego: p.fatos.dias,
+    carros: p.fatos.carros,
+    pesoKg: p.fatos.pesoKg,
+    receitaDescarrego: p.fatos.receita,
+    faturamentoLiquido: p.faturamentoLiquido,
+    fracaoMes: rec.fracao,
+  });
 }
 
 // --- Melhor do trimestre ------------------------------------------------------

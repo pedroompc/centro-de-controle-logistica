@@ -1,13 +1,13 @@
 "use client";
 
 import { formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, rotuloPeriodo } from "@/domain/periodo";
 import { Vazio, Bloco, Mini, Dica } from "../bi-ui";
 import { resumoVolume } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento } from "@/data/harpia-abastecimento";
 import { n0 } from "./base";
 
-export function VisaoRupturas({ h, mes }: { h: DadosHarpiaAbastecimento; mes: string }) {
+export function VisaoRupturas({ h, periodo }: { h: DadosHarpiaAbastecimento; mes: string; periodo: Periodo }) {
   const totalAbast = resumoVolume(h.dias).abastecimentos;
   const preventivos = Math.max(0, totalAbast - h.abastecimentosReativos);
   const pctPreventivo = totalAbast > 0 ? preventivos / totalAbast : null;
@@ -15,8 +15,8 @@ export function VisaoRupturas({ h, mes }: { h: DadosHarpiaAbastecimento; mes: st
     return (
       <Vazio>
         <div>
-          Nenhuma ruptura de picking em {formatMesAno(mes)}.
-          {totalAbast > 0 && <p className="mt-2 text-sm text-white/40">{n0(totalAbast)} abastecimentos no mês, 100% preventivos.</p>}
+          Nenhuma ruptura de picking em {rotuloPeriodo(periodo)}.
+          {totalAbast > 0 && <p className="mt-2 text-sm text-white/40">{n0(totalAbast)} abastecimentos no período, 100% preventivos.</p>}
         </div>
       </Vazio>
     );
@@ -26,7 +26,7 @@ export function VisaoRupturas({ h, mes }: { h: DadosHarpiaAbastecimento; mes: st
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-5">
-        <Mini rotulo="Rupturas" valor={n0(h.rupturas.length)} sub={formatMesAno(mes)} />
+        <Mini rotulo="Rupturas" valor={n0(h.rupturas.length)} sub={rotuloPeriodo(periodo)} />
         <Mini rotulo="Caixas faltantes" valor={n0(caixas)} />
         <Mini rotulo="Unidades faltantes" valor={n0(unidades)} />
         <Mini rotulo="Abastecimento preventivo" valor={pctPreventivo !== null ? formatPercent(pctPreventivo, 1) : "—"} sub={`${n0(preventivos)} de ${n0(totalAbast)} abastecimentos`} />

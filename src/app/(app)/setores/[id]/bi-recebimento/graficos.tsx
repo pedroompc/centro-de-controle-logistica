@@ -16,7 +16,7 @@ import { Calendario, FMT_MEDIDA, Medida, PropsVisao, SEMANA, TIPO_COR, fmtPeso, 
 export function GraficoDias({ dados, x, filtro, onFiltro, medida }: PropsVisao & { medida: Medida; altura?: number }) {
   const fatos = filtrarFatos(dados.fatos ?? [], filtro, "dia");
   const porDia = new Map(agrupar(fatos, (f) => f.data).map((d) => [d.chave, valorMedida(d.resumo, medida, x.porNotas)]));
-  return <Calendario mes={dados.mes} porDia={porDia} fmt={FMT_MEDIDA[medida]} filtro={filtro} onFiltro={onFiltro} />;
+  return <Calendario mes={dados.mes} periodo={dados.periodo} porDia={porDia} fmt={FMT_MEDIDA[medida]} filtro={filtro} onFiltro={onFiltro} />;
 }
 
 /** Por tipo de carga (ignora o filtro de tipo; o tipo escolhido fica em âmbar). Clique filtra o tipo. */

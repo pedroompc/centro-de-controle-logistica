@@ -61,3 +61,47 @@ export function mesesEquivalentes(p: { de: string; ate: string }, hoje: Date = n
   }
   return total;
 }
+
+export interface CustoRecorte {
+  /** Σ custo do mês × fração do mês dentro do período (até hoje); null = nenhum mês com custo. */
+  total: number | null;
+  /** Meses equivalentes do período inteiro (até hoje). */
+  fracao: number;
+  /** Todos os meses tocados têm custo (senão o total cobre só parte do período). */
+  completo: boolean;
+}
+
+/**
+ * Custo mensal (folha da foto do mês + equipamentos) levado a um período
+ * qualquer: cada mês entra na proporção dos seus dias dentro do período, já
+ * decorridos. Mês sem custo fica de fora e marca o recorte como incompleto.
+ */
+export function custoDoRecorte(
+  p: { de: string; ate: string },
+  custoPorMes: Map<string, number | null>,
+  hoje: Date = new Date(),
+): CustoRecorte {
+  let total = 0;
+  let fracao = 0;
+  let achou = false;
+  let completo = true;
+  let [a, m] = p.de.split("-").map(Number);
+  const [aF, mF] = p.ate.split("-").map(Number);
+  while (a * 12 + m <= aF * 12 + mF) {
+    const mes = `${a}-${String(m).padStart(2, "0")}-01`;
+    const dias = new Date(Date.UTC(a, m, 0)).getUTCDate();
+    const fimMes = `${mes.slice(0, 8)}${String(dias).padStart(2, "0")}`;
+    const fr = mesesEquivalentes({ de: p.de > mes ? p.de : mes, ate: p.ate < fimMes ? p.ate : fimMes }, hoje);
+    if (fr > 0) {
+      fracao += fr;
+      const c = custoPorMes.get(mes);
+      if (c == null) completo = false;
+      else {
+        achou = true;
+        total += c * fr;
+      }
+    }
+    if (++m > 12) { m = 1; a++; }
+  }
+  return { total: achou ? total : null, fracao, completo: achou && completo };
+}

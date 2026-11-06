@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
 import {
   totaisProducao, custoDoPeriodo, custosUnitarios, custoSobreFaturamento, resumoErros, porMilLinhas, resumoPorTurno, rankingTurnos,
@@ -46,28 +46,27 @@ const PAPEIS: PapelBI[] = [
 const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
 const temProd = (p: DadosBISeparacao["producao"]): p is ProducaoBI => "linhas" in p;
 
-/** Indicadores do recorte (mês ou 1 dia) — a MESMA conta alimenta cards, tabelas e gráficos. */
+/** Indicadores do recorte (mês/período ou 1 dia) — a MESMA conta alimenta cards, tabelas e gráficos. */
 function indicadores(d: DadosBISeparacao, dia: string | null) {
   const p = temProd(d.producao) ? d.producao : null;
-  const h = d.historico.find((x) => x.mes === d.mes) ?? null;
+  const h = d.ref;
   const totMes = p ? totaisProducao(p.linhas, p.dias) : null;
   const tot = p ? totaisProducao(p.linhas, p.dias, dia) : null;
   const custo = custoDoPeriodo(h?.custo ?? null, d.fracaoMes, totMes?.dias ?? 0, !!dia);
   const unit = tot ? custosUnitarios(custo, tot) : custosUnitarios(null, { pedidos: 0, linhas: 0, kg: 0, caixas: 0 });
   const sobreFat = custoSobreFaturamento(h?.custoPeriodo ?? null, d.faturamentoLiquido);
   const erros = p ? resumoErros(p.erros, dia) : null;
-  const folha = d.serie.find((x) => x.mes === d.mes)?.folha ?? null;
+  const folha = d.folhaRef;
   const turnos = p
     ? resumoPorTurno({ linhas: p.linhas, erros: p.erros, equipe: p.equipe, custoFolhaPeriodo: custoDoPeriodo(folha, d.fracaoMes, totMes?.dias ?? 0, !!dia), skus: p.skusTurno, dia })
     : [];
   return { p, h, tot, totMes, custo, unit, sobreFat, erros, turnos, taxaErro: erros && tot ? porMilLinhas(erros.separador.itens, tot.linhas) : null };
 }
 
-/** Mês anterior com dado de produção (para comparar taxas por dia, não totais de mês incompleto). */
-function anteriorDe(d: DadosBISeparacao): PontoHistorico | null {
-  const i = d.historico.findIndex((x) => x.mes === d.mes);
-  return i > 0 ? d.historico[i - 1] : null;
-}
+/** Recorte de comparação (compara taxas por dia, não totais de recorte incompleto). */
+const anteriorDe = (d: DadosBISeparacao): PontoHistorico | null => d.refAnterior;
+/** O mês está no recorte da tela (destaque nas barras mês a mês). */
+const noRecorte = (d: DadosBISeparacao, mes: string) => d.meses.includes(mes);
 
 export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string }) {
   const [visao, setVisao] = useState<VisaoSep | null>(null);
@@ -93,7 +92,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
         {...q("custo")}
         rotulo={dia ? `Custo e equipe · ${ddmm(dia)}` : "Custo e equipe"}
         valor={ind.custo === null ? "—" : semCentavos(ind.custo)}
-        sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${dados.pessoas.filter((y) => y.papel === "lider").length} líder(es)${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs mês anterior` : ""}`}
+        sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${dados.pessoas.filter((y) => y.papel === "lider").length} líder(es)${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs ${dados.rotuloAnterior}` : ""}`}
       />
       <Quadro
         {...q("producao")}
@@ -122,7 +121,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   return (
     <BIShell
       titulo={`BI da ${dados.setor.charAt(0)}${dados.setor.slice(1).toLowerCase()}`}
-      mes={dados.mes}
+      periodo={dados.periodo}
       hrefMes={hrefMes}
       hrefSair={hrefSair}
       dicaTopo=""
@@ -154,9 +153,9 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
                 ) : visao === "turnos" ? (
                   <VisaoTurnos p={p} turnos={ind.turnos} ranking={rk} dia={dia} onDia={setDia} divergencias={dados.divergenciasTurno} />
                 ) : visao === "operadores" && dados.individual ? (
-                  <VisaoOperadores ind={dados.individual} mes={dados.mes} />
+                  <VisaoOperadores ind={dados.individual} periodo={dados.periodo} />
                 ) : visao === "qualidade" ? (
-                  <VisaoQualidade p={p} mes={dados.mes} dia={dia} onDia={setDia} linhas={tot?.linhas ?? 0} turnos={ind.turnos} />
+                  <VisaoQualidade p={p} mes={dados.mes} periodo={dados.periodo} dia={dia} onDia={setDia} linhas={tot?.linhas ?? 0} turnos={ind.turnos} />
                 ) : null,
             }
           : null
@@ -186,7 +185,7 @@ function SemHarpia({ erro }: { erro: string }) {
 
 type SubCusto = "custo" | "equipe" | "folha" | "equipamentos" | "linha" | "fat";
 const TITULO_SUB: Record<SubCusto, string> = {
-  custo: "Custo do mês", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", linha: "Custo por endereço", fat: "Custo ÷ faturamento líquido",
+  custo: "Custo do recorte", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", linha: "Custo por endereço", fat: "Custo ÷ faturamento líquido",
 };
 
 type MedidaCusto = "custo" | "fat" | "linha" | "tonelada";
@@ -220,7 +219,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
         chave: x.mes,
         rotulo: mesCurto(x.mes) + (x.mes === dados.atual ? "*" : ""),
         valor: MEDIDA_CUSTO[m].valor(x),
-        cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+        cor: noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6",
         detalhe: `${formatMesAno(x.mes)}${x.custo === null ? " (sem foto do mês)" : x.mes === dados.atual ? " (cadastro atual)" : ""}`,
       }))}
     />
@@ -230,7 +229,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_auto_minmax(20rem,1fr)]`}>
       <div className={GRADE_CARDS}>
-        <Mini {...card("custo")} rotulo={dia ? `Custo do dia ${ddmm(dia)}` : "Custo do mês"} valor={brl(ind.custo)} sub={ind.h?.custo == null ? "mês sem foto do efetivo" : dia ? "custo do mês ÷ dias com separação" : dados.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(dados.mes)} />
+        <Mini {...card("custo")} rotulo={dia ? `Custo do dia ${ddmm(dia)}` : dados.mensal ? "Custo do mês" : "Custo do período"} valor={brl(ind.custo)} sub={ind.h?.custo == null ? "sem foto do efetivo no recorte" : dia ? "custo do recorte ÷ dias com separação" : !dados.custoCompleto ? "só os meses com foto do efetivo" : dados.ref?.parcial ? "proporcional aos dias corridos" : rotuloPeriodo(dados.periodo)} />
         <Mini {...card("equipe")} rotulo="Equipe" valor={`${pessoas.length} pessoas`} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase().slice(0, 4)}.`).join(" · ")} />
         <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
         <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${equipamentos.reduce((s, e) => s + e.quantidade, 0)} unidades · por mês`} />
@@ -239,7 +238,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
           {...card("fat")}
           rotulo="Custo ÷ faturamento líquido"
           valor={ind.sobreFat === null ? "—" : formatPercent(ind.sobreFat, 2)}
-          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.fracaoMes < 1 ? " · custo proporcional ao mês corrido" : ""}`}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.ref?.parcial ? " · custo proporcional aos dias corridos" : ""}`}
         />
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -325,7 +324,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | nul
             <BarrasTV
               altura={110}
               fmt={(v) => String(v)}
-              itens={dados.serie.filter((x) => x.mes <= dados.mes).map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
+              itens={dados.serie.filter((x) => x.mes <= dados.mes).map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
             />
           </Bloco>
         </div>
@@ -375,7 +374,7 @@ const ROT_PROD: Record<MedidaProd, string> = { linhas: "Endereços", pedidos: "P
 function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: ProducaoBI; dia: string | null; onDia: (d: string | null) => void }) {
   const [medida, setMedida] = useState<MedidaProd>("linhas");
   const r = totaisProducao(p.linhas, p.dias, dia);
-  if (p.dias.length === 0) return <Vazio>Nenhum mapa conferido neste mês.</Vazio>;
+  if (p.dias.length === 0) return <Vazio>Nenhum mapa conferido no período.</Vazio>;
   const porDia = new Map<string, { linhas: number; kg: number; pedidos: number }>();
   for (const l of p.linhas) {
     const x = porDia.get(l.dia) ?? { linhas: 0, kg: 0, pedidos: 0 };
@@ -427,7 +426,7 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
             </div>
           }
         >
-          <CalendarioBI mes={dados.mes} porDia={new Map(dias.map(([d, x]) => [d, valorDe(x)]))} fmt={fmtM} selecionado={dia} onSelecionar={onDia} vazio="sem mapa" />
+          <CalendarioBI mes={dados.mes} periodo={dados.periodo} porDia={new Map(dias.map(([d, x]) => [d, valorDe(x)]))} fmt={fmtM} selecionado={dia} onSelecionar={onDia} vazio="sem mapa" />
         </Bloco>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-2">
           <Bloco titulo={`Média por dia da semana · ${ROT_PROD[medida].toLowerCase()}`}>
@@ -441,7 +440,7 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
                 chave: x.mes,
                 rotulo: mesCurto(x.mes) + (x.parcial ? "*" : ""),
                 valor: x.dias ? x.linhas! / x.dias : null,
-                cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+                cor: noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6",
                 detalhe: `${formatMesAno(x.mes)} · ${x.dias} dias · ${n0(x.linhas!)} endereços`,
               }))}
             />
@@ -449,10 +448,10 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
         </div>
       </div>
       <div className={`${DUAS_COLUNAS} xl:grid-cols-2`}>
-        <Bloco titulo="Endereços mais visitados · mês" direita={<Dica>{n0(p.enderecos.total)} endereços</Dica>}>
+        <Bloco titulo={`Endereços mais visitados · ${dados.mensal ? "mês" : "período"}`} direita={<Dica>{n0(p.enderecos.total)} endereços</Dica>}>
           <TabelaEnderecos itens={p.enderecos.mais} />
         </Bloco>
-        <Bloco titulo="Endereços menos visitados · mês" direita={<Dica>{n0(p.enderecos.umaVisita)} com 1 visita</Dica>}>
+        <Bloco titulo={`Endereços menos visitados · ${dados.mensal ? "mês" : "período"}`} direita={<Dica>{n0(p.enderecos.umaVisita)} com 1 visita</Dica>}>
           <TabelaEnderecos itens={p.enderecos.menos} />
         </Bloco>
       </div>
@@ -461,7 +460,7 @@ function VisaoProducao({ dados, p, dia, onDia }: { dados: DadosBISeparacao; p: P
 }
 
 function TabelaEnderecos({ itens }: { itens: EnderecoVisitado[] }) {
-  if (!itens.length) return <p className="py-4 text-center text-sm text-white/40">Sem endereço no mês.</p>;
+  if (!itens.length) return <p className="py-4 text-center text-sm text-white/40">Sem endereço no período.</p>;
   return (
     <Tabela
       cab={["Endereço", "Produto", "Visitas", "Caixas", "Unidades"]}

@@ -139,6 +139,34 @@ SELECT DISTINCT ${DIA} AS DIA, pg.USU_SEP_FK_1236 AS USU, ${sqlTurnoDaHora(HORA_
   JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA
   ${JOIN_PAGINA}`;
 
+// SKUs distintos por (dia, turno) já agregados no banco — para períodos longos,
+// em que trazer cada (dia, separador, produto) passa de 1 milhão de linhas.
+// O turno do separador ligado a um funcionário vem do cadastro (listas de
+// binds); o resto, da hora — a mesma regra de skusPorTurnoDia.
+const SQL_SKUS_TURNO_DIA = (dia: number, noite: number) => {
+  const lista = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `:${pre}${i}`).join(",");
+  const turno = `CASE${dia ? ` WHEN pg.USU_SEP_FK_1236 IN (${lista("d", dia)}) THEN 'dia'` : ""}${noite ? ` WHEN pg.USU_SEP_FK_1236 IN (${lista("n", noite)}) THEN 'noite'` : ""} ELSE ${sqlTurnoDaHora(HORA_REF)} END`;
+  return `
+WITH ${CTE_MAPA}, base AS (
+  SELECT ${DIA} AS DIA, ${turno} AS TURNO, x.MERC_PF_1196 AS PRODUTO
+    FROM mapa mp
+    JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA
+    ${JOIN_PAGINA}
+)
+SELECT DIA, TURNO, COUNT(DISTINCT PRODUTO) AS SKUS FROM base GROUP BY DIA, TURNO`;
+};
+
+/** SKUs distintos por dia operacional e turno em [ini, fim] (agregado no Oracle). */
+export async function lerSkusTurnoDia(ini: string, fim: string, turnoDoUsuario: Map<number, TurnoSep>): Promise<{ dia: string; turno: TurnoSep; skus: number }[]> {
+  const dia = [...turnoDoUsuario].filter(([, t]) => t === "dia").map(([u]) => u);
+  const noite = [...turnoDoUsuario].filter(([, t]) => t === "noite").map(([u]) => u);
+  const binds: Record<string, string | number> = { ini, fim };
+  dia.forEach((u, i) => (binds[`d${i}`] = u));
+  noite.forEach((u, i) => (binds[`n${i}`] = u));
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_SKUS_TURNO_DIA(dia.length, noite.length), binds);
+  return rows.map((r) => ({ dia: String(r.DIA), turno: String(r.TURNO) as TurnoSep, skus: num(r.SKUS) }));
+}
+
 // Erro → linha (mapa × produto × pedido) → página → separador. Só atribui
 // quando TODAS as linhas da chave são do mesmo separador registrado.
 export const SQL_ERROS = `
@@ -326,14 +354,9 @@ export interface DadosIndividuaisHarpia {
   conferentes: ConferenteDia[];
 }
 
-const bindsDoMes = (mes: string) => {
-  const { inicio, fim } = inicioFimDoMes(mes);
-  return { ini: inicio, fim };
-};
-
-/** Produção, pedidos e erros do mês no Harpia. Lança erro (sem acesso, rede) — quem chama mostra. */
-export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSeparacao> {
-  const binds = bindsDoMes(mes);
+/** Produção, pedidos e erros dos dias operacionais [ini, fim] no Harpia. Lança erro (sem acesso, rede) — quem chama mostra. */
+export async function lerSeparacaoHarpia(ini: string, fim: string, { produtosTurno = true }: { produtosTurno?: boolean } = {}): Promise<DadosHarpiaSeparacao> {
+  const binds = { ini, fim };
   const [lin, maps, dias, skus, erros, prods, ends, prodTurno, pesoWt] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_LINHAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_MAPAS, binds),
@@ -342,7 +365,7 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
     queryWinthor<Record<string, unknown>>(SQL_ERROS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),
     queryWinthor<Record<string, unknown>>(SQL_ENDERECOS, binds),
-    queryWinthor<Record<string, unknown>>(SQL_PRODUTOS_TURNO, binds),
+    produtosTurno ? queryWinthor<Record<string, unknown>>(SQL_PRODUTOS_TURNO, binds) : Promise.resolve([] as Record<string, unknown>[]),
     queryWinthor<Record<string, unknown>>(SQL_PESO_MAPA, binds),
   ]);
   const ids = [...new Set(lin.map((r) => usu(r.USU)).filter((u): u is number => u !== null))];
@@ -404,8 +427,8 @@ export async function lerSeparacaoHarpia(mes: string): Promise<DadosHarpiaSepara
 }
 
 /** Páginas por separador, conferência por conferente e nomes do Harpia. CHAMAR SÓ PARA ADMIN. */
-export async function lerIndividuaisHarpia(mes: string): Promise<DadosIndividuaisHarpia> {
-  const binds = bindsDoMes(mes);
+export async function lerIndividuaisHarpia(ini: string, fim: string): Promise<DadosIndividuaisHarpia> {
+  const binds = { ini, fim };
   const [pags, conf] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_PAGINAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_CONFERENTES, binds),
@@ -424,9 +447,9 @@ export async function lerIndividuaisHarpia(mes: string): Promise<DadosIndividuai
   };
 }
 
-/** Mês anterior para a evolução individual (admin): só linhas, erros e páginas. */
-export async function lerProducaoIndividualMes(mes: string): Promise<{ linhas: LinhaSep[]; erros: ErroSep[]; paginas: PaginaSep[] }> {
-  const binds = bindsDoMes(mes);
+/** Período anterior para a evolução individual (admin): só linhas, erros e páginas. */
+export async function lerProducaoIndividual(ini: string, fim: string): Promise<{ linhas: LinhaSep[]; erros: ErroSep[]; paginas: PaginaSep[] }> {
+  const binds = { ini, fim };
   const [lin, erros, pags, pesoWt] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_LINHAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_ERROS, binds),
@@ -451,6 +474,15 @@ export async function lerMesesSeparacaoHarpia(inicio: string, ate: string): Prom
   return rows
     .map((r) => ({ mes: String(r.MES), linhas: num(r.LINHAS), kg: num(r.KG), pedidos: num(r.PEDIDOS), dias: num(r.DIAS) }))
     .sort((a, b) => a.mes.localeCompare(b.mes));
+}
+
+/** Totais de [ini, fim] (soma dos meses operacionais do intervalo). */
+export async function lerTotaisSeparacaoHarpia(ini: string, fim: string): Promise<Omit<MesProducao, "mes">> {
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_MESES, { ini, fim });
+  return rows.reduce<Omit<MesProducao, "mes">>(
+    (t, r) => ({ linhas: t.linhas + num(r.LINHAS), kg: t.kg + num(r.KG), pedidos: t.pedidos + num(r.PEDIDOS), dias: t.dias + num(r.DIAS) }),
+    { linhas: 0, kg: 0, pedidos: 0, dias: 0 },
+  );
 }
 
 async function nomesUsuarios(ids: number[]): Promise<Map<number, string>> {

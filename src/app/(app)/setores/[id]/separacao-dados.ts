@@ -1,10 +1,14 @@
 import { listarEquipamentos } from "@/data/equipamentos";
-import { lerSeparacaoHarpia, lerIndividuaisHarpia, lerProducaoIndividualMes, lerMesesSeparacaoHarpia, type DadosHarpiaSeparacao, type ProdutoErro } from "@/data/harpia-separacao";
+import { lerSeparacaoHarpia, lerIndividuaisHarpia, lerProducaoIndividual, lerMesesSeparacaoHarpia, lerTotaisSeparacaoHarpia, lerSkusTurnoDia, type DadosHarpiaSeparacao, type ProdutoErro } from "@/data/harpia-separacao";
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
-import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
-import { INICIO_HISTORICO, mesAnterior, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
+import {
+  INICIO_HISTORICO, type Periodo, eixoDoPeriodo, formatMesAno, mesAnterior, mesProximo, mesesDoPeriodo, periodoAberto, periodoAnterior, periodoDoMes,
+  primeiroDiaDoMes, rotuloCurto, tipoPeriodo,
+} from "@/domain/periodo";
+import { custoDoRecorte } from "@/domain/custo-periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import {
   mesmoSetor, papelSeparacao, serieCustoSetor, resolverTurnos, skusPorTurnoDia, porSeparador, porConferente, linhasPorHoraDoGrupo, sinalOperador,
@@ -15,7 +19,7 @@ import { HORAS_NA_SEPARACAO, TURNOS_SEPARACAO, turnoSepDoCadastro, type TurnoSep
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
 import { montarNomesHarpia } from "./turno-dados";
-import { lembrar, ttlDoMes } from "@/lib/cache-memoria";
+import { lembrar, ttlDoPeriodo } from "@/lib/cache-memoria";
 
 /** Primeiro mês com o separador gravado por página no Harpia (06/08/2026). */
 const INICIO_SEPARADOR = "2026-08-01";
@@ -68,12 +72,15 @@ export interface DadosIndividuais {
   mediaGeral: number | null;
   mediaTurno: Record<TurnoSep, number | null>;
   kgPorLinhaTurno: Record<TurnoSep, number | null>;
-  mesAnterior: string | null;
+  rotuloAnterior: string | null; // período da comparação individual ("Out", "2º tri/26")
   conferentes: ConferenteBI[];
 }
 
 export interface DadosBISeparacao {
-  mes: string; // mês na tela "yyyy-mm-01"
+  periodo: Periodo; // recorte na tela
+  mensal: boolean; // recorte = um mês inteiro
+  meses: string[]; // meses do recorte até o corrente (destaque nas barras mês a mês)
+  mes: string; // mês de referência = último mês do recorte (até o corrente)
   atual: string; // mês corrente
   hoje: string; // "yyyy-mm-dd"
   setor: string;
@@ -81,9 +88,14 @@ export interface DadosBISeparacao {
   pessoas: PessoaBI[]; // cadastro ATUAL (não há histórico por pessoa)
   equipamentos: Equipamento[];
   serie: PontoCustoSetor[];
-  fracaoMes: number;
+  fracaoMes: number; // meses equivalentes do recorte (mês corrente = fração decorrida)
   faturamentoLiquido: number | null;
   historico: PontoHistorico[];
+  ref: PontoHistorico | null; // o recorte: custo = custo médio por mês (custo × fracaoMes = custo do recorte)
+  refAnterior: PontoHistorico | null; // recorte de comparação (mês anterior / período anterior)
+  rotuloAnterior: string; // "mês anterior" / "período anterior"
+  folhaRef: number | null; // folha média por mês do recorte (custo dos turnos)
+  custoCompleto: boolean; // todos os meses do recorte têm foto do efetivo
   producao: ProducaoBI | { erro: string };
   divergenciasTurno: DivergenciasTurno | null;
   individual: DadosIndividuais | null;
@@ -102,32 +114,49 @@ async function tentar<T>(rotulo: string, f: () => Promise<T>): Promise<T | { err
 const ok = <T extends object>(x: T | { erro: string }): x is T => !("erro" in x);
 
 /** Equipe, custo, produção (Harpia, peso do Winthor) e — só admin — o individual. */
-export async function carregarBISeparacao(setor: { id: string; nome: string }, funcionarios: Funcionario[], mes: string): Promise<DadosBISeparacao> {
+export async function carregarBISeparacao(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo): Promise<DadosBISeparacao> {
   const atual = primeiroDiaDoMes();
   const hoje = new Date();
   const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const mensal = tipoPeriodo(periodo) === "mes";
+  const mes = primeiroDiaDoMes(periodo.ate < hojeISO ? periodo.ate : hojeISO);
+  const mesesRecorte = mesesDoPeriodo(periodo).filter((m) => m <= atual);
+  // Série mês a mês: do histórico (jul/2026) — ou do início do recorte, se antes — até o corrente.
+  const inicioSerie = mesesRecorte[0] && mesesRecorte[0] < INICIO_HISTORICO ? mesesRecorte[0] : INICIO_HISTORICO;
   const meses: string[] = [];
-  for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const fechados = meses.filter((m) => m < atual && m !== mes);
+  for (let x = inicioSerie; x <= atual; x = mesProximo(x)) meses.push(x);
+  const fechados = meses.filter((m) => m < atual && (!mensal || m !== mes));
+  const { de, ate } = periodo;
+  const chave = `${de}|${ate}`;
+  const pAnt = periodoAnterior(periodo, hoje);
 
   const admin = await isAdmin();
-  const mesAnt = mesAnterior(mes) >= INICIO_SEPARADOR ? mesAnterior(mes) : null;
-  const ttl = ttlDoMes(mes);
-  const [equipamentos, fotos, harpia, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior] = await Promise.all([
+  // Comparação individual: mês anterior inteiro (recorte mensal) ou o período anterior.
+  const mesAnt = mesAnterior(mes);
+  const indivAnt: Periodo | null = mensal ? (mesAnt >= INICIO_SEPARADOR ? periodoDoMes(mesAnt) : null) : pAnt.de >= INICIO_SEPARADOR ? pAnt : null;
+  const ttl = ttlDoPeriodo(periodo);
+  // Período longo: SKUs por turno agregados no Oracle depois (2ª fase), sem trazer cada produto.
+  const longo = eixoDoPeriodo(periodo) === "mes";
+  const [equipamentos, fotos, harpia, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior, totais, totaisAnt] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
-    // Leituras do Oracle ficam em cache (5 min no mês corrente, 60 min fechado);
+    // Leituras do Oracle ficam em cache (5 min com hoje no recorte, 60 min fechado);
     // o que vem do Supabase segue por request (RLS depende de quem está logado).
-    tentar("harpia-separacao", () => lembrar(`lerSeparacaoHarpia:${mes}`, ttl, () => lerSeparacaoHarpia(mes))),
-    lembrar(`lerMesesSeparacaoHarpia:${mes}`, ttl, () => lerMesesSeparacaoHarpia(INICIO_HISTORICO, mes)).catch(() => null),
+    tentar("harpia-separacao", () => lembrar(`lerSeparacaoHarpia:${chave}`, ttl, () => lerSeparacaoHarpia(de, ate, { produtosTurno: !longo }))),
+    lembrar(`lerMesesSeparacaoHarpia:${inicioSerie}|${mes}`, ttl, () => lerMesesSeparacaoHarpia(inicioSerie, mes)).catch(() => null),
     listarUsuariosHarpia().catch(() => null),
-    lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes)).catch(() => null),
+    (mensal
+      ? lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes))
+      : lembrar(`getResumoFaturamentoPeriodo:${chave}`, ttl, () => getResumoFaturamentoPeriodo(de, ate))
+    ).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
     // Individual: as consultas nem rodam para quem não é admin.
-    admin ? lembrar(`lerIndividuaisHarpia:${mes}`, ttl, () => lerIndividuaisHarpia(mes)).catch(() => null) : Promise.resolve(null),
-    admin && mesAnt
-      ? lembrar(`lerProducaoIndividualMes:${mesAnt}`, ttlDoMes(mesAnt), () => lerProducaoIndividualMes(mesAnt)).catch(() => null)
+    admin ? lembrar(`lerIndividuaisHarpia:${chave}`, ttl, () => lerIndividuaisHarpia(de, ate)).catch(() => null) : Promise.resolve(null),
+    admin && indivAnt
+      ? lembrar(`lerProducaoIndividual:${indivAnt.de}|${indivAnt.ate}`, ttlDoPeriodo(indivAnt), () => lerProducaoIndividual(indivAnt.de, indivAnt.ate)).catch(() => null)
       : Promise.resolve(null),
+    mensal ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${chave}`, ttl, () => lerTotaisSeparacaoHarpia(de, ate)).catch(() => null),
+    mensal ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerTotaisSeparacaoHarpia(pAnt.de, pAnt.ate)).catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -152,7 +181,10 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   const equip = (equipamentos ?? []).filter((e) => mesmoSetor(e.setor, setor.nome));
   const custoEquip = equip.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
   const serie = serieCustoSetor(meses, fotos.filter((f) => mesmoSetor(f.setor, setor.nome)), atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) });
-  const fracaoMes = fracaoDoMes(mes, hoje);
+  // Custo por mês (folha da foto + equipamentos de hoje) levado ao recorte.
+  const custoPorMes = new Map(serie.map((p) => [p.mes, p.folha === null ? null : p.folha + custoEquip]));
+  const recorte = custoDoRecorte(periodo, custoPorMes, hoje);
+  const fracaoMes = mensal ? fracaoDoMes(mes, hoje) : recorte.fracao;
 
   // Usuário do Harpia → funcionário → turno do cadastro (ligação manual vence; senão pelo nome).
   const usuarios = ok(harpia) ? harpia.usuarios : [];
@@ -190,7 +222,10 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   let divergenciasTurno: DivergenciasTurno | null = null;
   if (ok(harpia)) {
     const r = resolverTurnos(harpia.linhas, harpia.erros, harpia.mapas, turnoDoUsuario);
-    producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, enderecos: harpia.enderecos, skusTurno: skusPorTurnoDia(harpia.produtosTurno, turnoDoUsuario), equipe };
+    const skusTurno = longo
+      ? await lembrar(`lerSkusTurnoDia:${chave}|${[...turnoDoUsuario].map(([u, t]) => `${u}${t[0]}`).sort().join(",")}`, ttl, () => lerSkusTurnoDia(de, ate, turnoDoUsuario)).catch(() => [])
+      : skusPorTurnoDia(harpia.produtosTurno, turnoDoUsuario);
+    producao = { linhas: r.linhas, dias: harpia.dias, totalMes: harpia.totalMes, erros: r.erros, produtosComErro: harpia.produtosComErro, enderecos: harpia.enderecos, skusTurno, equipe };
 
     const div = turnosDivergentes(harpia.linhas, turnoDoUsuario);
     divergenciasTurno = { quantidade: div.length, linhas: div.reduce((t, d) => t + d.linhas, 0) };
@@ -226,7 +261,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       mediaGeral: linhasPorHoraDoGrupo(atuais),
       mediaTurno,
       kgPorLinhaTurno,
-      mesAnterior: mesAnt,
+      rotuloAnterior: indivAnt ? (mensal ? formatMesAno(indivAnt.de).slice(0, 3) : rotuloCurto(indivAnt)) : null,
       // Login do Harpia ligado a um líder (encarregado/supervisor) não entra na
       // lista de conferentes, mesmo que ele bipe mapa.
       conferentes: porConferente(conferentesH.filter((c) => {
@@ -250,7 +285,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
         mes: p.mes,
         custo,
         custoPeriodo: custo === null ? null : custo * fr,
-        faturamentoLiquido: p.mes === mes ? (fatMes?.vendaLiquida ?? null) : (fatFotos.get(p.mes) ?? null),
+        faturamentoLiquido: mensal && p.mes === mes ? (fatMes?.vendaLiquida ?? null) : (fatFotos.get(p.mes) ?? null),
         linhas: pm?.linhas ?? null,
         kg: pm?.kg ?? null,
         pedidos: pm?.pedidos ?? null,
@@ -259,7 +294,48 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       };
     });
 
+  // O recorte e a comparação. Mês: o ponto do histórico e o mês anterior
+  // (como sempre foi). Período: custo médio por mês ponderado pelos dias e
+  // totais do Harpia no intervalo exato.
+  const media = (r: ReturnType<typeof custoDoRecorte>) => (r.total === null || r.fracao <= 0 ? null : r.total / r.fracao);
+  let ref: PontoHistorico | null;
+  let refAnterior: PontoHistorico | null;
+  if (mensal) {
+    const i = historico.findIndex((x) => x.mes === mes);
+    ref = i >= 0 ? historico[i] : null;
+    refAnterior = i > 0 ? historico[i - 1] : null;
+  } else {
+    const recAnt = custoDoRecorte(pAnt, custoPorMes, hoje);
+    ref = {
+      mes,
+      custo: media(recorte),
+      custoPeriodo: recorte.completo ? recorte.total : null,
+      faturamentoLiquido: fatMes?.vendaLiquida ?? null,
+      linhas: totais?.linhas ?? null,
+      kg: totais?.kg ?? null,
+      pedidos: totais?.pedidos ?? null,
+      dias: totais?.dias ?? null,
+      parcial: periodoAberto(periodo, hoje),
+    };
+    refAnterior = {
+      mes: primeiroDiaDoMes(pAnt.ate),
+      custo: media(recAnt),
+      custoPeriodo: recAnt.completo ? recAnt.total : null,
+      faturamentoLiquido: null,
+      linhas: totaisAnt?.linhas ?? null,
+      kg: totaisAnt?.kg ?? null,
+      pedidos: totaisAnt?.pedidos ?? null,
+      dias: totaisAnt?.dias ?? null,
+      parcial: false,
+    };
+  }
+  const folhaRec = mensal ? null : custoDoRecorte(periodo, new Map(serie.map((p) => [p.mes, p.folha])), hoje);
+  const folhaRef = mensal ? (serie.find((x) => x.mes === mes)?.folha ?? null) : media(folhaRec!);
+
   return {
+    periodo,
+    mensal,
+    meses: mesesRecorte,
     mes,
     atual,
     hoje: hojeISO,
@@ -271,6 +347,11 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     fracaoMes,
     faturamentoLiquido: fatMes?.vendaLiquida ?? null,
     historico,
+    ref,
+    refAnterior,
+    rotuloAnterior: mensal ? "mês anterior" : "período anterior",
+    folhaRef,
+    custoCompleto: mensal ? ref?.custo != null : recorte.completo,
     producao,
     divergenciasTurno,
     individual,

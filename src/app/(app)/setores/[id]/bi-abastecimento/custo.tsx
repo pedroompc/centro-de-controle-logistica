@@ -1,14 +1,14 @@
 "use client";
 
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, semCentavos } from "../bi-ui";
 import type { DadosBIAbastecimento } from "../abastecimento-dados";
 import { PAPEIS, custoDoMes, custoSobreFaturamento, mesCurto } from "./base";
 
 type SubCusto = "custo" | "equipe" | "folha" | "equipamentos";
 
-const TITULO_SUB: Record<SubCusto, string> = { custo: "Custo do mês", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos" };
+const TITULO_SUB: Record<SubCusto, string> = { custo: "Custo do recorte", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos" };
 
 export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
   const { sub, abrir, fechar } = useSub<SubCusto>();
@@ -17,7 +17,7 @@ export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
   const folha = pessoas.reduce((t, y) => t + y.custo, 0);
   const custoEquip = equipamentos.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
   const total = folha + custoEquip;
-  const custoMes = custoDoMes(dados, dados.mes);
+  const custoMes = dados.custoRecorte;
   const sobreFat = custoSobreFaturamento(dados);
   const presentes = PAPEIS.filter((pp) => pessoas.some((y) => y.papel === pp.id));
   const fatias = [
@@ -34,7 +34,7 @@ export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
         chave: x.mes,
         rotulo: mesCurto(x.mes) + (x.mes === dados.atual ? "*" : ""),
         valor: custoDoMes(dados, x.mes),
-        cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+        cor: dados.meses.includes(x.mes) ? "#c2820a" : "#5b6fd6",
         detalhe: `${formatMesAno(x.mes)}${x.folha === null ? " (sem foto do mês)" : x.mes === dados.atual ? " (cadastro atual)" : ""}`,
       }))}
     />
@@ -43,7 +43,7 @@ export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini {...card("custo")} rotulo="Custo do mês" valor={custoMes === null ? "—" : formatBRL(custoMes)} sub={custoMes === null ? "mês sem foto do efetivo" : formatMesAno(dados.mes)} />
+        <Mini {...card("custo")} rotulo={dados.mensal ? "Custo do mês" : "Custo do período"} valor={custoMes === null ? "—" : formatBRL(custoMes)} sub={custoMes === null ? "sem foto do efetivo no recorte" : !dados.custoCompleto ? "só os meses com foto do efetivo" : rotuloPeriodo(dados.periodo)} />
         <Mini {...card("equipe")} rotulo="Equipe" valor={`${pessoas.length} pessoas`} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase()}`).join(" · ")} />
         <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
         <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${equipamentos.reduce((t, e) => t + e.quantidade, 0)} unidades · por mês`} />
@@ -51,7 +51,7 @@ export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
         <Mini
           rotulo="Custo ÷ faturamento líquido"
           valor={sobreFat === null ? "—" : formatPercent(sobreFat, 2)}
-          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.fracaoMes < 1 ? " · custo proporcional ao mês corrido" : ""}`}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.custoPeriodo !== null && dados.fracaoMes % 1 !== 0 ? " · custo proporcional aos dias corridos" : ""}`}
         />
       </div>
       <div className="flex items-center gap-3 text-xs">
@@ -137,7 +137,7 @@ export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
             <BarrasTV
               altura={110}
               fmt={(v) => String(v)}
-              itens={ate.map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
+              itens={ate.map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: dados.meses.includes(x.mes) ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
             />
           </Bloco>
         </div>

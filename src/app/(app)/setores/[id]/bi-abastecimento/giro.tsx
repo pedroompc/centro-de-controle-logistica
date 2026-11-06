@@ -16,7 +16,7 @@ export function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
   const [curvaSel, setCurvaSel] = useState<string | null>(null);
   const resumo = resumoVolume(h.reabastecimento);
   const diasAtivos = resumo.dias;
-  if (h.produtos.length === 0) return <Vazio>Nenhum abastecimento registrado neste mês.</Vazio>;
+  if (h.produtos.length === 0) return <Vazio>Nenhum abastecimento registrado no período.</Vazio>;
   const totalCurvas = h.curvas.reduce((t, c) => t + c.abastecimentos, 0);
   const curva = curvaSel ? h.curvas.find((c) => c.curva === curvaSel) ?? null : null;
   // Recorte: a curva clicada ou o mês inteiro.
@@ -33,14 +33,14 @@ export function VisaoGiro({ h }: { h: DadosHarpiaAbastecimento }) {
   const historico = produtoAberto ? historicoProduto(h.produtosDia, produtoAberto) : [];
   const toggle = (p: number) => setProdutoAberto((a) => (a === p ? null : p));
   const selecionarCurva = (r: string | null) => setCurvaSel(r === null ? null : h.curvas.find((c) => rotuloCurva(c.curva) === r)?.curva ?? null);
-  const recorte = curva ? rotuloCurva(curva.curva).toLowerCase() : "no mês";
+  const recorte = curva ? rotuloCurva(curva.curva).toLowerCase() : "no período";
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Mini
           rotulo={curva ? `Reabastecimentos · ${rotuloCurva(curva.curva)}` : "Reabastecimentos"}
           valor={n0(abast)}
-          sub={curva && totalCurvas ? `${formatPercent(abast / totalCurvas, 0)} do total do mês` : `${n0(resumo.caixas)} caixas no mês`}
+          sub={curva && totalCurvas ? `${formatPercent(abast / totalCurvas, 0)} do total do período` : `${n0(resumo.caixas)} caixas no período`}
         />
         <Mini rotulo="Produtos reabastecidos" valor={n0(skus)} sub={`${n1(abast / Math.max(1, skus))} abast. por produto · ${recorte}`} />
         <Mini rotulo="Dias com reabastecimento" valor={String(diasAtivos)} sub={diasAtivos ? `${n0(abast / diasAtivos)} abast. por dia · ${recorte}` : undefined} />

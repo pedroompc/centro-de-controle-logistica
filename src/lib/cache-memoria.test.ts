@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { lembrar, limparCache, ttlDoMes } from "./cache-memoria";
+import { lembrar, limparCache, ttlDoMes, ttlDoPeriodo } from "./cache-memoria";
 
 const MIN = 60_000;
 
@@ -55,4 +55,16 @@ describe("ttlDoMes", () => {
   const agora = new Date(2026, 9, 28);
   it("mês corrente: 5 min", () => expect(ttlDoMes("2026-10-01", agora)).toBe(300_000));
   it("mês fechado: 60 min", () => expect(ttlDoMes("2026-09-01", agora)).toBe(3_600_000));
+});
+
+describe("ttlDoPeriodo", () => {
+  const agora = new Date(2026, 9, 28, 9, 0, 0);
+  it("período que inclui hoje = 5 min", () => {
+    expect(ttlDoPeriodo({ de: "2026-07-01", ate: "2026-10-28" }, agora)).toBe(5 * MIN);
+    expect(ttlDoPeriodo({ de: "2026-10-01", ate: "2026-12-31" }, agora)).toBe(5 * MIN);
+  });
+  it("período fechado = 60 min", () => {
+    expect(ttlDoPeriodo({ de: "2026-07-01", ate: "2026-09-30" }, agora)).toBe(60 * MIN);
+    expect(ttlDoPeriodo({ de: "2026-10-01", ate: "2026-10-27" }, agora)).toBe(60 * MIN);
+  });
 });

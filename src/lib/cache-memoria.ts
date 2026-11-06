@@ -1,4 +1,4 @@
-import { primeiroDiaDoMes } from "@/domain/periodo";
+import { type Periodo, periodoAberto, primeiroDiaDoMes } from "@/domain/periodo";
 
 // Cache em memória do processo (o app roda num servidor só, 24/7). Usado só
 // nas leituras pesadas dos BIs dos setores — Dashboard e Painel TV ficam ao vivo.
@@ -29,6 +29,11 @@ export function lembrar<T>(chave: string, ttlMs: number, f: () => Promise<T>): P
 /** Mês corrente muda o tempo todo (5 min); mês fechado quase nunca (60 min). */
 export function ttlDoMes(mes: string, agora: Date = new Date()): number {
   return mes >= primeiroDiaDoMes(agora) ? 5 * MIN : 60 * MIN;
+}
+
+/** Período que ainda inclui hoje muda o tempo todo (5 min); fechado, 60 min. */
+export function ttlDoPeriodo(p: Periodo, agora: Date = new Date()): number {
+  return periodoAberto(p, agora) ? 5 * MIN : 60 * MIN;
 }
 
 export function limparCache(): void {

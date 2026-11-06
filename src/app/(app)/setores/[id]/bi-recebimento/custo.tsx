@@ -1,7 +1,7 @@
 "use client";
 
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { rotuloPeriodo } from "@/domain/periodo";
 import { filtrarFatos, agrupar, type FiltroBI } from "@/domain/bi-recebimento";
 import { Vazio, Bloco, Mini, useSub, Dica, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, semCentavos } from "../bi-ui";
 import { Calendario, DadosBI, ORDEM_PAPEL, PAPEIS, PAPEL, PropsVisao, Recorte, SerieMeses, ddmm, fmtPeso, inteiro } from "./base";
@@ -68,7 +68,7 @@ export function VisaoCusto(p: PropsVisao) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini {...card("custo")} rotulo={x.criterioCusto ? "Custo no filtro" : "Custo do mês"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(r.mes))} />
+        <Mini {...card("custo")} rotulo={x.criterioCusto ? "Custo no filtro" : p.dados.mensal ? "Custo do mês" : "Custo do período"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes % 1 !== 0 ? "proporcional aos dias corridos" : rotuloPeriodo(p.dados.periodo))} />
         <Mini
           {...card("equipe")}
           rotulo="Equipe"
@@ -189,7 +189,7 @@ export function VisaoCusto(p: PropsVisao) {
       {sub === "porCarro" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <Bloco titulo={`Custo por ${un} · dia a dia`} direita={<Dica>forte = dia mais barato · clique filtra</Dica>}>
-            <Calendario mes={dados.mes} porDia={porCarroDia} fmt={semCentavos} filtro={filtro} onFiltro={onFiltro} menorEhMelhor />
+            <Calendario mes={dados.mes} periodo={dados.periodo} porDia={porCarroDia} fmt={semCentavos} filtro={filtro} onFiltro={onFiltro} menorEhMelhor />
           </Bloco>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
             {resumoDias(porCarroDia, semCentavos)}
@@ -203,7 +203,7 @@ export function VisaoCusto(p: PropsVisao) {
       {sub === "porTonelada" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <Bloco titulo="Custo por tonelada · dia a dia" direita={<Dica>forte = dia mais barato · clique filtra</Dica>}>
-            <Calendario mes={dados.mes} porDia={porTonDia} fmt={semCentavos} filtro={filtro} onFiltro={onFiltro} menorEhMelhor />
+            <Calendario mes={dados.mes} periodo={dados.periodo} porDia={porTonDia} fmt={semCentavos} filtro={filtro} onFiltro={onFiltro} menorEhMelhor />
           </Bloco>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
             {resumoDias(porTonDia, semCentavos)}

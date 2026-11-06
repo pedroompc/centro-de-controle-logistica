@@ -1,21 +1,22 @@
 import { listarEquipamentos } from "@/data/equipamentos";
-import { getResumoFaturamentoDashboard, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
-import { lerViagensMes, lerEntregasMeses, type EntregasDoMes } from "@/data/winthor-entregas";
+import { lerViagensPeriodo, lerEntregasMeses, type EntregasDoMes } from "@/data/winthor-entregas";
 import { getDevolucaoLogisticaPorFaturamento, getMotoristaCidades } from "@/data/devolucoes";
 import { lerHodometroPeriodo } from "@/data/frota-km";
 import { lerCadastroFrota } from "@/data/frota-custos";
 import type { CadastroFrota } from "@/domain/frota-custo";
 import { kmDasViagens, mapaKmDia, type LinhaHodometro } from "@/domain/frota";
-import { INICIO_HISTORICO, mesProximo, primeiroDiaDoMes } from "@/domain/periodo";
+import { INICIO_HISTORICO, type Periodo, mesProximo, mesesDoPeriodo, periodoAberto, periodoAnterior, primeiroDiaDoMes, tipoPeriodo } from "@/domain/periodo";
+import { custoDoRecorte } from "@/domain/custo-periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
-import { cidadesPorMotorista, papelMotoristas, porMotorista, resumoDevolucao, type CidadesDoMotorista, type DevolucaoMotDia, type ResumoMotorista, type ViagemEntrega } from "@/domain/motoristas";
+import { cidadesPorMotorista, papelMotoristas, porMotorista, resumoDevolucao, totaisEntregas, type CidadesDoMotorista, type DevolucaoMotDia, type ResumoMotorista, type ViagemEntrega } from "@/domain/motoristas";
 import { sugerirFuncionario } from "@/domain/turno";
 import type { Equipamento, Funcionario } from "@/domain/types";
 import type { PessoaBI } from "./bi-ui";
-import { lembrar, ttlDoMes } from "@/lib/cache-memoria";
+import { lembrar, ttlDoPeriodo } from "@/lib/cache-memoria";
 
 export interface PontoHistoricoMot {
   mes: string;
@@ -43,7 +44,10 @@ export interface MotoristaBI extends ResumoMotorista {
 }
 
 export interface DadosBIMotoristas {
-  mes: string;
+  periodo: Periodo; // recorte na tela
+  mensal: boolean; // recorte = um mês inteiro
+  meses: string[]; // meses do recorte até o corrente (destaque nas barras)
+  mes: string; // mês de referência = último mês do recorte (até o corrente)
   atual: string;
   setor: string;
   admin: boolean;
@@ -53,7 +57,11 @@ export interface DadosBIMotoristas {
   fracaoMes: number;
   faturamentoLiquido: number | null;
   historico: PontoHistoricoMot[];
-  /** Viagens do mês no Winthor; `erro` = não conseguiu ler. */
+  ref: PontoHistoricoMot | null; // o recorte: custo = custo médio por mês (custo × fracaoMes = custo do recorte)
+  refAnterior: PontoHistoricoMot | null; // recorte de comparação
+  rotuloAnterior: string;
+  custoCompleto: boolean;
+  /** Viagens do recorte no Winthor; `erro` = não conseguiu ler. */
   entregas: { viagens: ViagemEntrega[] } | { erro: string };
   /**
    * Devolução POR PERÍODO DE FATURAMENTO, motorista × dia: das notas saídas no
@@ -68,39 +76,47 @@ export interface DadosBIMotoristas {
   motoristas: MotoristaBI[] | null;
 }
 
-function ultimoDiaDoMes(mes: string): string {
-  const [a, m] = mes.split("-").map(Number);
-  return `${mes.slice(0, 7)}-${String(new Date(a, m, 0).getDate()).padStart(2, "0")}`;
-}
-
 const erroMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export async function carregarBIMotoristas(setor: { id: string; nome: string }, funcionarios: Funcionario[], mes: string): Promise<DadosBIMotoristas> {
+export async function carregarBIMotoristas(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo): Promise<DadosBIMotoristas> {
   const atual = primeiroDiaDoMes();
   const hoje = new Date();
+  const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const mensal = tipoPeriodo(periodo) === "mes";
+  const mes = primeiroDiaDoMes(periodo.ate < hojeISO ? periodo.ate : hojeISO);
+  const mesesRecorte = mesesDoPeriodo(periodo).filter((m) => m <= atual);
+  const inicioSerie = mesesRecorte[0] && mesesRecorte[0] < INICIO_HISTORICO ? mesesRecorte[0] : INICIO_HISTORICO;
   const meses: string[] = [];
-  for (let x = INICIO_HISTORICO; x <= atual; x = mesProximo(x)) meses.push(x);
-  const fechados = meses.filter((m) => m < atual && m !== mes);
-  const ttl = ttlDoMes(mes);
+  for (let x = inicioSerie; x <= atual; x = mesProximo(x)) meses.push(x);
+  const fechados = meses.filter((m) => m < atual && (!mensal || m !== mes));
+  const { de, ate } = periodo;
+  const chave = `${de}|${ate}`;
+  const ttl = ttlDoPeriodo(periodo);
+  const pAnt = periodoAnterior(periodo, hoje);
 
-  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro, cadastroFrota, cidadesMot] = await Promise.all([
+  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro, cadastroFrota, cidadesMot, viagensAnt] = await Promise.all([
     isAdmin(),
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
-    lembrar(`lerViagensMes:${mes}`, ttl, () => lerViagensMes(mes)).then(
+    lembrar(`lerViagensPeriodo:${chave}`, ttl, () => lerViagensPeriodo(de, ate)).then(
       (v) => ({ viagens: v }),
       (e) => {
         console.error("[winthor-entregas]", erroMsg(e));
         return { erro: erroMsg(e) };
       },
     ),
-    lembrar(`lerEntregasMeses:${mes}`, ttl, () => lerEntregasMeses(INICIO_HISTORICO, mes)).catch(() => null as EntregasDoMes[] | null),
-    lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes)).catch(() => null),
+    lembrar(`lerEntregasMeses:${inicioSerie}|${mes}`, ttl, () => lerEntregasMeses(inicioSerie, mes)).catch(() => null as EntregasDoMes[] | null),
+    (mensal
+      ? lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes))
+      : lembrar(`getResumoFaturamentoPeriodo:${chave}`, ttl, () => getResumoFaturamentoPeriodo(de, ate))
+    ).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
-    lembrar(`devolucaoLogisticaPorFaturamentoDia:${mes}`, ttl, () => getDevolucaoLogisticaPorFaturamento(mes, ultimoDiaDoMes(mes))).catch(() => null),
-    lerHodometroPeriodo(mes, ultimoDiaDoMes(mes)).catch(() => null), // Supabase: sem cache
+    lembrar(`devolucaoLogisticaPorFaturamentoDia:${chave}`, ttl, () => getDevolucaoLogisticaPorFaturamento(de, ate)).catch(() => null),
+    lerHodometroPeriodo(de, ate).catch(() => null), // Supabase: sem cache
     lerCadastroFrota().catch(() => null),
-    lembrar(`motoristaCidades:${mes}`, ttl, () => getMotoristaCidades(mes, ultimoDiaDoMes(mes))).catch(() => null),
+    lembrar(`motoristaCidades:${chave}`, ttl, () => getMotoristaCidades(de, ate)).catch(() => null),
+    // Período: viagens do período anterior para comparar entregas por dia.
+    mensal ? Promise.resolve(null) : lembrar(`lerViagensPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate)).catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -125,7 +141,9 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   const equip = (equipamentos ?? []).filter((e) => mesmoSetor(e.setor, setor.nome));
   const custoEquip = equip.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
   const serie = serieCustoSetor(meses, fotos.filter((f) => mesmoSetor(f.setor, setor.nome)), atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) });
-  const fracaoMes = fracaoDoMes(mes, hoje);
+  const custoPorMes = new Map(serie.map((p) => [p.mes, p.folha === null ? null : p.folha + custoEquip]));
+  const recorte = custoDoRecorte(periodo, custoPorMes, hoje);
+  const fracaoMes = mensal ? fracaoDoMes(mes, hoje) : recorte.fracao;
 
   const porMes = new Map((mesesW ?? []).map((m) => [m.mes, m]));
   const historico: PontoHistoricoMot[] = serie
@@ -137,7 +155,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
         mes: p.mes,
         custo,
         custoPeriodo: custo === null ? null : custo * fracaoDoMes(p.mes, hoje),
-        faturamentoLiquido: p.mes === mes ? (fatMes?.vendaLiquida ?? null) : (fatFotos.get(p.mes) ?? null),
+        faturamentoLiquido: mensal && p.mes === mes ? (fatMes?.vendaLiquida ?? null) : (fatFotos.get(p.mes) ?? null),
         viagens: w?.viagens ?? null,
         entregas: w?.entregas ?? null,
         kg: w?.kg ?? null,
@@ -145,6 +163,33 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
         parcial: p.mes === atual,
       };
     });
+
+  // O recorte e a comparação (mês: ponto do histórico e mês anterior, como sempre foi).
+  const media = (r: ReturnType<typeof custoDoRecorte>) => (r.total === null || r.fracao <= 0 ? null : r.total / r.fracao);
+  const pontoDe = (vs: ViagemEntrega[] | null, r: ReturnType<typeof custoDoRecorte>, m: string, fat: number | null, parcial: boolean): PontoHistoricoMot => {
+    const t = vs ? totaisEntregas(vs) : null;
+    return {
+      mes: m,
+      custo: media(r),
+      custoPeriodo: r.completo ? r.total : null,
+      faturamentoLiquido: fat,
+      viagens: t?.viagens ?? null,
+      entregas: t?.entregas ?? null,
+      kg: t?.kg ?? null,
+      dias: vs ? new Set(vs.map((v) => v.dia)).size : null,
+      parcial,
+    };
+  };
+  let ref: PontoHistoricoMot | null;
+  let refAnterior: PontoHistoricoMot | null;
+  if (mensal) {
+    const i = historico.findIndex((x) => x.mes === mes);
+    ref = i >= 0 ? historico[i] : null;
+    refAnterior = i > 0 ? historico[i - 1] : null;
+  } else {
+    ref = pontoDe("viagens" in viagens ? viagens.viagens : null, recorte, mes, fatMes?.vendaLiquida ?? null, periodoAberto(periodo, hoje));
+    refAnterior = pontoDe(viagensAnt, custoDoRecorte(pAnt, custoPorMes, hoje), primeiroDiaDoMes(pAnt.ate), null, false);
+  }
 
   const listaDev = devol ? resumoDevolucao(devol).porMotorista : [];
 
@@ -191,6 +236,9 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   }
 
   return {
+    periodo,
+    mensal,
+    meses: mesesRecorte,
     mes,
     atual,
     setor: setor.nome,
@@ -201,6 +249,10 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     fracaoMes,
     faturamentoLiquido: fatMes?.vendaLiquida ?? null,
     historico,
+    ref,
+    refAnterior,
+    rotuloAnterior: mensal ? "mês anterior" : "período anterior",
+    custoCompleto: mensal ? ref?.custo != null : recorte.completo,
     entregas: viagens,
     devolucao: devol,
     hodometro,

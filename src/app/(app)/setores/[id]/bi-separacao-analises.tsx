@@ -1,7 +1,7 @@
 "use client";
 
 import { formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, rotuloPeriodo } from "@/domain/periodo";
 import { porMilLinhas, resumoErros, type ResumoTurno } from "@/domain/separacao";
 import { Bloco, CalendarioBI, Mini, ddmm } from "./bi-ui";
 import { COR_TURNO, DUAS_COLUNAS, GRADE_CARDS, VISAO, n0, n1, ou } from "./bi-separacao-comum";
@@ -9,7 +9,7 @@ import type { ProducaoBI } from "./separacao-dados";
 
 // --- QUALIDADE ----------------------------------------------------------------
 
-export function VisaoQualidade({ p, mes, dia, onDia, linhas, turnos }: { p: ProducaoBI; mes: string; dia: string | null; onDia: (d: string | null) => void; linhas: number; turnos: ResumoTurno[] }) {
+export function VisaoQualidade({ p, mes, periodo, dia, onDia, linhas, turnos }: { p: ProducaoBI; mes: string; periodo: Periodo; dia: string | null; onDia: (d: string | null) => void; linhas: number; turnos: ResumoTurno[] }) {
   const r = resumoErros(p.erros, dia);
   const s = r.separador;
   const taxa = porMilLinhas(s.itens, linhas);
@@ -21,7 +21,7 @@ export function VisaoQualidade({ p, mes, dia, onDia, linhas, turnos }: { p: Prod
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_minmax(26rem,1fr)]`}>
       <div className={GRADE_CARDS}>
-        <Mini rotulo="Do separador" valor={n0(s.itens)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+        <Mini rotulo="Do separador" valor={n0(s.itens)} sub={dia ? ddmm(dia) : rotuloPeriodo(periodo)} />
         <Mini rotulo="Por mil endereços" valor={ou(taxa, n1)} sub={`${n0(linhas)} endereços`} />
         <Mini rotulo="Ocorrências" valor={n0(s.ocorrencias)} />
         <Mini rotulo="Unid. divergentes" valor={n0(s.unidades)} />
@@ -31,7 +31,7 @@ export function VisaoQualidade({ p, mes, dia, onDia, linhas, turnos }: { p: Prod
       </div>
       <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]`}>
         <Bloco className="min-h-[22rem] xl:min-h-0" titulo="Itens com erro do separador por dia">
-          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem erro" menorEhMelhor />
+          <CalendarioBI mes={mes} periodo={periodo} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem erro" menorEhMelhor />
         </Bloco>
         <div className="flex min-w-0 flex-col gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1 [&>*]:shrink-0">
           <Bloco titulo="Por turno · erros a cada 1.000 endereços">
@@ -53,7 +53,7 @@ export function VisaoQualidade({ p, mes, dia, onDia, linhas, turnos }: { p: Prod
           </Bloco>
           <Bloco titulo="Produtos com mais erro do separador">
             {p.produtosComErro.length === 0 ? (
-              <p className="py-4 text-center text-sm text-white/40">Nenhum erro do separador no mês.</p>
+              <p className="py-4 text-center text-sm text-white/40">Nenhum erro do separador no período.</p>
             ) : (
               <ul className="space-y-2">
                 {p.produtosComErro.map((x) => (

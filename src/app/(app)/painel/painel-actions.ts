@@ -11,8 +11,8 @@ import { getNucleoDevolucao, getResumoCoorteFaturamento, getDevolucaoPorBairro }
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
-import { listarReceitasDoMes, serieReceitasMensais } from "@/data/receitas";
-import { listarTotaisDiariosDoMes } from "@/data/receitas-diario";
+import { listarReceitasDoMes, listarReceitasDoPeriodo, serieReceitasMensais } from "@/data/receitas";
+import { listarTotaisDiariosDoMes, listarTotaisDiariosDoPeriodo } from "@/data/receitas-diario";
 import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
@@ -522,6 +522,12 @@ export async function carregarFatosDescarrego(mes: string): Promise<FatoDescarre
   const m = mesNorm(mes);
   const { inicio, fim } = inicioFimDoMes(m);
   const [lancs, totais, carros] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m), listarCarrosDia(inicio, fim)]);
+  return fatosDoMes(lancs, totais, carros);
+}
+
+/** Fatos do descarrego de [de, ate] (BI do Recebimento por período). */
+export async function carregarFatosDescarregoPeriodo(de: string, ate: string): Promise<FatoDescarrego[]> {
+  const [lancs, totais, carros] = await Promise.all([listarReceitasDoPeriodo(de, ate), listarTotaisDiariosDoPeriodo(de, ate), listarCarrosDia(de, ate)]);
   return fatosDoMes(lancs, totais, carros);
 }
 

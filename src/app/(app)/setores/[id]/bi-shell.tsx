@@ -1,21 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, type ReactNode } from "react";
 import Link from "next/link";
-import { formatMesAno } from "@/domain/periodo";
+import { type AtalhoPeriodo, type Periodo, rotuloPeriodo } from "@/domain/periodo";
+import { SeletorPeriodo } from "@/components/seletor-periodo";
 
 const NAVY = "linear-gradient(140deg,#0a1650 0%,#0d1550 45%,#151b57 100%)";
 const botao = "rounded-xl bg-white/10 px-3.5 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/15";
 
+/** Navegação do período do BI: ‹ › andam o período pelo seu tamanho; o meio abre atalhos + calendário. */
 export interface HrefMes {
   anterior: string | null;
   proximo: string | null;
   atual: string | null;
+  piso: string;
+  hoje: string;
+  atalhos: AtalhoPeriodo[];
 }
 
 /**
  * Moldura do BI de setor em TELA CHEIA (overlay `fixed inset-0`, como o Painel
- * da Operação): logo, título, ‹ mês ›, Tela cheia e Sair. O topo recebe o menu
+ * da Operação): logo, título, ‹ período ›, Tela cheia e Sair. O topo recebe o menu
  * (quadros) do setor; o palco recebe a visão aberta. Teclas: Esc chama
  * `onEsc` (limpar filtros) · F alterna a tela cheia do navegador.
  *
@@ -25,7 +30,7 @@ export interface HrefMes {
  */
 export function BIShell({
   titulo,
-  mes,
+  periodo,
   hrefMes,
   hrefSair,
   menu,
@@ -34,7 +39,7 @@ export function BIShell({
   dicaTopo = "clique num quadro para abrir",
 }: {
   titulo: string;
-  mes: string;
+  periodo: Periodo;
   hrefMes: HrefMes;
   hrefSair: string;
   menu: ReactNode;
@@ -66,15 +71,17 @@ export function BIShell({
             <img src="/sol-dia.gif" alt="DIA" className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/10" />
             <div>
               <h1 className="font-[family-name:var(--font-sora)] text-2xl font-extrabold tracking-tight xl:text-3xl">{titulo}</h1>
-              <p className="flex flex-wrap items-center gap-x-1 text-sm text-white/50">
+              <div className="flex flex-wrap items-center gap-x-1 text-sm text-white/50">
                 {hrefMes.anterior ? (
-                  <Link href={hrefMes.anterior} className={`${navCls} text-white/70 ring-1 ring-white/15 hover:bg-white/15`} aria-label="Mês anterior">‹</Link>
+                  <Link href={hrefMes.anterior} className={`${navCls} text-white/70 ring-1 ring-white/15 hover:bg-white/15`} aria-label="Período anterior">‹</Link>
                 ) : (
                   <span className={`${navCls} text-white/15`}>‹</span>
                 )}
-                <span className="font-semibold text-white/75">{formatMesAno(mes)}</span>
+                <Suspense fallback={<span className="px-2 font-semibold text-white/75">{rotuloPeriodo(periodo)}</span>}>
+                  <SeletorPeriodo periodo={periodo} atalhos={hrefMes.atalhos} piso={hrefMes.piso} hoje={hrefMes.hoje} tema="escuro" />
+                </Suspense>
                 {hrefMes.proximo ? (
-                  <Link href={hrefMes.proximo} className={`${navCls} text-white/70 ring-1 ring-white/15 hover:bg-white/15`} aria-label="Próximo mês">›</Link>
+                  <Link href={hrefMes.proximo} className={`${navCls} text-white/70 ring-1 ring-white/15 hover:bg-white/15`} aria-label="Próximo período">›</Link>
                 ) : (
                   <span className={`${navCls} text-white/15`}>›</span>
                 )}
@@ -84,7 +91,7 @@ export function BIShell({
                   </Link>
                 )}
                 {dicaTopo && <>· {dicaTopo}</>}
-              </p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -105,7 +112,7 @@ export function BIShell({
             <>
               <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
                 <h2 className="font-[family-name:var(--font-sora)] text-xl font-extrabold tracking-tight xl:text-2xl">
-                  {palco.titulo} <span className="text-white/40">· {formatMesAno(mes)}</span>
+                  {palco.titulo} <span className="text-white/40">· {rotuloPeriodo(periodo)}</span>
                 </h2>
                 {palco.contexto && <p className="text-sm text-white/45">{palco.contexto}</p>}
               </div>

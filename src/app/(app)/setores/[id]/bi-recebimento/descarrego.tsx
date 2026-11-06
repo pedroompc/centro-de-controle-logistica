@@ -1,7 +1,7 @@
 "use client";
 
 import { formatKg, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { rotuloPeriodo, somarDias } from "@/domain/periodo";
 import { filtrarFatos, agrupar, filtroAtivo } from "@/domain/bi-recebimento";
 import { Vazio, Bloco, Mini, useSub, Dica, semCentavos } from "../bi-ui";
 import { Filtro, PropsVisao, contagem, ddmm, dec1, fmtPeso, inteiro, valorMedida } from "./base";
@@ -21,7 +21,7 @@ export function VisaoDescarrego(p: PropsVisao) {
   const { x } = p;
   const { sel } = x;
   const { sub, abrir, fechar } = useSub<SubDescarrego>();
-  if (!x.temFatos) return <Vazio>Carregando o descarrego do mês…</Vazio>;
+  if (!x.temFatos) return <Vazio>Carregando o descarrego do período…</Vazio>;
   const qtd = x.porNotas ? sel.notas : sel.carros;
   const ajudantes = x.r.equipe.ajudantes;
   const kgPorAjudante = ajudantes > 0 ? sel.pesoKg / ajudantes : null;
@@ -41,7 +41,7 @@ export function VisaoDescarrego(p: PropsVisao) {
           sub={kgPorAjudante !== null ? `${formatKg(kgPorAjudante)} por ajudante` : qtd > 0 ? `${formatKg(sel.pesoKg / qtd)} por ${un}` : undefined}
         />
         <Mini {...card("caixas")} rotulo="Caixas (volume)" valor={inteiro.format(sel.caixas)} sub={`${inteiro.format(sel.descargasVolume)} descargas`} />
-        <Mini {...card("dias")} rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={formatMesAno(x.r.mes)} />
+        <Mini {...card("dias")} rotulo="Dias com descarrego" valor={inteiro.format(sel.dias)} sub={rotuloPeriodo(p.dados.periodo)} />
       </div>
       <div className="flex items-center gap-3 text-xs">
         {sub ? (
@@ -216,7 +216,7 @@ function SubFornecedores(p: PropsVisao) {
   const top3P = porPeso.slice(0, 3);
   const top3R = porReceita.slice(0, 3);
   const maior = porPeso[0];
-  const doQue = filtroAtivo(p.filtro) ? "do filtro" : "do mês";
+  const doQue = filtroAtivo(p.filtro) ? "do filtro" : p.dados.mensal ? "do mês" : "do período";
   return (
     <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <Bloco titulo="Fornecedores atendidos">
@@ -268,11 +268,14 @@ function SubFornecedores(p: PropsVisao) {
 function DiasResumo({ dados, x, filtro }: PropsVisao) {
   const dias = agrupar(filtrarFatos(dados.fatos ?? [], filtro, "dia"), (f) => f.data).map((d) => ({ d: d.chave, v: valorMedida(d.resumo, "carros", x.porNotas) }));
   const com = dias.filter((d) => d.v > 0).sort((a, b) => b.v - a.v);
-  const [ano, mes] = dados.mes.split("-").map(Number);
-  const ultimo = x.r.fracaoMes < 1 ? new Date().getDate() : new Date(ano, mes, 0).getDate();
+  // Dias úteis do recorte até hoje (fim de semana não conta).
+  const hoje = new Date();
+  const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const fim = dados.periodo.ate < hojeISO ? dados.periodo.ate : hojeISO;
+  const util = (iso: string) => new Date(`${iso}T12:00:00`).getDay() % 6 !== 0;
   let uteis = 0;
-  for (let d = 1; d <= ultimo; d++) if (new Date(ano, mes - 1, d).getDay() % 6 !== 0) uteis += 1;
-  const semDescarrego = Math.max(0, uteis - com.filter((c) => new Date(ano, mes - 1, Number(c.d.slice(8, 10))).getDay() % 6 !== 0).length);
+  for (let d = dados.periodo.de; d <= fim; d = somarDias(d, 1)) if (util(d)) uteis += 1;
+  const semDescarrego = Math.max(0, uteis - com.filter((c) => util(c.d)).length);
   return (
     <div className="grid grid-cols-2 gap-3">
       <Mini rotulo="Média por dia" valor={com.length ? dec1(com.reduce((t, c) => t + c.v, 0) / com.length) : "—"} sub={x.porNotas ? "notas" : "carros"} />

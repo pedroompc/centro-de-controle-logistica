@@ -10,6 +10,7 @@ import { NumeroAnimado } from "@/components/movimento";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import { ROTULO_TURNO, TURNOS } from "@/domain/metrics";
+import { type Periodo, eixoDoPeriodo, formatMesAno, mesesDoPeriodo, periodoDoMes, somarDias } from "@/domain/periodo";
 import type { Equipamento, Funcionario, Turno } from "@/domain/types";
 import type { NomesHarpia } from "./turno-dados";
 
@@ -438,9 +439,24 @@ export function SubFolha({ pessoas, papeis }: { pessoas: PessoaBI[]; papeis: Pap
 const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 export const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-/** Calendário do mês: intensidade = valor do dia; clique seleciona (de novo, tira). */
+/** Dias (domingo a sábado) cobrindo o período; fora dele = `null`. */
+function gradeDoPeriodo(p: Periodo): (string | null)[] {
+  const dow = (iso: string) => new Date(`${iso}T12:00:00`).getDay();
+  const cel: (string | null)[] = Array(dow(p.de)).fill(null);
+  for (let d = p.de; d <= p.ate; d = somarDias(d, 1)) cel.push(d);
+  while (cel.length % 7) cel.push(null);
+  return cel;
+}
+
+/**
+ * Calendário do recorte: intensidade = valor do dia; clique seleciona (de
+ * novo, tira). Sem `periodo` (ou período = um mês) é a grade do mês; período
+ * de até 62 dias vira grade de semanas; mais longo vira um quadro por mês com
+ * a média por dia com movimento (sem clique — o filtro é por dia).
+ */
 export function CalendarioBI({
   mes: mesISO,
+  periodo,
   porDia,
   fmt,
   selecionado,
@@ -449,6 +465,7 @@ export function CalendarioBI({
   menorEhMelhor = false,
 }: {
   mes: string;
+  periodo?: Periodo;
   porDia: Map<string, number>;
   fmt: (v: number) => string;
   selecionado: string | null;
@@ -457,17 +474,71 @@ export function CalendarioBI({
   menorEhMelhor?: boolean;
 }) {
   const [hover, setHover] = useState<string | null>(null);
-  const [ano, mes] = mesISO.split("-").map(Number);
-  const diasNoMes = new Date(ano, mes, 0).getDate();
-  const primeiroDow = new Date(ano, mes - 1, 1).getDay(); // 0 = domingo
+  const p = periodo ?? periodoDoMes(mesISO);
+  const porMes = eixoDoPeriodo(p) === "mes";
   const vals = [...porDia.values()].filter((v) => v > 0);
-  const max = Math.max(1e-9, ...vals);
-  const min = vals.length ? Math.min(...vals) : 0;
   const media = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  // Quadro por mês: média por dia com movimento de cada mês.
+  const meses = porMes
+    ? mesesDoPeriodo(p).map((m) => {
+        const xs = [...porDia].filter(([d, v]) => v > 0 && d.slice(0, 7) === m.slice(0, 7)).map(([, v]) => v);
+        return { mes: m, dias: xs.length, valor: xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0 };
+      })
+    : [];
+  const base = porMes ? meses.map((m) => m.valor).filter((v) => v > 0) : vals;
+  const max = Math.max(1e-9, ...base);
+  const min = base.length ? Math.min(...base) : 0;
   const forca = (v: number) => (menorEhMelhor ? (max > min ? (max - v) / (max - min) : 1) : v / max);
-  const celulas: (string | null)[] = [...Array(primeiroDow).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => `${mesISO.slice(0, 8)}${String(i + 1).padStart(2, "0")}`)];
-  while (celulas.length % 7) celulas.push(null);
+  const cor = (v: number) => `rgba(91,111,214,${0.18 + 0.82 * forca(v)})`;
+  const legenda = (
+    <span className="inline-flex items-center gap-1.5">
+      {menorEhMelhor ? "pior" : "menos"}
+      {[0.15, 0.4, 0.7, 1].map((o) => (
+        <span key={o} className="h-2.5 w-2.5 rounded-sm" style={{ background: "#5b6fd6", opacity: o }} />
+      ))}
+      {menorEhMelhor ? "melhor" : "mais"}
+    </span>
+  );
+
+  if (porMes) {
+    const hm = meses.find((m) => m.mes === hover);
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="mb-1 flex items-center justify-between text-xs text-white/45">
+          <span>
+            {hm ? (
+              <>
+                <strong className="text-white">{formatMesAno(hm.mes)}</strong> · {hm.dias ? `${fmt(hm.valor)} por dia · ${hm.dias} dias` : vazio}
+              </>
+            ) : (
+              <>média {fmt(media)} por dia com movimento</>
+            )}
+          </span>
+          {legenda}
+        </div>
+        <div className={`mt-1 grid min-h-0 flex-1 auto-rows-fr gap-1 ${meses.length <= 3 ? "grid-cols-3" : "grid-cols-3 sm:grid-cols-4"}`} onMouseLeave={() => setHover(null)}>
+          {meses.map((m) => (
+            <div
+              key={m.mes}
+              onMouseEnter={() => setHover(m.mes)}
+              title={`${formatMesAno(m.mes)} · ${m.dias ? `${fmt(m.valor)} por dia · ${m.dias} dias` : vazio}`}
+              className="flex min-h-[3rem] flex-col justify-between rounded-md px-2 py-1.5"
+              style={{ background: m.valor ? cor(m.valor) : "rgba(255,255,255,0.05)" }}
+            >
+              <span className={`text-[0.7rem] font-bold leading-none ${m.valor ? "text-white/75" : "text-white/25"}`}>
+                {formatMesAno(m.mes).slice(0, 3)}/{m.mes.slice(2, 4)}
+              </span>
+              {m.valor > 0 && <span className="self-end text-sm font-extrabold leading-none tabular-nums text-white">{fmt(m.valor)}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const celulas = gradeDoPeriodo(p);
   const hv = hover ? porDia.get(hover) : undefined;
+  const variosMeses = p.de.slice(0, 7) !== p.ate.slice(0, 7);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -482,13 +553,7 @@ export function CalendarioBI({
             <>média {fmt(media)} por dia com movimento</>
           )}
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          {menorEhMelhor ? "pior" : "menos"}
-          {[0.15, 0.4, 0.7, 1].map((o) => (
-            <span key={o} className="h-2.5 w-2.5 rounded-sm" style={{ background: "#5b6fd6", opacity: o }} />
-          ))}
-          {menorEhMelhor ? "melhor" : "mais"}
-        </span>
+        {legenda}
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-[0.65rem] font-semibold uppercase tracking-wide text-white/35">
         {SEMANA.map((d) => (
@@ -501,7 +566,9 @@ export function CalendarioBI({
           if (!dia) return <span key={`v${i}`} />;
           const v = porDia.get(dia) ?? 0;
           const sel = selecionado === dia;
-          const fim = new Date(ano, mes - 1, Number(dia.slice(8, 10))).getDay() % 6 === 0;
+          const fim = new Date(`${dia}T12:00:00`).getDay() % 6 === 0;
+          // Em período de mais de um mês, o dia 1 (e o 1º do período) mostram o mês.
+          const rotulo = variosMeses && (dia.endsWith("-01") || dia === p.de) ? ddmm(dia) : String(Number(dia.slice(8, 10)));
           return (
             <button
               key={dia}
@@ -512,10 +579,10 @@ export function CalendarioBI({
               title={`${ddmm(dia)} · ${v ? fmt(v) : vazio}`}
               className={`relative flex min-h-[2.25rem] flex-col justify-between rounded-md px-1.5 py-1 text-left transition ${v ? "cursor-pointer hover:ring-2 hover:ring-white/50" : "cursor-default"} ${sel ? "ring-2 ring-amber-300" : ""} ${selecionado && !sel ? "opacity-45" : ""}`}
               style={{
-                background: sel ? "#f5b301" : v ? `rgba(91,111,214,${0.18 + 0.82 * forca(v)})` : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
+                background: sel ? "#f5b301" : v ? cor(v) : fim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
               }}
             >
-              <span className={`text-[0.65rem] font-bold leading-none ${sel ? "text-[#0a1650]" : v ? "text-white/70" : "text-white/25"}`}>{Number(dia.slice(8, 10))}</span>
+              <span className={`text-[0.65rem] font-bold leading-none ${sel ? "text-[#0a1650]" : v ? "text-white/70" : "text-white/25"}`}>{rotulo}</span>
               {v > 0 && <span className={`self-end text-xs font-extrabold leading-none tabular-nums ${sel ? "text-[#0a1650]" : "text-white"}`}>{fmt(v)}</span>}
             </button>
           );

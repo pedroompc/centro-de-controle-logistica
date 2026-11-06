@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, rotuloPeriodo } from "@/domain/periodo";
 import { ROTULO_TURNO } from "@/domain/metrics";
 import { Vazio, Bloco, Mini, useSub, Dica, BarrasTV, CalendarioBI, ddmm, NomeUsuario } from "../bi-ui";
 import type { NomesHarpia } from "../turno-dados";
@@ -112,13 +112,13 @@ function TabelaEmpilhadores({
 }
 
 export function VisaoMovimento({
-  movimento, convocacoes, recepcao, mes, dia, onDia, nomes,
+  movimento, convocacoes, recepcao, mes, periodo, dia, onDia, nomes,
 }: {
-  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; recepcao: RecepcaoProtocolo[]; mes: string; dia: string | null; onDia: (d: string | null) => void; nomes: NomesHarpia;
+  movimento: MovimentoPiso; convocacoes: LinhaConvocacao[]; recepcao: RecepcaoProtocolo[]; mes: string; periodo: Periodo; dia: string | null; onDia: (d: string | null) => void; nomes: NomesHarpia;
 }) {
   const { sub, abrir, fechar } = useSub<SubMov>();
   const [pessoaAberta, setPessoaAberta] = useState<number | null>(null);
-  if (movimento.a424.length === 0) return <Vazio>Nenhuma movimentação registrada em {formatMesAno(mes)}.</Vazio>;
+  if (movimento.a424.length === 0) return <Vazio>Nenhuma movimentação registrada em {rotuloPeriodo(periodo)}.</Vazio>;
   const porDia = premiacaoPorDia(movimento.a424, movimento.empilhadores, movimento.lancadoresWms);
   const porHora = horaMovimento(movimento.porHoraDia, dia);
   const resumoConv = resumoConvocacoes(convocacoes, dia);
@@ -149,11 +149,11 @@ export function VisaoMovimento({
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
-        <Mini rotulo="Movimentações" valor={n0(prem.total)} sub={`${dia ? ddmm(dia) : formatMesAno(mes)}`} />
+        <Mini rotulo="Movimentações" valor={n0(prem.total)} sub={`${dia ? ddmm(dia) : rotuloPeriodo(periodo)}`} />
         <Mini rotulo="↓ Descendente" valor={n0(prem.descendente)} sub="reabastecimento — reserva → picking" />
         <Mini {...card("subida")} rotulo="↑ Ascendente" valor={n0(prem.ascendente)} sub={`movimentações − descendente · ${n0(volumesRecepcao)} vol. recebidos`} />
         <Mini {...card("equipe")} rotulo="Empilhadores" valor={String(emp.length)} sub="clique pra ver o rendimento" />
-        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`movimentações ${dia ? "nesse dia" : "no mês"}${prem.lancadoWms ? ` · fora ${n0(prem.lancadoWms)} do WMS` : ""}`} />
+        <Mini rotulo="Média por empilhador" valor={mediaPorEmpilhador !== null ? n1(mediaPorEmpilhador) : "—"} sub={`movimentações ${dia ? "nesse dia" : "no período"}${prem.lancadoWms ? ` · fora ${n0(prem.lancadoWms)} do WMS` : ""}`} />
         <Mini {...card("horario")} rotulo="Pico" valor={pico.hora >= 0 ? `${String(pico.hora).padStart(2, "0")}h` : "—"} sub={pico.hora >= 0 ? `${n0(pico.total)} movimentações nessa hora` : undefined} />
         <Mini {...card("tempo")} rotulo="Tempo de resposta" valor={fmtMin(resumoConv.medianaRespostaMin)} sub={resumoConv.total ? `Convocação Ativa · ${resumoConv.total} tarefas` : "Convocação Ativa — sem tarefa ainda"} />
       </div>
@@ -173,11 +173,11 @@ export function VisaoMovimento({
       {sub === null && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <Bloco titulo="Movimentações por dia" direita={<Dica>empilhadores + lançamento manual (A424)</Dica>}>
-            <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
+            <CalendarioBI mes={mes} periodo={periodo} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem movimentação" />
           </Bloco>
-          <Bloco titulo="Top 50 produtos mais mexidos" direita={<Dica>mês inteiro, por nº de movimentações</Dica>}>
+          <Bloco titulo="Top 50 produtos mais mexidos" direita={<Dica>período inteiro, por nº de movimentações</Dica>}>
             {movimento.produtosTop.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/40">Nenhum produto movimentado no mês.</p>
+              <p className="py-6 text-center text-sm text-white/40">Nenhum produto movimentado no período.</p>
             ) : (
               <ul className="h-full space-y-3 overflow-auto pr-1">
                 {movimento.produtosTop.map((p) => (
@@ -201,18 +201,18 @@ export function VisaoMovimento({
 
       {sub === "equipe" && (
         <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "mês inteiro · clique numa pessoa"}</Dica>}>
+          <Bloco titulo="Quem fez" direita={<Dica>{dia ? `${ddmm(dia)} · clique numa pessoa` : "período inteiro · clique numa pessoa"}</Dica>}>
             {emp.length > 0 ? (
               <div className="h-full overflow-auto pr-1">
                 <TabelaEmpilhadores rendimentos={emp} lancadores={lanc} turnos={movimento.turnos} nomes={nomes} aberta={pessoaAberta} onAbrir={abrirPessoa} />
               </div>
             ) : (
-              <p className="py-6 text-center text-sm text-white/40">Nenhum empilhador com tarefa {dia ? `em ${ddmm(dia)}` : "no mês"}.</p>
+              <p className="py-6 text-center text-sm text-white/40">Nenhum empilhador com tarefa {dia ? `em ${ddmm(dia)}` : "no período"}.</p>
             )}
           </Bloco>
           <Bloco
             titulo={empSel ? `${empSel.nome ?? `Usuário ${empSel.usuario}`} · rendimento` : "Rendimento"}
-            direita={empSel ? <Dica>regra A424 · {dia ? ddmm(dia) : formatMesAno(mes)}</Dica> : undefined}
+            direita={empSel ? <Dica>regra A424 · {dia ? ddmm(dia) : rotuloPeriodo(periodo)}</Dica> : undefined}
           >
             {empSel ? (
               <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
@@ -241,7 +241,7 @@ export function VisaoMovimento({
       )}
 
       {sub === "horario" && (
-        <Bloco titulo="Movimentações por hora do dia" direita={<Dica>{dia ? ddmm(dia) : formatMesAno(mes)}</Dica>}>
+        <Bloco titulo="Movimentações por hora do dia" direita={<Dica>{dia ? ddmm(dia) : rotuloPeriodo(periodo)}</Dica>}>
           <BarrasTV
             altura={240}
             fmt={n0}
@@ -257,13 +257,13 @@ export function VisaoMovimento({
         </Bloco>
       )}
 
-      {sub === "subida" && <SubidaRecebimento recepcao={recepcaoFiltrada} mes={mes} dia={dia} ascendenteInterno={ascendenteInterno} />}
+      {sub === "subida" && <SubidaRecebimento recepcao={recepcaoFiltrada} periodo={periodo} dia={dia} ascendenteInterno={ascendenteInterno} />}
 
       {sub === "tempo" && (
         resumoConv.total === 0 ? (
           <Vazio>
             <div className="max-w-md space-y-2">
-              <p className="text-lg font-semibold text-white/70">Convocação Ativa ligada, sem tarefa {dia ? `em ${ddmm(dia)}` : `em ${formatMesAno(mes)}`}</p>
+              <p className="text-lg font-semibold text-white/70">Convocação Ativa ligada, sem tarefa {dia ? `em ${ddmm(dia)}` : `em ${rotuloPeriodo(periodo)}`}</p>
               <p className="text-sm text-white/40">Vocês ligaram o módulo em 13/10 — a partir de segunda, toda movimentação passa a entrar aqui. Esse card enche sozinho.</p>
             </div>
           </Vazio>
@@ -325,8 +325,8 @@ export function VisaoMovimento({
  * armazenado pra cima (rotina 229 do Harpia). Lista por protocolo no mesmo
  * formato da 229, pra conferir lado a lado.
  */
-function SubidaRecebimento({ recepcao, mes, dia, ascendenteInterno }: { recepcao: RecepcaoProtocolo[]; mes: string; dia: string | null; ascendenteInterno: number }) {
-  if (recepcao.length === 0) return <Vazio>Nenhuma recepção de compra {dia ? `em ${ddmm(dia)}` : `em ${formatMesAno(mes)}`}.</Vazio>;
+function SubidaRecebimento({ recepcao, periodo, dia, ascendenteInterno }: { recepcao: RecepcaoProtocolo[]; periodo: Periodo; dia: string | null; ascendenteInterno: number }) {
+  if (recepcao.length === 0) return <Vazio>Nenhuma recepção de compra {dia ? `em ${ddmm(dia)}` : `em ${rotuloPeriodo(periodo)}`}.</Vazio>;
   const soma = (k: "skus" | "volumes" | "peso") => recepcao.reduce((t, r) => t + r[k], 0);
   const volumes = soma("volumes");
   const peso = soma("peso");
@@ -372,7 +372,7 @@ function SubidaRecebimento({ recepcao, mes, dia, ascendenteInterno }: { recepcao
       </Bloco>
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
         <div className="grid grid-cols-2 gap-3">
-          <Mini rotulo="Volumes recebidos" valor={n0(volumes)} sub={dia ? ddmm(dia) : formatMesAno(mes)} />
+          <Mini rotulo="Volumes recebidos" valor={n0(volumes)} sub={dia ? ddmm(dia) : rotuloPeriodo(periodo)} />
           <Mini rotulo="Peso" valor={ton(peso)} sub={`${n0(peso)} kg`} />
           <Mini rotulo="Protocolos" valor={n0(recepcao.length)} sub={`${n0(soma("skus"))} SKUs (soma por protocolo)`} />
           <Mini rotulo="Ascendente interno" valor={n0(ascendenteInterno)} sub="movimentações picking → reserva" />

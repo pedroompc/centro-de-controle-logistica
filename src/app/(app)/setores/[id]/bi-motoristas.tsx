@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
 import { custoDoPeriodo, custoSobreFaturamento } from "@/domain/separacao";
 import { totaisEntregas, porDiaEntregas, porVeiculo, faixasOcupacao, resumoDevolucao, devolucaoPorDia, type ViagemEntrega, type DiaEntregas } from "@/domain/motoristas";
@@ -52,7 +52,7 @@ const nomeCurto = (nome: string) => {
 /** Indicadores do recorte (mês ou 1 dia) — a MESMA conta alimenta cards e gráficos. */
 function indicadores(d: DadosBIMotoristas, dia: string | null) {
   const vs = comViagens(d.entregas) ? d.entregas.viagens : null;
-  const h = d.historico.find((x) => x.mes === d.mes) ?? null;
+  const h = d.ref;
   const totMes = vs ? totaisEntregas(vs) : null;
   const tot = vs ? totaisEntregas(vs, dia) : null;
   const custo = custoDoPeriodo(h?.custo ?? null, d.fracaoMes, totMes?.dias ?? 0, !!dia);
@@ -71,10 +71,8 @@ function indicadores(d: DadosBIMotoristas, dia: string | null) {
   };
 }
 
-function anteriorDe(d: DadosBIMotoristas): PontoHistoricoMot | null {
-  const i = d.historico.findIndex((x) => x.mes === d.mes);
-  return i > 0 ? d.historico[i - 1] : null;
-}
+const anteriorDe = (d: DadosBIMotoristas): PontoHistoricoMot | null => d.refAnterior;
+const noRecorte = (d: DadosBIMotoristas, mes: string) => d.meses.includes(mes);
 
 
 export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string }) {
@@ -102,7 +100,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
         {...q("custo")}
         rotulo={sufixo("Custo e equipe")}
         valor={ind.custo === null ? "—" : semCentavos(ind.custo)}
-        sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs mês anterior` : ""}`}
+        sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs ${dados.rotuloAnterior}` : ""}`}
       />
       <Quadro
         {...q("entregas")}
@@ -139,7 +137,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
   return (
     <BIShell
       titulo="BI dos Motoristas"
-      mes={dados.mes}
+      periodo={dados.periodo}
       hrefMes={hrefMes}
       hrefSair={hrefSair}
       dicaTopo=""
@@ -173,9 +171,9 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
                 ) : visao === "frota" ? (
                   <VisaoFrota vs={vs} dia={dia} />
                 ) : visao === "km" ? (
-                  km ? <VisaoKm km={km} custo={custoKm} entregas={tot?.entregas ?? 0} mes={dados.mes} dia={dia} onDia={setDia} /> : <Vazio>Sem telemetria da frota para este mês.</Vazio>
+                  km ? <VisaoKm km={km} custo={custoKm} entregas={tot?.entregas ?? 0} mes={dados.mes} periodo={dados.periodo} dia={dia} onDia={setDia} /> : <Vazio>Sem telemetria da frota para este período.</Vazio>
                 ) : visao === "motoristas" && dados.motoristas ? (
-                  <VisaoMotoristas lista={dados.motoristas} mes={dados.mes} />
+                  <VisaoMotoristas lista={dados.motoristas} periodo={dados.periodo} />
                 ) : null,
             }
           : null
@@ -200,7 +198,7 @@ function SemWinthor({ erro }: { erro: string }) {
 
 type SubCusto = "custo" | "equipe" | "folha" | "equipamentos" | "entrega" | "fat";
 const TITULO_SUB: Record<SubCusto, string> = {
-  custo: "Custo do mês", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", entrega: "Custo por entrega", fat: "Custo ÷ faturamento líquido",
+  custo: "Custo do recorte", equipe: "Equipe", folha: "Folha", equipamentos: "Equipamentos", entrega: "Custo por entrega", fat: "Custo ÷ faturamento líquido",
 };
 
 type MedidaCusto = "custo" | "fat" | "entrega" | "tonelada";
@@ -234,7 +232,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | nu
         chave: x.mes,
         rotulo: mesCurto(x.mes) + (x.mes === dados.atual ? "*" : ""),
         valor: MEDIDA_CUSTO[m].valor(x),
-        cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+        cor: noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6",
         detalhe: `${formatMesAno(x.mes)}${x.custo === null ? " (sem foto do mês)" : x.mes === dados.atual ? " (cadastro atual)" : ""}`,
       }))}
     />
@@ -244,7 +242,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | nu
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_auto_minmax(20rem,1fr)]`}>
       <div className={GRADE_CARDS}>
-        <Mini {...card("custo")} rotulo={dia ? `Custo do dia ${ddmm(dia)}` : "Custo do mês"} valor={brl(ind.custo)} sub={ind.h?.custo == null ? "mês sem foto do efetivo" : dia ? "custo do mês ÷ dias com entrega" : dados.fracaoMes < 1 ? "proporcional aos dias corridos" : formatMesAno(dados.mes)} />
+        <Mini {...card("custo")} rotulo={dia ? `Custo do dia ${ddmm(dia)}` : dados.mensal ? "Custo do mês" : "Custo do período"} valor={brl(ind.custo)} sub={ind.h?.custo == null ? "sem foto do efetivo no recorte" : dia ? "custo do recorte ÷ dias com entrega" : !dados.custoCompleto ? "só os meses com foto do efetivo" : dados.ref?.parcial ? "proporcional aos dias corridos" : rotuloPeriodo(dados.periodo)} />
         <Mini {...card("equipe")} rotulo="Equipe" valor={`${pessoas.length} pessoas`} sub={presentes.map((pp) => `${pessoas.filter((y) => y.papel === pp.id).length} ${pp.rotulo.toLowerCase().slice(0, 4)}.`).join(" · ")} />
         <Mini {...card("folha")} rotulo="Folha (cadastro atual)" valor={formatBRL(folha)} sub="por mês, com encargos" />
         <Mini {...card("equipamentos")} rotulo="Equipamentos" valor={formatBRL(custoEquip)} sub={`${equipamentos.reduce((s, e) => s + e.quantidade, 0)} unidades · por mês`} />
@@ -253,7 +251,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | nu
           {...card("fat")}
           rotulo="Custo ÷ faturamento líquido"
           valor={ind.sobreFat === null ? "—" : formatPercent(ind.sobreFat, 2)}
-          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.fracaoMes < 1 ? " · custo proporcional ao mês corrido" : ""}`}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.ref?.parcial ? " · custo proporcional aos dias corridos" : ""}`}
         />
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -339,7 +337,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | nu
             <BarrasTV
               altura={110}
               fmt={(v) => String(v)}
-              itens={dados.serie.filter((x) => x.mes <= dados.mes).map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
+              itens={dados.serie.filter((x) => x.mes <= dados.mes).map((x) => ({ chave: x.mes, rotulo: mesCurto(x.mes), valor: x.pessoas, cor: noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6", detalhe: formatMesAno(x.mes) }))}
             />
           </Bloco>
         </div>
@@ -389,7 +387,7 @@ const ROT_ENT: Record<MedidaEnt, string> = { entregas: "Entregas", viagens: "Via
 
 function VisaoEntregas({ dados, vs, dia, onDia }: { dados: DadosBIMotoristas; vs: ViagemEntrega[]; dia: string | null; onDia: (d: string | null) => void }) {
   const [medida, setMedida] = useState<MedidaEnt>("entregas");
-  if (vs.length === 0) return <Vazio>Nenhuma entrega neste mês.</Vazio>;
+  if (vs.length === 0) return <Vazio>Nenhuma entrega no período.</Vazio>;
   const r = totaisEntregas(vs, dia);
   const dias = [...porDiaEntregas(vs).entries()].sort(([a], [b]) => a.localeCompare(b));
   const valorDe = (x: DiaEntregas) => (medida === "kg" ? x.kg / 1000 : x[medida]);
@@ -429,7 +427,7 @@ function VisaoEntregas({ dados, vs, dia, onDia }: { dados: DadosBIMotoristas; vs
             </div>
           }
         >
-          <CalendarioBI mes={dados.mes} porDia={new Map(dias.map(([d, x]) => [d, valorDe(x)]))} fmt={fmtM} selecionado={dia} onSelecionar={onDia} vazio="sem entrega" />
+          <CalendarioBI mes={dados.mes} periodo={dados.periodo} porDia={new Map(dias.map(([d, x]) => [d, valorDe(x)]))} fmt={fmtM} selecionado={dia} onSelecionar={onDia} vazio="sem entrega" />
         </Bloco>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-2">
           <Bloco titulo={`Média por dia da semana · ${ROT_ENT[medida].toLowerCase()}`}>
@@ -443,7 +441,7 @@ function VisaoEntregas({ dados, vs, dia, onDia }: { dados: DadosBIMotoristas; vs
                 chave: x.mes,
                 rotulo: mesCurto(x.mes) + (x.parcial ? "*" : ""),
                 valor: x.dias ? x.entregas! / x.dias : null,
-                cor: x.mes === dados.mes ? "#c2820a" : "#5b6fd6",
+                cor: noRecorte(dados, x.mes) ? "#c2820a" : "#5b6fd6",
                 detalhe: `${formatMesAno(x.mes)} · ${x.dias} dias · ${n0(x.entregas!)} entregas · ${n0(x.viagens ?? 0)} viagens`,
               }))}
             />
@@ -509,6 +507,7 @@ function VisaoKm({
   custo,
   entregas,
   mes,
+  periodo,
   dia,
   onDia,
 }: {
@@ -516,6 +515,7 @@ function VisaoKm({
   custo: CustoFrota | null;
   entregas: number;
   mes: string;
+  periodo: Periodo;
   dia: string | null;
   onDia: (d: string | null) => void;
 }) {
@@ -540,7 +540,7 @@ function VisaoKm({
       </div>
       <div className={`${DUAS_COLUNAS} xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]`}>
         <Bloco className="min-h-[22rem] xl:min-h-0" titulo="KM por dia">
-          <CalendarioBI mes={mes} porDia={km.porDia} fmt={(v) => `${n0(v)} km`} selecionado={dia} onSelecionar={onDia} vazio="sem telemetria" />
+          <CalendarioBI mes={mes} periodo={periodo} porDia={km.porDia} fmt={(v) => `${n0(v)} km`} selecionado={dia} onSelecionar={onDia} vazio="sem telemetria" />
         </Bloco>
         <Bloco titulo="Por veículo" direita={<Dica>{rastreados.length} com telemetria</Dica>}>
           <div className="h-full overflow-auto pr-1">
@@ -585,7 +585,7 @@ const ORDENS: Record<OrdemMot, { rotulo: string; valor: (m: MotoristaBI) => numb
   km: { rotulo: "KM", valor: (m) => m.km, desc: true },
 };
 
-function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) {
+function VisaoMotoristas({ lista, periodo }: { lista: MotoristaBI[]; periodo: Periodo }) {
   const [tipo, setTipo] = useState<"F" | "T" | null>(null);
   const [ordem, setOrdem] = useState<OrdemMot>("entregas");
   const [sel, setSel] = useState<number | null>(null);
@@ -609,7 +609,7 @@ function VisaoMotoristas({ lista, mes }: { lista: MotoristaBI[]; mes: string }) 
         <Mini rotulo="Ligados ao Efetivo" valor={`${casa.filter((m) => m.funcionarioId).length} de ${casa.length}`} sub="casa, pelo nome" />
       </div>
       <Bloco
-        titulo={`Motoristas · ${formatMesAno(mes)}`}
+        titulo={`Motoristas · ${rotuloPeriodo(periodo)}`}
         direita={
           <div className="flex flex-wrap items-center gap-1.5">
             <ChipTV ativo={tipo === "F"} onClick={() => setTipo(tipo === "F" ? null : "F")}>
@@ -723,6 +723,7 @@ function VisaoDevolucao({ dados, dia, onDia }: { dados: DadosBIMotoristas; dia: 
         <Bloco className="min-h-[22rem] xl:min-h-0" titulo="Taxa por dia de faturamento">
           <CalendarioBI
             mes={dados.mes}
+            periodo={dados.periodo}
             porDia={new Map([...porDia.entries()].flatMap(([d, x]) => (x.taxa === null ? [] : [[d, x.taxa] as [string, number]])))}
             fmt={(v) => formatPercent(v, 1)}
             selecionado={dia}
@@ -732,7 +733,7 @@ function VisaoDevolucao({ dados, dia, onDia }: { dados: DadosBIMotoristas; dia: 
           />
         </Bloco>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]">
-          <Bloco titulo="Maior taxa" direita={<Dica>{minimo}+ notas {dia ? "no dia" : "no mês"}</Dica>}>
+          <Bloco titulo="Maior taxa" direita={<Dica>{minimo}+ notas {dia ? "no dia" : "no período"}</Dica>}>
             <BarrasTV
               altura={150}
               fmt={(v) => formatPercent(v, 1)}

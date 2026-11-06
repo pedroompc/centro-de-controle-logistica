@@ -7,8 +7,15 @@ import { listarFaltas } from "@/data/faltas";
 import { isAdmin } from "@/data/auth";
 import { custoDoSetor, headcountPorStatus, faltasNoPeriodo, resumoPorTurno, ROTULO_TURNO } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
-import { inicioFimMesAtual, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
-import { carregarRecebimento, carregarDetalheCusto, carregarFatosDescarrego } from "../../painel/painel-actions";
+import {
+  inicioFimMesAtual, INICIO_HISTORICO, PISO_HARPIA, type Periodo,
+  lerPeriodo, deslocarPeriodo, paramsDoPeriodo, mesDoPeriodo, primeiroDiaDoMes, atalhosPeriodo, tipoPeriodo,
+} from "@/domain/periodo";
+import { hojeISO } from "@/domain/fechamento";
+import { carregarRecebimento, carregarDetalheCusto, carregarFatosDescarrego, carregarFatosDescarregoPeriodo } from "../../painel/painel-actions";
+import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
+import { indicadoresDoPeriodo } from "@/domain/recebimento";
+import { resumir } from "@/domain/bi-recebimento";
 import { BIAba } from "./bi-aba";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
@@ -68,10 +75,11 @@ export default async function SetorDetalhe({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ aba?: string; mes?: string }>;
+  searchParams: Promise<{ aba?: string; mes?: string; de?: string; ate?: string }>;
 }) {
   const { id } = await params;
-  const { aba: abaParam, mes: mesParam } = await searchParams;
+  const sp = await searchParams;
+  const abaParam = sp.aba;
   const [setores, funcionarios, faltas, admin] = await Promise.all([
     listarSetores(),
     listarFuncionarios(),
@@ -92,29 +100,36 @@ export default async function SetorDetalhe({
   const separacao = !recebimento && ehSetorSeparacao(setor.nome);
   const abastecimento = !recebimento && !separacao && ehSetorAbastecimento(setor.nome);
   const motoristas = !recebimento && !separacao && !abastecimento && ehSetorMotoristas(setor.nome);
-  // Mês do BI (?mes=), limitado ao histórico, e a navegação ‹ mês ›.
-  const mesBI = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
-  const mesAtual = primeiroDiaDoMes();
-  const hrefBI = (m: string) => `/setores/${id}?aba=bi${m === mesAtual ? "" : `&mes=${m}`}`;
-  const hrefMes = {
-    anterior: mesBI > INICIO_HISTORICO ? hrefBI(mesAnterior(mesBI)) : null,
-    proximo: mesBI < mesAtual ? hrefBI(mesProximo(mesBI)) : null,
-    atual: mesBI < mesAtual ? hrefBI(mesAtual) : null,
+  // Período do BI (?mes= ou ?de=&ate=) e a navegação ‹ período ›. Harpia vai
+  // até out/2025; o Recebimento depende do histórico do Supabase (jul/2026).
+  const piso = recebimento ? INICIO_HISTORICO : PISO_HARPIA;
+  const periodoBI = lerPeriodo(sp, { piso });
+  const hoje = hojeISO();
+  const hrefBI = (q: Record<string, string>) => `/setores/${id}?${new URLSearchParams({ aba: "bi", ...q }).toString()}`;
+  const ant = deslocarPeriodo(periodoBI, -1);
+  const prox = deslocarPeriodo(periodoBI, 1);
+  const hrefMes: HrefMes = {
+    anterior: ant.ate >= piso ? hrefBI(paramsDoPeriodo(ant)) : null,
+    proximo: prox.de <= hoje ? hrefBI(paramsDoPeriodo(prox)) : null,
+    atual: mesDoPeriodo(periodoBI) === primeiroDiaDoMes() ? null : hrefBI({}),
+    piso,
+    hoje,
+    atalhos: atalhosPeriodo().filter((a) => a.periodo.ate >= piso),
   };
-  // Abas e meses mudam só a query string — o loading.tsx não aparece nesse caso;
+  // Abas e períodos mudam só a query string — o loading.tsx não aparece nesse caso;
   // o Suspense com key mostra o esqueleto na hora a cada troca.
-  const chave = `${abaParam ?? ""}|${mesBI}`;
+  const chave = `${abaParam ?? ""}|${periodoBI.de}|${periodoBI.ate}`;
   if (separacao && abaParam === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBISeparacao setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
+        <ConteudoBISeparacao setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} />
       </Suspense>
     );
   }
   if (abastecimento && abaParam === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBIAbastecimento setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
+        <ConteudoBIAbastecimento setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} />
       </Suspense>
     );
   }
@@ -122,7 +137,7 @@ export default async function SetorDetalhe({
   if (motoristas && abaParam === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBIMotoristas setor={setor} funcionarios={funcionarios} mes={mesBI} hrefMes={hrefMes} />
+        <ConteudoBIMotoristas setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} />
       </Suspense>
     );
   }
@@ -131,7 +146,7 @@ export default async function SetorDetalhe({
   if (aba === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBIRecebimento id={id} mes={mesBI} hrefMes={hrefMes} />
+        <ConteudoBIRecebimento id={id} periodo={periodoBI} hrefMes={hrefMes} />
       </Suspense>
     );
   }
@@ -283,29 +298,37 @@ export default async function SetorDetalhe({
   );
 }
 
-async function ConteudoBISeparacao({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
-  const dados = await carregarBISeparacao(setor, funcionarios, mes);
-  return <BISeparacao key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
+async function ConteudoBISeparacao({ setor, funcionarios, periodo, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; periodo: Periodo; hrefMes: HrefMes }) {
+  const dados = await carregarBISeparacao(setor, funcionarios, periodo);
+  return <BISeparacao key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
 }
 
-async function ConteudoBIAbastecimento({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
-  const dados = await carregarBIAbastecimento(setor, funcionarios, mes);
-  return <BIAbastecimento key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
+async function ConteudoBIAbastecimento({ setor, funcionarios, periodo, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; periodo: Periodo; hrefMes: HrefMes }) {
+  const dados = await carregarBIAbastecimento(setor, funcionarios, periodo);
+  return <BIAbastecimento key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
 }
 
-async function ConteudoBIMotoristas({ setor, funcionarios, mes, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; mes: string; hrefMes: HrefMes }) {
-  const dados = await carregarBIMotoristas(setor, funcionarios, mes);
-  return <BIMotoristas key={mes} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
+async function ConteudoBIMotoristas({ setor, funcionarios, periodo, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; periodo: Periodo; hrefMes: HrefMes }) {
+  const dados = await carregarBIMotoristas(setor, funcionarios, periodo);
+  return <BIMotoristas key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
 }
 
-async function ConteudoBIRecebimento({ id, mes, hrefMes }: { id: string; mes: string; hrefMes: HrefMes }) {
-  const [serie, custo, fatos] = await Promise.all([
+async function ConteudoBIRecebimento({ id, periodo, hrefMes }: { id: string; periodo: Periodo; hrefMes: HrefMes }) {
+  const mensal = tipoPeriodo(periodo) === "mes";
+  const hoje = hojeISO();
+  const mes = primeiroDiaDoMes(periodo.ate < hoje ? periodo.ate : hoje);
+  const [serie, custo, fatos, fat] = await Promise.all([
     carregarRecebimento(),
     carregarDetalheCusto().catch(() => null),
-    carregarFatosDescarrego(mes).catch(() => null),
+    (mensal ? carregarFatosDescarrego(mes) : carregarFatosDescarregoPeriodo(periodo.de, periodo.ate)).catch(() => null),
+    mensal ? Promise.resolve(null) : getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null),
   ]);
+  // Período: a linha de indicadores é montada dos fatos do período + custo proporcional dos meses.
+  const ref = mensal
+    ? undefined
+    : (indicadoresDoPeriodo({ periodo, mes, serie, fatos: resumir(fatos ?? []), faturamentoLiquido: fat?.vendaLiquida ?? null }) ?? undefined);
   // Tela cheia (overlay como o Painel da Operação); "Sair" volta ao setor.
-  return <BIAba key={mes} dados={{ mes, serie, custo, fatos }} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
+  return <BIAba key={`${periodo.de}|${periodo.ate}`} dados={{ mes, periodo, mensal, ref, serie, custo, fatos }} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
 }
 
 async function ConteudoAnaliseRecebimento({ aba, funcionarios, setores }: { aba: string; funcionarios: Funcionario[]; setores: Setor[] }) {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatBRL } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, rotuloPeriodo } from "@/domain/periodo";
 import { rotuloTurno, type SinalOperador } from "@/domain/separacao";
 import { TURNOS_SEPARACAO } from "@/domain/turnos-separacao";
 import type { TurnoSep } from "@/domain/turnos-separacao";
@@ -19,12 +19,12 @@ const ORDENS: Record<Ordem, { rotulo: string; valor: (s: SeparadorBI) => number 
 };
 
 const SINAL: Record<Exclude<SinalOperador, null>, { rotulo: string; cls: string; dica: string }> = {
-  evolucao: { rotulo: "↑ evolução", cls: "text-amber-300", dica: "endereços/hora 10%+ acima do próprio mês anterior" },
-  queda: { rotulo: "↓ queda", cls: "text-rose-300", dica: "endereços/hora 10%+ abaixo do próprio mês anterior" },
+  evolucao: { rotulo: "↑ evolução", cls: "text-amber-300", dica: "endereços/hora 10%+ acima do próprio período anterior" },
+  queda: { rotulo: "↓ queda", cls: "text-rose-300", dica: "endereços/hora 10%+ abaixo do próprio período anterior" },
   atencao: { rotulo: "avaliar", cls: "text-orange-300", dica: "abaixo de 80% da média do turno com perfil de endereço parecido — verificar função, jornada, experiência e tipo de mapa antes de concluir" },
 };
 
-export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: string }) {
+export function VisaoOperadores({ ind, periodo }: { ind: DadosIndividuais; periodo: Periodo }) {
   const [aba, setAba] = useState<"separadores" | "conferentes">("separadores");
   const [turno, setTurno] = useState<TurnoSep | null>(null);
   const [ordem, setOrdem] = useState<Ordem>("linhasPorHora");
@@ -46,7 +46,7 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
         <Mini rotulo="Conferentes" valor={String(ind.conferentes.length)} />
       </div>
       <Bloco
-        titulo={aba === "separadores" ? `Separadores · ${formatMesAno(mes)}` : `Conferentes · ${formatMesAno(mes)}`}
+        titulo={aba === "separadores" ? `Separadores · ${rotuloPeriodo(periodo)}` : `Conferentes · ${rotuloPeriodo(periodo)}`}
         direita={
           <div className="flex flex-wrap items-center gap-1.5">
             <ChipTV ativo={aba === "separadores"} onClick={() => setAba("separadores")}>
@@ -88,7 +88,7 @@ export function VisaoOperadores({ ind, mes }: { ind: DadosIndividuais; mes: stri
                   <th className="py-2 text-right font-semibold">End./h</th>
                   <th className="py-2 text-right font-semibold">× turno</th>
                   <th className="py-2 text-right font-semibold">× geral</th>
-                  <th className="py-2 text-right font-semibold">× {ind.mesAnterior ? formatMesAno(ind.mesAnterior).slice(0, 3) : "ant."}</th>
+                  <th className="py-2 text-right font-semibold">× {ind.rotuloAnterior ?? "ant."}</th>
                   <th className="py-2 text-right font-semibold">Kg/end.</th>
                   <th className="py-2 text-right font-semibold">Erros ‰</th>
                   <th className="py-2 text-right font-semibold">R$/end.</th>

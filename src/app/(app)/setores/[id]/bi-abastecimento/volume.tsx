@@ -1,20 +1,20 @@
 "use client";
 
 import { formatBRL, formatPercent } from "@/domain/format";
-import { formatMesAno } from "@/domain/periodo";
+import { type Periodo, rotuloPeriodo } from "@/domain/periodo";
 import { Vazio, Bloco, Mini, Dica, BarrasTV, CalendarioBI, ddmm } from "../bi-ui";
 import { resumoVolume, resumoAntecedencia } from "@/domain/abastecimento";
 import type { DadosHarpiaAbastecimento } from "@/data/harpia-abastecimento";
 import { n0, n1 } from "./base";
 
 export function VisaoVolume({
-  h, mes, custoMes, dia, onDia,
+  h, mes, periodo, custoMes, dia, onDia,
 }: {
-  h: DadosHarpiaAbastecimento; mes: string; custoMes: number | null; dia: string | null; onDia: (d: string | null) => void;
+  h: DadosHarpiaAbastecimento; mes: string; periodo: Periodo; custoMes: number | null; dia: string | null; onDia: (d: string | null) => void;
 }) {
   const dias = h.reabastecimento;
   const resumo = resumoVolume(dias);
-  if (dias.length === 0) return <Vazio>Nenhum reabastecimento registrado neste mês.</Vazio>;
+  if (dias.length === 0) return <Vazio>Nenhum reabastecimento registrado no período.</Vazio>;
   const peso = dias.reduce((t, d) => t + d.peso, 0);
   const porDiaCx = new Map(dias.map((d) => [d.dia, d.caixas]));
   const custoPorCaixa = custoMes !== null && resumo.caixas > 0 ? custoMes / resumo.caixas : null;
@@ -38,7 +38,7 @@ export function VisaoVolume({
       )}
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <Bloco titulo="Caixas reabastecidas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
-          <CalendarioBI mes={mes} porDia={porDiaCx} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem reabastecimento" />
+          <CalendarioBI mes={mes} periodo={periodo} porDia={porDiaCx} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem reabastecimento" />
         </Bloco>
         <div className="grid min-h-0 grid-rows-2 gap-4">
           <Bloco titulo="Peso reabastecido por dia" direita={<Dica>toneladas</Dica>}>
@@ -66,13 +66,13 @@ export function VisaoVolume({
 // --- ANTECEDÊNCIA ---------------------------------------------------------------
 
 export function VisaoAntecedencia({
-  h, mes, dia, onDia,
+  h, mes, periodo, dia, onDia,
 }: {
-  h: DadosHarpiaAbastecimento; mes: string; dia: string | null; onDia: (d: string | null) => void;
+  h: DadosHarpiaAbastecimento; mes: string; periodo: Periodo; dia: string | null; onDia: (d: string | null) => void;
 }) {
   const cargasFiltradas = dia ? h.cargas.filter((c) => c.dia === dia) : h.cargas;
   const ant = resumoAntecedencia(cargasFiltradas);
-  if (h.cargas.length === 0) return <Vazio>Nenhuma carga abastecida neste mês.</Vazio>;
+  if (h.cargas.length === 0) return <Vazio>Nenhuma carga abastecida no período.</Vazio>;
   const pctAntes = ant.antes + ant.depoisOuJunto > 0 ? ant.antes / (ant.antes + ant.depoisOuJunto) : null;
   const maxFaixa = Math.max(1, ...ant.faixas.map((f) => f.qtd));
   const porDia = new Map<string, number>();
@@ -80,14 +80,14 @@ export function VisaoAntecedencia({
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Mini rotulo="Cargas analisadas" valor={n0(ant.total)} sub={dia ? ddmm(dia) : ant.semSeparacao ? `${ant.semSeparacao} ainda sem separação` : formatMesAno(mes)} />
+        <Mini rotulo="Cargas analisadas" valor={n0(ant.total)} sub={dia ? ddmm(dia) : ant.semSeparacao ? `${ant.semSeparacao} ainda sem separação` : rotuloPeriodo(periodo)} />
         <Mini rotulo="Abastecido antes" valor={pctAntes !== null ? formatPercent(pctAntes, 0) : "—"} sub={`${n0(ant.antes)} de ${n0(ant.antes + ant.depoisOuJunto)} cargas`} />
         <Mini rotulo="Mediana de folga" valor={ant.medianaHoras !== null ? `${n1(ant.medianaHoras)}h` : "—"} sub="entre o abastecimento e o fim da separação" />
         <Mini rotulo="Depois ou junto" valor={n0(ant.depoisOuJunto)} sub="carga separada sem folga de abastecimento" />
       </div>
       <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <Bloco titulo="Cargas abastecidas por dia" direita={<Dica>clique num dia para filtrar</Dica>}>
-          <CalendarioBI mes={mes} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem carga" />
+          <CalendarioBI mes={mes} periodo={periodo} porDia={porDia} fmt={n0} selecionado={dia} onSelecionar={onDia} vazio="sem carga" />
         </Bloco>
         <Bloco titulo="Distribuição da folga">
           <BarrasTV

@@ -1,5 +1,4 @@
 import { queryWinthor } from "@/lib/oracle/client";
-import { inicioFimDoMes } from "@/domain/periodo";
 import { filialIn } from "./filiais";
 
 /**
@@ -533,9 +532,8 @@ SELECT l.MERC AS PRODUTO, TO_CHAR(TRUNC(l.DT), 'YYYY-MM-DD') AS DIA, COUNT(*) AS
 }
 
 /** Lê o abastecimento do mês no Harpia. Lança erro (ex.: sem permissão) — quem chama mostra. */
-export async function lerAbastecimentoHarpia(mes: string): Promise<DadosHarpiaAbastecimento> {
-  const { inicio, fim } = inicioFimDoMes(mes);
-  const binds = { ini: inicio, fim };
+export async function lerAbastecimentoHarpia(ini: string, fim: string): Promise<DadosHarpiaAbastecimento> {
+  const binds = { ini, fim };
   const [dias, prods, curvasRaw, cargas, rupturas, reativos, movTotal, movPessoasDia, movDias, movHoraDia, movProdutos, convocacoesRaw, recepcaoRaw, empilhadoresRaw, a424Raw, a424SkusRaw, reabastRaw, turnosRaw] = await Promise.all([
     queryWinthor<Record<string, unknown>>(SQL_DIAS, binds),
     queryWinthor<Record<string, unknown>>(SQL_PRODUTOS, binds),

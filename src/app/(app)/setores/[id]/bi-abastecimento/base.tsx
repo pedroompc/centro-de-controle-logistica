@@ -15,7 +15,7 @@ export const VISOES: { id: VisaoAba; titulo: string; contexto: string }[] = [
   { id: "custo", titulo: "Custo e equipe", contexto: "quem e o que compõe o custo — pessoas por função, salários e equipamentos" },
   { id: "volume", titulo: "Volume", contexto: "o que foi reabastecido no picking (regra da A424) · clique num dia para filtrar" },
   { id: "antecedencia", titulo: "Antecedência", contexto: "folga entre o abastecimento e o fim da separação da carga · clique num dia para filtrar" },
-  { id: "giro", titulo: "Giro de picking", contexto: "produtos mais reabastecidos no mês (regra da A424) · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
+  { id: "giro", titulo: "Giro de picking", contexto: "produtos mais reabastecidos no período (regra da A424) · clique numa curva ABC para filtrar, num produto para ver o histórico diário" },
   { id: "movimento", titulo: "Movimentação", contexto: "quem move, descendente × ascendente × horizontal e horário — a equipe real de piso · clique num dia ou numa pessoa" },
   { id: "rupturas", titulo: "Rupturas", contexto: "estoque negativo no endereço de picking, resolvido por um abastecimento" },
 ];
@@ -42,8 +42,8 @@ export const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
  * conta do BI do Recebimento.
  */
 export function custoSobreFaturamento(d: DadosBIAbastecimento): number | null {
-  const c = custoDoMes(d, d.mes);
-  return c === null || !d.faturamentoLiquido || d.faturamentoLiquido <= 0 ? null : (c * d.fracaoMes) / d.faturamentoLiquido;
+  const c = d.custoPeriodo;
+  return c === null || !d.faturamentoLiquido || d.faturamentoLiquido <= 0 ? null : c / d.faturamentoLiquido;
 }
 
 /** Custo do mês: folha (foto do mês; no corrente, o cadastro) + equipamentos de hoje. */

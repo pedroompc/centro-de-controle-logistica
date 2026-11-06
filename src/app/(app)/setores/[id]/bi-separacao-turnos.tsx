@@ -139,7 +139,7 @@ export function VisaoTurnos({
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/55">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_TURNO[t.turno] }} />
-                  {t.rotulo} · {dia ? ddmm(dia) : "no mês"}
+                  {t.rotulo} · {dia ? ddmm(dia) : "no período"}
                 </span>
                 <span className={`text-xs ${ativo ? "text-amber-300" : "text-white/25"}`}>{ativo ? "▾" : "›"}</span>
               </div>
@@ -314,7 +314,7 @@ function BarrasDuplas({
   onDia: (d: string) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  if (dias.length === 0) return <p className="py-8 text-center text-sm text-white/40">Sem produção no mês.</p>;
+  if (dias.length === 0) return <p className="py-8 text-center text-sm text-white/40">Sem produção no período.</p>;
   const vis = turnos.filter((t) => !foco || t.turno === foco);
   const max = Math.max(1e-9, ...dias.flatMap((d) => vis.map((t) => valor(d, t) ?? 0))) * 1.08;
   return (
@@ -418,7 +418,7 @@ function DetalheTurno({ t, ranking, dia }: { t: ResumoTurno; ranking: Record<Cri
         {item("Horas de separação por dia", t.equipe.horasSeparadorDia ? `${n0(t.equipe.horasSeparadorDia)} h` : "—")}
         {item("Custo do período", t.custo === null ? "—" : semCentavos(t.custo))}
       </Bloco>
-      <Bloco titulo={`${t.rotulo} · ${dia ? ddmm(dia) : "no mês"}`}>
+      <Bloco titulo={`${t.rotulo} · ${dia ? ddmm(dia) : "no período"}`}>
         {item("Peso separado", kg(t.kg))}
         {item("Endereços visitados", n0(t.linhas))}
         {item("Pedidos", n0(t.pedidos))}

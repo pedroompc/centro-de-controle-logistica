@@ -24,6 +24,7 @@ export function SeletorPeriodo({
   hoje,
   limpar = [],
   explicito = false,
+  tema = "claro",
 }: {
   periodo: Periodo;
   atalhos: AtalhoPeriodo[];
@@ -31,6 +32,8 @@ export function SeletorPeriodo({
   hoje: string; // ISO, vindo do servidor (evita divergência de fuso na hidratação)
   limpar?: string[];
   explicito?: boolean;
+  /** "escuro" = botão para fundo navy (BIs em tela cheia). */
+  tema?: "claro" | "escuro";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -66,9 +69,11 @@ export function SeletorPeriodo({
         onClick={() => setAberto((v) => !v)}
         aria-expanded={aberto}
         aria-haspopup="dialog"
-        className="inline-flex min-w-[7rem] items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-100"
+        className={`inline-flex min-w-[7rem] items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
+          tema === "escuro" ? "text-white/80 hover:bg-white/10" : "text-[#141a4d] hover:bg-slate-100"
+        }`}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-slate-400" aria-hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={`h-4 w-4 ${tema === "escuro" ? "text-white/45" : "text-slate-400"}`} aria-hidden>
           <rect x="3.5" y="5" width="17" height="15" rx="2" />
           <path d="M3.5 9.5h17M8 3v4M16 3v4" />
         </svg>
@@ -81,7 +86,7 @@ export function SeletorPeriodo({
           <div
             role="dialog"
             aria-label="Escolher período"
-            className="pb-safe fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-4 shadow-xl md:absolute md:inset-x-auto md:bottom-auto md:right-0 md:top-full md:mt-2 md:w-[34rem] md:rounded-2xl"
+            className={`pb-safe fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-4 text-left font-normal text-slate-700 shadow-xl md:absolute md:inset-x-auto md:bottom-auto md:top-full md:mt-2 md:w-[34rem] md:rounded-2xl ${tema === "escuro" ? "md:left-0" : "md:right-0"}`}
           >
             <div className="flex flex-col gap-4 md:flex-row">
               <ul className="grid grid-cols-2 gap-1 md:w-40 md:grid-cols-1">

@@ -8,7 +8,7 @@ import { BIShell, type HrefMes } from "../bi-shell";
 import { Quadro, Vazio, ChipTV, ddmm, semCentavos } from "../bi-ui";
 import { resumoVolume, resumoAntecedencia, premiacaoA424 } from "@/domain/abastecimento";
 import type { DadosBIAbastecimento } from "../abastecimento-dados";
-import { OCULTAS, VISOES, VisaoAba, custoDoMes, custoSobreFaturamento, n0, n1 } from "./base";
+import { OCULTAS, VISOES, VisaoAba, custoSobreFaturamento, n0, n1 } from "./base";
 import { VisaoCusto } from "./custo";
 import { VisaoAntecedencia, VisaoVolume } from "./volume";
 import { VisaoGiro } from "./giro";
@@ -21,10 +21,8 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   const abrir = (v: VisaoAba) => setVisao((a) => (a === v ? null : v));
   const titulo = visao ? VISOES.find((v) => v.id === visao)! : null;
 
-  const custo = custoDoMes(dados, dados.mes);
-  const i = dados.serie.findIndex((x) => x.mes === dados.mes);
-  const anterior = i > 0 ? custoDoMes(dados, dados.serie[i - 1].mes) : null;
-  const delta = custo !== null && anterior ? variacaoPercentual(custo, anterior) : null;
+  const custo = dados.custoRecorte;
+  const delta = dados.custoMedio !== null && dados.custoMedioAnterior ? variacaoPercentual(dados.custoMedio, dados.custoMedioAnterior) : null;
   const sobreFat = custoSobreFaturamento(dados);
   const conta = (id: string) => dados.pessoas.filter((y) => y.papel === id).length;
   const q = (v: VisaoAba) => ({ ativo: visao === v, onClick: () => abrir(v) });
@@ -45,37 +43,37 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
           {...q("custo")}
           rotulo="Custo e equipe"
           valor={custo === null ? "—" : semCentavos(custo)}
-          sub={`${sobreFat !== null ? `${formatPercent(sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${pctComSinal(delta)} vs mês anterior` : ""}`}
+          sub={`${sobreFat !== null ? `${formatPercent(sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${pctComSinal(delta)} vs ${dados.rotuloAnterior}` : ""}`}
         />
         <Quadro
           {...q("volume")}
           rotulo="Volume"
           valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
-          sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.abastecimentos)} reabast. · ${resumo.dias} dias` : "sem abastecimento no mês")}
+          sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.abastecimentos)} reabast. · ${resumo.dias} dias` : "sem abastecimento no período")}
         />
         {!OCULTAS.has("antecedencia") && <Quadro
           {...q("antecedencia")}
           rotulo="Antecedência"
           valor={pctAntes !== null ? formatPercent(pctAntes, 0) : "—"}
-          sub={semH ?? (ant ? `mediana ${ant.medianaHoras !== null ? n1(ant.medianaHoras) : "—"}h de folga` : "sem cargas no mês")}
+          sub={semH ?? (ant ? `mediana ${ant.medianaHoras !== null ? n1(ant.medianaHoras) : "—"}h de folga` : "sem cargas no período")}
         />}
         <Quadro
           {...q("giro")}
           rotulo="Giro de picking"
           valor={h ? `${n0(abastProdutos)} abast.` : "—"}
-          sub={semH ?? (abastProdutos ? `${n0(skusProdutos)} produtos · ${resumo?.dias ?? 0} dias` : "sem abastecimento no mês")}
+          sub={semH ?? (abastProdutos ? `${n0(skusProdutos)} produtos · ${resumo?.dias ?? 0} dias` : "sem abastecimento no período")}
         />
         <Quadro
           {...q("movimento")}
           rotulo="Movimentação"
           valor={prem ? n0(prem.total) : "—"}
-          sub={semH ?? (prem ? `${n0(prem.descendente)} desc. · ${n0(prem.ascendente)} asc.` : "sem dado no mês")}
+          sub={semH ?? (prem ? `${n0(prem.descendente)} desc. · ${n0(prem.ascendente)} asc.` : "sem dado no período")}
         />
         {!OCULTAS.has("rupturas") && <Quadro
           {...q("rupturas")}
           rotulo="Rupturas"
           valor={h ? `${h.rupturas.length}` : "—"}
-          sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no mês")}
+          sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no período")}
         />}
       </div>
       {dia && (
@@ -93,7 +91,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
   return (
     <BIShell
       titulo={`BI do ${dados.setor.charAt(0)}${dados.setor.slice(1).toLowerCase()}`}
-      mes={dados.mes}
+      periodo={dados.periodo}
       hrefMes={hrefMes}
       hrefSair={hrefSair}
       menu={menu}
@@ -110,15 +108,15 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
                 ) : !h ? (
                   <SemHarpia erro={semH ?? ""} />
                 ) : visao === "volume" ? (
-                  <VisaoVolume h={h} mes={dados.mes} custoMes={custo} dia={dia} onDia={setDia} />
+                  <VisaoVolume h={h} mes={dados.mes} periodo={dados.periodo} custoMes={custo} dia={dia} onDia={setDia} />
                 ) : visao === "antecedencia" ? (
-                  <VisaoAntecedencia h={h} mes={dados.mes} dia={dia} onDia={setDia} />
+                  <VisaoAntecedencia h={h} mes={dados.mes} periodo={dados.periodo} dia={dia} onDia={setDia} />
                 ) : visao === "giro" ? (
                   <VisaoGiro h={h} />
                 ) : visao === "movimento" ? (
-                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} recepcao={h.recepcao} mes={dados.mes} dia={dia} onDia={setDia} nomes={dados.nomes} />
+                  <VisaoMovimento movimento={h.movimentoPiso} convocacoes={h.convocacoes} recepcao={h.recepcao} mes={dados.mes} periodo={dados.periodo} dia={dia} onDia={setDia} nomes={dados.nomes} />
                 ) : (
-                  <VisaoRupturas h={h} mes={dados.mes} />
+                  <VisaoRupturas h={h} mes={dados.mes} periodo={dados.periodo} />
                 ),
             }
           : null
