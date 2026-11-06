@@ -164,9 +164,19 @@ Visual exato do popover/calendário (seguir identidade navy + âmbar, sem verde)
 estrutura interna do componente, se usa lib de calendário ou implementação
 própria (preferir não adicionar dependência pesada), nomes de funções.
 
-## Perguntas abertas (do Pedro)
+## Piso de seleção (decidido pelo Pedro, 06/11)
 
-1. **Piso de seleção jul/2026.** Hoje a navegação para em jul/2026. O atalho
-   "Ano passado" (2025) e qualquer período antes disso cairiam abaixo do piso.
-   Liberar seleção antes de jul/2026 nas telas que vêm do Winthor/Harpia, ou
-   manter o piso e permitir só a *comparação* com 2025?
+- Telas/indicadores que vêm do **Winthor/Harpia** podem ser selecionados
+  **antes de jul/2026**.
+- Indicadores do **Supabase** num período antes de jul/2026 mostram
+  **"sem dado"** (não zero).
+- Telas mistas (Dashboard, BIs com custo/efetivo): o seletor libera; cada card
+  se resolve pela sua fonte.
+- Telas só-Supabase (Receitas, Custos, Faltas, Tendências de efetivo): mantêm
+  o piso jul/2026 no seletor. *Decisão minha* — ali antes disso só haveria
+  tela vazia.
+- **Piso das telas Winthor/Harpia:** *decisão minha* — a primeira data em que
+  a fonte tem dado confiável; o construtor levanta no Oracle (por tela) e
+  registra como constante, no lugar de deixar sem piso nenhum.
+- Cortes continuam sem comparação contra 2025 (erro da época), mesmo com a
+  seleção liberada.
