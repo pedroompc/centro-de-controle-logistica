@@ -15,8 +15,7 @@ import {
   mesDoPeriodo,
   mesesDoPeriodo,
   paramsDoPeriodo,
-  periodoAnterior,
-  periodoAnoPassado,
+  lerComparacao,
   rotuloCurto,
   temHistoricoSupabase,
   type Periodo,
@@ -133,7 +132,7 @@ function SeloCarro({ r, notasNoCarro }: { r: Receita; notasNoCarro: Map<string, 
 export default async function ReceitasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; de?: string; ate?: string; fornecedor?: string; tipo?: string; vista?: string; dia?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string; cmp?: string; fornecedor?: string; tipo?: string; vista?: string; dia?: string }>;
 }) {
   await exigirAdminPagina();
   const sp = await searchParams;
@@ -144,8 +143,7 @@ export default async function ReceitasPage({
   const hoje = hojeISO();
   const mes = mesUnico ?? primeiroDiaDoMes(periodo.ate > hoje ? hoje : periodo.ate);
   const pp = paramsDoPeriodo(periodo);
-  const pAnt = periodoAnterior(periodo);
-  const pAno = periodoAnoPassado(periodo);
+  const comparacao = lerComparacao(sp.cmp, periodo);
   const filtros: FiltrosReceita = {
     fornecedorId: sp.fornecedor || undefined,
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
@@ -155,7 +153,7 @@ export default async function ReceitasPage({
 
   const { de: inicioMes, ate: fimMes } = periodo;
   const totalOuNull = (p: Periodo) => (temHistoricoSupabase(p) ? receitaTotalDoPeriodo(p.de, p.ate).catch(() => null) : Promise.resolve(null));
-  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia, totalAnt, totalAno] = await Promise.all([
+  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia, totalCmp] = await Promise.all([
     listarReceitasDoPeriodo(inicioMes, fimMes, filtros),
     listarFornecedores(),
     listarPrecos(),
@@ -165,8 +163,7 @@ export default async function ReceitasPage({
     listarDiversasDoPeriodo(inicioMes, fimMes),
     listarTotaisDiariosDoPeriodo(inicioMes, fimMes),
     listarCarrosDia(inicioMes, fimMes),
-    totalOuNull(pAnt),
-    totalOuNull(pAno),
+    comparacao ? totalOuNull(comparacao.periodo) : Promise.resolve(null),
   ]);
 
   // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
@@ -224,20 +221,17 @@ export default async function ReceitasPage({
   return (
     <div>
       <PageHeader title="Receitas Logísticas" subtitle="Descarregos e outras receitas da operação">
-        <PeriodoNav periodo={periodo} hrefFor={(p) => qs(p, filtros, vista)} limpar={["dia"]} />
+        <PeriodoNav periodo={periodo} hrefFor={(p) => qs(p, filtros, vista)} limpar={["dia"]} comparacao={comparacao} />
       </PageHeader>
 
       {/* Indicadores */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="lg:col-span-1">
           <HeroStat label="Receita total" value={formatBRL(resumo.total)} />
-          {!filtrandoDescarregamento && (
+          {!filtrandoDescarregamento && comparacao && (
             <ComparaPeriodos
               className="mt-1.5 px-1"
-              itens={[
-                { c: compararPct(resumo.total, totalAnt, true), referencia: `vs ${rotuloCurto(pAnt)}` },
-                { c: compararPct(resumo.total, totalAno, true), referencia: `vs ${rotuloCurto(pAno)}` },
-              ]}
+              itens={[{ c: compararPct(resumo.total, totalCmp, true), referencia: `vs ${rotuloCurto(comparacao.periodo)}` }]}
             />
           )}
         </div>

@@ -7,9 +7,12 @@ import {
   deslocarPeriodo,
   paramsDoPeriodo,
   rotuloPeriodo,
+  paramComparacao,
+  type PeriodoComparado,
 } from "@/domain/periodo";
 import { hojeISO } from "@/domain/fechamento";
 import { SeletorPeriodo } from "./seletor-periodo";
+import { SeletorComparacao } from "./seletor-comparacao";
 
 const btn = "rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 transition hover:bg-slate-50";
 const btnOff = "rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-slate-300";
@@ -26,6 +29,7 @@ export function PeriodoNav({
   piso = INICIO_HISTORICO,
   limpar,
   explicito = false,
+  comparacao,
 }: {
   periodo: Periodo;
   hrefFor: (params: Record<string, string>) => string;
@@ -33,6 +37,8 @@ export function PeriodoNav({
   limpar?: string[];
   /** Sempre escreve o período na URL (tela cujo padrão não é o mês atual). */
   explicito?: boolean;
+  /** Tela com cards comparáveis: mostra o botão "Comparar" (`null` = desligada). */
+  comparacao?: PeriodoComparado | null;
 }) {
   const hoje = hojeISO();
   const ant = deslocarPeriodo(periodo, -1);
@@ -40,11 +46,21 @@ export function PeriodoNav({
   const temAnterior = ant.ate >= piso;
   const temProximo = prox.de <= hoje;
   const atalhos = atalhosPeriodo().filter((a) => a.periodo.ate >= piso);
+  // As setas mantêm a comparação ligada (anterior/ano passado se recalculam).
+  const cmp: Record<string, string> = comparacao ? { cmp: paramComparacao(comparacao.modo, comparacao.periodo) } : {};
+  const href = (p: Periodo) => hrefFor({ ...paramsDoPeriodo(p, undefined, explicito), ...cmp });
   const rotulo = <span className="min-w-[7rem] px-2 text-center text-sm font-semibold text-[#141a4d]">{rotuloPeriodo(periodo)}</span>;
   return (
     <div className="flex items-center gap-1">
+      {comparacao !== undefined && (
+        <Suspense fallback={null}>
+          <div className="mr-1">
+            <SeletorComparacao periodo={periodo} comparacao={comparacao} piso={piso} hoje={hoje} />
+          </div>
+        </Suspense>
+      )}
       {temAnterior ? (
-        <Link href={hrefFor(paramsDoPeriodo(ant, undefined, explicito))} aria-label="Período anterior" className={btn}>◀</Link>
+        <Link href={href(ant)} aria-label="Período anterior" className={btn}>◀</Link>
       ) : (
         <span aria-hidden className={btnOff}>◀</span>
       )}
@@ -53,7 +69,7 @@ export function PeriodoNav({
         <SeletorPeriodo periodo={periodo} atalhos={atalhos} piso={piso} hoje={hoje} limpar={limpar} explicito={explicito} />
       </Suspense>
       {temProximo ? (
-        <Link href={hrefFor(paramsDoPeriodo(prox, undefined, explicito))} aria-label="Próximo período" className={btn}>▶</Link>
+        <Link href={href(prox)} aria-label="Próximo período" className={btn}>▶</Link>
       ) : (
         <span aria-hidden className={btnOff}>▶</span>
       )}

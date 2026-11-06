@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { carregarFrotaTV } from "./painel/painel-actions";
 import { carregarFrotaPeriodo } from "@/data/frota-periodo";
-import { rotuloCurto, type Periodo } from "@/domain/periodo";
+import { rotuloCurto, mesAnterior, inicioFimDoMes, type Periodo } from "@/domain/periodo";
+
+const ultimoDiaISO = (mes: string) => inicioFimDoMes(mes).fim;
 import { formatBRL, formatPercent } from "@/domain/format";
 import { StatCard, Card } from "@/components/ui";
 import { lerSaudeTelemetria } from "@/data/frota-km";
@@ -68,16 +70,22 @@ function Heading({ href, saude }: { href?: string; saude?: SaudeTelemetria | nul
 export async function FrotaCards({
   mes,
   periodo,
-  periodoAnt,
+  mesUnico,
+  comparar,
   hrefBi,
 }: {
   mes: string;
-  /** Período que não é um mês inteiro: lê o intervalo e compara com `periodoAnt`. */
-  periodo?: Periodo;
-  periodoAnt?: Periodo;
+  periodo: Periodo;
+  /** O período é um mês inteiro (lê pelo mesmo caminho do Painel TV). */
+  mesUnico: boolean;
+  /** Período escolhido em "Comparar"; null = cards sem variação. */
+  comparar: Periodo | null;
   hrefBi?: string;
 }) {
-  const leitura = periodo ? carregarFrotaPeriodo(periodo, periodoAnt ?? null) : carregarFrotaTV(mes);
+  // Mês sem comparação ou vs o mês anterior = leitura do Painel TV (que já traz
+  // o mês anterior); qualquer outra combinação lê o intervalo + a comparação.
+  const vsMesAnterior = comparar !== null && comparar.de === mesAnterior(mes) && comparar.ate >= ultimoDiaISO(comparar.de);
+  const leitura = mesUnico && (comparar === null || vsMesAnterior) ? carregarFrotaTV(mes) : carregarFrotaPeriodo(periodo, comparar);
   const [d, saude] = await Promise.all([leitura.catch(() => null), lerSaudeTelemetria().catch(() => null)]);
 
   if (!d) {
@@ -91,8 +99,8 @@ export async function FrotaCards({
     );
   }
 
-  const a = d.anterior;
-  const ref = periodo && periodoAnt ? rotuloCurto(periodoAnt) : undefined;
+  const a = comparar ? d.anterior : null;
+  const ref = comparar ? rotuloCurto(comparar) : undefined;
   const kmDia = d.kmPorVeiculoDia === null ? null : Math.round(d.kmPorVeiculoDia);
 
   return (

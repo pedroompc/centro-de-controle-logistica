@@ -37,12 +37,6 @@ function Linha({ label, valor }: { label: string; valor: string }) {
   );
 }
 
-/** Os dois períodos de comparação, com o rótulo curto de cada um. */
-export interface ComparacaoPeriodos {
-  ant: Periodo;
-  ano: Periodo;
-}
-
 type Medida = (r: ResumoFaturamento) => number;
 
 /**
@@ -50,19 +44,10 @@ type Medida = (r: ResumoFaturamento) => number;
  * período aparece na hora e as comparações chegam quando o Winthor responde
  * (as leituras são memoizadas por request — todos os cards dividem as mesmas).
  */
-async function Chips({ atual, medida, cmp, maiorEhBom, taxa = false }: { atual: number; medida: Medida; cmp: ComparacaoPeriodos; maiorEhBom: boolean; taxa?: boolean }) {
-  const [rAnt, rAno] = await Promise.all([
-    getResumoFaturamentoPeriodo(cmp.ant.de, cmp.ant.ate).catch(() => null),
-    getResumoFaturamentoPeriodo(cmp.ano.de, cmp.ano.ate).catch(() => null),
-  ]);
-  const f = (b: ResumoFaturamento | null) => {
-    if (!b) return null;
-    return taxa ? compararTaxa(atual, medida(b), maiorEhBom) : compararPct(atual, medida(b), maiorEhBom);
-  };
-  const itens: ItemComparacao[] = [
-    { c: f(rAnt), referencia: `vs ${rotuloCurto(cmp.ant)}` },
-    { c: f(rAno), referencia: `vs ${rotuloCurto(cmp.ano)}` },
-  ];
+async function Chips({ atual, medida, cmp, maiorEhBom, taxa = false }: { atual: number; medida: Medida; cmp: Periodo; maiorEhBom: boolean; taxa?: boolean }) {
+  const b = await getResumoFaturamentoPeriodo(cmp.de, cmp.ate).catch(() => null);
+  const c = !b ? null : taxa ? compararTaxa(atual, medida(b), maiorEhBom) : compararPct(atual, medida(b), maiorEhBom);
+  const itens: ItemComparacao[] = [{ c, referencia: `vs ${rotuloCurto(cmp)}` }];
   return <ComparaPeriodos itens={itens} />;
 }
 
@@ -70,7 +55,8 @@ function ChipsEsperando() {
   return <span className="inline-block h-3 w-32 animate-pulse rounded bg-slate-100" />;
 }
 
-function comparacoes(atual: number, medida: Medida, cmp: ComparacaoPeriodos, maiorEhBom: boolean, taxa = false) {
+function comparacoes(atual: number, medida: Medida, cmp: Periodo | null, maiorEhBom: boolean, taxa = false) {
+  if (!cmp) return undefined; // comparação desligada: só o número
   return (
     <Suspense fallback={<ChipsEsperando />}>
       <Chips atual={atual} medida={medida} cmp={cmp} maiorEhBom={maiorEhBom} taxa={taxa} />
@@ -91,11 +77,11 @@ export async function FaturamentoCards({
 }: {
   periodo: Periodo;
   custoTotal: number | null;
-  comparar: ComparacaoPeriodos;
+  /** Período escolhido em "Comparar"; null = cards só com o número. */
+  comparar: Periodo | null;
 }) {
-  // Dispara as comparações já (memoizadas), sem esperar por elas.
-  void getResumoFaturamentoPeriodo(comparar.ant.de, comparar.ant.ate).catch(() => null);
-  void getResumoFaturamentoPeriodo(comparar.ano.de, comparar.ano.ate).catch(() => null);
+  // Dispara a comparação já (memoizada), sem esperar por ela.
+  if (comparar) void getResumoFaturamentoPeriodo(comparar.de, comparar.ate).catch(() => null);
   const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate);
 
   if (!r) {
@@ -125,9 +111,11 @@ export async function FaturamentoCards({
       {/* Herói = Venda faturada (headline pedido pela gerência) + o contraponto
           direto dele (o que voltou). A Venda líquida continua visível abaixo. */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)} />
-          <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>
+        <div className="flex flex-col lg:col-span-2">
+          <div className="flex-1">
+            <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)} />
+          </div>
+          {comparar && <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>}
         </div>
         <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" extra={cmp("valorDevolucao", false)} />
       </div>

@@ -347,3 +347,28 @@ export function temHistoricoSupabase(p: Periodo): boolean {
 
 /** Igualdade de períodos. */
 export const mesmoPeriodo = (a: Periodo, b: Periodo) => a.de === b.de && a.ate === b.ate;
+
+/**
+ * Comparação opcional da tela (`?cmp=`): desligada por padrão. `ant` =
+ * período anterior, `ano` = mesmo período do ano passado, `AAAA-MM-DD_AAAA-MM-DD`
+ * = período escolhido no calendário.
+ */
+export type ModoComparacao = "ant" | "ano" | "livre";
+export interface PeriodoComparado {
+  modo: ModoComparacao;
+  periodo: Periodo;
+}
+
+export function lerComparacao(cmp: string | undefined | null, p: Periodo, hoje: Date = new Date()): PeriodoComparado | null {
+  if (cmp === "ant") return { modo: "ant", periodo: periodoAnterior(p, hoje) };
+  if (cmp === "ano") return { modo: "ano", periodo: periodoAnoPassado(p, hoje) };
+  const m = cmp?.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
+  if (!m || !valida(m[1]) || !valida(m[2])) return null;
+  const [de, ate] = m[1] <= m[2] ? [m[1], m[2]] : [m[2], m[1]];
+  return { modo: "livre", periodo: { de, ate } };
+}
+
+/** Valor de `?cmp=` para um modo (livre leva o período). */
+export function paramComparacao(modo: ModoComparacao, periodo?: Periodo): string {
+  return modo === "livre" && periodo ? `${periodo.de}_${periodo.ate}` : modo;
+}

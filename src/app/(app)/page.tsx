@@ -12,7 +12,7 @@ import {
   mesDoPeriodo,
   mesesDoPeriodo,
   periodoAnterior,
-  periodoAnoPassado,
+  lerComparacao,
   periodoAberto,
   paramsDoPeriodo,
   rotuloPeriodo,
@@ -83,7 +83,7 @@ const receitaOuNull = (p: Periodo) => (temHistoricoSupabase(p) ? receitaTotalDoP
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; de?: string; ate?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string; cmp?: string }>;
 }) {
   const sp = await searchParams;
   // Default = mês atual. Mês inteiro segue o fluxo de sempre; período livre
@@ -93,18 +93,19 @@ export default async function Dashboard({
   const mesAtual = mesUnico ?? primeiroDiaDoMes(periodo.ate); // mês de referência
   const mesFechado = !periodoAberto(periodo);
   const mesAnt = mesAnterior(mesAtual);
-  const pAnt = periodoAnterior(periodo);
-  const pAno = periodoAnoPassado(periodo);
+  const pAnt = periodoAnterior(periodo); // Δ das listas de setor/composição
+  // Comparação dos cards: desligada por padrão; o usuário escolhe contra o quê.
+  const comparacao = lerComparacao(sp.cmp, periodo);
+  const pCmp = comparacao?.periodo ?? null;
   const comHistorico = temHistoricoSupabase(periodo);
   const meses = mesesDoPeriodo(periodo);
-  const [funcionarios, setores, faltas, lancamentosMes, receitasMes, receitasAnt, receitasAno] = await Promise.all([
+  const [funcionarios, setores, faltas, lancamentosMes, receitasMes, receitasCmp] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarFaltas(),
     mesUnico ? listarLancamentosDoMes(mesUnico) : Promise.resolve([]),
     receitaOuNull(periodo),
-    receitaOuNull(pAnt),
-    receitaOuNull(pAno),
+    pCmp ? receitaOuNull(pCmp) : Promise.resolve(null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.status === "ativo");
@@ -144,18 +145,10 @@ export default async function Dashboard({
   const custoTotalMes: number | null = !comHistorico ? null : mesUnico ? totalDoMes(lancamentosMes, custoEfetivo) : custoDe(periodo);
   const liquidoDe = (c: number | null, r: number | null) => (c === null || r === null ? null : custoLiquido(c, r));
   const custoLiquidoMes = liquidoDe(custoTotalMes, receitasMes);
-  const custoAntP = custoDe(pAnt);
-  const custoAnoP = custoDe(pAno);
-  const refAnt = `vs ${rotuloCurto(pAnt)}`;
-  const refAno = `vs ${rotuloCurto(pAno)}`;
-  const chips = (atual: number | null, ant: number | null, ano: number | null, maiorEhBom: boolean) =>
-    atual === null ? undefined : (
-      <ComparaPeriodos
-        itens={[
-          { c: compararPct(atual, ant, maiorEhBom), referencia: refAnt },
-          { c: compararPct(atual, ano, maiorEhBom), referencia: refAno },
-        ]}
-      />
+  const custoCmp = pCmp ? custoDe(pCmp) : null;
+  const chips = (atual: number | null, base: number | null, maiorEhBom: boolean) =>
+    atual === null || !pCmp ? undefined : (
+      <ComparaPeriodos itens={[{ c: compararPct(atual, base, maiorEhBom), referencia: `vs ${rotuloCurto(pCmp)}` }]} />
     );
 
   // Custo + efetivo por setor numa leitura só: barra pelo custo, nº de pessoas ao lado.
@@ -288,11 +281,11 @@ export default async function Dashboard({
           </svg>
           Compartilhar fechamento
         </Link>
-        <PeriodoNav periodo={periodo} piso={PISO_WINTHOR} hrefFor={(p) => (Object.keys(p).length ? `/?${new URLSearchParams(p)}` : "/")} />
+        <PeriodoNav periodo={periodo} piso={PISO_WINTHOR} comparacao={comparacao} hrefFor={(p) => (Object.keys(p).length ? `/?${new URLSearchParams(p)}` : "/")} />
       </PageHeader>
 
       <Suspense fallback={<FaturamentoSkeleton />}>
-        <FaturamentoCards periodo={periodo} custoTotal={custoTotalMes} comparar={{ ant: pAnt, ano: pAno }} />
+        <FaturamentoCards periodo={periodo} custoTotal={custoTotalMes} comparar={pCmp} />
       </Suspense>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -303,7 +296,7 @@ export default async function Dashboard({
           accent="gold"
           href={hrefPeriodo("/custos")}
           title={mesUnico ? undefined : "Custos são mensais: soma dos meses que o período toca"}
-          extra={chips(custoTotalMes, custoAntP, custoAnoP, false)}
+          extra={chips(custoTotalMes, custoCmp, false)}
         />
         <StatCard
           label={mesUnico ? "Custo líquido do mês" : "Custo líquido do período"}
@@ -311,20 +304,20 @@ export default async function Dashboard({
           hint={receitasMes === null ? undefined : `Receitas: ${formatBRL(receitasMes)}`}
           accent="green"
           href={hrefPeriodo("/receitas")}
-          extra={chips(custoLiquidoMes, liquidoDe(custoAntP, receitasAnt), liquidoDe(custoAnoP, receitasAno), false)}
+          extra={chips(custoLiquidoMes, liquidoDe(custoCmp, receitasCmp), false)}
         />
         <StatCard
           label={mesUnico ? "Faltas no mês" : "Faltas no período"}
           value={faltasMes === null ? semDado : `${faltasMes}`}
           accent="red"
           href={hrefPeriodo("/faltas")}
-          extra={chips(faltasMes, faltasEm(pAnt), faltasEm(pAno), false)}
+          extra={chips(faltasMes, pCmp && faltasEm(pCmp), false)}
         />
       </div>
 
       <div className="mt-8">
         <Suspense fallback={<FrotaSkeleton />}>
-          <FrotaCards mes={mesAtual} periodo={mesUnico ? undefined : periodo} periodoAnt={pAnt} hrefBi={hrefBiMotoristas} />
+          <FrotaCards mes={mesAtual} periodo={periodo} mesUnico={mesUnico !== null} comparar={pCmp} hrefBi={hrefBiMotoristas} />
         </Suspense>
       </div>
 

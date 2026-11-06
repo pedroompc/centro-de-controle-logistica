@@ -28,12 +28,13 @@ export function CalendarioPeriodo({
   hoje,
   onEscolher,
 }: {
-  periodo: Periodo;
+  /** null = nada marcado (abre no mês de hoje). */
+  periodo: Periodo | null;
   piso: string;
   hoje: string;
   onEscolher: (p: Periodo) => void;
 }) {
-  const [vista, setVista] = useState(primeiroDiaDoMes(periodo.ate > hoje ? hoje : periodo.ate));
+  const [vista, setVista] = useState(primeiroDiaDoMes(!periodo || periodo.ate > hoje ? hoje : periodo.ate));
   const [inicio, setInicio] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
 

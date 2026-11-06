@@ -26,7 +26,10 @@ export function paramsPeriodoDe(sp: Fonte): Record<string, string> {
 /** Link de menu preservando o período quando a tela de destino entende. */
 export function comPeriodo(href: string, sp: Fonte): string {
   if (!COM_PERIODO.has(href)) return href;
-  const qs = new URLSearchParams(paramsPeriodoDe(sp)).toString();
+  const params = new URLSearchParams(paramsPeriodoDe(sp));
+  const cmp = ler(sp, "cmp"); // comparação ligada segue junto
+  if (cmp) params.set("cmp", cmp);
+  const qs = params.toString();
   return qs ? `${href}?${qs}` : href;
 }
 

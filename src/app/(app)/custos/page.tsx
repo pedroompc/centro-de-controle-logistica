@@ -12,8 +12,7 @@ import {
   mesDoPeriodo,
   mesesDoPeriodo,
   paramsDoPeriodo,
-  periodoAnterior,
-  periodoAnoPassado,
+  lerComparacao,
   primeiroDiaDoMes,
   periodoDoMes,
   rotuloCurto,
@@ -33,16 +32,19 @@ import { LancarVariavelForm } from "./lancar-variavel-form";
 
 const hrefCustos = (p: Record<string, string>) => (Object.keys(p).length ? `/custos?${new URLSearchParams(p)}` : "/custos");
 
-export default async function CustosPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string }> }) {
-  const periodo = lerPeriodo(await searchParams);
+export default async function CustosPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string; cmp?: string }> }) {
+  const sp = await searchParams;
+  const periodo = lerPeriodo(sp);
   const mesUnico = mesDoPeriodo(periodo);
-  if (!mesUnico) return <CustosDoPeriodo periodo={periodo} />;
+  if (!mesUnico) return <CustosDoPeriodo periodo={periodo} cmp={sp.cmp} />;
   const mes = mesUnico;
+  const comparacao = lerComparacao(sp.cmp, periodo);
 
-  const [lancamentos, funcionarios, admin] = await Promise.all([
+  const [lancamentos, funcionarios, admin, custoDe] = await Promise.all([
     listarLancamentosDoMes(mes),
     listarFuncionarios(),
     isAdmin(),
+    comparacao ? carregarCustoDe() : null,
   ]);
 
   const salario = custoTotalAtivos(funcionarios);
@@ -62,7 +64,7 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
-        <PeriodoNav periodo={periodo} hrefFor={hrefCustos} />
+        <PeriodoNav periodo={periodo} hrefFor={hrefCustos} comparacao={comparacao} />
       </PageHeader>
 
       <Card className="p-6">
@@ -73,6 +75,12 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
               {formatBRL(total)}
             </p>
             <p className="mt-1 text-sm text-slate-400">{formatMesAno(mes)}</p>
+            {comparacao && custoDe && (
+              <ComparaPeriodos
+                className="mt-2"
+                itens={[{ c: compararPct(total, custoDe(comparacao.periodo), false), referencia: `vs ${rotuloCurto(comparacao.periodo)}` }]}
+              />
+            )}
           </div>
           <div className="md:border-l md:border-slate-100 md:pl-6">
             <BarList items={composicao} tone="navy" />
@@ -244,25 +252,19 @@ function agregarPorNome(itens: CustoMensal[]): { nome: string; valor: number; me
 }
 
 /**
- * Custos de um período que não é um mês inteiro: custos são mensais, então
- * somam os meses que o período toca (sem rateio por dia). Só leitura — lançar e
- * editar continuam no mês. Salário = foto mensal da folha (mês corrente sem
- * foto usa a folha atual).
+ * Séries de custo desde o início do histórico (folha por mês + fixos/variáveis
+ * lançados) e o custo bruto de qualquer período a partir delas.
  */
-async function CustosDoPeriodo({ periodo }: { periodo: Periodo }) {
-  const meses = mesesDoPeriodo(periodo).filter((m) => m >= INICIO_HISTORICO);
-  const pAnt = periodoAnterior(periodo);
-  const pAno = periodoAnoPassado(periodo);
+async function carregarSeriesCusto() {
   const qtd = Math.max(12, mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() }).length);
-  const [lancamentos, funcionarios, efetivo, todos] = await Promise.all([
-    listarLancamentosDosMeses(meses),
+  const [funcionarios, efetivo, todos] = await Promise.all([
     listarFuncionarios(),
     serieEfetivoMensal(qtd),
     listarLancamentosDosMeses(mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() })),
   ]);
   const folhaPorMes = new Map(efetivo.map((e) => [e.mes, e.folhaTotal]));
   const mesAtual = primeiroDiaDoMes();
-  if (meses.includes(mesAtual) && !folhaPorMes.has(mesAtual)) folhaPorMes.set(mesAtual, custoTotalAtivos(funcionarios));
+  if (!folhaPorMes.has(mesAtual)) folhaPorMes.set(mesAtual, custoTotalAtivos(funcionarios));
   const custosPorMes = new Map<string, { fixos: number; variaveis: number }>();
   for (const l of todos) {
     const c = custosPorMes.get(l.mes) ?? { fixos: 0, variaveis: 0 };
@@ -271,6 +273,21 @@ async function CustosDoPeriodo({ periodo }: { periodo: Periodo }) {
     custosPorMes.set(l.mes, c);
   }
   const custoDe = (p: Periodo) => custoBrutoDoPeriodo(mesesDoPeriodo(p), folhaPorMes, custosPorMes);
+  return { custoDe, folhaPorMes };
+}
+
+const carregarCustoDe = async () => (await carregarSeriesCusto()).custoDe;
+
+/**
+ * Custos de um período que não é um mês inteiro: custos são mensais, então
+ * somam os meses que o período toca (sem rateio por dia). Só leitura — lançar e
+ * editar continuam no mês. Salário = foto mensal da folha (mês corrente sem
+ * foto usa a folha atual).
+ */
+async function CustosDoPeriodo({ periodo, cmp }: { periodo: Periodo; cmp?: string }) {
+  const meses = mesesDoPeriodo(periodo).filter((m) => m >= INICIO_HISTORICO);
+  const comparacao = lerComparacao(cmp, periodo);
+  const [lancamentos, { custoDe, folhaPorMes }] = await Promise.all([listarLancamentosDosMeses(meses), carregarSeriesCusto()]);
   const total = custoDe(periodo);
   const salario = somaNosMeses(folhaPorMes, meses) ?? 0;
   const somaFixos = somaLancamentos(lancamentos, "fixo");
@@ -294,7 +311,7 @@ async function CustosDoPeriodo({ periodo }: { periodo: Periodo }) {
   return (
     <div>
       <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
-        <PeriodoNav periodo={periodo} hrefFor={hrefCustos} />
+        <PeriodoNav periodo={periodo} hrefFor={hrefCustos} comparacao={comparacao} />
       </PageHeader>
 
       <Card className="p-6">
@@ -307,13 +324,10 @@ async function CustosDoPeriodo({ periodo }: { periodo: Periodo }) {
             <p className="mt-1 text-sm text-slate-400">
               {rotuloPeriodo(periodo)} · {meses.length} {meses.length === 1 ? "mês" : "meses"}
             </p>
-            {total !== null && (
+            {total !== null && comparacao && (
               <ComparaPeriodos
                 className="mt-2"
-                itens={[
-                  { c: compararPct(total, custoDe(pAnt), false), referencia: `vs ${rotuloCurto(pAnt)}` },
-                  { c: compararPct(total, custoDe(pAno), false), referencia: `vs ${rotuloCurto(pAno)}` },
-                ]}
+                itens={[{ c: compararPct(total, custoDe(comparacao.periodo), false), referencia: `vs ${rotuloCurto(comparacao.periodo)}` }]}
               />
             )}
           </div>
@@ -329,7 +343,7 @@ async function CustosDoPeriodo({ periodo }: { periodo: Periodo }) {
           <BarList
             tone="gold"
             items={meses.map((m) => {
-              const v = custoBrutoDoPeriodo([m], folhaPorMes, custosPorMes) ?? 0;
+              const v = custoDe(periodoDoMes(m)) ?? 0;
               return { label: formatMesAno(m), value: v, display: formatBRL(v), href: hrefCustos(paramsDoPeriodo(periodoDoMes(m))) };
             })}
           />

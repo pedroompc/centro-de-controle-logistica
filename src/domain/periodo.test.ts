@@ -36,3 +36,27 @@ describe("inicioFimDoMes", () => {
     expect(inicioFimDoMes("2026-02-01")).toEqual({ inicio: "2026-02-01", fim: "2026-02-28" });
   });
 });
+
+import { lerComparacao, paramComparacao } from "./periodo";
+
+describe("lerComparacao", () => {
+  const out26 = { de: "2026-10-01", ate: "2026-10-31" };
+  const hoje = new Date(2026, 10, 6);
+  it("desligada sem parâmetro ou com lixo", () => {
+    expect(lerComparacao(undefined, out26, hoje)).toBeNull();
+    expect(lerComparacao("xyz", out26, hoje)).toBeNull();
+    expect(lerComparacao("2026-02-30_2026-03-01", out26, hoje)).toBeNull();
+  });
+  it("anterior e ano passado", () => {
+    expect(lerComparacao("ant", out26, hoje)).toEqual({ modo: "ant", periodo: { de: "2026-09-01", ate: "2026-09-30" } });
+    expect(lerComparacao("ano", out26, hoje)).toEqual({ modo: "ano", periodo: { de: "2025-10-01", ate: "2025-10-31" } });
+  });
+  it("período livre, em qualquer ordem", () => {
+    expect(lerComparacao("2026-03-31_2026-01-01", out26, hoje)).toEqual({ modo: "livre", periodo: { de: "2026-01-01", ate: "2026-03-31" } });
+  });
+  it("ida e volta pela URL", () => {
+    const p = { de: "2026-01-01", ate: "2026-03-31" };
+    expect(lerComparacao(paramComparacao("livre", p), out26, hoje)?.periodo).toEqual(p);
+    expect(paramComparacao("ano")).toBe("ano");
+  });
+});
