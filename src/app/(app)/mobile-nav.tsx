@@ -13,7 +13,7 @@ import { itensVisiveis, comMes, isActive } from "./sidebar-nav";
  */
 export function MobileNav({ userEmail, admin }: { userEmail?: string | null; admin: boolean }) {
   const pathname = usePathname();
-  const mes = useSearchParams().get("mes");
+  const mes = useSearchParams();
   const [maisAberto, setMaisAberto] = useState(false);
 
   // Ordem escolhida para a barra inferior (independente da ordem da lateral).

@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { comPeriodo } from "@/lib/url-periodo";
 
 // `short` = rótulo curto para a barra inferior do celular; `primary` marca os
 // itens que ficam sempre à mão nessa barra (os demais vão para a folha "Mais").
 export type Item = { href: string; label: string; short?: string; primary?: boolean; adminOnly?: boolean; icon: React.ReactNode };
 
-// Telas que entendem `?mes=`. Ao navegar entre elas, o mês selecionado é
-// preservado; as demais (Setores, Funcionários, Tendências) ignoram o parâmetro.
-const COM_MES = new Set(["/", "/custos", "/receitas", "/devolucoes"]);
-
-export function comMes(href: string, mes: string | null): string {
-  return mes && COM_MES.has(href) ? `${href}?mes=${mes}` : href;
+// Ao navegar entre as telas que entendem período (mes / de / ate), ele é
+// preservado; as demais (Setores, Funcionários) ignoram (ver `COM_PERIODO`).
+export function comMes(href: string, sp: URLSearchParams): string {
+  return comPeriodo(href, sp);
 }
 
 export const items: Item[] = [
@@ -182,7 +181,7 @@ export function itensVisiveis(admin: boolean): Item[] {
 
 export function SidebarNav({ variant = "sidebar", admin }: { variant?: "sidebar" | "top"; admin: boolean }) {
   const pathname = usePathname();
-  const mes = useSearchParams().get("mes");
+  const mes = useSearchParams();
   const visiveis = itensVisiveis(admin);
 
   if (variant === "top") {
