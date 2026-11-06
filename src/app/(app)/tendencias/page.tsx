@@ -10,7 +10,8 @@ import { CORES, KpiCard, RankingBars, ComparativoRow } from "./widgets";
 import { EvolucaoChart, type SeriePainel } from "./evolucao-chart";
 import { CompararMeses, type MesComparavel } from "./comparar-meses";
 import { ExportButton } from "./export-button";
-import { TendenciasTabs } from "./tabs";
+import { BarraTendencias } from "./barra";
+import { janelaTendencias, mesesFechados } from "@/domain/tendencias";
 
 const MES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const rotuloMes = (mes: string) => {
@@ -37,13 +38,17 @@ const IcPdv = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9.5 4.5 4h15L21 9.5" /><path d="M4 9.5v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9" /><path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3 0" /></svg>
 );
 
-export default async function TendenciasPage() {
-  const serie = await getSerieTendencias(12);
+export default async function TendenciasPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string }> }) {
+  // Janela: padrão = últimos 12 meses fechados; com período, os meses dele.
+  const j = janelaTendencias(await searchParams, mesesFechados(new Date(), 12));
+  const noJanela = new Set(j.meses);
+  const serie = j.qtd > 0 ? (await getSerieTendencias(j.qtd)).filter((p) => noJanela.has(p.mes)) : [];
 
   if (serie.length === 0) {
     return (
       <div>
         <PageHeader title="Tendências" subtitle="Evolução mês a mês · Winthor" />
+        <BarraTendencias periodo={j.periodo} base="/tendencias" />
         <Card className="p-6">
           <p className="text-sm text-slate-500">
             Sem histórico disponível — sem conexão com o Winthor (o banco só responde de dentro da
@@ -118,13 +123,13 @@ export default async function TendenciasPage() {
 
   return (
     <div className="space-y-8">
-      <TendenciasTabs />
+      <BarraTendencias periodo={j.periodo} base="/tendencias" />
 
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">Tendências · Faturamento</h1>
-          <p className="mt-1 text-sm text-slate-500">Últimos {serie.length} meses fechados · Filial 1</p>
+          <p className="mt-1 text-sm text-slate-500">{serie.length} {serie.length === 1 ? "mês fechado" : "meses fechados"} · Filial 1</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600">{periodo}</span>

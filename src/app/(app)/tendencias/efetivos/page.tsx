@@ -7,11 +7,12 @@ import { absenteismoPorMes } from "@/domain/absenteismo-mensal";
 import { custoDoSetor } from "@/domain/metrics";
 import { compararPct, compararAbs } from "@/domain/comparacao";
 import { formatBRL } from "@/domain/format";
-import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
+import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO, type Periodo } from "@/domain/periodo";
 import { Card, SectionTitle } from "@/components/ui";
 import { CORES, KpiCard } from "../widgets";
 import { EvolucaoChart, type SeriePainel } from "../evolucao-chart";
-import { TendenciasTabs } from "../tabs";
+import { BarraTendencias } from "../barra";
+import { janelaTendencias } from "@/domain/tendencias";
 
 const MES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const rotuloMes = (mes: string) => {
@@ -46,10 +47,10 @@ const IcFalta = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v3M16 3v3" /><path d="m9.5 13.5 5 4M14.5 13.5l-5 4" /></svg>
 );
 
-function Cabecalho() {
+function Cabecalho({ periodo }: { periodo: Periodo }) {
   return (
     <div className="space-y-4">
-      <TendenciasTabs />
+      <BarraTendencias periodo={periodo} base="/tendencias/efetivos" piso={INICIO_HISTORICO} />
       <div>
         <h1 className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">
           Efetivos · pessoas e folha
@@ -60,7 +61,9 @@ function Cabecalho() {
   );
 }
 
-export default async function EfetivosTendenciaPage() {
+export default async function EfetivosTendenciaPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string }> }) {
+  const j = janelaTendencias(await searchParams, janelaMeses(12), { piso: INICIO_HISTORICO, incluiCorrente: true });
+  const noJanela = new Set(j.meses);
   const [funcionarios, faltas, setores] = await Promise.all([
     listarFuncionarios(),
     listarFaltas(),
@@ -72,10 +75,10 @@ export default async function EfetivosTendenciaPage() {
   // Congela a foto do mês corrente por setor (best-effort) antes de ler a série,
   // para o mês atual já entrar na curva.
   await registrarFotoEfetivoSetor(fotoSetorAtual(funcionarios, setores));
-  const snapshots = await serieEfetivoMensal(12);
+  const snapshots = (await serieEfetivoMensal(Math.max(j.qtd, 1))).filter((s) => noJanela.has(s.mes));
 
   // Absenteísmo mês a mês (comparativo real — faltas têm data).
-  const meses = janelaMeses(12);
+  const meses = j.meses;
   const absent = absenteismoPorMes(faltas, meses);
   const rotulosAbs = meses.map(rotuloMes);
   const vAbs = absent.map((p) => p.total);
@@ -121,7 +124,7 @@ export default async function EfetivosTendenciaPage() {
 
   return (
     <div className="space-y-8">
-      <Cabecalho />
+      <Cabecalho periodo={j.periodo} />
 
       {/* KPIs — foto do mês corrente */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -97,3 +97,29 @@ describe("topPorDevolucao", () => {
   });
 });
 
+
+import { janelaTendencias } from "./tendencias";
+
+describe("janelaTendencias", () => {
+  const HOJE = new Date(2026, 10, 6);
+  const padrao = ["2026-09-01", "2026-10-01"];
+  it("sem período = padrão", () => {
+    const j = janelaTendencias({}, padrao, { hoje: HOJE });
+    expect(j.meses).toEqual(padrao);
+    expect(j.periodo).toEqual({ de: "2026-09-01", ate: "2026-10-31" });
+    expect(j.qtd).toBe(2);
+  });
+  it("trimestre de 2025 = os 3 meses; qtd cobre até o último fechado", () => {
+    const j = janelaTendencias({ de: "2025-07-01", ate: "2025-09-30" }, padrao, { hoje: HOJE });
+    expect(j.meses).toEqual(["2025-07-01", "2025-08-01", "2025-09-01"]);
+    expect(j.qtd).toBe(16); // jul/25 → out/26
+  });
+  it("este ano sem incluir o corrente para no mês fechado", () => {
+    const j = janelaTendencias({ de: "2026-01-01", ate: "2026-12-31" }, padrao, { hoje: HOJE });
+    expect(j.meses.at(-1)).toBe("2026-10-01");
+    expect(janelaTendencias({ de: "2026-01-01", ate: "2026-12-31" }, padrao, { hoje: HOJE, incluiCorrente: true }).meses.at(-1)).toBe("2026-11-01");
+  });
+  it("prende no piso", () => {
+    expect(janelaTendencias({ de: "2023-01-01", ate: "2025-02-28" }, padrao, { hoje: HOJE }).meses).toEqual(["2025-01-01", "2025-02-01"]);
+  });
+});

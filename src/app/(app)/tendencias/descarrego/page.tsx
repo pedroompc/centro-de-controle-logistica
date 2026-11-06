@@ -7,11 +7,12 @@ import {
 import { ROTULO_TIPO } from "@/domain/descarregamento";
 import { compararPct } from "@/domain/comparacao";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
-import { primeiroDiaDoMes } from "@/domain/periodo";
+import { primeiroDiaDoMes, mesesDoPeriodo, INICIO_HISTORICO, type Periodo } from "@/domain/periodo";
 import { Card, SectionTitle } from "@/components/ui";
 import { CORES, KpiCard } from "../widgets";
 import { EvolucaoChart, type SeriePainel } from "../evolucao-chart";
-import { TendenciasTabs } from "../tabs";
+import { BarraTendencias } from "../barra";
+import { janelaTendencias } from "@/domain/tendencias";
 import { MixTipoChart } from "./mix-tipo-chart";
 
 const MES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -39,10 +40,10 @@ const IcEficiencia = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 20a8 8 0 1 1 8-8" /><path d="M12 12l4-2.5" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></svg>
 );
 
-function Cabecalho() {
+function Cabecalho({ periodo }: { periodo: Periodo }) {
   return (
     <div className="space-y-4">
-      <TendenciasTabs />
+      <BarraTendencias periodo={periodo} base="/tendencias/descarrego" piso={INICIO_HISTORICO} />
       <div>
         <h1 className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">
           Descarrego · evolução mensal
@@ -53,13 +54,17 @@ function Cabecalho() {
   );
 }
 
-export default async function DescarregoTendenciaPage() {
-  const serie = await serieDescarregoMensal(12);
+export default async function DescarregoTendenciaPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string }> }) {
+  // Padrão: do início do histórico (ou 12 meses) até o mês corrente.
+  const padrao = mesesDoPeriodo({ de: INICIO_HISTORICO, ate: primeiroDiaDoMes() }).slice(-12);
+  const j = janelaTendencias(await searchParams, padrao, { piso: INICIO_HISTORICO, incluiCorrente: true });
+  const noJanela = new Set(j.meses);
+  const serie = j.qtd > 0 ? (await serieDescarregoMensal(j.qtd)).filter((p) => noJanela.has(p.mes)) : [];
 
   if (serie.length === 0) {
     return (
       <div className="space-y-8">
-        <Cabecalho />
+        <Cabecalho periodo={j.periodo} />
         <Card className="p-6">
           <p className="text-sm text-slate-500">
             Ainda não há lançamentos de descarrego no período. Lance o descarrego em
@@ -107,7 +112,7 @@ export default async function DescarregoTendenciaPage() {
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <Cabecalho />
+        <Cabecalho periodo={j.periodo} />
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600">{periodo}</span>
           {parcial && (

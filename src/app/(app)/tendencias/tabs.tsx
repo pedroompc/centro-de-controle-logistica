@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { paramsPeriodoDe } from "@/lib/url-periodo";
 
 /**
  * Abas do hub de Tendências — o "método de gestão" (comparativo mês a mês)
@@ -17,6 +18,8 @@ const ABAS = [
 
 export function TendenciasTabs() {
   const pathname = usePathname();
+  // Trocar de aba mantém a janela escolhida.
+  const qs = new URLSearchParams(paramsPeriodoDe(useSearchParams())).toString();
   return (
     <nav className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
       {ABAS.map((a) => {
@@ -25,7 +28,7 @@ export function TendenciasTabs() {
         return (
           <Link
             key={a.href}
-            href={a.href}
+            href={qs ? `${a.href}?${qs}` : a.href}
             className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
               active
                 ? "bg-white text-[#141a4d] shadow-sm ring-1 ring-slate-200"

@@ -8,7 +8,9 @@ import { formatBRL, formatPercent } from "@/domain/format";
 import { Card, SectionTitle } from "@/components/ui";
 import { CORES, KpiCard } from "../widgets";
 import { EvolucaoChart, type SeriePainel } from "../evolucao-chart";
-import { TendenciasTabs } from "../tabs";
+import { BarraTendencias } from "../barra";
+import { janelaTendencias, mesesFechados } from "@/domain/tendencias";
+import type { Periodo } from "@/domain/periodo";
 
 const MES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const rotuloMes = (mes: string) => `${MES_ABREV[Number(mes.slice(5, 7)) - 1]}/${mes.slice(2, 4)}`;
@@ -25,10 +27,10 @@ const IcPeso = (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4 7.5 8 4.5 8-4.5" /><path d="M12 12v9" /></svg>
 );
 
-function Cabecalho() {
+function Cabecalho({ periodo }: { periodo: Periodo }) {
   return (
     <div className="space-y-4">
-      <TendenciasTabs />
+      <BarraTendencias periodo={periodo} base="/tendencias/custos" />
       <div>
         <h1 className="font-[family-name:var(--font-sora)] text-3xl font-extrabold tracking-tight text-[#141a4d]">
           Custos · eficiência mês a mês
@@ -39,12 +41,16 @@ function Cabecalho() {
   );
 }
 
-export default async function CustosTendenciaPage() {
-  const [faturamento, custos, efetivo] = await Promise.all([
-    getSerieTendencias(12),
-    serieCustosMensais(12),
-    serieEfetivoMensal(12),
+export default async function CustosTendenciaPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string }> }) {
+  const j = janelaTendencias(await searchParams, mesesFechados(new Date(), 12));
+  const noJanela = new Set(j.meses);
+  const qtd = Math.max(j.qtd, 1);
+  const [faturamentoTodo, custos, efetivo] = await Promise.all([
+    j.qtd > 0 ? getSerieTendencias(j.qtd) : Promise.resolve([]),
+    serieCustosMensais(qtd + 1),
+    serieEfetivoMensal(qtd + 1),
   ]);
+  const faturamento = faturamentoTodo.filter((f) => noJanela.has(f.mes));
 
   // Espinha = meses fechados com faturamento (onde as razões de eficiência
   // fazem sentido). Custo/folha vêm por lookup; 0 se o mês não tiver.
@@ -64,7 +70,7 @@ export default async function CustosTendenciaPage() {
   if (pontos.length === 0) {
     return (
       <div className="space-y-8">
-        <Cabecalho />
+        <Cabecalho periodo={j.periodo} />
         <Card className="p-6">
           <p className="text-sm text-slate-500">
             Sem histórico para comparar — sem meses fechados com faturamento (o Winthor só responde de
@@ -112,7 +118,7 @@ export default async function CustosTendenciaPage() {
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <Cabecalho />
+        <Cabecalho periodo={j.periodo} />
         <span className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600">
           {rotulos.length > 1 ? `${rotulos[0]} – ${rotulos[rotulos.length - 1]}` : rotulos[0]} · meses fechados
         </span>

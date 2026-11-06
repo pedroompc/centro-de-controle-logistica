@@ -1,4 +1,4 @@
-import { primeiroDiaDoMes, mesAnterior } from "./periodo";
+import { primeiroDiaDoMes, mesAnterior, lerPeriodo, mesesDoPeriodo, periodoDoMes, type Periodo } from "./periodo";
 
 /** Ponto mensal do histórico de faturamento (uma foto da rotina 111). */
 export interface PontoTendencia {
@@ -95,4 +95,41 @@ export function pontosLinha(
     return { x: Number(x.toFixed(4)), y: Number(y.toFixed(4)), v };
   });
   return { pontos: marcadores.map((m) => `${m.x.toFixed(1)},${m.y.toFixed(1)}`).join(" "), marcadores };
+}
+
+/**
+ * Piso de Tendências (faturamento do Winthor): mês sem foto é calculado no
+ * Oracle um a um (~8 s cada), então a janela não volta além de jan/2025.
+ */
+export const PISO_TENDENCIAS = "2025-01-01";
+
+export interface JanelaTendencias {
+  /** Meses da série, do mais antigo ao mais novo. */
+  meses: string[];
+  /** Período mostrado no seletor (a janela padrão vira um período também). */
+  periodo: Periodo;
+  /** Quantos meses buscar para trás a partir do corrente para cobrir a janela. */
+  qtd: number;
+}
+
+/**
+ * Janela de meses das Tendências. Sem período na URL = `padrao` (o comportamento
+ * de sempre). Com período = os meses que ele toca, limitados ao piso e ao teto
+ * (mês corrente se `incluiCorrente`, senão o último fechado).
+ */
+export function janelaTendencias(
+  sp: { mes?: string; de?: string; ate?: string },
+  padrao: string[],
+  { piso = PISO_TENDENCIAS, incluiCorrente = false, hoje = new Date() }: { piso?: string; incluiCorrente?: boolean; hoje?: Date } = {},
+): JanelaTendencias {
+  const corrente = primeiroDiaDoMes(hoje);
+  const teto = incluiCorrente ? corrente : mesAnterior(corrente);
+  const qtdAte = (ini: string) => (ini > corrente ? 0 : mesesDoPeriodo({ de: ini, ate: corrente }).length - (incluiCorrente ? 0 : 1));
+  const comoPeriodo = (ms: string[]): Periodo =>
+    ms.length ? { de: ms[0], ate: periodoDoMes(ms[ms.length - 1]).ate } : periodoDoMes(teto);
+  if (!sp.de && !sp.mes) return { meses: padrao, periodo: comoPeriodo(padrao), qtd: padrao.length ? qtdAte(padrao[0]) : 0 };
+  const p = lerPeriodo(sp, { piso, hoje });
+  const pisoMes = primeiroDiaDoMes(piso);
+  const meses = mesesDoPeriodo(p).filter((m) => m >= pisoMes && m <= teto);
+  return { meses, periodo: p, qtd: meses.length ? qtdAte(meses[0]) : 0 };
 }
