@@ -4,14 +4,9 @@ import { listarSetores } from "@/data/setores";
 import { listarFaltas } from "@/data/faltas";
 import { detalharFaltasDoPeriodo, rankingFaltas } from "@/domain/faltas-analise";
 import { formatDataBR } from "@/domain/format";
-import {
-  primeiroDiaDoMes,
-  formatMesAno,
-  inicioFimDoMes,
-  limitarAoHistorico,
-} from "@/domain/periodo";
+import { lerPeriodo, mesDoPeriodo, periodoAberto, rotuloPeriodo } from "@/domain/periodo";
 import type { TipoFalta } from "@/domain/types";
-import { MesNav } from "@/components/mes-nav";
+import { PeriodoNav } from "@/components/periodo-nav";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, BarList, Pill } from "@/components/ui";
 
 const TONE_TIPO: Record<TipoFalta, "red" | "gold" | "navy" | "slate"> = {
@@ -37,12 +32,14 @@ function TipoPill({ tipo }: { tipo: TipoFalta }) {
 export default async function FaltasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string }>;
 }) {
   const sp = await searchParams;
-  const mesAtual = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
-  const mesFechado = mesAtual < primeiroDiaDoMes();
-  const { inicio, fim } = inicioFimDoMes(mesAtual);
+  const periodo = lerPeriodo(sp);
+  const mesUnico = mesDoPeriodo(periodo);
+  const mesFechado = !periodoAberto(periodo);
+  const { de: inicio, ate: fim } = periodo;
+  const noP = mesUnico ? "no mês" : "no período";
 
   const [funcionarios, setores, faltas] = await Promise.all([
     listarFuncionarios(),
@@ -67,19 +64,19 @@ export default async function FaltasPage({
       <BackLink href="/funcionarios">Funcionários</BackLink>
       <PageHeader
         title="Faltas"
-        subtitle={`${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}
+        subtitle={`${rotuloPeriodo(periodo)}${mesFechado ? (mesUnico ? " · mês fechado" : " · fechado") : " · em andamento"}`}
       >
-        <MesNav mes={mesAtual} hrefFor={(m) => `/faltas?mes=${m}`} />
+        <PeriodoNav periodo={periodo} hrefFor={(p) => (Object.keys(p).length ? `/faltas?${new URLSearchParams(p)}` : "/faltas")} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Faltas no mês" value={`${detalhe.length}`} hint="todos os tipos" accent="red" />
-        <StatCard label="Injustificadas no mês" value={`${injustificadasMes}`} accent="red" />
-        <StatCard label="Pessoas com falta no mês" value={`${new Set(detalhe.map((d) => d.funcionarioId)).size}`} accent="navy" />
+        <StatCard label={`Faltas ${noP}`} value={`${detalhe.length}`} hint="todos os tipos" accent="red" />
+        <StatCard label={`Injustificadas ${noP}`} value={`${injustificadasMes}`} accent="red" />
+        <StatCard label={`Pessoas com falta ${noP}`} value={`${new Set(detalhe.map((d) => d.funcionarioId)).size}`} accent="navy" />
       </div>
 
       <section className="mt-8">
-        <SectionTitle>Quem faltou em {formatMesAno(mesAtual)}</SectionTitle>
+        <SectionTitle>Quem faltou em {rotuloPeriodo(periodo)}</SectionTitle>
         <Card className="overflow-hidden">
           {/* Desktop: tabela */}
           <div className="hidden overflow-x-auto md:block">
@@ -109,7 +106,7 @@ export default async function FaltasPage({
                 ))}
                 {detalhe.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Nenhuma falta registrada neste mês.</td>
+                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Nenhuma falta registrada {mesUnico ? "neste mês" : "neste período"}.</td>
                   </tr>
                 )}
               </tbody>
@@ -135,7 +132,7 @@ export default async function FaltasPage({
               </li>
             ))}
             {detalhe.length === 0 && (
-              <li className="px-4 py-8 text-center text-slate-400">Nenhuma falta registrada neste mês.</li>
+              <li className="px-4 py-8 text-center text-slate-400">Nenhuma falta registrada {mesUnico ? "neste mês" : "neste período"}.</li>
             )}
           </ul>
         </Card>

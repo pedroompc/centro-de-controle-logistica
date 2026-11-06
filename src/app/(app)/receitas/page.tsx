@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listarReceitasDoMes, serieReceitasMensais, removerReceita, type FiltrosReceita } from "@/data/receitas";
+import { listarReceitasDoPeriodo, receitaTotalDoPeriodo, serieReceitasMensais, removerReceita, type FiltrosReceita } from "@/data/receitas";
 import { listarFornecedores } from "@/data/fornecedores";
 import { listarPrecos } from "@/data/precos-descarregamento";
 import { lerConfig } from "@/data/config-descarregamento";
@@ -8,19 +8,34 @@ import {
   resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas, carrosDoLancamento,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
-import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico, inicioFimDoMes } from "@/domain/periodo";
+import {
+  primeiroDiaDoMes,
+  formatMesAno,
+  lerPeriodo,
+  mesDoPeriodo,
+  mesesDoPeriodo,
+  paramsDoPeriodo,
+  periodoAnterior,
+  periodoAnoPassado,
+  rotuloCurto,
+  temHistoricoSupabase,
+  type Periodo,
+} from "@/domain/periodo";
+import { hojeISO } from "@/domain/fechamento";
+import { compararPct } from "@/domain/comparacao";
+import { ComparaPeriodos } from "@/components/compara-periodos";
 import { PageHeader, Card, SectionTitle, StatCard, HeroStat, BarList, Pill } from "@/components/ui";
-import { MesNav } from "@/components/mes-nav";
+import { PeriodoNav } from "@/components/periodo-nav";
 import { DescarregamentoForm } from "./descarregamento-form";
 import { CarroForm } from "./carro-form";
 import { ReceitaPorTipo } from "./receita-por-tipo";
 import { FornecedorRanking } from "./fornecedor-ranking";
 import { TIPOS_DESCARREGAMENTO, ROTULO_TIPO } from "@/domain/descarregamento";
 import type { DescarregamentoTipo, Receita } from "@/domain/types";
-import { listarDiversasDoMes, removerDiversa } from "@/data/receitas-diversas";
+import { listarDiversasDoPeriodo, removerDiversa } from "@/data/receitas-diversas";
 import { ROTULO_CATEGORIA } from "@/domain/receitas-diversas";
 import { DiversaForm } from "./diversa-form";
-import { listarTotaisDiariosDoMes, removerTotalDiario } from "@/data/receitas-diario";
+import { listarTotaisDiariosDoPeriodo, removerTotalDiario } from "@/data/receitas-diario";
 import { TotalDiarioForm } from "./total-diario-form";
 import { listarCarrosDia } from "@/data/carros-dia";
 import { CarrosDiaForm } from "./carros-dia-form";
@@ -51,15 +66,15 @@ function lerVista(bruto: string | undefined): Vista {
  * Detalhado e dentro do mês exibido — um dia de outro mês daria uma tabela vazia
  * sem explicação, então é descartado.
  */
-function lerDia(bruto: string | undefined, mes: string, vista: Vista): string | undefined {
+function lerDia(bruto: string | undefined, p: Periodo, vista: Vista): string | undefined {
   if (vista !== "detalhado" || !bruto || !/^\d{4}-\d{2}-\d{2}$/.test(bruto)) return undefined;
-  return primeiroDiaDoMes(bruto) === mes ? bruto : undefined;
+  return bruto >= p.de && bruto <= p.ate ? bruto : undefined;
 }
 
 // Monta querystring preservando filtros e vista ao navegar entre meses. O dia só
 // vai quando passado: trocar de mês ou de vista volta ao mês inteiro.
-function qs(mes: string, f: FiltrosReceita, vista: Vista, dia?: string): string {
-  const p = new URLSearchParams({ mes });
+function qs(periodo: Record<string, string>, f: FiltrosReceita, vista: Vista, dia?: string): string {
+  const p = new URLSearchParams(periodo);
   if (f.fornecedorId) p.set("fornecedor", f.fornecedorId);
   if (f.tipo) p.set("tipo", f.tipo);
   if (vista === "detalhado") p.set("vista", vista); // simples é o padrão; só marca o não-padrão
@@ -73,7 +88,7 @@ const VISTAS: { valor: Vista; rotulo: string }[] = [
 ];
 
 /** Alterna a granularidade da tabela preservando mês e filtros ativos. */
-function SeletorVista({ mes, filtros, vista }: { mes: string; filtros: FiltrosReceita; vista: Vista }) {
+function SeletorVista({ pp, filtros, vista }: { pp: Record<string, string>; filtros: FiltrosReceita; vista: Vista }) {
   return (
     <div className="mb-3 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
       {VISTAS.map((v) => {
@@ -81,7 +96,7 @@ function SeletorVista({ mes, filtros, vista }: { mes: string; filtros: FiltrosRe
         return (
           <Link
             key={v.valor}
-            href={qs(mes, filtros, v.valor)}
+            href={qs(pp, filtros, v.valor)}
             aria-current={ativo ? "page" : undefined}
             className={`rounded-[0.6rem] px-3 py-1.5 text-xs font-semibold transition ${
               ativo ? "bg-white text-[#141a4d] shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -118,29 +133,40 @@ function SeloCarro({ r, notasNoCarro }: { r: Receita; notasNoCarro: Map<string, 
 export default async function ReceitasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; fornecedor?: string; tipo?: string; vista?: string; dia?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string; fornecedor?: string; tipo?: string; vista?: string; dia?: string }>;
 }) {
   await exigirAdminPagina();
   const sp = await searchParams;
-  const mes = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
+  // Período (mês por padrão; piso = histórico). Formulários de lançamento
+  // continuam no mês: num período, valem para o mês do fim (até hoje).
+  const periodo = lerPeriodo(sp);
+  const mesUnico = mesDoPeriodo(periodo);
+  const hoje = hojeISO();
+  const mes = mesUnico ?? primeiroDiaDoMes(periodo.ate > hoje ? hoje : periodo.ate);
+  const pp = paramsDoPeriodo(periodo);
+  const pAnt = periodoAnterior(periodo);
+  const pAno = periodoAnoPassado(periodo);
   const filtros: FiltrosReceita = {
     fornecedorId: sp.fornecedor || undefined,
     tipo: (sp.tipo as DescarregamentoTipo) || undefined,
   };
   const vista = lerVista(sp.vista);
-  const dia = lerDia(sp.dia, mes, vista);
+  const dia = lerDia(sp.dia, periodo, vista);
 
-  const { inicio: inicioMes, fim: fimMes } = inicioFimDoMes(mes);
-  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia] = await Promise.all([
-    listarReceitasDoMes(mes, filtros),
+  const { de: inicioMes, ate: fimMes } = periodo;
+  const totalOuNull = (p: Periodo) => (temHistoricoSupabase(p) ? receitaTotalDoPeriodo(p.de, p.ate).catch(() => null) : Promise.resolve(null));
+  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia, totalAnt, totalAno] = await Promise.all([
+    listarReceitasDoPeriodo(inicioMes, fimMes, filtros),
     listarFornecedores(),
     listarPrecos(),
     lerConfig(),
     serieReceitasMensais(),
     isAdmin(),
-    listarDiversasDoMes(mes),
-    listarTotaisDiariosDoMes(mes),
+    listarDiversasDoPeriodo(inicioMes, fimMes),
+    listarTotaisDiariosDoPeriodo(inicioMes, fimMes),
     listarCarrosDia(inicioMes, fimMes),
+    totalOuNull(pAnt),
+    totalOuNull(pAno),
   ]);
 
   // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
@@ -191,19 +217,30 @@ export default async function ReceitasPage({
   const barrasTipoQtd = TIPOS_DESCARREGAMENTO.map((t) => ({
     label: ROTULO_TIPO[t], value: porTipoQtd[t], display: porTipoQtd[t].toLocaleString("pt-BR"),
   }));
-  const barrasMensal = serie.map((p) => ({
+  const barrasMensal = serie.filter((p) => mesUnico || mesesDoPeriodo(periodo).includes(p.mes)).map((p) => ({
     label: formatMesAno(p.mes), value: p.valor, display: formatBRL(p.valor),
   }));
 
   return (
     <div>
       <PageHeader title="Receitas Logísticas" subtitle="Descarregos e outras receitas da operação">
-        <MesNav mes={mes} hrefFor={(m) => qs(m, filtros, vista)} />
+        <PeriodoNav periodo={periodo} hrefFor={(p) => qs(p, filtros, vista)} limpar={["dia"]} />
       </PageHeader>
 
       {/* Indicadores */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="lg:col-span-1"><HeroStat label="Receita total" value={formatBRL(resumo.total)} /></div>
+        <div className="lg:col-span-1">
+          <HeroStat label="Receita total" value={formatBRL(resumo.total)} />
+          {!filtrandoDescarregamento && (
+            <ComparaPeriodos
+              className="mt-1.5 px-1"
+              itens={[
+                { c: compararPct(resumo.total, totalAnt, true), referencia: `vs ${rotuloCurto(pAnt)}` },
+                { c: compararPct(resumo.total, totalAno, true), referencia: `vs ${rotuloCurto(pAno)}` },
+              ]}
+            />
+          )}
+        </div>
         <StatCard
           label="Descarrego"
           value={formatBRL(resumo.totalDescarregamento)}
@@ -227,7 +264,7 @@ export default async function ReceitasPage({
       {/* Ações + filtros */}
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
-          <input type="hidden" name="mes" value={mes} />
+          {Object.entries(pp).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
           {/* Sem isto, "Filtrar" recarrega sem `vista` e devolve o usuário ao padrão (simples). */}
           <input type="hidden" name="vista" value={vista} />
           {dia && <input type="hidden" name="dia" value={dia} />}
@@ -244,7 +281,7 @@ export default async function ReceitasPage({
           <button className="rounded-xl border border-slate-200 px-4 py-2 font-medium text-slate-600 hover:bg-slate-50">Filtrar</button>
         </form>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/receitas/export?${new URLSearchParams({ mes, ...(filtros.fornecedorId ? { fornecedor: filtros.fornecedorId } : {}), ...(filtros.tipo ? { tipo: filtros.tipo } : {}) }).toString()}`}
+          <Link href={`/receitas/export?${new URLSearchParams({ ...pp, ...(filtros.fornecedorId ? { fornecedor: filtros.fornecedorId } : {}), ...(filtros.tipo ? { tipo: filtros.tipo } : {}) }).toString()}`}
             className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Exportar CSV</Link>
           <Link href="/receitas/fornecedores" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Fornecedores</Link>
           {admin && <Link href="/receitas/precos" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Preços</Link>}
@@ -278,7 +315,7 @@ export default async function ReceitasPage({
           <SectionTitle>Descarregos do mês</SectionTitle>
           <div className="flex flex-wrap items-center gap-3">
             {admin && vista === "simples" && <TotalDiarioForm mes={mes} />}
-            <SeletorVista mes={mes} filtros={filtros} vista={vista} />
+            <SeletorVista pp={pp} filtros={filtros} vista={vista} />
           </div>
         </div>
         {dia && (
@@ -289,8 +326,8 @@ export default async function ReceitasPage({
               <strong className="tabular-nums">{formatBRL(receitasTabela.reduce((t, x) => t + x.receita, 0))}</strong>
             </span>
             <span className="flex gap-3 font-medium">
-              <Link href={qs(mes, filtros, "simples")} className="text-amber-800 hover:underline">← voltar aos dias</Link>
-              <Link href={qs(mes, filtros, "detalhado")} className="text-amber-800 hover:underline">ver o mês inteiro</Link>
+              <Link href={qs(pp, filtros, "simples")} className="text-amber-800 hover:underline">← voltar aos dias</Link>
+              <Link href={qs(pp, filtros, "detalhado")} className="text-amber-800 hover:underline">{mesUnico ? "ver o mês inteiro" : "ver o período inteiro"}</Link>
             </span>
           </div>
         )}
@@ -315,7 +352,7 @@ export default async function ReceitasPage({
                     <tr key={d.id ?? d.data} className={`border-b border-slate-50 last:border-0 ${d.origem === "detalhado" ? "hover:bg-amber-50/40" : ""}`}>
                       <td className="px-5 py-3 whitespace-nowrap tabular-nums text-slate-500">
                         {d.origem === "detalhado" ? (
-                          <Link href={qs(mes, filtros, "detalhado", d.data)} className="font-medium text-[#141a4d] underline decoration-slate-300 underline-offset-4 hover:decoration-amber-500">
+                          <Link href={qs(pp, filtros, "detalhado", d.data)} className="font-medium text-[#141a4d] underline decoration-slate-300 underline-offset-4 hover:decoration-amber-500">
                             {formatDataBR(d.data)}
                           </Link>
                         ) : (
@@ -350,7 +387,7 @@ export default async function ReceitasPage({
                             </div>
                           ) : (
                             <div className="flex flex-col items-end gap-1.5">
-                              <Link href={qs(mes, filtros, "detalhado", d.data)} className="text-xs font-medium text-slate-400 hover:text-amber-700">
+                              <Link href={qs(pp, filtros, "detalhado", d.data)} className="text-xs font-medium text-slate-400 hover:text-amber-700">
                                 ver lançamentos →
                               </Link>
                               {!filtrandoDescarregamento && carrosIniciais.has(d.data) && (
@@ -386,7 +423,7 @@ export default async function ReceitasPage({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       {d.origem === "detalhado" ? (
-                        <Link href={qs(mes, filtros, "detalhado", d.data)} className="tabular-nums font-medium text-[#141a4d] underline decoration-slate-300 underline-offset-4">
+                        <Link href={qs(pp, filtros, "detalhado", d.data)} className="tabular-nums font-medium text-[#141a4d] underline decoration-slate-300 underline-offset-4">
                           {formatDataBR(d.data)}
                         </Link>
                       ) : (

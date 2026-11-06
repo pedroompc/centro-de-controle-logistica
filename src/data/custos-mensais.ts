@@ -22,6 +22,20 @@ export async function listarLancamentosDoMes(mes: string): Promise<CustoMensal[]
   return (data ?? []).map(mapCustoMensal);
 }
 
+/** Lançamentos de vários meses ("yyyy-mm-01") de uma vez — visão por período. */
+export async function listarLancamentosDosMeses(meses: string[]): Promise<CustoMensal[]> {
+  if (meses.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("custos_mensais")
+    .select(COLUNAS)
+    .in("mes", meses)
+    .order("tipo")
+    .order("nome");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(mapCustoMensal);
+}
+
 export interface CustoMesTotais {
   mes: string; // "yyyy-mm-01"
   fixos: number;

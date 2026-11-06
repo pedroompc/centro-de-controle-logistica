@@ -11,6 +11,10 @@ const COLS = "id, data, descarregos, qtd_batido, qtd_paletizado, qtd_pal_rem, qt
 
 export async function listarTotaisDiariosDoMes(mes: string): Promise<TotalDiarioDescarregamento[]> {
   const { inicio, fim } = inicioFimDoMes(mes);
+  return listarTotaisDiariosDoPeriodo(inicio, fim);
+}
+
+export async function listarTotaisDiariosDoPeriodo(inicio: string, fim: string): Promise<TotalDiarioDescarregamento[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("receitas_descarregamento_diario")

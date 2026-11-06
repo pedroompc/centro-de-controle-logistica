@@ -1,20 +1,43 @@
 import Link from "next/link";
 import type { CustoMensal } from "@/domain/types";
-import { listarLancamentosDoMes, editarLancamento, removerLancamento } from "@/data/custos-mensais";
+import { listarLancamentosDoMes, listarLancamentosDosMeses, editarLancamento, removerLancamento } from "@/data/custos-mensais";
+import { serieEfetivoMensal } from "@/data/efetivo-mensal";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { custoTotalAtivos } from "@/domain/metrics";
 import { somaLancamentos, totalDoMes } from "@/domain/custos-metrics";
 import { formatBRL, formatDataBR } from "@/domain/format";
-import { primeiroDiaDoMes, formatMesAno, limitarAoHistorico } from "@/domain/periodo";
+import {
+  formatMesAno,
+  lerPeriodo,
+  mesDoPeriodo,
+  mesesDoPeriodo,
+  paramsDoPeriodo,
+  periodoAnterior,
+  periodoAnoPassado,
+  primeiroDiaDoMes,
+  periodoDoMes,
+  rotuloCurto,
+  rotuloPeriodo,
+  INICIO_HISTORICO,
+  type Periodo,
+} from "@/domain/periodo";
+import { hojeISO } from "@/domain/fechamento";
+import { custoBrutoDoPeriodo, somaNosMeses } from "@/domain/custo-periodo";
+import { compararPct } from "@/domain/comparacao";
+import { ComparaPeriodos } from "@/components/compara-periodos";
 import { PageHeader, Card, SectionTitle, BarList } from "@/components/ui";
-import { MesNav } from "@/components/mes-nav";
+import { PeriodoNav } from "@/components/periodo-nav";
 import { isAdmin } from "@/data/auth";
 import { AbrirMesButton } from "./abrir-mes-button";
 import { LancarVariavelForm } from "./lancar-variavel-form";
 
-export default async function CustosPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
-  const { mes: mesParam } = await searchParams;
-  const mes = limitarAoHistorico(mesParam ? primeiroDiaDoMes(mesParam) : primeiroDiaDoMes());
+const hrefCustos = (p: Record<string, string>) => (Object.keys(p).length ? `/custos?${new URLSearchParams(p)}` : "/custos");
+
+export default async function CustosPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string }> }) {
+  const periodo = lerPeriodo(await searchParams);
+  const mesUnico = mesDoPeriodo(periodo);
+  if (!mesUnico) return <CustosDoPeriodo periodo={periodo} />;
+  const mes = mesUnico;
 
   const [lancamentos, funcionarios, admin] = await Promise.all([
     listarLancamentosDoMes(mes),
@@ -39,7 +62,7 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
-        <MesNav mes={mes} hrefFor={(m) => `/custos?mes=${m}`} />
+        <PeriodoNav periodo={periodo} hrefFor={hrefCustos} />
       </PageHeader>
 
       <Card className="p-6">
@@ -205,5 +228,123 @@ function BlocoLancamentos({
         ))}
       </ul>
     </Card>
+  );
+}
+
+/** Item somado nos meses do período (fixos/variáveis com o mesmo nome). */
+function agregarPorNome(itens: CustoMensal[]): { nome: string; valor: number; meses: number }[] {
+  const m = new Map<string, { nome: string; valor: number; meses: Set<string> }>();
+  for (const l of itens) {
+    const cur = m.get(l.nome) ?? { nome: l.nome, valor: 0, meses: new Set<string>() };
+    cur.valor += l.valor;
+    cur.meses.add(l.mes);
+    m.set(l.nome, cur);
+  }
+  return [...m.values()].map((x) => ({ nome: x.nome, valor: x.valor, meses: x.meses.size })).sort((a, b) => b.valor - a.valor);
+}
+
+/**
+ * Custos de um período que não é um mês inteiro: custos são mensais, então
+ * somam os meses que o período toca (sem rateio por dia). Só leitura — lançar e
+ * editar continuam no mês. Salário = foto mensal da folha (mês corrente sem
+ * foto usa a folha atual).
+ */
+async function CustosDoPeriodo({ periodo }: { periodo: Periodo }) {
+  const meses = mesesDoPeriodo(periodo).filter((m) => m >= INICIO_HISTORICO);
+  const pAnt = periodoAnterior(periodo);
+  const pAno = periodoAnoPassado(periodo);
+  const qtd = Math.max(12, mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() }).length);
+  const [lancamentos, funcionarios, efetivo, todos] = await Promise.all([
+    listarLancamentosDosMeses(meses),
+    listarFuncionarios(),
+    serieEfetivoMensal(qtd),
+    listarLancamentosDosMeses(mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() })),
+  ]);
+  const folhaPorMes = new Map(efetivo.map((e) => [e.mes, e.folhaTotal]));
+  const mesAtual = primeiroDiaDoMes();
+  if (meses.includes(mesAtual) && !folhaPorMes.has(mesAtual)) folhaPorMes.set(mesAtual, custoTotalAtivos(funcionarios));
+  const custosPorMes = new Map<string, { fixos: number; variaveis: number }>();
+  for (const l of todos) {
+    const c = custosPorMes.get(l.mes) ?? { fixos: 0, variaveis: 0 };
+    if (l.tipo === "fixo") c.fixos += l.valor;
+    else c.variaveis += l.valor;
+    custosPorMes.set(l.mes, c);
+  }
+  const custoDe = (p: Periodo) => custoBrutoDoPeriodo(mesesDoPeriodo(p), folhaPorMes, custosPorMes);
+  const total = custoDe(periodo);
+  const salario = somaNosMeses(folhaPorMes, meses) ?? 0;
+  const somaFixos = somaLancamentos(lancamentos, "fixo");
+  const somaVariaveis = somaLancamentos(lancamentos, "variavel");
+  const composicao = [
+    { label: "Salário", value: salario, display: formatBRL(salario) },
+    { label: "Fixos", value: somaFixos, display: formatBRL(somaFixos) },
+    { label: "Variáveis", value: somaVariaveis, display: formatBRL(somaVariaveis) },
+  ];
+  const fixos = agregarPorNome(lancamentos.filter((l) => l.tipo === "fixo"));
+  const variaveis = agregarPorNome(lancamentos.filter((l) => l.tipo === "variavel"));
+  const lista = (itens: typeof fixos, vazio: string) =>
+    itens.length === 0 ? (
+      <p className="text-sm text-slate-400">{vazio}</p>
+    ) : (
+      <Card className="p-5">
+        <BarList tone="navy" items={itens.map((i) => ({ label: i.nome, value: i.valor, display: formatBRL(i.valor) }))} />
+      </Card>
+    );
+
+  return (
+    <div>
+      <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
+        <PeriodoNav periodo={periodo} hrefFor={hrefCustos} />
+      </PageHeader>
+
+      <Card className="p-6">
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="@container" title="Custos são mensais: soma dos meses que o período toca">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total do período</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-[clamp(1.5rem,11cqi,2.25rem)] font-extrabold tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
+              {total === null ? "sem dado" : formatBRL(total)}
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              {rotuloPeriodo(periodo)} · {meses.length} {meses.length === 1 ? "mês" : "meses"}
+            </p>
+            {total !== null && (
+              <ComparaPeriodos
+                className="mt-2"
+                itens={[
+                  { c: compararPct(total, custoDe(pAnt), false), referencia: `vs ${rotuloCurto(pAnt)}` },
+                  { c: compararPct(total, custoDe(pAno), false), referencia: `vs ${rotuloCurto(pAno)}` },
+                ]}
+              />
+            )}
+          </div>
+          <div className="md:border-l md:border-slate-100 md:pl-6">
+            <BarList items={composicao} tone="navy" />
+          </div>
+        </div>
+      </Card>
+
+      <section className="mt-6">
+        <SectionTitle>Por mês</SectionTitle>
+        <Card className="p-5">
+          <BarList
+            tone="gold"
+            items={meses.map((m) => {
+              const v = custoBrutoDoPeriodo([m], folhaPorMes, custosPorMes) ?? 0;
+              return { label: formatMesAno(m), value: v, display: formatBRL(v), href: hrefCustos(paramsDoPeriodo(periodoDoMes(m))) };
+            })}
+          />
+        </Card>
+      </section>
+
+      <section className="mt-6">
+        <SectionTitle>Fixos</SectionTitle>
+        {lista(fixos, "Nenhum custo fixo no período.")}
+      </section>
+
+      <section className="mt-6">
+        <SectionTitle>Variáveis</SectionTitle>
+        {lista(variaveis, "Nenhum custo variável no período.")}
+      </section>
+    </div>
   );
 }
