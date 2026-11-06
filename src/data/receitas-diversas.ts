@@ -13,6 +13,10 @@ const COLS =
 
 export async function listarDiversasDoMes(mes: string): Promise<ReceitaDiversa[]> {
   const { inicio, fim } = inicioFimDoMes(mes);
+  return listarDiversasDoPeriodo(inicio, fim);
+}
+
+export async function listarDiversasDoPeriodo(inicio: string, fim: string): Promise<ReceitaDiversa[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("receitas_diversas")
@@ -26,6 +30,10 @@ export async function listarDiversasDoMes(mes: string): Promise<ReceitaDiversa[]
 
 export async function totalDiversasDoMes(mes: string): Promise<number> {
   const { inicio, fim } = inicioFimDoMes(mes);
+  return totalDiversasDoPeriodo(inicio, fim);
+}
+
+export async function totalDiversasDoPeriodo(inicio: string, fim: string): Promise<number> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("receitas_diversas")

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { carregarFrotaTV } from "./painel/painel-actions";
+import { carregarFrotaPeriodo } from "@/data/frota-periodo";
+import { rotuloCurto, type Periodo } from "@/domain/periodo";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { StatCard, Card } from "@/components/ui";
 import { lerSaudeTelemetria } from "@/data/frota-km";
@@ -9,10 +11,10 @@ const inteiro = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const km1 = (v: number | null) => (v === null ? "—" : v.toLocaleString("pt-BR", { maximumFractionDigits: 1 }));
 
 // "+4,2% vs mês anterior" — vazio quando não há mês anterior para comparar.
-function delta(atual: number | null, ant: number | null | undefined): string {
+function delta(atual: number | null, ant: number | null | undefined, ref = "mês anterior"): string {
   if (atual === null || ant == null || ant === 0) return "";
   const f = atual / ant - 1;
-  return `${f >= 0 ? "+" : "−"}${formatPercent(Math.abs(f))} vs mês anterior`;
+  return `${f >= 0 ? "+" : "−"}${formatPercent(Math.abs(f))} vs ${ref}`;
 }
 
 // Selo de saúde do coletor (Fulltrack → Supabase a cada 10 min). Sem verde:
@@ -63,21 +65,34 @@ function Heading({ href, saude }: { href?: string; saude?: SaudeTelemetria | nul
  * "Frota · KM rodado" do Painel TV. Assíncrono: fica dentro de um <Suspense>.
  * Custo estimado só aparece para admin (igual à TV).
  */
-export async function FrotaCards({ mes, hrefBi }: { mes: string; hrefBi?: string }) {
-  const [d, saude] = await Promise.all([carregarFrotaTV(mes).catch(() => null), lerSaudeTelemetria().catch(() => null)]);
+export async function FrotaCards({
+  mes,
+  periodo,
+  periodoAnt,
+  hrefBi,
+}: {
+  mes: string;
+  /** Período que não é um mês inteiro: lê o intervalo e compara com `periodoAnt`. */
+  periodo?: Periodo;
+  periodoAnt?: Periodo;
+  hrefBi?: string;
+}) {
+  const leitura = periodo ? carregarFrotaPeriodo(periodo, periodoAnt ?? null) : carregarFrotaTV(mes);
+  const [d, saude] = await Promise.all([leitura.catch(() => null), lerSaudeTelemetria().catch(() => null)]);
 
   if (!d) {
     return (
       <div>
         <Heading href={hrefBi} saude={saude} />
         <Card className="p-6">
-          <p className="text-sm text-slate-500">Sem telemetria da frota para este mês.</p>
+          <p className="text-sm text-slate-500">Sem telemetria da frota para este período.</p>
         </Card>
       </div>
     );
   }
 
   const a = d.anterior;
+  const ref = periodo && periodoAnt ? rotuloCurto(periodoAnt) : undefined;
   const kmDia = d.kmPorVeiculoDia === null ? null : Math.round(d.kmPorVeiculoDia);
 
   return (
@@ -87,21 +102,21 @@ export async function FrotaCards({ mes, hrefBi }: { mes: string; hrefBi?: string
         <StatCard
           label="KM rodado"
           value={`${inteiro.format(Math.round(d.km))} km`}
-          hint={delta(d.km, a?.km) || `${d.rastreados} de ${d.veiculos} veículos rastreados`}
+          hint={delta(d.km, a?.km, ref) || `${d.rastreados} de ${d.veiculos} veículos rastreados`}
           accent="navy"
           href={hrefBi}
         />
         <StatCard
           label="KM por entrega"
           value={km1(d.kmPorEntrega)}
-          hint={delta(d.kmPorEntrega, a?.kmPorEntrega) || "km rodado ÷ entregas"}
+          hint={delta(d.kmPorEntrega, a?.kmPorEntrega, ref) || "km rodado ÷ entregas"}
           accent="gold"
           href={hrefBi}
         />
         <StatCard
           label="KM por veículo/dia"
           value={kmDia === null ? "—" : inteiro.format(kmDia)}
-          hint={delta(d.kmPorVeiculoDia, a?.kmPorVeiculoDia) || "média por carro, nos dias em que rodou"}
+          hint={delta(d.kmPorVeiculoDia, a?.kmPorVeiculoDia, ref) || "média por carro, nos dias em que rodou"}
           accent="gold"
           href={hrefBi}
         />
@@ -117,7 +132,7 @@ export async function FrotaCards({ mes, hrefBi }: { mes: string; hrefBi?: string
           <StatCard
             label="Rastreados"
             value={`${d.rastreados} de ${d.veiculos}`}
-            hint="veículos com viagem no mês"
+            hint="veículos com viagem no período"
             accent="navy"
             href={hrefBi}
           />

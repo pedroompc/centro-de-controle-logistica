@@ -59,7 +59,12 @@ function ultimoDia(mes: string): string {
 
 /** Viagens (veículo + motorista + dia) do mês "yyyy-mm-01". */
 export async function lerViagensMes(mes: string): Promise<ViagemEntrega[]> {
-  const rows = await queryWinthor<Record<string, unknown>>(SQL_VIAGENS, { ini: mes, fim: ultimoDia(mes) });
+  return lerViagensPeriodo(mes, ultimoDia(mes));
+}
+
+/** Viagens de um intervalo [ini, fim] qualquer. */
+export async function lerViagensPeriodo(ini: string, fim: string): Promise<ViagemEntrega[]> {
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_VIAGENS, { ini, fim });
   return rows.map((r) => {
     const tipo = str(r.TIPOMOTORISTA);
     return {

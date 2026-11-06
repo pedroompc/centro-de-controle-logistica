@@ -8,13 +8,27 @@ import {
   primeiroDiaDoMes,
   mesAnterior,
   formatMesAno,
-  inicioFimDoMes,
-  limitarAoHistorico,
+  lerPeriodo,
+  mesDoPeriodo,
+  mesesDoPeriodo,
+  periodoAnterior,
+  periodoAnoPassado,
+  periodoAberto,
+  paramsDoPeriodo,
+  rotuloPeriodo,
+  rotuloCurto,
+  temHistoricoSupabase,
+  INICIO_HISTORICO,
+  PISO_WINTHOR,
+  type Periodo,
 } from "@/domain/periodo";
-import { MesNav } from "@/components/mes-nav";
+import { hojeISO } from "@/domain/fechamento";
+import { PeriodoNav } from "@/components/periodo-nav";
+import { ComparaPeriodos } from "@/components/compara-periodos";
+import { custoBrutoDoPeriodo, somaNosMeses } from "@/domain/custo-periodo";
 import { listarLancamentosDoMes, serieCustosMensais } from "@/data/custos-mensais";
 import { serieEfetivoSetorMensal, registrarFotoEfetivoSetor } from "@/data/efetivo-mensal";
-import { receitaTotalDoMes } from "@/data/receitas";
+import { receitaTotalDoPeriodo } from "@/data/receitas";
 import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
 import { custoLiquido } from "@/domain/receitas-metrics";
 import { fotoSetorAtual, totaisEfetivoPorMes } from "@/domain/efetivo";
@@ -63,39 +77,52 @@ function serieMeses(
   }));
 }
 
+/** Receita de um período, ou null quando ele cai antes do histórico do Supabase. */
+const receitaOuNull = (p: Periodo) => (temHistoricoSupabase(p) ? receitaTotalDoPeriodo(p.de, p.ate).catch(() => null) : Promise.resolve(null));
+
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string }>;
 }) {
   const sp = await searchParams;
-  // Default = mês atual; qualquer mês pedido é preso à janela navegável.
-  const mesAtual = limitarAoHistorico(sp.mes ? primeiroDiaDoMes(sp.mes) : primeiroDiaDoMes());
-  const mesFechado = mesAtual < primeiroDiaDoMes();
+  // Default = mês atual. Mês inteiro segue o fluxo de sempre; período livre
+  // (trimestre, ano, intervalo) soma os meses que toca nos custos.
+  const periodo = lerPeriodo(sp, { piso: PISO_WINTHOR });
+  const mesUnico = mesDoPeriodo(periodo);
+  const mesAtual = mesUnico ?? primeiroDiaDoMes(periodo.ate); // mês de referência
+  const mesFechado = !periodoAberto(periodo);
   const mesAnt = mesAnterior(mesAtual);
-  const [funcionarios, setores, faltas, lancamentosMes, receitasMes] = await Promise.all([
+  const pAnt = periodoAnterior(periodo);
+  const pAno = periodoAnoPassado(periodo);
+  const comHistorico = temHistoricoSupabase(periodo);
+  const meses = mesesDoPeriodo(periodo);
+  const [funcionarios, setores, faltas, lancamentosMes, receitasMes, receitasAnt, receitasAno] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarFaltas(),
-    listarLancamentosDoMes(mesAtual),
-    receitaTotalDoMes(mesAtual),
+    mesUnico ? listarLancamentosDoMes(mesUnico) : Promise.resolve([]),
+    receitaOuNull(periodo),
+    receitaOuNull(pAnt),
+    receitaOuNull(pAno),
   ]);
-  const { inicio, fim } = inicioFimDoMes(mesAtual);
 
   const ativos = funcionarios.filter((f) => f.status === "ativo");
   const custoEfetivo = ativos.reduce((t, f) => t + f.custoMensal, 0);
-  const faltasMes = faltasNoPeriodo(faltas, funcionarios.map((f) => f.id), inicio, fim);
+  const idsFunc = funcionarios.map((f) => f.id);
+  const faltasEm = (p: Periodo) => (temHistoricoSupabase(p) ? faltasNoPeriodo(faltas, idsFunc, p.de, p.ate) : null);
+  const faltasMes = faltasEm(periodo);
   const fixos = somaLancamentos(lancamentosMes, "fixo");
   const variaveis = somaLancamentos(lancamentosMes, "variavel");
-  const custoTotalMes = totalDoMes(lancamentosMes, custoEfetivo);
-  const custoLiquidoMes = custoLiquido(custoTotalMes, receitasMes);
 
   // Congela a foto do mês corrente por setor (best-effort) e lê o histórico —
   // fonte do comparativo mês a mês. Registrar ANTES de ler p/ o mês entrar já.
   await registrarFotoEfetivoSetor(fotoSetorAtual(funcionarios, setores));
+  // Janela da série: tudo desde o início do histórico (≥ 12 meses).
+  const qtdSerie = Math.max(12, mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() }).length);
   const [serieSetor, serieCustos] = await Promise.all([
-    serieEfetivoSetorMensal(12),
-    serieCustosMensais(12),
+    serieEfetivoSetorMensal(qtdSerie),
+    serieCustosMensais(qtdSerie),
   ]);
 
   // Índices por mês para lookups do comparativo.
@@ -110,12 +137,44 @@ export default async function Dashboard({
     setorPorMes.set(r.setor, m);
   }
 
+  // Custo do período: mês inteiro = lançamentos do mês + folha atual (como
+  // sempre); período livre = soma dos meses que toca (foto da folha + custos).
+  const folhaPorMes = new Map(efTotais.map((t) => [t.mes, t.folhaTotal]));
+  const custoDe = (p: Periodo) => custoBrutoDoPeriodo(mesesDoPeriodo(p), folhaPorMes, custosPorMes);
+  const custoTotalMes: number | null = !comHistorico ? null : mesUnico ? totalDoMes(lancamentosMes, custoEfetivo) : custoDe(periodo);
+  const liquidoDe = (c: number | null, r: number | null) => (c === null || r === null ? null : custoLiquido(c, r));
+  const custoLiquidoMes = liquidoDe(custoTotalMes, receitasMes);
+  const custoAntP = custoDe(pAnt);
+  const custoAnoP = custoDe(pAno);
+  const refAnt = `vs ${rotuloCurto(pAnt)}`;
+  const refAno = `vs ${rotuloCurto(pAno)}`;
+  const chips = (atual: number | null, ant: number | null, ano: number | null, maiorEhBom: boolean) =>
+    atual === null ? undefined : (
+      <ComparaPeriodos
+        itens={[
+          { c: compararPct(atual, ant, maiorEhBom), referencia: refAnt },
+          { c: compararPct(atual, ano, maiorEhBom), referencia: refAno },
+        ]}
+      />
+    );
+
   // Custo + efetivo por setor numa leitura só: barra pelo custo, nº de pessoas ao lado.
+  const mesesAnt = mesesDoPeriodo(pAnt);
+  const custoSetorNos = (nome: string, ms: string[]) => {
+    const m = setorPorMes.get(nome);
+    return m ? somaNosMeses(new Map([...m].map(([k, v]) => [k, v.custo])), ms) : null;
+  };
   const setorPorCusto = setores
     .map((s) => {
-      const custo = custoDoSetor(funcionarios, s.id);
-      const efetivo = ativos.filter((f) => f.setorId === s.id).length;
-      return { nome: s.nome, custo, efetivo };
+      if (mesUnico) {
+        const custo = custoDoSetor(funcionarios, s.id);
+        const efetivo = ativos.filter((f) => f.setorId === s.id).length;
+        return { nome: s.nome, custo, efetivo };
+      }
+      // Período: custo somado nos meses; pessoas = último mês do período com foto.
+      const m = setorPorMes.get(s.nome);
+      const ultimo = m ? [...meses].reverse().find((x) => m.has(x)) : undefined;
+      return { nome: s.nome, custo: custoSetorNos(s.nome, meses) ?? 0, efetivo: ultimo ? m!.get(ultimo)!.ativos : 0 };
     })
     .filter((i) => i.custo > 0 || i.efetivo > 0)
     .sort((a, b) => b.custo - a.custo)
@@ -124,13 +183,13 @@ export default async function Dashboard({
 
   // Linhas comparativas: setores (barra âmbar, chip de pessoas, drill-down por mês).
   const linhasSetor: LinhaComparativa[] = setorPorCusto.map((s) => {
-    const meses = setorPorMes.get(s.nome) ?? new Map<string, { custo: number; ativos: number }>();
-    const custoAnt = meses.get(mesAnt)?.custo ?? null;
+    const porMes = setorPorMes.get(s.nome) ?? new Map<string, { custo: number; ativos: number }>();
+    const custoAnt = mesUnico ? (porMes.get(mesAnt)?.custo ?? null) : custoSetorNos(s.nome, mesesAnt);
     const pontos: PontoValor[] = efTotais
       .map((t) => t.mes)
-      .filter((m) => meses.has(m))
-      .map((m) => ({ mes: m, valor: meses.get(m)!.custo }));
-    const subPorMes = new Map([...meses].map(([m, v]) => [m, `${inteiro.format(v.ativos)} pes.`]));
+      .filter((m) => porMes.has(m) && (mesUnico ? true : meses.includes(m)))
+      .map((m) => ({ mes: m, valor: porMes.get(m)!.custo }));
+    const subPorMes = new Map([...porMes].map(([m, v]) => [m, `${inteiro.format(v.ativos)} pes.`]));
     return {
       chave: `setor:${s.nome}`,
       label: s.nome,
@@ -144,20 +203,27 @@ export default async function Dashboard({
 
   // Composição do mês: Salário (foto de efetivo), Fixos e Variáveis (histórico
   // real de custos_mensais), com Total no fim.
-  const salarioAnt = efTotalPorMes.get(mesAnt)?.folhaTotal ?? null;
-  const fixosAnt = custosPorMes.get(mesAnt)?.fixos ?? null;
-  const variaveisAnt = custosPorMes.get(mesAnt)?.variaveis ?? null;
+  // Período livre: soma dos meses do período; Δ vs os meses do período anterior.
+  const fixosPorMes = new Map(serieCustos.map((c) => [c.mes, c.fixos]));
+  const varPorMes = new Map(serieCustos.map((c) => [c.mes, c.variaveis]));
+  const salarioP = mesUnico ? custoEfetivo : (somaNosMeses(folhaPorMes, meses) ?? 0);
+  const fixosP = mesUnico ? fixos : (somaNosMeses(fixosPorMes, meses) ?? 0);
+  const variaveisP = mesUnico ? variaveis : (somaNosMeses(varPorMes, meses) ?? 0);
+  const salarioAnt = mesUnico ? (efTotalPorMes.get(mesAnt)?.folhaTotal ?? null) : somaNosMeses(folhaPorMes, mesesAnt);
+  const fixosAnt = mesUnico ? (custosPorMes.get(mesAnt)?.fixos ?? null) : somaNosMeses(fixosPorMes, mesesAnt);
+  const variaveisAnt = mesUnico ? (custosPorMes.get(mesAnt)?.variaveis ?? null) : somaNosMeses(varPorMes, mesesAnt);
   const totalAnt =
     salarioAnt !== null && fixosAnt !== null && variaveisAnt !== null
       ? salarioAnt + fixosAnt + variaveisAnt
       : null;
-  const maxComp = Math.max(1, custoEfetivo, fixos, variaveis);
+  const maxComp = Math.max(1, salarioP, fixosP, variaveisP);
 
-  const pontosSalario: PontoValor[] = efTotais.map((t) => ({ mes: t.mes, valor: t.folhaTotal }));
-  const pontosFixos: PontoValor[] = serieCustos.map((c) => ({ mes: c.mes, valor: c.fixos }));
-  const pontosVar: PontoValor[] = serieCustos.map((c) => ({ mes: c.mes, valor: c.variaveis }));
+  const noPeriodo = (m: string) => mesUnico !== null || meses.includes(m);
+  const pontosSalario: PontoValor[] = efTotais.filter((t) => noPeriodo(t.mes)).map((t) => ({ mes: t.mes, valor: t.folhaTotal }));
+  const pontosFixos: PontoValor[] = serieCustos.filter((c) => noPeriodo(c.mes)).map((c) => ({ mes: c.mes, valor: c.fixos }));
+  const pontosVar: PontoValor[] = serieCustos.filter((c) => noPeriodo(c.mes)).map((c) => ({ mes: c.mes, valor: c.variaveis }));
   const pontosTotal: PontoValor[] = efTotais
-    .filter((t) => custosPorMes.has(t.mes))
+    .filter((t) => custosPorMes.has(t.mes) && noPeriodo(t.mes))
     .map((t) => {
       const c = custosPorMes.get(t.mes)!;
       return { mes: t.mes, valor: t.folhaTotal + c.fixos + c.variaveis };
@@ -165,20 +231,20 @@ export default async function Dashboard({
 
   const linhasComposicao: LinhaComparativa[] = [
     {
-      chave: "salario", label: "Salário (efetivo)", valorDisplay: formatBRL(custoEfetivo),
-      barra: custoEfetivo / maxComp, ...fmtDelta(custoEfetivo, salarioAnt, false), serie: serieMeses(pontosSalario, false),
+      chave: "salario", label: "Salário (efetivo)", valorDisplay: formatBRL(salarioP),
+      barra: salarioP / maxComp, ...fmtDelta(salarioP, salarioAnt, false), serie: serieMeses(pontosSalario, false),
     },
     {
-      chave: "fixos", label: "Custos fixos", valorDisplay: formatBRL(fixos),
-      barra: fixos / maxComp, ...fmtDelta(fixos, fixosAnt, false), serie: serieMeses(pontosFixos, false),
+      chave: "fixos", label: "Custos fixos", valorDisplay: formatBRL(fixosP),
+      barra: fixosP / maxComp, ...fmtDelta(fixosP, fixosAnt, false), serie: serieMeses(pontosFixos, false),
     },
     {
-      chave: "variaveis", label: "Custos variáveis", valorDisplay: formatBRL(variaveis),
-      barra: variaveis / maxComp, ...fmtDelta(variaveis, variaveisAnt, false), serie: serieMeses(pontosVar, false),
+      chave: "variaveis", label: "Custos variáveis", valorDisplay: formatBRL(variaveisP),
+      barra: variaveisP / maxComp, ...fmtDelta(variaveisP, variaveisAnt, false), serie: serieMeses(pontosVar, false),
     },
     {
-      chave: "total", label: "Total do mês", valorDisplay: formatBRL(custoTotalMes),
-      destaque: true, ...fmtDelta(custoTotalMes, totalAnt, false), serie: serieMeses(pontosTotal, false),
+      chave: "total", label: mesUnico ? "Total do mês" : "Total do período", valorDisplay: formatBRL(custoTotalMes ?? 0),
+      destaque: true, ...fmtDelta(custoTotalMes ?? 0, totalAnt, false), serie: serieMeses(pontosTotal, false),
     },
   ];
 
@@ -195,13 +261,16 @@ export default async function Dashboard({
 
   // BI dos Motoristas (visão de KM) — destino dos cards da frota.
   const setorMotoristas = setores.find((s) => ehSetorMotoristas(s.nome));
-  const hrefBiMotoristas = setorMotoristas ? `/setores/${setorMotoristas.id}?aba=bi${mesFechado ? `&mes=${mesAtual}` : ""}` : undefined;
+  const qsPeriodo = new URLSearchParams(paramsDoPeriodo(periodo)).toString();
+  const hrefBiMotoristas = setorMotoristas ? `/setores/${setorMotoristas.id}?aba=bi${qsPeriodo ? `&${qsPeriodo}` : ""}` : undefined;
+  const hrefPeriodo = (base: string) => (qsPeriodo ? `${base}?${qsPeriodo}` : base);
+  const semDado = "sem dado";
 
   return (
     <div>
       <PageHeader
         title="Visão geral"
-        subtitle={`Operação de logística · ${formatMesAno(mesAtual)}${mesFechado ? " · mês fechado" : " · em andamento"}`}
+        subtitle={`Operação de logística · ${mesUnico ? formatMesAno(mesUnico) : rotuloPeriodo(periodo)}${mesFechado ? (mesUnico ? " · mês fechado" : " · fechado") : " · em andamento"}`}
       >
         {/* Dashboard não se atualiza sozinho: o selo diz de quando são os números. */}
         <SeloVivo
@@ -219,23 +288,43 @@ export default async function Dashboard({
           </svg>
           Compartilhar fechamento
         </Link>
-        <MesNav mes={mesAtual} hrefFor={(m) => `/?mes=${m}`} />
+        <PeriodoNav periodo={periodo} piso={PISO_WINTHOR} hrefFor={(p) => (Object.keys(p).length ? `/?${new URLSearchParams(p)}` : "/")} />
       </PageHeader>
 
       <Suspense fallback={<FaturamentoSkeleton />}>
-        <FaturamentoCards mes={mesAtual} custoTotalMes={custoTotalMes} />
+        <FaturamentoCards periodo={periodo} custoTotal={custoTotalMes} comparar={{ ant: pAnt, ano: pAno }} />
       </Suspense>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
-        <StatCard label="Custo bruto do mês" value={formatBRL(custoTotalMes)} accent="gold" href="/custos" />
-        <StatCard label="Custo líquido do mês" value={formatBRL(custoLiquidoMes)} hint={`Receitas: ${formatBRL(receitasMes)}`} accent="green" href="/receitas" />
-        <StatCard label="Faltas no mês" value={`${faltasMes}`} accent="red" href={`/faltas?mes=${mesAtual}`} />
+        <StatCard
+          label={mesUnico ? "Custo bruto do mês" : "Custo bruto do período"}
+          value={custoTotalMes === null ? semDado : formatBRL(custoTotalMes)}
+          accent="gold"
+          href={hrefPeriodo("/custos")}
+          title={mesUnico ? undefined : "Custos são mensais: soma dos meses que o período toca"}
+          extra={chips(custoTotalMes, custoAntP, custoAnoP, false)}
+        />
+        <StatCard
+          label={mesUnico ? "Custo líquido do mês" : "Custo líquido do período"}
+          value={custoLiquidoMes === null ? semDado : formatBRL(custoLiquidoMes)}
+          hint={receitasMes === null ? undefined : `Receitas: ${formatBRL(receitasMes)}`}
+          accent="green"
+          href={hrefPeriodo("/receitas")}
+          extra={chips(custoLiquidoMes, liquidoDe(custoAntP, receitasAnt), liquidoDe(custoAnoP, receitasAno), false)}
+        />
+        <StatCard
+          label={mesUnico ? "Faltas no mês" : "Faltas no período"}
+          value={faltasMes === null ? semDado : `${faltasMes}`}
+          accent="red"
+          href={hrefPeriodo("/faltas")}
+          extra={chips(faltasMes, faltasEm(pAnt), faltasEm(pAno), false)}
+        />
       </div>
 
       <div className="mt-8">
         <Suspense fallback={<FrotaSkeleton />}>
-          <FrotaCards mes={mesAtual} hrefBi={hrefBiMotoristas} />
+          <FrotaCards mes={mesAtual} periodo={mesUnico ? undefined : periodo} periodoAnt={pAnt} hrefBi={hrefBiMotoristas} />
         </Suspense>
       </div>
 
@@ -243,15 +332,15 @@ export default async function Dashboard({
         <Card className="p-6 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between">
             <SectionTitle>Custo e efetivo por setor</SectionTitle>
-            <span className="text-xs text-slate-400">Δ vs {formatMesAno(mesAnt)} · clique para ver mês a mês</span>
+            <span className="text-xs text-slate-400">Δ vs {mesUnico ? formatMesAno(mesAnt) : rotuloCurto(pAnt)} · clique para ver mês a mês</span>
           </div>
           <ListaComparativa linhas={linhasSetor} tone="gold" />
         </Card>
 
         <Card className="p-6">
           <div className="mb-2 flex items-center justify-between">
-            <SectionTitle>Composição do mês</SectionTitle>
-            <span className="text-xs text-slate-400">Δ vs {formatMesAno(mesAnt)}</span>
+            <SectionTitle>{mesUnico ? "Composição do mês" : "Composição do período"}</SectionTitle>
+            <span className="text-xs text-slate-400">Δ vs {mesUnico ? formatMesAno(mesAnt) : rotuloCurto(pAnt)}</span>
           </div>
           <ListaComparativa linhas={linhasComposicao} tone="navy" />
         </Card>
@@ -298,7 +387,7 @@ export default async function Dashboard({
 
       <div className="mt-6">
         <Suspense fallback={<FaturamentoDetalheSkeleton />}>
-          <FaturamentoDetalhe mes={mesAtual} />
+          <FaturamentoDetalhe periodo={periodo} />
         </Suspense>
       </div>
     </div>

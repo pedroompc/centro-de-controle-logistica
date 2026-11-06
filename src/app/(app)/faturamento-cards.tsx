@@ -1,5 +1,9 @@
-import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
-import { taxaDevolucao, percentualCustoLogistico } from "@/domain/faturamento";
+import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
+import { rotuloCurto, type Periodo } from "@/domain/periodo";
+import { compararPct, compararTaxa } from "@/domain/comparacao";
+import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-periodos";
+import { Suspense } from "react";
+import { taxaDevolucao, percentualCustoLogistico, type ResumoFaturamento } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { StatCard, HeroStat, Card, SectionTitle } from "@/components/ui";
 
@@ -33,13 +37,66 @@ function Linha({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/** Os dois períodos de comparação, com o rótulo curto de cada um. */
+export interface ComparacaoPeriodos {
+  ant: Periodo;
+  ano: Periodo;
+}
+
+type Medida = (r: ResumoFaturamento) => number;
+
 /**
- * Cards de faturamento (rotina 111 do Winthor) do mês corrente — a visão geral
- * no topo do dashboard. Componente assíncrono: deve ficar dentro de um
- * <Suspense> para não travar o resto da página enquanto o Oracle responde.
+ * Comparações de um card. Assíncrono e em Suspense próprio: o número do
+ * período aparece na hora e as comparações chegam quando o Winthor responde
+ * (as leituras são memoizadas por request — todos os cards dividem as mesmas).
  */
-export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; custoTotalMes: number }) {
-  const r = await getResumoFaturamentoDashboard(mes);
+async function Chips({ atual, medida, cmp, maiorEhBom, taxa = false }: { atual: number; medida: Medida; cmp: ComparacaoPeriodos; maiorEhBom: boolean; taxa?: boolean }) {
+  const [rAnt, rAno] = await Promise.all([
+    getResumoFaturamentoPeriodo(cmp.ant.de, cmp.ant.ate).catch(() => null),
+    getResumoFaturamentoPeriodo(cmp.ano.de, cmp.ano.ate).catch(() => null),
+  ]);
+  const f = (b: ResumoFaturamento | null) => {
+    if (!b) return null;
+    return taxa ? compararTaxa(atual, medida(b), maiorEhBom) : compararPct(atual, medida(b), maiorEhBom);
+  };
+  const itens: ItemComparacao[] = [
+    { c: f(rAnt), referencia: `vs ${rotuloCurto(cmp.ant)}` },
+    { c: f(rAno), referencia: `vs ${rotuloCurto(cmp.ano)}` },
+  ];
+  return <ComparaPeriodos itens={itens} />;
+}
+
+function ChipsEsperando() {
+  return <span className="inline-block h-3 w-32 animate-pulse rounded bg-slate-100" />;
+}
+
+function comparacoes(atual: number, medida: Medida, cmp: ComparacaoPeriodos, maiorEhBom: boolean, taxa = false) {
+  return (
+    <Suspense fallback={<ChipsEsperando />}>
+      <Chips atual={atual} medida={medida} cmp={cmp} maiorEhBom={maiorEhBom} taxa={taxa} />
+    </Suspense>
+  );
+}
+
+/**
+ * Cards de faturamento (rotina 111 do Winthor) do período — a visão geral no
+ * topo do dashboard, com variação vs período anterior e vs ano passado.
+ * Componente assíncrono: deve ficar dentro de um <Suspense> para não travar o
+ * resto da página enquanto o Oracle responde.
+ */
+export async function FaturamentoCards({
+  periodo,
+  custoTotal,
+  comparar,
+}: {
+  periodo: Periodo;
+  custoTotal: number | null;
+  comparar: ComparacaoPeriodos;
+}) {
+  // Dispara as comparações já (memoizadas), sem esperar por elas.
+  void getResumoFaturamentoPeriodo(comparar.ant.de, comparar.ant.ate).catch(() => null);
+  void getResumoFaturamentoPeriodo(comparar.ano.de, comparar.ano.ate).catch(() => null);
+  const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate);
 
   if (!r) {
     return (
@@ -56,7 +113,9 @@ export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; cu
   }
 
   const taxaDevol = taxaDevolucao(r);
-  const pctCusto = percentualCustoLogistico(custoTotalMes, r.vendaLiquida);
+  const pctCusto = custoTotal === null ? null : percentualCustoLogistico(custoTotal, r.vendaLiquida);
+  const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "atendimentos" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
+    comparacoes(r[campo], (x) => x[campo], comparar, maiorEhBom);
 
   return (
     <div>
@@ -68,17 +127,23 @@ export async function FaturamentoCards({ mes, custoTotalMes }: { mes: string; cu
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)} />
+          <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>
         </div>
-        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" />
+        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" extra={cmp("valorDevolucao", false)} />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução − avulsa" accent="navy" />
-        <StatCard label="Entregas realizadas" value={`${r.atendimentos}`} hint="clientes atendidos no mês" accent="navy" />
-        <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" />
-        <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" />
-        <StatCard label="Taxa de devolução" value={formatPercent(taxaDevol)} accent="red" />
-        <StatCard label="Custo logístico" value={formatPercent(pctCusto)} accent="gold" />
+        <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução − avulsa" accent="navy" extra={cmp("vendaLiquida", true)} />
+        <StatCard label="Entregas realizadas" value={`${r.atendimentos}`} hint="clientes atendidos no período" accent="navy" extra={cmp("atendimentos", true)} />
+        <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" extra={cmp("pesoFaturado", true)} />
+        <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" extra={cmp("emitidas", true)} />
+        <StatCard
+          label="Taxa de devolução"
+          value={formatPercent(taxaDevol)}
+          accent="red"
+          extra={comparacoes(taxaDevol, taxaDevolucao, comparar, false, true)}
+        />
+        <StatCard label="Custo logístico" value={pctCusto === null ? "sem dado" : formatPercent(pctCusto)} accent="gold" />
       </div>
     </div>
   );
@@ -106,13 +171,13 @@ export function FaturamentoSkeleton() {
  * Detalhamento do faturamento — os números crus puxados da rotina 111. Fica no
  * rodapé do dashboard. Reusa a mesma consulta (memoizada) dos cards do topo.
  */
-export async function FaturamentoDetalhe({ mes }: { mes: string }) {
-  const r = await getResumoFaturamentoDashboard(mes);
+export async function FaturamentoDetalhe({ periodo }: { periodo: Periodo }) {
+  const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate);
   if (!r) return null;
 
   return (
     <Card className="p-6">
-      <SectionTitle>Detalhamento do mês · Winthor</SectionTitle>
+      <SectionTitle>Detalhamento do período · Winthor</SectionTitle>
       <Linha label="NFs emitidas" valor={`${r.emitidas}`} />
       <Linha label="NFs devolvidas" valor={`${r.devolvidas}`} />
       <Linha label="Devolução avulsa" valor={`${formatBRL(r.valorDevolucaoAvulsa)} · ${r.devolvidasAvulsas} NFs`} />

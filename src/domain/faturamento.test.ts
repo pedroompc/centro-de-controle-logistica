@@ -32,3 +32,19 @@ describe("percentualCustoLogistico", () => {
     expect(percentualCustoLogistico(5000, 0)).toBe(0);
   });
 });
+
+import { somarResumos } from "./faturamento";
+
+describe("somarResumos", () => {
+  const r = (v: number) => ({
+    emitidas: v, positivados: v, atendimentos: v, devolvidas: v, devolvidasAvulsas: v,
+    vendaFaturada: v * 10, valorDevolucao: v, valorDevolucaoAvulsa: 0, vendaLiquida: v * 9, pesoFaturado: v, pesoDevolucao: v,
+  });
+  it("soma os meses; positivados vem da contagem distinta do período", () => {
+    const t = somarResumos([r(1), r(2), r(3)], 4);
+    expect(t.vendaFaturada).toBe(60);
+    expect(t.vendaLiquida).toBe(54);
+    expect(t.atendimentos).toBe(6);
+    expect(t.positivados).toBe(4);
+  });
+});

@@ -47,3 +47,18 @@ export function percentualCustoLogistico(
   if (vendaLiquida <= 0) return 0;
   return custoTotalMes / vendaLiquida;
 }
+
+/**
+ * Soma resumos de pedaços disjuntos de um período (um por mês). Tudo é aditivo
+ * entre dias distintos, menos `positivados` (clientes distintos no período
+ * inteiro) — esse vem de uma contagem própria; sem ela, fica a soma (teto).
+ */
+export function somarResumos(partes: ResumoFaturamento[], positivados?: number | null): ResumoFaturamento {
+  const t: ResumoFaturamento = {
+    emitidas: 0, positivados: 0, atendimentos: 0, devolvidas: 0, devolvidasAvulsas: 0,
+    vendaFaturada: 0, valorDevolucao: 0, valorDevolucaoAvulsa: 0, vendaLiquida: 0, pesoFaturado: 0, pesoDevolucao: 0,
+  };
+  for (const p of partes) for (const k of Object.keys(t) as (keyof ResumoFaturamento)[]) t[k] += p[k];
+  if (positivados != null) t.positivados = positivados;
+  return t;
+}

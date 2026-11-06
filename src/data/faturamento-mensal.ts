@@ -1,9 +1,9 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getResumoFaturamento } from "./faturamento";
+import { getResumoFaturamento, getPositivados } from "./faturamento";
 import { FILIAL_LABEL } from "./filiais";
-import type { ResumoFaturamento } from "@/domain/faturamento";
-import { primeiroDiaDoMes, inicioFimDoMes } from "@/domain/periodo";
+import { somarResumos, type ResumoFaturamento } from "@/domain/faturamento";
+import { primeiroDiaDoMes, inicioFimDoMes, mesDoPeriodo, mesesDoPeriodo, INICIO_HISTORICO } from "@/domain/periodo";
 import { mesesFechados, type PontoTendencia } from "@/domain/tendencias";
 // Literal única (sem concatenação) para preservar o tipo literal que o
 // supabase-js usa para inferir o formato do retorno de `.select(COLUNAS)`.
@@ -205,4 +205,51 @@ export async function vendaLiquidaDasFotos(meses: string[]): Promise<Map<string,
   }
   for (const r of data ?? []) res.set(primeiroDiaDoMes(String(r.mes)), num(r.venda_liquida));
   return res;
+}
+
+/**
+ * Faturamento de um período qualquer [de, ate]. Uma consulta só num trimestre
+ * leva ~30 s e num trimestre de 2025 passa de 2 min, então o período é quebrado
+ * em meses (cada um rápido, no máx. 3 de cada vez) e somado; os clientes
+ * positivados (distintos no período) vêm de uma contagem própria. Mês inteiro
+ * dentro do histórico passa pelo leitor do mês (com foto/fallback). Qualquer
+ * pedaço indisponível → null (soma parcial enganaria).
+ */
+export const getResumoFaturamentoPeriodo = cache(
+  async (de: string, ate: string): Promise<ResumoFaturamentoDoMes | null> => {
+    const mes = mesDoPeriodo({ de, ate });
+    if (mes && mes >= INICIO_HISTORICO) return getResumoFaturamentoDashboard(mes);
+    const pedacos = mesesDoPeriodo({ de, ate }).map((m) => {
+      const { inicio, fim } = inicioFimDoMes(m);
+      return { mes: m, de: inicio < de ? de : inicio, ate: fim > ate ? ate : fim, inteiro: inicio >= de && fim <= ate };
+    });
+    if (pedacos.length === 1) return lerPedaco(pedacos[0]);
+    const [partes, positivados] = await Promise.all([
+      emLotes(pedacos, 3, lerPedaco),
+      getPositivados(de, ate),
+    ]);
+    if (partes.some((p) => p === null)) return null;
+    const ok = partes as ResumoFaturamentoDoMes[];
+    return { ...somarResumos(ok, positivados), foto: ok.some((p) => p.foto) || undefined };
+  },
+);
+
+async function lerPedaco(p: { mes: string; de: string; ate: string; inteiro: boolean }): Promise<ResumoFaturamentoDoMes | null> {
+  if (p.inteiro && p.mes >= INICIO_HISTORICO) return getResumoFaturamentoDashboard(p.mes);
+  return (await getResumoFaturamento(p.de, p.ate)) ?? (await getResumoFaturamento(p.de, p.ate));
+}
+
+/** Map com no máximo `n` promessas em voo (o pool do Oracle é pequeno). */
+async function emLotes<T, R>(itens: T[], n: number, f: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(itens.length);
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, itens.length) }, async () => {
+      while (i < itens.length) {
+        const k = i++;
+        out[k] = await f(itens[k]);
+      }
+    }),
+  );
+  return out;
 }

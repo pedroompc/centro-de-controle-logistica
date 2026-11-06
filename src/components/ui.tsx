@@ -48,6 +48,7 @@ export function StatCard({
   href,
   hintRuim = false,
   title,
+  extra,
 }: {
   label: string;
   value: string;
@@ -58,6 +59,8 @@ export function StatCard({
   hintRuim?: boolean;
   /** Detalhe extra no hover, para não poluir o card. */
   title?: string;
+  /** Linha extra embaixo (ex.: comparações vs período anterior / ano passado). */
+  extra?: ReactNode;
 }) {
   const bar = {
     navy: "bg-[#1b2168]",
@@ -76,6 +79,7 @@ export function StatCard({
         <NumeroAnimado texto={value} />
       </p>
       {hint && <p className={`mt-1 text-xs ${hintRuim ? "font-medium text-rose-600" : "text-slate-400"}`}>{hint}</p>}
+      {extra && <div className="mt-1.5">{extra}</div>}
     </div>
   );
 

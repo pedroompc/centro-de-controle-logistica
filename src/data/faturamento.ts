@@ -138,3 +138,16 @@ export const getResumoFaturamentoMesAtual = cache(
   async (): Promise<ResumoFaturamento | null> =>
     getResumoFaturamento(primeiroDiaDoMes(), hojeISO()),
 );
+
+const SQL_POSITIVADOS = `SELECT COUNT(DISTINCT n.CODCLI) POSITIVADOS FROM PCNFSAID n WHERE ${FILTRO_NF}`;
+
+/** Clientes distintos que compraram no período [ini, fim] (não soma entre meses). */
+export async function getPositivados(ini: string, fim: string): Promise<number | null> {
+  try {
+    const rows = await queryWinthor<{ POSITIVADOS: number }>(SQL_POSITIVADOS, { ini, fim });
+    return n(rows[0]?.POSITIVADOS);
+  } catch (erro) {
+    console.error("[faturamento] positivados indisponível:", (erro as Error).message);
+    return null;
+  }
+}

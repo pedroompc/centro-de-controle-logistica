@@ -9,7 +9,7 @@ import { assertAdmin } from "./auth";
 import { liderDoCarro, valorDaNota } from "@/domain/receitas-metrics";
 import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
 import { lerConfig } from "./config-descarregamento";
-import { totalDiversasDoMes, serieDiversasMensais } from "./receitas-diversas";
+import { totalDiversasDoPeriodo, serieDiversasMensais } from "./receitas-diversas";
 import type { Receita, DescarregamentoTipo } from "@/domain/types";
 
 const COLS =
@@ -22,6 +22,10 @@ export interface FiltrosReceita {
 
 export async function listarReceitasDoMes(mes: string, filtros: FiltrosReceita = {}): Promise<Receita[]> {
   const { inicio, fim } = inicioFimDoMes(mes);
+  return listarReceitasDoPeriodo(inicio, fim, filtros);
+}
+
+export async function listarReceitasDoPeriodo(inicio: string, fim: string, filtros: FiltrosReceita = {}): Promise<Receita[]> {
   const supabase = await createClient();
   let q = supabase
     .from("receitas_descarregamento")
@@ -42,6 +46,11 @@ export async function listarReceitasDoMes(mes: string, filtros: FiltrosReceita =
  */
 export async function receitaTotalDoMes(mes: string): Promise<number> {
   const { inicio, fim } = inicioFimDoMes(mes);
+  return receitaTotalDoPeriodo(inicio, fim);
+}
+
+/** Receita total de um intervalo [inicio, fim] — mesmas três origens do mês. */
+export async function receitaTotalDoPeriodo(inicio: string, fim: string): Promise<number> {
   const supabase = await createClient();
   const [descarregamento, diarios, diversas] = await Promise.all([
     supabase
@@ -54,7 +63,7 @@ export async function receitaTotalDoMes(mes: string): Promise<number> {
       .select("receita")
       .gte("data", inicio)
       .lte("data", fim),
-    totalDiversasDoMes(mes),
+    totalDiversasDoPeriodo(inicio, fim),
   ]);
   if (descarregamento.error) throw new Error(descarregamento.error.message);
   if (diarios.error) throw new Error(diarios.error.message);
