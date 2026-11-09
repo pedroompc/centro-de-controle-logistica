@@ -58,11 +58,13 @@ const VENDAS_DO_PERIODO = `SELECT nf.NUMTRANSVENDA FROM PCNFSAID nf
 // Motivo (CODDEVOL) → setor responsável, conforme o cadastro de motivos do Winthor.
 // Override por NOME: o motivo de "coleta" conta como Comercial (decisão do
 // cliente), independente do código — por isso vem antes das faixas de CODDEVOL.
-// 118/119 (R-/D- PRECO ERRADO) = Comercial (decisão do Pedro, 09/11/2026).
+// Decisões do Pedro (09/11/2026): 118/119 PRECO ERRADO, 121/122 ERRO DE RAZAO
+// SOCIAL, 65 PEDIDO ERRADO, 6 PEDIDO DUPLICADO, 7 CLIENTE NAO PEDIU = Comercial;
+// 1 INVERSAO DE MERC. NA EXP = Logística.
 const SETOR = `CASE
     WHEN UPPER(NVL(td.MOTIVO, '')) LIKE '%COLETA%' THEN 'Comercial'
-    WHEN ed.CODDEVOL IN (85,86,87,88,89,90,91,97,98,99,100,101,102,103,104,111,112) THEN 'Logística'
-    WHEN ed.CODDEVOL IN (93,94,95,96,106,107,108,109,110,118,119) THEN 'Comercial'
+    WHEN ed.CODDEVOL IN (1,85,86,87,88,89,90,91,97,98,99,100,101,102,103,104,111,112) THEN 'Logística'
+    WHEN ed.CODDEVOL IN (6,7,65,93,94,95,96,106,107,108,109,110,118,119,121,122) THEN 'Comercial'
     WHEN ed.CODDEVOL IN (92,105) THEN 'Faturamento'
     ELSE 'Não classificado' END`;
 
