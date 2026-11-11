@@ -1,6 +1,7 @@
 // Retorno ao estoque das devoluções: o caminho físico de cada nota devolvida
 // dentro do Harpia (WMS), depois que ela entrou no Winthor.
 //
+//   ENTRADA da nota de devolução no Winthor (PCNFENT) = marco zero dos tempos
 //   D1131 cria o PROTOCOLO (1 por nota de devolução)
 //   B311  conferência por coletor — feita por AGRUPAMENTO (a devolução de um
 //         motorista: vários protocolos numa planilha consolidada por mercadoria)
@@ -26,11 +27,18 @@ export interface ProtocoloDevolucao {
   motorista: string | null;
   criado: string | null; // "yyyy-mm-dd hh:mi" (D1131)
   finalizado: boolean; // D1132 já devolveu ao ERP
-  noPeriodo: boolean; // criado dentro do período escolhido
+  noPeriodo: boolean; // ENTRADA dentro do período escolhido
   horasAberto: number | null; // agora − criado
   horasAteConferir: number | null; // criado → 1º bipe na B311
   horasAteEndereco: number | null; // criado → 1º crachá/endereço na 216
   horasAteFinalizar: number | null; // criado → D1132
+  // Marco zero = ENTRADA da nota de devolução no Winthor (antes da D1131).
+  entrada: string | null; // "yyyy-mm-dd hh:mi"
+  horasEntradaAteProtocolo: number | null; // entrada → D1131
+  horasEntradaAteFinalizar: number | null; // entrada → D1132 (só finalizados)
+  horasEntradaAberto: number | null; // entrada → agora (só abertos)
+  horasConferirAteEndereco: number | null; // 1º bipe B311 → 1º crachá 216
+  horasEnderecoAteFinalizar: number | null; // 1º crachá 216 → D1132 (negativo = endereçado depois)
   itens: number;
   itensAvaria: number;
   qtdAvaria: number;
@@ -85,14 +93,46 @@ export interface ResumoEtapa {
   valor: number;
 }
 
-export interface TemposProtocolo {
-  finalizados: number; // criados no período e já finalizados
-  medianaHorasFinalizar: number | null;
-  mediaHorasFinalizar: number | null;
-  medianaHorasConferir: number | null;
-  medianaHorasEndereco: number | null;
-  semEndereco: number; // finalizados sem crachá/endereço registrado na 216
-  enderecoDepois: number; // finalizados cujo endereço só veio DEPOIS do D1132
+/** Uma linha do resumo: quantidade, R$ e % sobre o total do período. */
+export interface LinhaResumo {
+  protocolos: number;
+  valor: number;
+  pct: number; // 0..1 sobre os protocolos do período
+}
+
+export type TrechoId = "entrada_protocolo" | "protocolo_conferencia" | "conferencia_endereco" | "endereco_finalizar";
+
+export const TRECHOS: { id: TrechoId; de: string; ate: string; dica: string }[] = [
+  { id: "entrada_protocolo", de: "Entrada", ate: "D1131", dica: "Nota de devolução lançada no Winthor → protocolo criado no Harpia (D1131)" },
+  { id: "protocolo_conferencia", de: "D1131", ate: "B311", dica: "Protocolo criado → 1º bipe da conferência no coletor (B311)" },
+  { id: "conferencia_endereco", de: "B311", ate: "216", dica: "1º bipe da conferência → 1º crachá impresso, mercadoria no endereço (216)" },
+  { id: "endereco_finalizar", de: "216", ate: "D1132", dica: "Mercadoria no endereço → retorno ao ERP (D1132). Só quem foi endereçado antes de finalizar" },
+];
+
+export interface TempoTrecho {
+  id: TrechoId;
+  media: number | null;
+  mediana: number | null;
+  protocolos: number; // quantos têm as duas marcas
+}
+
+export interface ResumoPeriodo {
+  total: { protocolos: number; valor: number };
+  finalizados: LinhaResumo & {
+    comEndereco: LinhaResumo; // crachá/endereço (216) antes de finalizar
+    enderecoDepois: LinhaResumo; // endereço só registrado DEPOIS do D1132
+    semEndereco: LinhaResumo; // finalizado sem nenhum crachá/endereço
+  };
+  abertos: LinhaResumo & { porEtapa: (LinhaResumo & { etapa: EtapaProtocolo })[] };
+  avaria: { protocolos: number; pct: number; itens: number; qtd: number };
+  tempos: {
+    finalizados: number; // com tempo entrada → finalizar
+    mediaHorasFinalizar: number | null; // entrada → D1132
+    medianaHorasFinalizar: number | null;
+    trechos: TempoTrecho[];
+    idadeMediaAbertos: number | null; // entrada → agora
+    medianaIdadeAbertos: number | null;
+  };
 }
 
 export interface MotoristaProtocolos {
@@ -106,19 +146,17 @@ export interface MotoristaProtocolos {
   itensSobra: number;
   itensAvaria: number; // período
   qtdAvaria: number; // período
-  medianaHorasFinalizar: number | null;
+  medianaHorasFinalizar: number | null; // entrada → D1132
 }
 
 export interface RelatorioProtocolos {
-  abertos: ProtocoloAberto[]; // recentes, mais antigos primeiro
+  periodo: ResumoPeriodo; // protocolos com ENTRADA no período
+  abertos: ProtocoloAberto[]; // abertos agora (recentes), mais antigos primeiro
   porEtapa: ResumoEtapa[];
   agrupamentosAbertos: number;
   valorAberto: number;
   antigos: number; // abertos há mais de HORAS_ANTIGO
   valorAntigos: number;
-  tempos: TemposProtocolo;
-  avaria: { protocolos: number; itens: number; qtd: number }; // criados no período
-  criadosNoPeriodo: number;
   motoristas: MotoristaProtocolos[];
 }
 
@@ -132,9 +170,82 @@ export function mediana(xs: number[]): number | null {
 const media = (xs: number[]): number | null => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const num = (xs: (number | null)[]): number[] => xs.filter((x): x is number => x != null);
 
-export function montarRelatorio(protocolos: ProtocoloDevolucao[], planilhas: PlanilhaAgrupamento[]): RelatorioProtocolos {
+const planilhaDe = (planilhas: PlanilhaAgrupamento[]) => {
   const plan = new Map(planilhas.map((p) => [p.grupo, p]));
-  const planDo = (p: ProtocoloDevolucao) => (p.grupo == null ? undefined : plan.get(p.grupo));
+  return (p: ProtocoloDevolucao) => (p.grupo == null ? undefined : plan.get(p.grupo));
+};
+
+/** Endereço (216) só registrado DEPOIS da finalização (D1132). */
+const enderecadoDepois = (p: ProtocoloDevolucao) =>
+  p.horasAteEndereco != null && p.horasAteFinalizar != null && p.horasAteEndereco > p.horasAteFinalizar;
+
+/** Horas de um trecho; marca faltando (null) ou fora de ordem (negativo) fica de fora. */
+function horasDoTrecho(p: ProtocoloDevolucao, id: TrechoId): number | null {
+  const h = {
+    entrada_protocolo: p.horasEntradaAteProtocolo,
+    protocolo_conferencia: p.horasAteConferir,
+    conferencia_endereco: p.horasConferirAteEndereco,
+    endereco_finalizar: p.finalizado ? p.horasEnderecoAteFinalizar : null,
+  }[id];
+  return h != null && h >= 0 ? h : null;
+}
+
+/**
+ * Resumo dos protocolos com ENTRADA no período: finalizados (por situação do
+ * endereço), em aberto (por etapa — TODOS, sem o corte de 60 dias da lista),
+ * avaria e tempos desde a entrada. "Com divergência" vem da planilha ATUAL do
+ * agrupamento, então só vale para os abertos (nos finalizados o Harpia zera).
+ */
+export function resumoPeriodo(protocolos: ProtocoloDevolucao[], planilhas: PlanilhaAgrupamento[]): ResumoPeriodo {
+  const planDo = planilhaDe(planilhas);
+  const doPeriodo = protocolos.filter((p) => p.noPeriodo);
+  const total = doPeriodo.length;
+  const linha = (xs: ProtocoloDevolucao[]): LinhaResumo => ({
+    protocolos: xs.length,
+    valor: xs.reduce((t, p) => t + p.valor, 0),
+    pct: total ? xs.length / total : 0,
+  });
+
+  const fin = doPeriodo.filter((p) => p.finalizado);
+  const abertos = doPeriodo.filter((p) => !p.finalizado).map((p) => ({ p, etapa: etapaDo(p, planDo(p)) }));
+  const comAvaria = doPeriodo.filter((p) => p.itensAvaria > 0);
+  const finalizar = num(fin.map((p) => p.horasEntradaAteFinalizar));
+  const idade = num(abertos.map(({ p }) => p.horasEntradaAberto));
+
+  return {
+    total: { protocolos: total, valor: doPeriodo.reduce((t, p) => t + p.valor, 0) },
+    finalizados: {
+      ...linha(fin),
+      comEndereco: linha(fin.filter((p) => p.horasAteEndereco != null && !enderecadoDepois(p))),
+      enderecoDepois: linha(fin.filter(enderecadoDepois)),
+      semEndereco: linha(fin.filter((p) => p.horasAteEndereco == null)),
+    },
+    abertos: {
+      ...linha(abertos.map(({ p }) => p)),
+      porEtapa: ETAPAS.map(({ id }) => ({ etapa: id, ...linha(abertos.filter((a) => a.etapa === id).map(({ p }) => p)) })),
+    },
+    avaria: {
+      protocolos: comAvaria.length,
+      pct: total ? comAvaria.length / total : 0,
+      itens: comAvaria.reduce((t, p) => t + p.itensAvaria, 0),
+      qtd: comAvaria.reduce((t, p) => t + p.qtdAvaria, 0),
+    },
+    tempos: {
+      finalizados: finalizar.length,
+      mediaHorasFinalizar: media(finalizar),
+      medianaHorasFinalizar: mediana(finalizar),
+      trechos: TRECHOS.map(({ id }) => {
+        const hs = num(doPeriodo.map((p) => horasDoTrecho(p, id)));
+        return { id, media: media(hs), mediana: mediana(hs), protocolos: hs.length };
+      }),
+      idadeMediaAbertos: media(idade),
+      medianaIdadeAbertos: mediana(idade),
+    },
+  };
+}
+
+export function montarRelatorio(protocolos: ProtocoloDevolucao[], planilhas: PlanilhaAgrupamento[]): RelatorioProtocolos {
+  const planDo = planilhaDe(planilhas);
 
   const abertosTodos = protocolos.filter((p) => !p.finalizado);
   const antigos = abertosTodos.filter((p) => (p.horasAberto ?? 0) > HORAS_ANTIGO);
@@ -145,7 +256,7 @@ export function montarRelatorio(protocolos: ProtocoloDevolucao[], planilhas: Pla
       const etapa = etapaDo(p, pl);
       return { ...p, etapa, divergencia: etapa === "com_divergencia" && pl ? pl : null };
     })
-    .sort((a, b) => (b.horasAberto ?? 0) - (a.horasAberto ?? 0));
+    .sort((a, b) => (b.horasEntradaAberto ?? b.horasAberto ?? 0) - (a.horasEntradaAberto ?? a.horasAberto ?? 0));
 
   const porEtapa: ResumoEtapa[] = ETAPAS.map(({ id }) => {
     const da = abertos.filter((p) => p.etapa === id);
@@ -153,25 +264,6 @@ export function montarRelatorio(protocolos: ProtocoloDevolucao[], planilhas: Pla
   });
 
   const doPeriodo = protocolos.filter((p) => p.noPeriodo);
-  const fin = doPeriodo.filter((p) => p.finalizado);
-  const tempos: TemposProtocolo = {
-    finalizados: fin.length,
-    medianaHorasFinalizar: mediana(num(fin.map((p) => p.horasAteFinalizar))),
-    mediaHorasFinalizar: media(num(fin.map((p) => p.horasAteFinalizar))),
-    medianaHorasConferir: mediana(num(fin.map((p) => p.horasAteConferir))),
-    medianaHorasEndereco: mediana(num(fin.map((p) => p.horasAteEndereco))),
-    semEndereco: fin.filter((p) => p.horasAteEndereco == null).length,
-    enderecoDepois: fin.filter(
-      (p) => p.horasAteEndereco != null && p.horasAteFinalizar != null && p.horasAteEndereco > p.horasAteFinalizar,
-    ).length,
-  };
-
-  const comAvaria = doPeriodo.filter((p) => p.itensAvaria > 0);
-  const avaria = {
-    protocolos: comAvaria.length,
-    itens: comAvaria.reduce((t, p) => t + p.itensAvaria, 0),
-    qtd: comAvaria.reduce((t, p) => t + p.qtdAvaria, 0),
-  };
 
   // Motorista: da carga da venda de origem (Winthor); sem venda (avulsa), o
   // nome do agrupamento no Harpia.
@@ -198,7 +290,7 @@ export function montarRelatorio(protocolos: ProtocoloDevolucao[], planilhas: Pla
     m.protocolos++;
     m.itensAvaria += p.itensAvaria;
     m.qtdAvaria += p.qtdAvaria;
-    if (p.finalizado && p.horasAteFinalizar != null) m._fin.push(p.horasAteFinalizar);
+    if (p.finalizado && p.horasEntradaAteFinalizar != null) m._fin.push(p.horasEntradaAteFinalizar);
   }
   const gruposDiv = new Set<number>(); // a planilha é do agrupamento: conta 1 vez por motorista
   for (const p of abertos) {
@@ -218,15 +310,13 @@ export function montarRelatorio(protocolos: ProtocoloDevolucao[], planilhas: Pla
     .sort((a, b) => b.comDivergencia - a.comDivergencia || b.itensAvaria - a.itensAvaria || b.abertos - a.abertos || b.protocolos - a.protocolos);
 
   return {
+    periodo: resumoPeriodo(protocolos, planilhas),
     abertos,
     porEtapa,
     agrupamentosAbertos: new Set(abertos.map((p) => p.grupo ?? -p.protocolo)).size,
     valorAberto: abertos.reduce((t, p) => t + p.valor, 0),
     antigos: antigos.length,
     valorAntigos: antigos.reduce((t, p) => t + p.valor, 0),
-    tempos,
-    avaria,
-    criadosNoPeriodo: doPeriodo.length,
     motoristas,
   };
 }

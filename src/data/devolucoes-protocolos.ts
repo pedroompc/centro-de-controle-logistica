@@ -20,21 +20,42 @@ import type { PlanilhaAgrupamento, ProtocoloDevolucao } from "@/domain/devolucoe
  * - Winthor: PCNFENT → PCESTCOM (venda de origem) → PCNFSAID (pedido, carga) →
  *   PCCARREG (motorista).
  *
+ * ENTRADA = lançamento da nota de devolução no Winthor (marco zero do
+ * protocolo, antes da D1131): `PCNFENT.DTENT` vem só com a data; a hora está
+ * em `HORALANC`/`MINUTOLANC` (VARCHAR2 — se não for número, fica só a data).
+ * Sem nota no Winthor, o período cai no D1131.
+ *
  * Abertos entram com até 1 ano (há restos de 2026-04..06 nunca finalizados);
- * finalizados, só os criados no período.
+ * finalizados, só os com ENTRADA no período. A entrada nunca é depois do D1131,
+ * então `DT_LT_INICIO >= :de` é um pré-filtro seguro.
  */
 const sqlProtocolos = `
-WITH lt AS (
+WITH base AS (
   SELECT l.EMPRESA_PF_444 emp, l.NUM_LT_PK_444 lt, l.NUM_CARREG_444 car, l.NF_444 nf,
          l.LT_LIB_444 lib, NVL(l.VLR_BRUT_444, 0) valor, l.DT_LT_INICIO_444 criado,
-         NVL(l.DT_LIB_444, l.DT_LT_FIM_444) dt_fin,
-         CASE WHEN REGEXP_LIKE(l.WMS_NUM_LOTE_ERP_444, '^[0-9]+$') THEN TO_NUMBER(l.WMS_NUM_LOTE_ERP_444) END transent,
-         CASE WHEN l.DT_LT_INICIO_444 >= TO_DATE(:de, 'YYYY-MM-DD')
-               AND l.DT_LT_INICIO_444 < TO_DATE(:ate, 'YYYY-MM-DD') + 1 THEN 1 ELSE 0 END no_periodo
+         NVL(l.DT_LIB_444, l.DT_LT_FIM_444) dt_fin, l.DT_MOVIMENT_444 movimento,
+         CASE WHEN REGEXP_LIKE(l.WMS_NUM_LOTE_ERP_444, '^[0-9]+$') THEN TO_NUMBER(l.WMS_NUM_LOTE_ERP_444) END transent
   FROM HARPIAW2.LT_ESTOQ_444 l
   WHERE l.TIPO_LT_444 = 'G' AND ${filialIn("l.EMPRESA_PF_444")}
     AND ((NVL(l.LT_LIB_444, 'N') <> 'S' AND l.DT_MOVIMENT_444 >= SYSDATE - 365)
-      OR (l.DT_LT_INICIO_444 >= TO_DATE(:de, 'YYYY-MM-DD') AND l.DT_LT_INICIO_444 < TO_DATE(:ate, 'YYYY-MM-DD') + 1))
+      OR l.DT_LT_INICIO_444 >= TO_DATE(:de, 'YYYY-MM-DD'))
+),
+ent AS (
+  SELECT b.*,
+         e.DTENT
+           + NVL(CASE WHEN REGEXP_LIKE(TRIM(e.HORALANC), '^[0-9]{1,2}$') THEN TO_NUMBER(TRIM(e.HORALANC)) END, 0) / 24
+           + NVL(CASE WHEN REGEXP_LIKE(TRIM(e.MINUTOLANC), '^[0-9]{1,2}$') THEN TO_NUMBER(TRIM(e.MINUTOLANC)) END, 0) / 1440 entrada
+  FROM base b
+  LEFT JOIN PCNFENT e ON e.NUMTRANSENT = b.transent
+),
+lt AS (
+  SELECT ent.*,
+         CASE WHEN NVL(ent.entrada, ent.criado) >= TO_DATE(:de, 'YYYY-MM-DD')
+               AND NVL(ent.entrada, ent.criado) < TO_DATE(:ate, 'YYYY-MM-DD') + 1 THEN 1 ELSE 0 END no_periodo
+  FROM ent
+  WHERE (NVL(ent.lib, 'N') <> 'S' AND ent.movimento >= SYSDATE - 365)
+     OR (NVL(ent.entrada, ent.criado) >= TO_DATE(:de, 'YYYY-MM-DD')
+         AND NVL(ent.entrada, ent.criado) < TO_DATE(:ate, 'YYYY-MM-DD') + 1)
 ),
 grp AS (
   SELECT g.EMPRESA_PF_1140 emp, g.NUM_CARREG_REF_1140 car,
@@ -77,6 +98,12 @@ SELECT lt.lt PROTOCOLO, grp.grupo GRUPO, grp.rotulo ROTULO, lt.valor VALOR,
        ROUND((conf.ini - lt.criado) * 24, 2) H_CONF,
        ROUND((arm.ini - lt.criado) * 24, 2) H_END,
        CASE WHEN lt.lib = 'S' THEN ROUND((lt.dt_fin - lt.criado) * 24, 2) END H_FIN,
+       TO_CHAR(lt.entrada, 'YYYY-MM-DD HH24:MI') ENTRADA,
+       ROUND((lt.criado - lt.entrada) * 24, 2) H_ENTRADA_ATE_PROTOCOLO,
+       CASE WHEN lt.lib = 'S' THEN ROUND((lt.dt_fin - lt.entrada) * 24, 2) END H_ENTRADA_ATE_FINALIZAR,
+       CASE WHEN NVL(lt.lib, 'N') <> 'S' THEN ROUND((SYSDATE - lt.entrada) * 24, 2) END H_ENTRADA_ABERTO,
+       ROUND((arm.ini - conf.ini) * 24, 2) H_CONF_ATE_END,
+       CASE WHEN lt.lib = 'S' THEN ROUND((lt.dt_fin - arm.ini) * 24, 2) END H_END_ATE_FIN,
        NVL(av.itens, 0) ITENS, NVL(av.itens_avaria, 0) ITENS_AVARIA, NVL(av.qtd_avaria, 0) QTD_AVARIA
 FROM lt
 LEFT JOIN grp ON grp.emp = lt.emp AND grp.car = lt.car
@@ -132,6 +159,12 @@ async function lerProtocolos(de: string, ate: string): Promise<ProtocoloDevoluca
     horasAteConferir: nOuNulo(r.H_CONF),
     horasAteEndereco: nOuNulo(r.H_END),
     horasAteFinalizar: nOuNulo(r.H_FIN),
+    entrada: s(r.ENTRADA),
+    horasEntradaAteProtocolo: nOuNulo(r.H_ENTRADA_ATE_PROTOCOLO),
+    horasEntradaAteFinalizar: nOuNulo(r.H_ENTRADA_ATE_FINALIZAR),
+    horasEntradaAberto: nOuNulo(r.H_ENTRADA_ABERTO),
+    horasConferirAteEndereco: nOuNulo(r.H_CONF_ATE_END),
+    horasEnderecoAteFinalizar: nOuNulo(r.H_END_ATE_FIN),
     itens: n(r.ITENS),
     itensAvaria: n(r.ITENS_AVARIA),
     qtdAvaria: n(r.QTD_AVARIA),
@@ -154,7 +187,7 @@ async function lerPlanilhas(): Promise<PlanilhaAgrupamento[]> {
 
 const TTL = 5 * 60_000; // o "em aberto" muda o dia todo: no máximo 5 min de atraso
 
-/** Protocolos + planilhas (abertos de até 1 ano e criados no período). */
+/** Protocolos + planilhas (abertos de até 1 ano e com entrada no período). */
 export function getProtocolosDevolucao(de: string, ate: string) {
   return lembrar(`protocolosDevolucao:${de}|${ate}`, TTL, async () => {
     const [protocolos, planilhas] = await Promise.all([lerProtocolos(de, ate), lerPlanilhas()]);

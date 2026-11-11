@@ -1,20 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, PanelHeader, StatCard } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Card, PanelHeader } from "@/components/ui";
 import { formatBRL } from "@/domain/format";
 import {
   ETAPAS,
+  TRECHOS,
   formatHoras,
   type EtapaProtocolo,
+  type LinhaResumo,
   type ProtocoloAberto,
   type RelatorioProtocolos,
+  type ResumoPeriodo,
 } from "@/domain/devolucoes-protocolos";
 import { carregarProtocolos } from "./actions";
 import { IconeCaminhao, IconeEtiqueta } from "./icons";
 
 const inteiro = new Intl.NumberFormat("pt-BR");
+const pct = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
 const LIMITE_LISTA = 200;
+const dataBR = (iso: string) => iso.split("-").reverse().join("/");
 
 // Sem verde (verde é só receita): etapas em navy/âmbar/rose/cinza.
 const COR_ETAPA: Record<EtapaProtocolo, { barra: string; pill: string }> = {
@@ -37,6 +42,186 @@ function Pill({ etapa }: { etapa: EtapaProtocolo }) {
   );
 }
 
+// Finalizados pela situação do endereço (216) — também sem verde.
+const COR_FINALIZADO = {
+  comEndereco: "bg-[#1b2168]",
+  enderecoDepois: "bg-amber-500",
+  semEndereco: "bg-rose-500",
+} as const;
+
+/** Barra empilhada fina (proporção de cada parte sobre o todo). */
+function BarraPartes({ partes, total }: { partes: { cor: string; n: number; titulo: string }[]; total: number }) {
+  return (
+    <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-100">
+      {partes.map((p) => (
+        <div
+          key={p.titulo}
+          className={`crescer-x ${p.cor}`}
+          style={{ width: `${total ? (p.n / total) * 100 : 0}%` }}
+          title={`${p.titulo}: ${inteiro.format(p.n)}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Linha do resumo: rótulo · quantidade · % do período · R$. No celular o R$
+ * desce para baixo da quantidade, para o rótulo não ser cortado.
+ */
+function LinhaPeriodo({ rotulo, l, dica, forte = false }: { rotulo: ReactNode; l: LinhaResumo; dica?: string; forte?: boolean }) {
+  return (
+    <div
+      className="grid grid-cols-[minmax(0,1fr)_auto_3rem] items-center gap-x-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_auto_3.25rem_auto] sm:gap-x-3"
+      title={dica}
+    >
+      <div className="col-start-1 row-span-2 row-start-1 min-w-0 truncate text-sm sm:row-span-1">{rotulo}</div>
+      <span className={`col-start-2 row-start-1 text-right tabular-nums text-[#141a4d] ${forte ? "text-base font-extrabold" : "text-sm font-semibold"}`}>
+        {inteiro.format(l.protocolos)}
+      </span>
+      <span className="col-start-3 row-span-2 row-start-1 text-right text-xs tabular-nums text-slate-400 sm:row-span-1">{pct.format(l.pct)}</span>
+      <span
+        className={`col-start-2 row-start-2 text-right text-[11px] tabular-nums sm:col-start-4 sm:row-start-1 sm:min-w-[5.5rem] sm:text-xs ${
+          forte ? "font-semibold text-[#141a4d]" : "text-slate-500"
+        }`}
+      >
+        {formatBRL(l.valor)}
+      </span>
+    </div>
+  );
+}
+
+const Ponto = ({ cor, children }: { cor: string; children: ReactNode }) => (
+  <span className="inline-flex items-center gap-2 text-slate-600">
+    <span className={`h-2 w-2 shrink-0 rounded-full ${cor}`} />
+    <span className="truncate">{children}</span>
+  </span>
+);
+
+function ResumoNoPeriodo({ r, de, ate }: { r: ResumoPeriodo; de: string; ate: string }) {
+  const f = r.finalizados;
+  const t = r.tempos;
+  const partesFin = [
+    { chave: "comEndereco", rotulo: "Endereçado antes", dica: "Crachá impresso na 216 (mercadoria no endereço) antes do retorno ao ERP (D1132)" },
+    { chave: "enderecoDepois", rotulo: "Endereçado depois", dica: "Finalizado na D1132 e só depois o crachá/endereço apareceu na 216" },
+    { chave: "semEndereco", rotulo: "Sem endereço", dica: "Finalizado sem nenhum crachá/endereço na 216 — sem prova de que voltou ao lugar" },
+  ] as const;
+  const trecho = (id: (typeof TRECHOS)[number]["id"]) => t.trechos.find((x) => x.id === id);
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-4 sm:p-5">
+        <div
+          className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1"
+          title={`Protocolos cuja nota de devolução deu entrada no Winthor entre ${dataBR(de)} e ${dataBR(ate)}`}
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">No período</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-3xl font-extrabold leading-none tracking-tight tabular-nums text-[#141a4d]">
+              {inteiro.format(r.total.protocolos)}
+              <span className="ml-2 text-sm font-semibold tracking-normal text-slate-500">protocolos</span>
+            </p>
+          </div>
+          <p className="text-sm font-semibold tabular-nums text-[#141a4d]">{formatBRL(r.total.valor)}</p>
+        </div>
+
+        <div className="mt-5 grid gap-6 md:grid-cols-2 md:gap-8">
+          <div>
+            <LinhaPeriodo rotulo={<span className="font-semibold text-[#141a4d]">Finalizados</span>} l={f} forte dica="Retorno ao ERP feito (D1132)" />
+            <div className="mb-1 mt-1">
+              <BarraPartes
+                total={f.protocolos}
+                partes={partesFin.map((p) => ({ cor: COR_FINALIZADO[p.chave], n: f[p.chave].protocolos, titulo: p.rotulo }))}
+              />
+            </div>
+            {partesFin.map((p) => (
+              <LinhaPeriodo key={p.chave} rotulo={<Ponto cor={COR_FINALIZADO[p.chave]}>{p.rotulo}</Ponto>} l={f[p.chave]} dica={p.dica} />
+            ))}
+          </div>
+          <div>
+            <LinhaPeriodo
+              rotulo={<span className="font-semibold text-[#141a4d]">Em aberto</span>}
+              l={r.abertos}
+              forte
+              dica="Ainda sem retorno ao ERP (D1132), em qualquer idade"
+            />
+            <div className="mb-1 mt-1">
+              <BarraPartes
+                total={r.abertos.protocolos}
+                partes={r.abertos.porEtapa.map((e) => ({ cor: COR_ETAPA[e.etapa].barra, n: e.protocolos, titulo: rotuloEtapa(e.etapa) }))}
+              />
+            </div>
+            {r.abertos.porEtapa.map((e) => (
+              <LinhaPeriodo
+                key={e.etapa}
+                rotulo={<Pill etapa={e.etapa} />}
+                l={e}
+                dica={
+                  e.etapa === "com_divergencia"
+                    ? "Agrupamento com falta, sobra ou divergência na planilha da B311. Vale só para os abertos: o Harpia zera falta/sobra ao finalizar (histórico dos finalizados pendente)."
+                    : ETAPAS.find((x) => x.id === e.etapa)?.dica
+                }
+              />
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-sm"
+          title="Protocolos do período com quantidade avariada gravada na 216"
+        >
+          <span className="font-semibold text-[#141a4d]">Com avaria</span>
+          <span className="tabular-nums text-slate-600">
+            <span className="font-semibold text-[#141a4d]">{inteiro.format(r.avaria.protocolos)}</span>
+            <span className="ml-2 text-xs text-slate-400">{pct.format(r.avaria.pct)}</span>
+            <span className="ml-3 text-xs text-slate-500">
+              {inteiro.format(r.avaria.itens)} itens · {inteiro.format(r.avaria.qtd)} un.
+            </span>
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-[#141a4d] px-4 py-4 text-white sm:px-5">
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+          <div
+            title={`Média entre a entrada da nota no Winthor e o retorno ao ERP (D1132), dos ${inteiro.format(t.finalizados)} finalizados do período · mediana ${formatHoras(t.medianaHorasFinalizar)}`}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-300">Tempo médio até finalizar · desde a entrada</p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-3xl font-extrabold leading-none tabular-nums">
+              {formatHoras(t.mediaHorasFinalizar)}
+            </p>
+          </div>
+          <div
+            className="sm:text-right"
+            title={`Média de quanto tempo os abertos do período estão esperando, desde a entrada · mediana ${formatHoras(t.medianaIdadeAbertos)}`}
+          >
+            <p className="text-[11px] uppercase tracking-wider text-slate-300">Abertos esperando há</p>
+            <p className="text-lg font-bold tabular-nums text-amber-300">{formatHoras(t.idadeMediaAbertos)}</p>
+          </div>
+        </div>
+        <ol className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+          {TRECHOS.map((x, i) => {
+            const tr = trecho(x.id);
+            return (
+              <li
+                key={x.id}
+                className="rounded-lg bg-white/[0.07] px-3 py-2"
+                title={`${x.dica} · média de ${inteiro.format(tr?.protocolos ?? 0)} protocolos · mediana ${formatHoras(tr?.mediana ?? null)}`}
+              >
+                <p className="text-[11px] text-slate-300">
+                  <span className="mr-1 text-amber-300/80">{i + 1}.</span>
+                  {x.de} → {x.ate}
+                </p>
+                <p className="mt-0.5 text-base font-bold tabular-nums">{formatHoras(tr?.media ?? null)}</p>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </Card>
+  );
+}
+
 function Divergencia({ p }: { p: ProtocoloAberto }) {
   if (!p.divergencia) return <span className="text-slate-300">—</span>;
   const d = p.divergencia;
@@ -52,6 +237,11 @@ function Divergencia({ p }: { p: ProtocoloAberto }) {
     </span>
   );
 }
+
+/** Idade desde a entrada no Winthor; sem nota de entrada, desde o D1131. */
+const abertoHa = (p: ProtocoloAberto) => p.horasEntradaAberto ?? p.horasAberto;
+const datasDe = (p: ProtocoloAberto) =>
+  [p.entrada && `Entrada no Winthor: ${p.entrada}`, p.criado && `Protocolo (D1131): ${p.criado}`].filter(Boolean).join(" · ") || undefined;
 
 function ListaAbertos({ abertos }: { abertos: ProtocoloAberto[] }) {
   const [etapa, setEtapa] = useState<EtapaProtocolo | "">("");
@@ -109,7 +299,7 @@ function ListaAbertos({ abertos }: { abertos: ProtocoloAberto[] }) {
                   <th className="px-3 py-2 font-semibold">NF dev.</th>
                   <th className="px-3 py-2 font-semibold">Cliente</th>
                   <th className="px-3 py-2 text-right font-semibold">Valor</th>
-                  <th className="px-3 py-2 text-right font-semibold">Aberto há</th>
+                  <th className="px-3 py-2 text-right font-semibold" title="Desde a entrada da nota de devolução no Winthor">Aberto há</th>
                   <th className="px-3 py-2 font-semibold">Etapa</th>
                   <th className="px-4 py-2 text-right font-semibold" title="Não conformidade da planilha do agrupamento: − falta · + sobra (itens)">Diverg.</th>
                 </tr>
@@ -117,14 +307,14 @@ function ListaAbertos({ abertos }: { abertos: ProtocoloAberto[] }) {
               <tbody className="divide-y divide-slate-100">
                 {mostrados.map((p) => (
                   <tr key={p.protocolo} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-2 font-medium tabular-nums text-[#141a4d]" title={p.criado ? `Criado em ${p.criado}` : undefined}>{p.protocolo}</td>
+                    <td className="px-4 py-2 font-medium tabular-nums text-[#141a4d]" title={datasDe(p)}>{p.protocolo}</td>
                     <td className="max-w-[12rem] truncate px-3 py-2 text-slate-600" title={p.rotulo ? `Agrupamento ${p.grupo} · ${p.rotulo}` : undefined}>{p.motorista ?? p.rotulo ?? "—"}</td>
                     <td className="px-3 py-2 tabular-nums text-slate-500">{p.carga ?? "—"}</td>
                     <td className="px-3 py-2 tabular-nums text-slate-500">{p.pedido ?? "—"}</td>
                     <td className="px-3 py-2 tabular-nums text-slate-500">{p.notaDevolucao ?? "—"}</td>
                     <td className="max-w-[14rem] truncate px-3 py-2 text-slate-600" title={p.cliente ?? undefined}>{p.cliente ?? "—"}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">{formatHoras(p.horasAberto)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600" title={datasDe(p)}>{formatHoras(abertoHa(p))}</td>
                     <td className="px-3 py-2"><Pill etapa={p.etapa} /></td>
                     <td className="px-4 py-2 text-right"><Divergencia p={p} /></td>
                   </tr>
@@ -144,7 +334,7 @@ function ListaAbertos({ abertos }: { abertos: ProtocoloAberto[] }) {
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-slate-500">
                   <Pill etapa={p.etapa} />
-                  <span>há {formatHoras(p.horasAberto)}</span>
+                  <span title={datasDe(p)}>há {formatHoras(abertoHa(p))}</span>
                   <span>prot. {p.protocolo}</span>
                   {p.carga != null && <span>carga {p.carga}</span>}
                   {p.pedido != null && <span>ped. {p.pedido}</span>}
@@ -189,11 +379,11 @@ function TabelaMotoristasProtocolos({ r }: { r: RelatorioProtocolos }) {
             <thead className="sticky top-0 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="px-4 py-2 font-semibold">Motorista</th>
-                <th className="px-3 py-2 text-right font-semibold" title="Protocolos criados no período">Protocolos</th>
+                <th className="px-3 py-2 text-right font-semibold" title="Protocolos com entrada no período">Protocolos</th>
                 <th className="px-3 py-2 text-right font-semibold" title="Protocolos abertos agora">Abertos</th>
                 <th className="px-3 py-2 text-right font-semibold" title="Abertos em agrupamento com não conformidade · itens − falta / + sobra">Com diverg.</th>
                 <th className="px-3 py-2 text-right font-semibold" title="Itens avariados (unidades) nos protocolos do período">Avaria</th>
-                <th className="px-4 py-2 text-right font-semibold" title="Mediana do tempo entre o protocolo (D1131) e a finalização (D1132)">Até finalizar</th>
+                <th className="px-4 py-2 text-right font-semibold" title="Mediana do tempo entre a entrada da nota no Winthor e a finalização (D1132)">Até finalizar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -247,8 +437,6 @@ export default function SecaoProtocolos({ de, ate }: { de: string; ate: string }
     void carregar();
   }, [carregar]);
 
-  const t = r?.tempos;
-  const semEndereco = r?.porEtapa.find((e) => e.etapa === "aguardando_endereco");
   const totalAbertos = Math.max(1, r?.abertos.length ?? 0);
 
   return (
@@ -267,46 +455,21 @@ export default function SecaoProtocolos({ de, ate }: { de: string; ate: string }
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label="Em aberto"
-              value={inteiro.format(r.abertos.length)}
-              hint={`${formatBRL(r.valorAberto)} · ${inteiro.format(r.agrupamentosAbertos)} agrupamentos`}
-              accent="navy"
-              title={r.antigos ? `Fora da conta: ${inteiro.format(r.antigos)} protocolos abertos há mais de 60 dias (${formatBRL(r.valorAntigos)})` : undefined}
-            />
-            <StatCard
-              label="Conferido · sem endereço"
-              value={inteiro.format(semEndereco?.protocolos ?? 0)}
-              hint={`${formatBRL(semEndereco?.valor ?? 0)} fora do lugar`}
-              accent="red"
-              title="Já bipado na B311, sem crachá/endereço na 216"
-            />
-            <StatCard
-              label="Tempo até finalizar"
-              value={formatHoras(t?.medianaHorasFinalizar ?? null)}
-              hint={`mediana · média ${formatHoras(t?.mediaHorasFinalizar ?? null)} · ${inteiro.format(t?.finalizados ?? 0)} finalizados`}
-              accent="gold"
-              title={`Até conferir: ${formatHoras(t?.medianaHorasConferir ?? null)} · até o endereço: ${formatHoras(t?.medianaHorasEndereco ?? null)} (medianas, protocolos criados no período)`}
-            />
-            <StatCard
-              label="Finalizado sem endereço"
-              value={inteiro.format(t?.semEndereco ?? 0)}
-              hint={`de ${inteiro.format(t?.finalizados ?? 0)} · ${inteiro.format(t?.enderecoDepois ?? 0)} endereçados só depois`}
-              accent="red"
-              hintRuim={(t?.semEndereco ?? 0) > 0}
-              title="Finalizado (D1132) sem crachá/endereço na 216 = sem prova de que voltou ao lugar. 'Só depois' = endereço registrado após a finalização."
-            />
-          </div>
+          <ResumoNoPeriodo r={r.periodo} de={de} ate={ate} />
 
-          <Card className="mt-4 p-5">
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-sm font-semibold text-[#141a4d]">Onde estão os protocolos abertos</h3>
-              <span
-                className="text-xs tabular-nums text-slate-500"
-                title="Itens com quantidade avariada gravada na 216, nos protocolos criados no período"
+          <Card className="mt-4 p-4 sm:p-5">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h3
+                className="text-sm font-semibold text-[#141a4d]"
+                title={`Todos os protocolos abertos agora, de qualquer período, até 60 dias desde o D1131${
+                  r.antigos ? ` · fora da conta: ${inteiro.format(r.antigos)} mais antigos (${formatBRL(r.valorAntigos)})` : ""
+                }`}
               >
-                avaria no período: {inteiro.format(r.avaria.itens)} itens · {inteiro.format(r.avaria.qtd)} un. · {inteiro.format(r.avaria.protocolos)} protocolos
+                Abertos agora
+              </h3>
+              <span className="text-xs tabular-nums text-slate-500">
+                <span className="font-semibold text-[#141a4d]">{inteiro.format(r.abertos.length)}</span> protocolos ·{" "}
+                {formatBRL(r.valorAberto)} · {inteiro.format(r.agrupamentosAbertos)} agrupamentos
               </span>
             </div>
             <div className="mb-4 flex h-3 overflow-hidden rounded-full bg-slate-100">
