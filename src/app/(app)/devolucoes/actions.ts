@@ -8,6 +8,8 @@ import {
   getDevolucaoPorBairro,
   getDevolucaoPorDiaSemana,
 } from "@/data/devolucoes";
+import { getProtocolosDevolucao } from "@/data/devolucoes-protocolos";
+import { montarRelatorio, type RelatorioProtocolos } from "@/domain/devolucoes-protocolos";
 import { comTaxa } from "@/domain/devolucoes-mapa";
 import { baseDevolucao } from "@/domain/devolucoes-dia-semana";
 import { lerPeriodo, PISO_WINTHOR } from "@/domain/periodo";
@@ -73,4 +75,11 @@ export async function carregarMapa(c: ContextoDevolucao): Promise<CidadeDevoluca
 export async function carregarBairros(c: ContextoDevolucao): Promise<BairroDevolucao[]> {
   const x = contexto(c);
   return getDevolucaoPorBairro(x.inicio, x.fim, x.base, x.ibge);
+}
+
+/** Retorno ao estoque (protocolos do Harpia): em aberto agora + criados no período. */
+export async function carregarProtocolos(c: Pick<ContextoDevolucao, "de" | "ate">): Promise<RelatorioProtocolos> {
+  const { de: inicio, ate: fim } = lerPeriodo({ de: c.de, ate: c.ate }, { piso: PISO_WINTHOR });
+  const { protocolos, planilhas } = await getProtocolosDevolucao(inicio, fim);
+  return montarRelatorio(protocolos, planilhas);
 }

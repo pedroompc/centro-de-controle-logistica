@@ -97,6 +97,19 @@ peso faturado 549.069,22 kg, peso devol. avulsa 1.952,70 kg.
 4. Cards no dashboard + taxa de devolução + % custo logístico / venda líquida.
 5. Deploy: lembrar que Oracle é on-premise (Vercel precisaria de túnel/VPN).
 
+## Devoluções · retorno ao estoque — histórico de divergência  ⏸ (pendente, 11/11/2026)
+
+Seção "Retorno ao estoque" (aba Devoluções) mostra protocolos do Harpia D1131 → B311 → 216 → D1132.
+**Pendente:** ranking de motorista por "mercadoria não 100% encontrada" nos protocolos JÁ finalizados.
+
+- A não conformidade (+ sobra / − falta) fica em `HARPIAW2.PEDIDO_REPO_PLAN_MERC_581` (planilha da B311,
+  por agrupamento = devolução de um motorista) **só enquanto está aberto**; nos 283 agrupamentos finalizados
+  (out–nov/2026) falta/sobra vêm zeradas e a qtd conferida = qtd da nota. `LT_DIVERG_444` sempre 'N'.
+- A 21E mostra a não conformidade de finalizados — falta descobrir de onde ela lê.
+  **Próximo passo:** Pedro passa 1 protocolo finalizado com não conformidade na 21E (+ ou −) → rastrear a tabela.
+- Se não houver rastro histórico: gravar a divergência dos abertos periodicamente (foto) para ter histórico daqui pra frente.
+- Avaria NÃO está pendente: `LT_ESTOQ_MERC_447.QTD_DANIF_447` (gravada na 216) fica no protocolo.
+
 ## Próximo módulo grande
 - **Módulo de custos** (fixos: galpão, empilhadeira, paleteira, aluguel de 2 casas; variáveis: filme stretch, salário, frete, gasolina). Salário deve reusar o `custo_mensal` dos funcionários, não recadastrar.
 - Depois: **módulo de rendimentos**.
