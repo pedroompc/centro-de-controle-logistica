@@ -28,6 +28,6 @@ $ts = "C:\Program Files\Tailscale\tailscale.exe"
 if (Test-Path $ts) { & $ts funnel --bg 3000 } else { Write-Warning "tailscale.exe nao encontrado - rode o funnel --bg 3000 na mao" }
 
 Start-ScheduledTask -TaskName "Centro - App" # fica esperando o primeiro build
-Write-Host "Primeiro deploy (npm ci + build, alguns minutos)... acompanhe em logs\deploy.log"
+Write-Host "Primeiro deploy (build, alguns minutos)... acompanhe em logs\deploy.log"
 & $ps -NoProfile -ExecutionPolicy Bypass -File "$raiz\deploy\windows\auto-deploy.ps1" -Forcar
 Get-Content "$raiz\logs\deploy.log" -Tail 3

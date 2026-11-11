@@ -1,6 +1,6 @@
 ﻿# Deploy automático. A tarefa "Centro - Deploy automatico" roda isto a cada 3 min:
 #   1. olha se a main no GitHub tem commit novo (se não tem, sai na hora);
-#   2. git reset para esse commit; npm ci SÓ se package.json/package-lock mudou;
+#   2. git reset para esse commit (SEM npm ci: dependência nova se instala à mão);
 #   3. builda na pasta que NÃO está no ar (.next-a / .next-b) — o app segue rodando;
 #   4. build ok → troca logs\slot.txt e derruba o app; o iniciar.ps1 sobe na versão nova;
 #   5. confere se /login responde; se não responder, volta para o build anterior.
@@ -33,17 +33,6 @@ function Parar-App {
   foreach ($p in $pids) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
 }
 
-# Antes do npm ci: no Windows, qualquer node.exe rodando desta pasta (o app, um
-# terminal antigo com npm start/dev, build que ficou pendurado) trava arquivos do
-# node_modules e o npm ci falha com EPERM.
-function Parar-NodeDaPasta {
-  Parar-App
-  Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine -like "*$raiz*" } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  Start-Sleep -Seconds 3
-}
-
 function App-Responde {
   try {
     $r = Invoke-WebRequest "http://localhost:3000/login" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
@@ -72,7 +61,9 @@ try {
     Registrar "ERRO: .env.local ausente ou vazio - deploy cancelado"; exit 1
   }
 
-  $depsMudaram = $true
+  # Sem npm ci (decisão do Pedro): o node_modules do servidor fica como está. Se
+  # o commit mexeu em dependência, só avisa no log — instale à mão (npm install).
+  $depsMudaram = $false
   if ($atual) {
     cmd /c "$git diff --quiet $atual $novo -- package.json package-lock.json" | Out-Null
     $depsMudaram = ($LASTEXITCODE -ne 0)
@@ -82,20 +73,10 @@ try {
   if (-not $slotAtivo) { $slotAtivo = ".next-b" } # primeira vez: builda na .next-a
   $slotNovo = if ($slotAtivo -eq ".next-a") { ".next-b" } else { ".next-a" }
 
-  Registrar "=== deploy $(if ($atual) { $atual.Substring(0,7) } else { '(primeiro)' }) -> $($novo.Substring(0,7)) em $slotNovo (npm ci: $depsMudaram)"
+  Registrar "=== deploy $(if ($atual) { $atual.Substring(0,7) } else { '(primeiro)' }) -> $($novo.Substring(0,7)) em $slotNovo"
   if ((Rodar "$git reset --hard $novo") -ne 0) { throw "git reset falhou" }
 
-  if ($depsMudaram) {
-    # node_modules em uso não pode ser trocado: aqui o app fica fora até o build acabar.
-    New-Item -ItemType File -Force -Path $arqPausado | Out-Null
-    Parar-NodeDaPasta
-    if ((Rodar "npm ci --no-audit --no-fund") -ne 0) {
-      Registrar "npm ci falhou - parando node.exe da pasta e tentando de novo em 10 s"
-      Parar-NodeDaPasta
-      Start-Sleep -Seconds 10
-      if ((Rodar "npm ci --no-audit --no-fund") -ne 0) { throw "npm ci falhou duas vezes (arquivo travado? veja o EPERM acima no log)" }
-    }
-  }
+  if ($depsMudaram) { Registrar "AVISO: package.json/package-lock mudou - se o build falhar, rode npm install na mao e -Forcar" }
 
   # O tsconfig inclui .next/types: um .next velho (do npm start manual de antes) com
   # rota que não existe mais quebra o type-check. Ninguém roda dali, pode apagar.

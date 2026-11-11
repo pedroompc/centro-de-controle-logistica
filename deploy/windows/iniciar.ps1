@@ -4,7 +4,7 @@
 #
 # Qual build roda vem de logs\slot.txt (.next-a ou .next-b), que o
 # auto-deploy.ps1 troca quando um build novo passa. Enquanto existir
-# logs\pausado (deploy trocando node_modules), não sobe nada.
+# logs\pausado (manutenção manual), não sobe nada.
 $raiz = (Resolve-Path "$PSScriptRoot\..\..").Path
 Set-Location $raiz
 $logs = "$raiz\logs"

@@ -11,7 +11,7 @@ Push na `main` → em até ~3 min o servidor percebe, builda e troca de versão 
    git pull
    powershell -ExecutionPolicy Bypass -File deploy\windows\instalar-tarefas.ps1
    ```
-   O app fica fora só durante esse primeiro `npm ci` + build.
+   O app fica fora só durante esse primeiro build.
 
 ## Como funciona
 
@@ -20,7 +20,8 @@ Push na `main` → em até ~3 min o servidor percebe, builda e troca de versão 
   - sem commit novo → sai na hora;
   - commit novo → `git reset --hard` para ele, build na pasta que **não** está no ar
     (`.next-a` / `.next-b`), troca e reinicia (~10 s fora do ar);
-  - `package.json`/`package-lock.json` mudou → precisa `npm ci`, então o app fica fora durante o build;
+  - **sem `npm ci`**: o `node_modules` do servidor fica como está. Se um commit trouxer dependência nova,
+    o log avisa; rode `npm install` à mão e depois o deploy com `-Forcar`;
   - build quebrou ou versão nova não respondeu → **continua o build anterior** e o commit fica
     marcado em `logs\falhou.txt` (não tenta de novo até chegar outro commit).
 
