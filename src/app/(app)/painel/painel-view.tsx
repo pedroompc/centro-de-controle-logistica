@@ -459,9 +459,13 @@ export default function PainelView({
             tone={tomDevolucao(dev.taxaLogistica, antOk?.taxaLogistica)}
           />
           <Kpi
-            label="Carteira (a faturar)"
+            label="Clientes a faturar"
             value={dados.aFaturar?.disponivel ? inteiro.format(dados.aFaturar.totalClientes) : "—"}
-            hint={dados.aFaturar?.disponivel ? `clientes · ${formatKg(dados.aFaturar.pesoTotal)}` : "clientes a faturar"}
+            hint={
+              dados.aFaturar?.disponivel
+                ? `${inteiro.format(dados.aFaturar.totalPedidos)} pedidos · ${formatKg(dados.aFaturar.pesoTotal)}`
+                : "carteira a faturar"
+            }
             tone="amber"
           />
           {admin && <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />}
