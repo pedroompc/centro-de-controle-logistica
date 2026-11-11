@@ -252,17 +252,7 @@ export default function SecaoProtocolos({ de, ate }: { de: string; ate: string }
   const totalAbertos = Math.max(1, r?.abertos.length ?? 0);
 
   return (
-    <section className="mt-10">
-      <div className="mb-4 flex items-baseline gap-3">
-        <h2
-          className="font-[family-name:var(--font-sora)] text-lg font-extrabold tracking-tight text-[#141a4d]"
-          title="Protocolos de devolução no Harpia: D1131 cria → B311 confere → 216 endereça (crachá) → D1132 finaliza. Em aberto = agora; tempos e avaria = protocolos criados no período."
-        >
-          Retorno ao estoque
-        </h2>
-        <span className="text-xs text-slate-400">protocolos Harpia</span>
-      </div>
-
+    <section>
       {erro ? (
         <Card className="flex flex-col items-center gap-3 py-14 text-sm text-slate-500">
           Não foi possível ler os protocolos do Harpia.

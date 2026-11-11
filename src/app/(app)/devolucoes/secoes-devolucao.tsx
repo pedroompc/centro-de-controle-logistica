@@ -20,9 +20,10 @@ import TabelaMotoristas from "./tabela-motoristas";
 import PainelRanking, { type ItemRanking } from "./painel-ranking";
 import TabelaBairrosRMR from "./tabela-bairros-rmr";
 import MapaLazy from "./mapa-lazy";
+import SecaoProtocolos from "./secao-protocolos";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "./icons";
 
-type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "dias" | "mapa" | "bairros";
+type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "dias" | "mapa" | "bairros" | "retorno";
 
 /** Cache client-side das abas já carregadas (some ao trocar mês/filtro via `key`). */
 interface Cache {
@@ -100,11 +101,18 @@ export default function SecoesDevolucao({
   const [cache, setCache] = useState<Cache>({});
   const [carregando, setCarregando] = useState<Aba | null>(null);
   const [erro, setErro] = useState<Partial<Record<Aba, boolean>>>({});
+  // Retorno ao estoque busca os próprios dados; depois de aberto fica montado
+  // (só escondido) para não reler o Harpia a cada troca de aba.
+  const [retornoAberto, setRetornoAberto] = useState(false);
 
   // Busca os dados de uma aba (se ainda não estão em cache). Motivos usa o núcleo
   // (já veio do SSR) e o mapa/rankings vêm por Server Action, guardados no cache.
   const garantir = useCallback(async (alvo: Aba) => {
     if (alvo === "motivos") return;
+    if (alvo === "retorno") {
+      setRetornoAberto(true);
+      return;
+    }
     if (cache[alvo] !== undefined) return; // já carregado — usa o cache
     setCarregando(alvo);
     setErro((e) => ({ ...e, [alvo]: false }));
@@ -155,6 +163,7 @@ export default function SecoesDevolucao({
     { id: "dias", label: "Dia da semana", icon: <IconeEtiqueta className="h-4 w-4" /> },
     { id: "mapa", label: "Mapa PE", icon: <IconePredio className="h-4 w-4" /> },
     { id: "bairros", label: ibge ? "Bairros" : "RMR/Bairros", icon: <IconePredio className="h-4 w-4" /> },
+    { id: "retorno", label: "Retorno ao estoque", icon: <IconeCaminhao className="h-4 w-4" /> },
   ];
 
   // Clique numa cidade do mapa → a página inteira passa a mostrar só ela (?cidade=IBGE).
@@ -164,7 +173,7 @@ export default function SecoesDevolucao({
     router.push(`/devolucoes?${p.toString()}`);
   };
 
-  const estaCarregando = carregando === aba && cache[aba as keyof Cache] === undefined;
+  const estaCarregando = aba !== "retorno" && carregando === aba && cache[aba as keyof Cache] === undefined;
   const falhou = erro[aba];
 
   return (
@@ -172,7 +181,7 @@ export default function SecoesDevolucao({
       <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Seções de devolução">
         {abas.map((t) => {
           const ativo = aba === t.id;
-          const lido = t.id === "motivos" || cache[t.id as keyof Cache] !== undefined;
+          const lido = t.id === "motivos" || (t.id === "retorno" ? retornoAberto : cache[t.id as keyof Cache] !== undefined);
           return (
             <button
               key={t.id}
@@ -184,7 +193,11 @@ export default function SecoesDevolucao({
                   ? "border-[#181d55] bg-[#181d55] text-white"
                   : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
               }`}
-              title={lido ? "Já carregado (em cache)" : "Carrega ao abrir"}
+              title={
+                t.id === "retorno"
+                  ? "Protocolos do Harpia (D1131 → B311 → 216 → D1132) — só o período vale; motivo, setor e cidade não se aplicam"
+                  : lido ? "Já carregado (em cache)" : "Carrega ao abrir"
+              }
             >
               <span className={ativo ? "text-white" : "text-slate-400"}>{t.icon}</span>
               {t.label}
@@ -195,7 +208,13 @@ export default function SecoesDevolucao({
         })}
       </div>
 
-      {estaCarregando ? (
+      {retornoAberto && (
+        <div className={aba === "retorno" ? "" : "hidden"}>
+          <SecaoProtocolos de={de} ate={ate} />
+        </div>
+      )}
+
+      {aba === "retorno" ? null : estaCarregando ? (
         <Carregando texto={`Carregando ${aba}…`} />
       ) : falhou ? (
         <Card className="flex flex-col items-center gap-3 py-14 text-sm text-slate-500">

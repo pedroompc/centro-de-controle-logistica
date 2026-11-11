@@ -9,7 +9,6 @@ import type { SetorDevolucao } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { PeriodoNav } from "@/components/periodo-nav";
 import SecoesDevolucao from "./secoes-devolucao";
-import SecaoProtocolos from "./secao-protocolos";
 
 const SETORES: SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
 
@@ -284,10 +283,6 @@ export default async function DevolucoesPage({
         base={base}
         porMotivo={r.porMotivo}
       />
-
-      {/* Retorno ao estoque: protocolos do Harpia. Não reage a motivo/setor/cidade
-          (o protocolo não carrega motivo) — só ao período. */}
-      <SecaoProtocolos key={`${inicio}|${fim}`} de={inicio} ate={fim} />
 
       <p className="mt-4 text-xs text-slate-400">
         Os indicadores no topo são o total do período na base escolhida (dia faturado ou data da
