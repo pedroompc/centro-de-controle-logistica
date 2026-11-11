@@ -33,6 +33,17 @@ function Parar-App {
   foreach ($p in $pids) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
 }
 
+# Antes do npm ci: no Windows, qualquer node.exe rodando desta pasta (o app, um
+# terminal antigo com npm start/dev, build que ficou pendurado) trava arquivos do
+# node_modules e o npm ci falha com EPERM.
+function Parar-NodeDaPasta {
+  Parar-App
+  Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -like "*$raiz*" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Seconds 3
+}
+
 function App-Responde {
   try {
     $r = Invoke-WebRequest "http://localhost:3000/login" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
@@ -77,8 +88,13 @@ try {
   if ($depsMudaram) {
     # node_modules em uso não pode ser trocado: aqui o app fica fora até o build acabar.
     New-Item -ItemType File -Force -Path $arqPausado | Out-Null
-    Parar-App
-    if ((Rodar "npm ci") -ne 0) { throw "npm ci falhou" }
+    Parar-NodeDaPasta
+    if ((Rodar "npm ci --no-audit --no-fund") -ne 0) {
+      Registrar "npm ci falhou - parando node.exe da pasta e tentando de novo em 10 s"
+      Parar-NodeDaPasta
+      Start-Sleep -Seconds 10
+      if ((Rodar "npm ci --no-audit --no-fund") -ne 0) { throw "npm ci falhou duas vezes (arquivo travado? veja o EPERM acima no log)" }
+    }
   }
 
   # O tsconfig inclui .next/types: um .next velho (do npm start manual de antes) com
