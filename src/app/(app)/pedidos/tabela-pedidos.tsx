@@ -9,6 +9,7 @@ import { estadoPedidoInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
 import { formatarFoneBR, linkWhatsApp } from "@/domain/whatsapp";
 import { carregarItensPedido } from "./actions";
+import { salvarDanfePdf } from "./salvar-danfe-pdf";
 
 function fmtData(iso: string | null): string {
   if (!iso) return "—";
@@ -75,6 +76,35 @@ const IconeNota = () => (
   </svg>
 );
 
+// Salva o DANFE em PDF (NF-<número>.pdf), como o botão "PDF" do app Flask.
+function BotaoPdf({ numped, notaFiscal, grande = false }: { numped: number; notaFiscal: number; grande?: boolean }) {
+  const [ocupado, setOcupado] = useState(false);
+  const salvar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      await salvarDanfePdf(numped, notaFiscal);
+    } catch (err) {
+      alert((err as Error).message || "Não foi possível gerar o PDF da nota.");
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const cls = grande
+    ? "inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-rose-700 disabled:opacity-60"
+    : "inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:opacity-60";
+  return (
+    <button type="button" onClick={salvar} onDoubleClick={(e) => e.stopPropagation()} disabled={ocupado}
+      title={`Salvar a NF ${notaFiscal} em PDF`} className={cls}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={grande ? "h-4 w-4" : "h-3.5 w-3.5"} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5" />
+      </svg>
+      {ocupado ? "Gerando…" : grande ? "Salvar PDF da NF" : "PDF"}
+    </button>
+  );
+}
+
 function ModalDocumento({ documento, numped, notaFiscal, onTrocar, onFechar }: {
   documento: Documento; numped: number; notaFiscal: number; onTrocar: (d: Documento) => void; onFechar: () => void;
 }) {
@@ -116,6 +146,7 @@ function ModalDocumento({ documento, numped, notaFiscal, onTrocar, onFechar }: {
               </svg>
               Imprimir / Salvar PDF
             </button>
+            {documento === "danfe" && <BotaoPdf numped={numped} notaFiscal={notaFiscal} grande />}
             <button
               type="button"
               onClick={() => onTrocar(outro)}
@@ -306,6 +337,7 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
             <IconeNota />
             Ver DANFE
           </button>
+          <BotaoPdf numped={pedido.numped} notaFiscal={pedido.notaFiscal} grande />
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setDocumento("boletos"); }}
@@ -626,6 +658,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                               className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-200">
                               <IconeNota /> NF {p.notaFiscal}
                             </button>
+                            <BotaoPdf numped={p.numped} notaFiscal={p.notaFiscal} />
                             <button type="button" onClick={(e) => abrirDoc(e, p, "boletos")} onDoubleClick={(e) => e.stopPropagation()} title={`Boletos da NF ${p.notaFiscal}`}
                               className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200">
                               <IconeBoleto /> Boletos
