@@ -49,6 +49,7 @@ export function Kpi({
   tone = "white",
   delta,
   detalhe,
+  hintDestaque = false,
 }: {
   label: string;
   value: string;
@@ -56,6 +57,7 @@ export function Kpi({
   tone?: "white" | "rose" | "amber" | "emerald";
   delta?: KpiDelta;
   detalhe?: string; // linha extra abaixo da variação (ex.: peso devolvido)
+  hintDestaque?: boolean; // hint é número que precisa ser lido de longe (TV)
 }) {
   const cor = { white: "text-white", rose: "text-rose-300", amber: "text-amber-300", emerald: "text-emerald-300" }[tone];
   return (
@@ -72,7 +74,9 @@ export function Kpi({
           <span>{delta.texto}</span>
         </div>
       ) : hint ? (
-        <div className="mt-1.5 text-xs text-white/40">{hint}</div>
+        <div className={hintDestaque
+          ? "mt-2 text-[clamp(1rem,7cqi,1.35rem)] font-bold leading-snug tabular-nums text-white/80"
+          : "mt-1.5 text-xs text-white/40"}>{hint}</div>
       ) : null}
       {detalhe && <div className="mt-1 truncate text-xs font-semibold tabular-nums text-white/55">{detalhe}</div>}
     </div>

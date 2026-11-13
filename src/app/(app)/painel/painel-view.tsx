@@ -466,6 +466,7 @@ export default function PainelView({
                 ? `${inteiro.format(dados.aFaturar.totalPedidos)} pedidos · ${formatKg(dados.aFaturar.pesoTotal)}`
                 : "carteira a faturar"
             }
+            hintDestaque={dados.aFaturar?.disponivel}
             tone="amber"
           />
           {admin && <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />}
