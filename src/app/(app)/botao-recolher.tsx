@@ -21,20 +21,21 @@ export function BotaoRecolher() {
       onClick={alternar}
       title="Recolher / expandir menu"
       aria-label="Recolher ou expandir o menu"
-      className="flex w-full items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/5 hover:text-white group-data-[recolhida=true]/app:justify-center"
+      // Bolinha na borda da barra, ao lado da marca (como no app Flask). Fica fora
+      // do <aside> (que corta o que passa da borda) e acompanha a largura dele.
+      className="fixed left-[244px] top-9 z-40 hidden h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-[#141a4d] shadow-md transition-[left,background-color] duration-200 hover:bg-amber-50 group-data-[recolhida=true]/app:left-[58px] md:flex"
     >
       <svg
         viewBox="0 0 24 24"
         fill="none"
-        className="h-5 w-5 transition-transform duration-200 group-data-[recolhida=true]/app:rotate-180"
+        className="h-4 w-4 transition-transform duration-200 group-data-[recolhida=true]/app:rotate-180"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-        <rect x="3" y="4" width="18" height="16" rx="2.5" />
-        <path d="M9 4v16" />
-        <path d="m15.5 9.5-2.5 2.5 2.5 2.5" />
+        <path d="m14.5 7-5 5 5 5" />
       </svg>
-      <span className="group-data-[recolhida=true]/app:hidden">Recolher menu</span>
     </button>
   );
 }

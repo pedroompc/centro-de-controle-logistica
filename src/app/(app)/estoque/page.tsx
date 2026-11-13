@@ -131,12 +131,13 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
           legenda="venda mensal dos SKUs zerados, a preço praticado" cor="text-rose-600" borda="border-t-rose-500" />
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8">
+      {/* 16 cards em 2 ou 4 colunas (sem card sobrando), com espaço para o número inteiro (R$ 135.341.038). */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {indicadores.map((k) => {
           const corpo = (
             <>
               <h3 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{k.titulo}</h3>
-              <p className={`truncate text-base font-black tabular-nums tracking-tight sm:text-lg ${k.cor ?? "text-[#141a4d]"}`}>{k.valor}</p>
+              <p className={`whitespace-nowrap text-[15px] font-black tabular-nums tracking-tight sm:text-lg lg:text-[15px] xl:text-lg ${k.cor ?? "text-[#141a4d]"}`}>{k.valor}</p>
             </>
           );
           const cls = "entrar flex min-h-[84px] min-w-0 flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:shadow-md";
@@ -186,7 +187,7 @@ function Destaque({ titulo, selo, valor, legenda, cor, borda }: { titulo: string
         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">{titulo}</h4>
         <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">{selo}</span>
       </div>
-      <p className={`truncate text-2xl font-black tabular-nums tracking-tight sm:text-3xl ${cor}`}>{valor}</p>
+      <p className={`whitespace-nowrap text-2xl font-black tabular-nums tracking-tight xl:text-3xl ${cor}`}>{valor}</p>
       <small className="text-xs font-medium text-slate-400">{legenda}</small>
     </div>
   );

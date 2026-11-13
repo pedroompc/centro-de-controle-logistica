@@ -50,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <BarraNavegacao />
       </Suspense>
       {/* Sidebar — desktop */}
+      <BotaoRecolher />
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col justify-between overflow-hidden px-4 py-6 transition-[width,padding] duration-200 group-data-[recolhida=true]/app:w-[72px] group-data-[recolhida=true]/app:px-3 md:flex" style={navy}>
         <div>
           <div className="px-2 group-data-[recolhida=true]/app:flex group-data-[recolhida=true]/app:justify-center group-data-[recolhida=true]/app:px-0">
@@ -73,9 +74,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <p className="mt-1.5 truncate px-3 text-xs text-white/50 group-data-[recolhida=true]/app:hidden" title={user.email ?? undefined}>
             {user.email}
           </p>
-          <div className="mt-2">
-            <BotaoRecolher />
-          </div>
+          <div className="mt-2" />
           <form action="/auth/signout" method="post">
             <button title="Sair" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/5 hover:text-white group-data-[recolhida=true]/app:justify-center">
               <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
