@@ -52,12 +52,35 @@ function Selo({ posicao }: { posicao: string }) {
   return <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${info.badge}`}>{info.label}</span>;
 }
 
-// DANFE no layout da nota impressa (Winthor), num modal com "Imprimir / Salvar PDF".
-// A nota é uma página própria (/pedidos/:numped/danfe) carregada num iframe: o
-// botão imprime só o iframe, então sai só o documento, em A4.
-function ModalDanfe({ numped, notaFiscal, onFechar }: { numped: number; notaFiscal: number; onFechar: () => void }) {
+// DANFE e boletos no layout impresso pelo Winthor, num modal com "Imprimir /
+// Salvar PDF". Cada documento é uma página própria (/pedidos/:numped/danfe e
+// /pedidos/:numped/boletos) carregada num iframe: o botão imprime só o iframe,
+// então sai só o documento, em A4. Dá para trocar de um para o outro sem fechar.
+type Documento = "danfe" | "boletos";
+
+const DOCUMENTO: Record<Documento, { titulo: (nf: number) => string; carregando: string }> = {
+  danfe: { titulo: (nf) => `DANFE · NF-e Nº ${nf}`, carregando: "Obtendo XML autorizado e montando o DANFE…" },
+  boletos: { titulo: (nf) => `Boletos · NF ${nf}`, carregando: "Buscando as parcelas no Winthor e montando os boletos…" },
+};
+
+const IconeBoleto = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round">
+    <path d="M4 6v12M7 6v12M10 6v12M14 6v12M16 6v12M20 6v12" />
+  </svg>
+);
+const IconeNota = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" />
+  </svg>
+);
+
+function ModalDocumento({ documento, numped, notaFiscal, onTrocar, onFechar }: {
+  documento: Documento; numped: number; notaFiscal: number; onTrocar: (d: Documento) => void; onFechar: () => void;
+}) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const [carregado, setCarregado] = useState(false);
+  const [carregado, setCarregado] = useState<Documento | null>(null);
+  const pronto = carregado === documento;
+  const outro: Documento = documento === "danfe" ? "boletos" : "danfe";
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
@@ -72,17 +95,18 @@ function ModalDanfe({ numped, notaFiscal, onFechar }: { numped: number; notaFisc
       className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:p-4"
       // React propaga eventos do portal até a linha da tabela: barra aqui pra não abrir/fechar o pedido.
       onClick={(e) => { e.stopPropagation(); onFechar(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
       <div
         className="flex h-full w-full max-w-[860px] flex-col bg-slate-100 shadow-2xl sm:h-auto sm:max-h-[95vh] sm:rounded-2xl sm:border sm:border-slate-300"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <h3 className="text-sm font-black text-slate-800 sm:text-base">DANFE · NF-e Nº {notaFiscal}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <h3 className="text-sm font-black text-slate-800 sm:text-base">{DOCUMENTO[documento].titulo(notaFiscal)}</h3>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={!carregado}
+              disabled={!pronto}
               onClick={() => frame.current?.contentWindow?.print()}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#141a4d] px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-[#1b2168] disabled:opacity-50"
             >
@@ -91,21 +115,31 @@ function ModalDanfe({ numped, notaFiscal, onFechar }: { numped: number; notaFisc
               </svg>
               Imprimir / Salvar PDF
             </button>
+            <button
+              type="button"
+              onClick={() => onTrocar(outro)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold shadow transition ${
+                outro === "boletos" ? "bg-amber-500 text-white hover:bg-amber-600" : "border border-slate-300 bg-white text-[#141a4d] hover:bg-slate-50"
+              }`}
+            >
+              {outro === "boletos" ? <><IconeBoleto /> Boletos</> : <><IconeNota /> DANFE</>}
+            </button>
             <button type="button" onClick={onFechar} aria-label="Fechar" className="px-1 text-2xl font-bold leading-none text-slate-400 hover:text-slate-600">
               &times;
             </button>
           </div>
         </div>
         <div className="relative min-h-0 flex-1 sm:h-[80vh] sm:flex-none">
-          {!carregado && (
-            <p className="absolute inset-x-0 top-16 text-center text-sm text-slate-400">Obtendo XML autorizado e montando o DANFE…</p>
+          {!pronto && (
+            <p className="absolute inset-x-0 top-16 text-center text-sm text-slate-400">{DOCUMENTO[documento].carregando}</p>
           )}
           <iframe
+            key={documento}
             ref={frame}
-            src={`/pedidos/${numped}/danfe`}
-            title={`DANFE NF-e ${notaFiscal}`}
-            onLoad={() => setCarregado(true)}
-            className={`h-full w-full border-0 ${carregado ? "" : "opacity-0"}`}
+            src={`/pedidos/${numped}/${documento}`}
+            title={DOCUMENTO[documento].titulo(notaFiscal)}
+            onLoad={() => setCarregado(documento)}
+            className={`h-full w-full border-0 ${pronto ? "" : "opacity-0"}`}
           />
         </div>
       </div>
@@ -114,7 +148,6 @@ function ModalDanfe({ numped, notaFiscal, onFechar }: { numped: number; notaFisc
   );
 }
 
-// "YYYY-MM-DD HH:MI[:SS]" → "dd/mm/aaaa às HH:MI".
 function fmtDataHora(v: string | null): string {
   if (!v) return "—";
   const [data, hora] = v.split(" ");
@@ -206,7 +239,7 @@ function ModalCabecalho({ pedido, onFechar }: { pedido: PedidoConsulta; onFechar
 function Detalhe({ pedido, itens, carregando, onCabecalho }: {
   pedido: PedidoConsulta; itens: ItemPedido[] | undefined; carregando: boolean; onCabecalho: () => void;
 }) {
-  const [danfeAberto, setDanfeAberto] = useState(false);
+  const [documento, setDocumento] = useState<Documento | null>(null);
   const endereco = [pedido.endereco, pedido.bairro].filter(Boolean).join(", ");
   const local = [pedido.cidade, pedido.uf].filter(Boolean).join(" · ");
   return (
@@ -263,21 +296,34 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
           Emitente e liberação
         </button>
       {pedido.notaFiscal != null && (
-        <div>
+        <>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setDanfeAberto(true); }}
+            onClick={(e) => { e.stopPropagation(); setDocumento("danfe"); }}
             className="inline-flex items-center gap-2 rounded-lg bg-[#181d55] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#10143f]"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" />
-            </svg>
+            <IconeNota />
             Ver DANFE
           </button>
-          {danfeAberto && (
-            <ModalDanfe numped={pedido.numped} notaFiscal={pedido.notaFiscal} onFechar={() => setDanfeAberto(false)} />
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setDocumento("boletos"); }}
+            title={`Boletos da NF ${pedido.notaFiscal}, prontos para imprimir ou salvar em PDF`}
+            className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
+          >
+            <IconeBoleto />
+            Boletos
+          </button>
+          {documento && (
+            <ModalDocumento
+              documento={documento}
+              numped={pedido.numped}
+              notaFiscal={pedido.notaFiscal}
+              onTrocar={setDocumento}
+              onFechar={() => setDocumento(null)}
+            />
           )}
-        </div>
+        </>
       )}
       </div>
 
