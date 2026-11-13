@@ -113,17 +113,6 @@ export const items: Item[] = [
     ),
   },
   {
-    href: "/estoque",
-    label: "Excesso de Estoque",
-    short: "Estoque",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-        <path d="M3 8 12 3l9 5v8l-9 5-9-5Z" />
-        <path d="m3 8 9 5 9-5M12 13v8" />
-      </svg>
-    ),
-  },
-  {
     href: "/pedidos-a-faturar",
     label: "Pedidos a Faturar",
     short: "Pedidos",
@@ -188,6 +177,17 @@ export const items: Item[] = [
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3Z" />
         <path d="M12 8v4l2.5 1.5" />
+      </svg>
+    ),
+  },
+  {
+    href: "/estoque",
+    label: "Excesso de Estoque",
+    short: "Estoque",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+        <path d="M3 8 12 3l9 5v8l-9 5-9-5Z" />
+        <path d="m3 8 9 5 9-5M12 13v8" />
       </svg>
     ),
   },
