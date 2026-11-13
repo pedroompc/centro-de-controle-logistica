@@ -114,12 +114,23 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
        JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
        LEFT JOIN PCTABDEV td ON td.CODDEVOL  = ne.CODDEVOL
        WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
-    ))                               AS MOTIVO_DEV
+    ))                               AS MOTIVO_DEV,
+    -- Cabeçalho: quem emitiu (8888 = Força de Vendas, o RCA lançou) e quem
+    -- liberou. DTLIBERA guarda a hora real; a emissão é DATA + HORA/MINUTO.
+    -- Datas saem como texto p/ não sofrer conversão de fuso no driver.
+    ped.CODEMITENTE                  AS CODEMITENTE,
+    emi.NOME                         AS EMITENTE,
+    TO_CHAR(ped.DATA, 'YYYY-MM-DD') || ' ' ||
+      LPAD(NVL(ped.HORA, 0), 2, '0') || ':' || LPAD(NVL(ped.MINUTO, 0), 2, '0') AS EMISSAO,
+    lib.NOME                         AS LIBERADO_POR,
+    TO_CHAR(ped.DTLIBERA, 'YYYY-MM-DD HH24:MI:SS') AS LIBERADO_EM
   FROM PCPEDC ped
   LEFT JOIN PCCLIENT cli ON cli.CODCLI      = ped.CODCLI
   LEFT JOIN PCUSUARI usu ON usu.CODUSUR     = ped.CODUSUR
   LEFT JOIN PCCARREG car ON car.NUMCAR      = ped.NUMCAR
   LEFT JOIN PCEMPR   emp ON emp.MATRICULA   = car.CODMOTORISTA
+  LEFT JOIN PCEMPR   emi ON emi.MATRICULA   = ped.CODEMITENTE
+  LEFT JOIN PCEMPR   lib ON lib.MATRICULA   = ped.CODFUNCLIBERA
   WHERE ${whereClause(f)}
   ORDER BY ped.DATA DESC, ped.NUMPED DESC
 ) WHERE ROWNUM <= ${TETO}`;
@@ -131,6 +142,8 @@ interface LinhaPedido {
   POSICAO: string | null; NUMCAR: number | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
   MOTIVO_DEV: string | null;
+  CODEMITENTE: number | null; EMITENTE: string | null; EMISSAO: string | null;
+  LIBERADO_POR: string | null; LIBERADO_EM: string | null;
 }
 
 /** Resultado da consulta: a lista, ou o erro técnico (p/ diagnosticar na tela). */
@@ -179,6 +192,11 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       qtdItens: num(r.QTD_ITENS),
       temDevolucao: r.TEM_DEV === "S",
       motivoDevolucao: str(r.MOTIVO_DEV),
+      emitente: str(r.EMITENTE) ?? (r.CODEMITENTE == null ? null : `Matrícula ${r.CODEMITENTE}`),
+      emitidoPelaForcaDeVendas: num(r.CODEMITENTE) === 8888,
+      emissao: str(r.EMISSAO),
+      liberadoPor: str(r.LIBERADO_POR),
+      liberadoEm: str(r.LIBERADO_EM),
     })) };
   } catch (erro) {
     const msg = (erro as Error).message;

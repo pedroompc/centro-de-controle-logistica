@@ -30,6 +30,12 @@ export interface PedidoConsulta {
   // Motivo(s) da devolução (PCTABDEV.MOTIVO), já concatenados quando há mais de
   // um. `null` quando o pedido não teve devolução.
   motivoDevolucao: string | null;
+  // Cabeçalho do pedido (janela de detalhes, duplo clique na linha).
+  emitente: string | null; // PCPEDC.CODEMITENTE → PCEMPR.NOME (8888 = "FORCA DE VENDAS")
+  emitidoPelaForcaDeVendas: boolean; // CODEMITENTE 8888: quem lançou foi o RCA
+  emissao: string | null; // data + hora da emissão "YYYY-MM-DD HH:MI"
+  liberadoPor: string | null; // PCPEDC.CODFUNCLIBERA → PCEMPR.NOME
+  liberadoEm: string | null; // PCPEDC.DTLIBERA "YYYY-MM-DD HH:MI:SS"
 }
 
 export interface ItemPedido {

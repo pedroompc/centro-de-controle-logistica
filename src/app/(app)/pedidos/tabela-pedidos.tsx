@@ -114,7 +114,98 @@ function ModalDanfe({ numped, notaFiscal, onFechar }: { numped: number; notaFisc
   );
 }
 
-function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens: ItemPedido[] | undefined; carregando: boolean }) {
+// "YYYY-MM-DD HH:MI[:SS]" → "dd/mm/aaaa às HH:MI".
+function fmtDataHora(v: string | null): string {
+  if (!v) return "—";
+  const [data, hora] = v.split(" ");
+  return hora ? `${fmtData(data)} às ${hora.slice(0, 5)}` : fmtData(data);
+}
+
+// Intervalo emissão → liberação ("50 min", "2h 05min", "3 dias").
+function intervalo(de: string | null, ate: string | null): string | null {
+  if (!de || !ate) return null;
+  const a = new Date(de.replace(" ", "T"));
+  // A emissão só tem minuto: corta os segundos da liberação p/ bater com o exibido.
+  const b = new Date(ate.slice(0, 16).replace(" ", "T"));
+  const min = Math.round((b.getTime() - a.getTime()) / 60000);
+  if (!Number.isFinite(min) || min < 0) return null;
+  if (min < 60) return `${min} min`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}min`;
+  const dias = Math.floor(min / (24 * 60));
+  return `${dias} ${dias === 1 ? "dia" : "dias"}`;
+}
+
+function Campo({ rotulo, valor, sub }: { rotulo: string; valor: React.ReactNode; sub?: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{rotulo}</p>
+      <p className="mt-0.5 font-semibold text-[#141a4d]">{valor}</p>
+      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
+// Detalhes do pedido (duplo clique na linha): quem emitiu e quem liberou, com hora.
+function ModalCabecalho({ pedido, onFechar }: { pedido: PedidoConsulta; onFechar: () => void }) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", esc);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", esc); document.body.style.overflow = overflow; };
+  }, [onFechar]);
+
+  const espera = intervalo(pedido.emissao, pedido.liberadoEm);
+  const emitente = pedido.emitidoPelaForcaDeVendas
+    ? `Força de Vendas${pedido.rca ? ` · ${pedido.rca}` : ""}`
+    : pedido.emitente ?? "—";
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      onClick={(e) => { e.stopPropagation(); onFechar(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <div
+        role="dialog"
+        aria-label={`Detalhes do pedido ${pedido.numped}`}
+        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-black tabular-nums text-[#141a4d]">Pedido {pedido.numped}</h3>
+            <Selo posicao={pedido.posicao} />
+          </div>
+          <button type="button" onClick={onFechar} aria-label="Fechar" className="px-1 text-2xl font-bold leading-none text-slate-400 hover:text-slate-600">
+            &times;
+          </button>
+        </div>
+        <div className="space-y-4 px-5 py-4 text-sm">
+          <p className="truncate text-slate-500" title={pedido.cliente}>{pedido.cliente} <span className="text-xs text-slate-400">· Cód. {pedido.codcli}</span></p>
+          <div className="grid grid-cols-2 gap-4">
+            <Campo rotulo="Emitente" valor={emitente} />
+            <Campo rotulo="Emitido em" valor={fmtDataHora(pedido.emissao)} />
+            <Campo
+              rotulo="Liberado por"
+              valor={pedido.liberadoPor ?? <span className="font-normal text-slate-400">{pedido.liberadoEm ? "—" : "Sem liberação manual"}</span>}
+            />
+            <Campo
+              rotulo="Liberado em"
+              valor={pedido.liberadoEm ? fmtDataHora(pedido.liberadoEm) : <span className="font-normal text-slate-400">—</span>}
+              sub={espera ? `${espera} após a emissão` : undefined}
+            />
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Detalhe({ pedido, itens, carregando, onCabecalho }: {
+  pedido: PedidoConsulta; itens: ItemPedido[] | undefined; carregando: boolean; onCabecalho: () => void;
+}) {
   const [danfeAberto, setDanfeAberto] = useState(false);
   const endereco = [pedido.endereco, pedido.bairro].filter(Boolean).join(", ");
   const local = [pedido.cidade, pedido.uf].filter(Boolean).join(" · ");
@@ -153,6 +244,17 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onCabecalho(); }}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#141a4d] transition hover:bg-slate-50"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" />
+          </svg>
+          Emitente e liberação
+        </button>
       {pedido.notaFiscal != null && (
         <div>
           <button
@@ -170,6 +272,7 @@ function Detalhe({ pedido, itens, carregando }: { pedido: PedidoConsulta; itens:
           )}
         </div>
       )}
+      </div>
 
       <div>
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
@@ -289,6 +392,22 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
     }
   }, [itens]);
 
+  // Clique simples abre/fecha o detalhe; duplo clique abre a janela de detalhes
+  // do pedido. O clique simples espera um instante p/ não disparar junto com o duplo.
+  const [cabecalho, setCabecalho] = useState<PedidoConsulta | null>(null);
+  const timerClique = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerClique.current) clearTimeout(timerClique.current); }, []);
+  const clique = (numped: number) => {
+    if (timerClique.current) clearTimeout(timerClique.current);
+    timerClique.current = setTimeout(() => { timerClique.current = null; abrir(numped); }, 220);
+  };
+  const duploClique = (p: PedidoConsulta) => {
+    if (timerClique.current) { clearTimeout(timerClique.current); timerClique.current = null; }
+    window.getSelection()?.removeAllRanges(); // duplo clique seleciona texto da linha
+    setCabecalho(p);
+  };
+  const fecharCabecalho = useCallback(() => setCabecalho(null), []);
+
   const campoBusca = (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><IconeBusca /></span>
@@ -358,7 +477,9 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                 return (
                   <Fragment key={p.numped}>
                     <tr
-                      onClick={() => abrir(p.numped)}
+                      onClick={() => clique(p.numped)}
+                      onDoubleClick={() => duploClique(p)}
+                      title="Duplo clique: emitente e liberação"
                       aria-expanded={estaAberto}
                       className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/50 ${marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}`}
                     >
@@ -404,7 +525,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
                         <td colSpan={13} className="p-0">
-                          <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />
+                          <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />
                         </td>
                       </tr>
                     )}
@@ -428,7 +549,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
             const marcado = selecionados.has(p.numped);
             return (
               <li key={p.numped} className={marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}>
-                <div onClick={() => abrir(p.numped)} className="cursor-pointer px-4 py-3">
+                <div onClick={() => clique(p.numped)} onDoubleClick={() => duploClique(p)} className="cursor-pointer px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Marcar checked={marcado} onChange={() => alternar(p.numped)} label={`Selecionar pedido ${p.numped}`} />
                     <span className="font-semibold tabular-nums text-[#141a4d]">#{p.numped}</span>
@@ -450,12 +571,14 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {p.notaFiscal != null && <span>NF {p.notaFiscal}</span>}
                   </div>
                 </div>
-                {estaAberto && <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} />}
+                {estaAberto && <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />}
               </li>
             );
           })
         )}
       </ul>
+
+      {cabecalho && <ModalCabecalho pedido={cabecalho} onFechar={fecharCabecalho} />}
 
       {/* Autosoma dos selecionados — barra flutuante no rodapé da tela. */}
       {soma.qtd > 0 && (
