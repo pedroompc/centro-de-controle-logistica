@@ -34,11 +34,13 @@ export function MapaDevolucoes({
   cidades,
   cidadeAtual,
   onAbrirCidade,
+  abrirAoClicar = false,
 }: {
   municipios: MunicipioMapa[];
   cidades: CidadeDevolucao[]; // todas as cidades com dado (colorível ou não)
   cidadeAtual?: string; // cidade já filtrada na página (vem marcada)
   onAbrirCidade?: (c: CidadeDevolucao) => void; // sem ele, o mapa só destaca
+  abrirAoClicar?: boolean; // clique na cidade com devolução já abre (sem o botão "Ver devoluções")
 }) {
   const [metrica, setMetrica] = useState<Metrica>("valor");
   const [hover, setHover] = useState<MunicipioMapa | null>(null);
@@ -51,7 +53,7 @@ export function MapaDevolucoes({
   const ativo = hover ? hover.dados : (cidades.find((c) => c.ibge === selecionado) ?? null);
 
   const legenda =
-    metrica === "taxa" ? "volume baixo / sem dado" : "sem devolução / sem dado";
+    metrica === "taxa" ? "sem devolução / volume baixo" : "sem devolução / sem dado";
 
   return (
     <div>
@@ -95,7 +97,11 @@ export function MapaDevolucoes({
                   strokeWidth={destaque ? 1.6 : 0.4}
                   onMouseEnter={() => setHover(m)}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => m.dados && setSelecionado((s) => (s === m.ibge ? null : m.ibge))}
+                  onClick={() => {
+                    if (!m.dados) return;
+                    if (abrirAoClicar && onAbrirCidade && m.dados.devolvido > 0) return onAbrirCidade(m.dados);
+                    setSelecionado((s) => (s === m.ibge ? null : m.ibge));
+                  }}
                   className="cursor-pointer transition-[stroke-width]"
                 />
               );
@@ -127,7 +133,7 @@ export function MapaDevolucoes({
         </div>
 
         <div>
-          {onAbrirCidade && escolhida && escolhida.ibge !== cidadeAtual && (
+          {onAbrirCidade && !abrirAoClicar && escolhida && escolhida.ibge !== cidadeAtual && (
             <button
               onClick={() => onAbrirCidade(escolhida)}
               className="mb-3 flex w-full items-center justify-between gap-2 rounded-lg bg-[#181d55] px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-[#10143f]"
@@ -148,7 +154,7 @@ export function MapaDevolucoes({
                 return (
                   <li key={c.ibge}>
                     <button
-                      onClick={() => setSelecionado((s) => (s === c.ibge ? null : c.ibge))}
+                      onClick={() => (abrirAoClicar && onAbrirCidade ? onAbrirCidade(c) : setSelecionado((s) => (s === c.ibge ? null : c.ibge)))}
                       className={`flex w-full items-baseline justify-between gap-3 px-1 py-2 text-left transition ${on ? "bg-amber-50" : "hover:bg-slate-50"}`}
                     >
                       <span className="truncate text-sm text-[#141a4d]" title={c.cidade}>{c.cidade}</span>

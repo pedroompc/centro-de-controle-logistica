@@ -11,10 +11,10 @@ import { mapaKmDia, resumoKm } from "@/domain/frota";
 import { custoFrota } from "@/domain/frota-custo";
 import { haQuanto } from "@/domain/frota-saude";
 import { formatBRL, formatPercent } from "@/domain/format";
-import { lerPeriodo, rotuloPeriodo } from "@/domain/periodo";
+import { lerPeriodo, paramsDoPeriodo, rotuloPeriodo } from "@/domain/periodo";
 import { fracaoMesDoMotorista, kmDoMotorista, motoristasDasRotas, porCidade, rotasComDevolucao, veiculoDias } from "@/domain/telemetria";
 import { PageHeader, Card, BarList } from "@/components/ui";
-import MapaLazy from "../devolucoes/mapa-lazy";
+import MapaFrota from "./mapa-frota";
 import GraficoSemana from "./grafico-semana";
 import TabelaRotas from "./tabela-rotas";
 
@@ -177,8 +177,8 @@ export default async function FrotaPage({ searchParams }: { searchParams: Promis
         </Painel>
       )}
 
-      <Painel titulo="Mapa de devolução por cidade">
-        <MapaLazy cidades={cidades} />
+      <Painel titulo="Mapa de devolução por cidade" status="clique numa cidade para ver as devoluções dela">
+        <MapaFrota cidades={cidades} periodo={paramsDoPeriodo(periodo)} />
       </Painel>
 
       <TabelaRotas linhas={rotasComDevolucao(rotas)} />

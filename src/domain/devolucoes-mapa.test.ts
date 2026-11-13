@@ -75,6 +75,10 @@ describe("colorivel", () => {
     expect(colorivel(MICRO, "taxa")).toBe(false);
   });
 
+  it("taxa: relevante sem devolução fica sem cor (0% não é a menor taxa)", () => {
+    expect(colorivel(SEMDEV, "taxa")).toBe(false);
+  });
+
   it("valor: qualquer cidade com devolução > 0 (sem piso de faturamento)", () => {
     expect(colorivel(MICRO, "valor")).toBe(true); // R$500 é volume real, só pequeno
     expect(colorivel(SEMDEV, "valor")).toBe(false); // R$0 devolvido → sem cor

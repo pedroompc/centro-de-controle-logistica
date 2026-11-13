@@ -86,11 +86,12 @@ export function valorMetrica(c: CidadeDevolucao, m: Metrica): number {
 
 /**
  * A cidade deve ser colorida (vs. cinza) nesta métrica?
- *  - taxa: só relevante (faturado >= piso), senão 1 venda vira 100%.
+ *  - taxa: só relevante (faturado >= piso), senão 1 venda vira 100%; e só com
+ *    devolução > 0 — taxa 0% não é "a menor taxa", é cidade sem devolução.
  *  - valor: qualquer devolução > 0 (R$ é volume real, sem piso de faturamento).
  */
 export function colorivel(c: CidadeDevolucao, m: Metrica): boolean {
-  return m === "taxa" ? c.relevante : c.devolvido > 0;
+  return m === "taxa" ? c.relevante && c.devolvido > 0 : c.devolvido > 0;
 }
 
 /** Maior valor da métrica entre as cidades coloríveis — o teto da escala. 0 se nenhuma. */
