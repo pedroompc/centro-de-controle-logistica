@@ -103,7 +103,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* Conteúdo */}
       <div className="transition-[padding] duration-200 md:pl-64 md:group-data-[recolhida=true]/app:pl-[72px]">
-        <main className="mx-auto max-w-6xl px-4 pt-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:px-10 md:py-8">
+        <main className="w-full min-w-0 px-4 pt-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:px-8 md:py-8">
           {children}
         </main>
       </div>
