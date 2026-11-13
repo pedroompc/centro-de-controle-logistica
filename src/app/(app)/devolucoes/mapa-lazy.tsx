@@ -14,11 +14,13 @@ export default function MapaLazy({
   cidadeAtual,
   onAbrirCidade,
   abrirAoClicar,
+  onLimparCidade,
 }: {
   cidades: CidadeDevolucao[];
   cidadeAtual?: string;
   onAbrirCidade?: (c: CidadeDevolucao) => void;
   abrirAoClicar?: boolean;
+  onLimparCidade?: () => void;
 }) {
   const [municipios, setMunicipios] = useState<MunicipioMapa[] | null>(null);
 
@@ -40,5 +42,5 @@ export default function MapaLazy({
   if (!municipios) {
     return <p className="py-8 text-center text-sm text-slate-400">Carregando mapa…</p>;
   }
-  return <MapaDevolucoes municipios={municipios} cidades={cidades} cidadeAtual={cidadeAtual} onAbrirCidade={onAbrirCidade} abrirAoClicar={abrirAoClicar} />;
+  return <MapaDevolucoes municipios={municipios} cidades={cidades} cidadeAtual={cidadeAtual} onAbrirCidade={onAbrirCidade} abrirAoClicar={abrirAoClicar} onLimparCidade={onLimparCidade} />;
 }

@@ -172,6 +172,13 @@ export default function SecoesDevolucao({
     p.set("cidade", c.ibge);
     router.push(`/devolucoes?${p.toString()}`);
   };
+  // Desmarcar a cidade filtrada no mapa → volta aos dados gerais (sem ?cidade).
+  const limparCidade = () => {
+    const p = new URLSearchParams(window.location.search);
+    p.delete("cidade");
+    const q = p.toString();
+    router.push(q ? `/devolucoes?${q}` : "/devolucoes");
+  };
 
   const estaCarregando = aba !== "retorno" && carregando === aba && cache[aba as keyof Cache] === undefined;
   const falhou = erro[aba];
@@ -270,7 +277,7 @@ export default function SecoesDevolucao({
               {(cache.mapa?.length ?? 0) === 0 ? (
                 <p className="text-sm text-slate-400">Mapa indisponível — sem dado de cidade no período.</p>
               ) : (
-                <MapaLazy cidades={cache.mapa ?? []} cidadeAtual={ibge} onAbrirCidade={abrirCidade} />
+                <MapaLazy cidades={cache.mapa ?? []} cidadeAtual={ibge} onAbrirCidade={abrirCidade} onLimparCidade={limparCidade} />
               )}
             </Card>
           )}

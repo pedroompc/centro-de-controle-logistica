@@ -35,17 +35,28 @@ export function MapaDevolucoes({
   cidadeAtual,
   onAbrirCidade,
   abrirAoClicar = false,
+  onLimparCidade,
 }: {
   municipios: MunicipioMapa[];
   cidades: CidadeDevolucao[]; // todas as cidades com dado (colorível ou não)
   cidadeAtual?: string; // cidade já filtrada na página (vem marcada)
   onAbrirCidade?: (c: CidadeDevolucao) => void; // sem ele, o mapa só destaca
   abrirAoClicar?: boolean; // clique na cidade com devolução já abre (sem o botão "Ver devoluções")
+  onLimparCidade?: () => void; // desmarcar a cidade já filtrada na página tira o filtro (volta ao geral)
 }) {
   const [metrica, setMetrica] = useState<Metrica>("valor");
   const [hover, setHover] = useState<MunicipioMapa | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(cidadeAtual ?? null);
   const escolhida = cidades.find((c) => c.ibge === selecionado) ?? null;
+  // Clique numa cidade: marca, ou desmarca. Desmarcar a cidade que já filtra a página tira o filtro.
+  const alternar = (ibge: string) => {
+    if (selecionado === ibge && ibge === cidadeAtual && onLimparCidade) {
+      setSelecionado(null);
+      onLimparCidade();
+      return;
+    }
+    setSelecionado((s) => (s === ibge ? null : ibge));
+  };
 
   const teto = tetoMetrica(cidades, metrica);
   const ranking = rankingMetrica(cidades, metrica);
@@ -100,7 +111,7 @@ export function MapaDevolucoes({
                   onClick={() => {
                     if (!m.dados) return;
                     if (abrirAoClicar && onAbrirCidade && m.dados.devolvido > 0) return onAbrirCidade(m.dados);
-                    setSelecionado((s) => (s === m.ibge ? null : m.ibge));
+                    alternar(m.ibge);
                   }}
                   className="cursor-pointer transition-[stroke-width]"
                 />
@@ -154,7 +165,7 @@ export function MapaDevolucoes({
                 return (
                   <li key={c.ibge}>
                     <button
-                      onClick={() => (abrirAoClicar && onAbrirCidade ? onAbrirCidade(c) : setSelecionado((s) => (s === c.ibge ? null : c.ibge)))}
+                      onClick={() => (abrirAoClicar && onAbrirCidade ? onAbrirCidade(c) : alternar(c.ibge))}
                       className={`flex w-full items-baseline justify-between gap-3 px-1 py-2 text-left transition ${on ? "bg-amber-50" : "hover:bg-slate-50"}`}
                     >
                       <span className="truncate text-sm text-[#141a4d]" title={c.cidade}>{c.cidade}</span>
