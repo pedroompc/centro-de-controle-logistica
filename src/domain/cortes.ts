@@ -25,6 +25,7 @@ export interface LinhaCorte {
   cliente: string | null;
   qt: number;
   valor: number;
+  custo: number; // quantidade cortada × custo financeiro de hoje (PCEST.CUSTOFIN)
   kg: number;
   motivo: string | null; // texto cru
   temPedido: boolean; // pedido ainda existe no PCPEDC (cortado inteiro some de lá)
@@ -71,6 +72,7 @@ export interface GrupoCorte {
 
 export interface ResumoCortes {
   valor: number;
+  custo: number; // custo da mercadoria cortada
   qt: number; // unidades cortadas
   itens: number;
   pedidos: number;
@@ -153,6 +155,7 @@ export function resumoCortes(linhas: LinhaCorte[], dia: string | null = null): R
   const por = (d: DimensaoCorte) => agrupar(ls, (l) => CHAVES[d](l, lidos.get(l)!));
   return {
     valor: soma((l) => l.valor),
+    custo: soma((l) => l.custo),
     qt: soma((l) => l.qt),
     itens: ls.length,
     pedidos: new Set(ls.map((l) => l.numped)).size,
@@ -226,6 +229,29 @@ export function serieMensalCortes(porDia: Map<string, number>, p: { de: string; 
   return [...porMes].map(([mes, valor]) => ({ mes, valor }));
 }
 
+/**
+ * Valor cortado por semana do mês (dias 1–7 = semana 1, 8–14 = semana 2…, como
+ * o TO_CHAR(DATA, 'W') do Oracle). Período de mais de um mês traz o mês no rótulo.
+ */
+export function serieSemanal(porDia: Map<string, number>): { chave: string; rotulo: string; valor: number }[] {
+  const porSemana = new Map<string, number>();
+  for (const [dia, v] of porDia) {
+    const chave = `${dia.slice(0, 7)}-${Math.ceil(Number(dia.slice(8)) / 7)}`;
+    porSemana.set(chave, (porSemana.get(chave) ?? 0) + v);
+  }
+  const chaves = [...porSemana.keys()].sort();
+  const variosMeses = new Set(chaves.map((c) => c.slice(0, 7))).size > 1;
+  return chaves.map((chave) => {
+    const [ano, mes, semana] = chave.split("-");
+    return { chave, rotulo: variosMeses ? `Semana ${semana} · ${mes}/${ano.slice(2)}` : `Semana ${semana}`, valor: porSemana.get(chave)! };
+  });
+}
+
+/** Variação % de um número contra o período anterior (null sem base). */
+export function variacaoPct(atual: number, anterior: number): number | null {
+  return anterior > 0 ? atual / anterior - 1 : null;
+}
+
 // --- Exportação (planilha) ----------------------------------------------------
 
 const csvTxt = (s: string | number | null | undefined) => `"${String(s ?? "").replace(/"/g, '""')}"`;
@@ -295,15 +321,20 @@ export interface ProdutoCortado {
   cargas: number;
   ultimoDia: string;
   motivo: string; // motivo de maior valor no produto
+  conferente: string | null; // quem mais cortou o produto (valor), pelo texto do Harpia
+  cliente: string | null; // nome do cliente quando só um foi atingido
 }
 
 export function porProdutoDetalhado(linhas: LinhaCorte[]): ProdutoCortado[] {
-  const m = new Map<number, ProdutoCortado & { _p: Set<number>; _c: Set<number>; _k: Set<number>; _mot: Map<string, number> }>();
+  const m = new Map<number, ProdutoCortado & {
+    _p: Set<number>; _c: Set<number>; _k: Set<number>; _mot: Map<string, number>; _usu: Map<string, number>;
+  }>();
   for (const l of linhas) {
     const g = m.get(l.codprod) ?? {
       codprod: l.codprod, produto: l.produto, fornecedor: l.fornecedor, comprador: l.comprador,
       qt: 0, valor: 0, itens: 0, pedidos: 0, clientes: 0, cargas: 0, ultimoDia: l.dia, motivo: "",
-      _p: new Set<number>(), _c: new Set<number>(), _k: new Set<number>(), _mot: new Map<string, number>(),
+      conferente: null, cliente: l.cliente,
+      _p: new Set<number>(), _c: new Set<number>(), _k: new Set<number>(), _mot: new Map<string, number>(), _usu: new Map<string, number>(),
     };
     g.qt += l.qt;
     g.valor += l.valor;
@@ -312,17 +343,21 @@ export function porProdutoDetalhado(linhas: LinhaCorte[]): ProdutoCortado[] {
     if (l.codcli !== null) g._c.add(l.codcli);
     if (l.numcar !== null) g._k.add(l.numcar);
     if (l.dia > g.ultimoDia) g.ultimoDia = l.dia;
-    const mot = lerMotivo(l.motivo).motivo;
-    g._mot.set(mot, (g._mot.get(mot) ?? 0) + l.valor);
+    const lido = lerMotivo(l.motivo);
+    g._mot.set(lido.motivo, (g._mot.get(lido.motivo) ?? 0) + l.valor);
+    if (lido.usuario) g._usu.set(lido.usuario, (g._usu.get(lido.usuario) ?? 0) + l.valor);
     m.set(l.codprod, g);
   }
+  const maior = (mapa: Map<string, number>) => [...mapa.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   return [...m.values()]
-    .map(({ _p, _c, _k, _mot, ...g }) => ({
+    .map(({ _p, _c, _k, _mot, _usu, ...g }) => ({
       ...g,
       pedidos: _p.size,
       clientes: _c.size,
       cargas: _k.size,
-      motivo: [..._mot.entries()].sort((a, b) => b[1] - a[1])[0][0],
+      motivo: maior(_mot) ?? "",
+      conferente: maior(_usu),
+      cliente: _c.size === 1 ? g.cliente : null,
     }))
     .sort((a, b) => b.valor - a.valor);
 }

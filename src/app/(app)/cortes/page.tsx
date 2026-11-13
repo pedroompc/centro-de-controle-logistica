@@ -1,375 +1,199 @@
-import { Suspense, type CSSProperties } from "react";
-import { lerCortes, lerCortesMensais, lerEstoqueDosCortados } from "@/data/cortes";
-import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
+import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
+import { lerCortes, lerEstoqueDosCortados } from "@/data/cortes";
+import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import {
-  resumoCortes, taxaCorte, lerMotivo, filtrarCortes, rotuloFiltro, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieMensalCortes, serieHoraria, porProdutoDetalhado,
-  DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type LinhaCorte, type VariacaoCorte, type ProdutoCortado,
+  resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, porProdutoDetalhado, serieSemanal, variacaoPct,
+  DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type ResumoCortes, type ProdutoCortado,
 } from "@/domain/cortes";
-import { formatBRL, formatPercent, formatKg, formatDataBR } from "@/domain/format";
-import {
-  formatMesAno,
-  mesAnterior,
-  INICIO_HISTORICO,
-  lerPeriodo,
-  mesDoPeriodo,
-  paramsDoPeriodo,
-  periodoAberto,
-  periodoAnterior,
-  periodoDoMes,
-  rotuloCurto,
-  rotuloPeriodo,
-  eixoDoPeriodo,
-  type Periodo,
-} from "@/domain/periodo";
-import { PageHeader, Card, StatCard, SectionTitle, BarList } from "@/components/ui";
-import { PeriodoNav } from "@/components/periodo-nav";
+import { formatBRL, formatPercent } from "@/domain/format";
+import { lerPeriodo, mesDoPeriodo, paramsDoPeriodo, periodoAberto, periodoAnterior, rotuloCurto, rotuloPeriodo, type Periodo } from "@/domain/periodo";
+import { PageHeader, Card, BarList } from "@/components/ui";
+import TabelaAuditoria, { type LinhaAuditoria } from "./tabela-auditoria";
+
+// Layout no padrão do app Flask do colega (app_cortes, aba "Cortes & Rupturas"):
+// filtros → 6 indicadores → análise atual × anterior → gráficos → auditoria por
+// produto. Os números seguem as regras do Centro: filiais 1 e 11, todo corte
+// gravado no PCCORTEI, valor = quantidade cortada × preço de venda do item.
 
 const inteiro = new Intl.NumberFormat("pt-BR");
 const brl0 = (v: number) => formatBRL(Math.round(v)).replace(/,00$/, "");
+const pct = (v: number | null, casas = 1) => (v === null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${formatPercent(Math.abs(v), casas)}`);
 
 const NOME_DIM: Record<DimensaoCorte, string> = {
-  origem: "Origem", hora: "Hora", motivo: "Motivo", usuario: "Quem cortou", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
+  origem: "Área", hora: "Hora", motivo: "Motivo", usuario: "Conferente", fornecedor: "Fornecedor", comprador: "Comprador", produto: "Produto", cliente: "Cliente",
 };
 
-// Par de cores de gráfico da marca (navy/âmbar que passam no validador de dataviz).
-const COR_BARRA = "#3d47a8";
-const COR_SELECIONADA = "#c2820a";
+// Área responsável, como no Flask: corte registrado pelo Harpia na separação é da
+// Logística; o feito no Winthor é do Administrativo / Comercial.
+const AREAS = [
+  { valor: "", rotulo: "Visão geral" },
+  { valor: "Separação (Harpia)", rotulo: "Logística" },
+  { valor: "Winthor", rotulo: "Administrativo / Comercial" },
+] as const;
 
-type Params = { mes?: string; de?: string; ate?: string; dia?: string; ver?: string } & FiltrosCorte;
+type Params = { mes?: string; de?: string; ate?: string } & FiltrosCorte;
 
-/** Hoje em Recife ("yyyy-mm-dd") — o gráfico do mês corrente para no dia de hoje. */
-const hojeRecife = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
+const rotuloCampo = "text-xs font-bold uppercase tracking-wide text-slate-500";
+const campo =
+  "w-full rounded-lg border border-slate-300 bg-[#F4F7FA] p-2.5 text-sm text-slate-800 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-300/50";
+const tituloCard = "mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500";
 
-/** Pedido no Winthor: abre a consulta de pedidos já filtrada (o pedido é anterior ao corte). */
-function hrefPedido(l: LinhaCorte): string {
-  const d = new Date(`${l.dia}T12:00:00`);
-  d.setDate(d.getDate() - 90);
-  const ini = d.toISOString().slice(0, 10);
-  return `/pedidos?buscar=1&numped=${l.numped}&ini=${ini}&fim=${l.dia}`;
-}
-
-/**
- * Cortes: o que foi pedido e não saiu (PCCORTEI). Valor = quantidade cortada ×
- * preço de venda do item. Ao vivo do Winthor, filiais 1 e 11.
- */
 export default async function CortesPage({ searchParams }: { searchParams: Promise<Params> }) {
   const sp = await searchParams;
   const filtros: FiltrosCorte = {};
   for (const d of DIMENSOES_CORTE) if (typeof sp[d] === "string" && sp[d]) filtros[d] = sp[d];
-  const temFiltro = Object.keys(filtros).length > 0;
-  // Período (mês por padrão). Piso = histórico (jul/2026): PCCORTEI de 2025
-  // tem o erro da época, então não há corte confiável antes disso.
+  // Período (mês por padrão). Piso = histórico (jul/2026): PCCORTEI de 2025 tem o erro da época.
   const periodo = lerPeriodo(sp);
-  const mesUnico = mesDoPeriodo(periodo);
-  const mesFechado = !periodoAberto(periodo);
-  const { de: inicio, ate: fim } = periodo;
-  // Dia só vale dentro do período escolhido.
-  const dia = typeof sp.dia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.dia) && sp.dia >= inicio && sp.dia <= fim ? sp.dia : null;
   const pAnt = periodoAnterior(periodo);
-  // Tabela de baixo: "Maiores cortes" (linhas) ou "por produto" (todos, com estoque de hoje).
-  const porProduto = sp.ver === "produtos";
-  const mesAntCurto = rotuloCurto(pAnt);
-  const noPeriodo = mesUnico ? "no mês" : "no período";
-  const mesLabel = `${rotuloPeriodo(periodo)}${mesFechado ? (mesUnico ? " · mês fechado" : " · fechado") : " · em andamento"}`;
+  const { de: inicio, ate: fim } = periodo;
+  const mesUnico = mesDoPeriodo(periodo);
+  const mesLabel = `${rotuloPeriodo(periodo)}${periodoAberto(periodo) ? " · em andamento" : mesUnico ? " · mês fechado" : " · fechado"}`;
+
   const url = (over: Partial<Params>) => {
-    const p = { ...paramsDoPeriodo(periodo), dia: dia ?? undefined, ver: porProduto ? "produtos" : undefined, ...filtros, ...over } as Params;
+    const p = { ...paramsDoPeriodo(periodo), ...filtros, ...over } as Params;
     const q = new URLSearchParams();
     if (p.mes) q.set("mes", p.mes);
     if (p.de) q.set("de", p.de);
     if (p.ate) q.set("ate", p.ate);
-    if (p.dia) q.set("dia", p.dia);
-    if (p.ver) q.set("ver", p.ver);
     for (const d of DIMENSOES_CORTE) if (p[d]) q.set(d, p[d]!);
     const s = q.toString();
     return s ? `/cortes?${s}` : "/cortes";
   };
-  // Mudar de período mantém os filtros (o dia não: é daquele período); clicar de novo no item ativo tira o filtro.
-  const hrefPeriodo = (pp: Record<string, string>) => url({ mes: undefined, de: undefined, ate: undefined, dia: undefined, ...pp });
-  const href = (m: string) => hrefPeriodo(paramsDoPeriodo(periodoDoMes(m)));
+  // Clicar numa barra filtra; clicar de novo no item ativo tira o filtro.
   const alternar = (d: DimensaoCorte, chave: string) => url({ [d]: filtros[d] === chave ? undefined : chave });
-  const alternarDia = (d: string) => url({ dia: dia === d ? undefined : d });
 
-  // Tudo do Oracle em paralelo (~0,5 s). O faturamento (view lenta, ~7 s) NÃO
-  // entra aqui: o card da taxa carrega à parte, num <Suspense>.
-  let linhas: LinhaCorte[];
-  let linhasAnt: LinhaCorte[];
-  let meses: Awaited<ReturnType<typeof lerCortesMensais>>;
-  let estoque: Map<number, number> | null;
+  let linhas;
+  let linhasAnt;
   try {
-    [linhas, linhasAnt, meses, estoque] = await Promise.all([
-      lerCortes(inicio, fim),
-      lerCortes(pAnt.de, pAnt.ate),
-      lerCortesMensais(mesAnterior(INICIO_HISTORICO), fim),
-      porProduto ? lerEstoqueDosCortados(inicio, fim).catch(() => null) : Promise.resolve(null),
-    ]);
+    [linhas, linhasAnt] = await Promise.all([lerCortes(inicio, fim), lerCortes(pAnt.de, pAnt.ate)]);
   } catch (e) {
     console.error("[cortes]", e);
     return (
       <div>
-        <PageHeader title="Cortes" subtitle={`${mesLabel} · Winthor`}>
-          <PeriodoNav periodo={periodo} hrefFor={hrefPeriodo} limpar={["dia"]} />
-        </PageHeader>
+        <PageHeader title="Cortes & Rupturas" subtitle={`${mesLabel} · Winthor`} />
         <Card className="p-6 text-sm text-slate-500">Sem acesso ao Winthor agora — tente de novo em instantes.</Card>
       </div>
     );
   }
 
-  const total = resumoCortes(linhas);
   const filtradas = filtrarCortes(linhas, filtros);
-  // Mês inteiro com os filtros (o gráfico por dia mostra todos os dias) e o recorte do dia, se houver.
-  const rMes = temFiltro ? resumoCortes(filtradas) : total;
-  const r = dia ? resumoCortes(filtradas, dia) : rMes;
-  const doDia = dia ? filtradas.filter((l) => l.dia === dia) : filtradas;
-  // Mês anterior com os MESMOS filtros: a comparação vale também com filtro ligado.
-  // Com um dia escolhido não compara (dia × mês não é comparação justa).
+  const r = resumoCortes(filtradas);
   const rAnt = resumoCortes(filtrarCortes(linhasAnt, filtros));
-  const vs = (atual: number, anterior: number) => (dia ? null : variacaoCorte(atual, anterior, mesAntCurto));
-  const vValor = vs(r.valor, rAnt.valor);
-  const vItens = vs(r.itens, rAnt.itens);
-  const vSkus = vs(r.skus, rAnt.skus);
-  const top = [...doDia].sort((a, b) => b.valor - a.valor).slice(0, 20);
-  const produtos = porProdutoDetalhado(doDia);
-  const porMes = eixoDoPeriodo(periodo) === "mes";
-  const serie = serieDiaria(rMes.porDia, inicio, mesFechado ? fim : hojeRecife() < fim ? hojeRecife() : fim);
-  const detalheItens = `${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`;
-  const detalheProdutos = `${inteiro.format(r.qt)} un · ${formatKg(r.kg)} · ${r.valor > 0 ? formatPercent(r.harpia / r.valor, 0) : "—"} na separação`;
+  const produtos = porProdutoDetalhado(filtradas);
+  const outrosFiltros = DIMENSOES_CORTE.filter((d) => d !== "origem" && filtros[d]);
+  const vs = `vs ${rotuloCurto(pAnt)}`;
+  const comVariacao = (base: string, atual: number, anterior: number) => {
+    const v = variacaoPct(atual, anterior);
+    return v === null ? base : `${base} · ${pct(v)} ${vs}`;
+  };
 
   return (
-    <div>
-      <PageHeader title="Cortes" subtitle={`${mesLabel} · filiais 1 e 11`}>
-        {/* Planilha do mês com os mesmos filtros da tela. <a> e não <Link>: é download. */}
-        <a
-          href={url({}).replace(/^\/cortes/, "/cortes/export")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-        >
-          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
-          </svg>
-          Exportar planilha
-        </a>
-        <PeriodoNav periodo={periodo} hrefFor={hrefPeriodo} limpar={["dia"]} />
-      </PageHeader>
+    <div className="flex min-w-0 flex-col gap-6">
+      <PageHeader title="Cortes & Rupturas" subtitle={`${mesLabel} · filiais 1 e 11`} />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <CardVariacao
-          label="Valor cortado"
-          value={brl0(r.valor)}
-          variacao={vValor}
-          semVariacao={dia ? `de ${brl0(rMes.valor)} ${noPeriodo}` : temFiltro ? `de ${brl0(total.valor)} ${noPeriodo}` : "venda que não saiu"}
-          title={temFiltro || dia ? `${brl0(total.valor)} de corte ${noPeriodo}, sem filtro` : "Quantidade cortada × preço de venda do item no pedido"}
-          accent="red"
-        />
-        {temFiltro || dia ? (
-          <StatCard
-            label={mesUnico ? "Do corte do mês" : "Do corte do período"}
-            value={total.valor > 0 ? formatPercent(r.valor / total.valor, 1) : "—"}
-            hint={dia ? `dia ${formatDataBR(dia).slice(0, 5)}` : "participação do filtro"}
-          />
-        ) : (
-          <Suspense fallback={<div className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
-            <CardTaxa periodo={periodo} periodoAnt={pAnt} mesAntCurto={mesAntCurto} valor={total.valor} valorAnt={rAnt.valor} />
-          </Suspense>
-        )}
-        <CardVariacao label="Itens cortados" value={inteiro.format(r.itens)} variacao={vItens} semVariacao={detalheItens} title={detalheItens} />
-        <CardVariacao label="Produtos" value={inteiro.format(r.skus)} variacao={vSkus} semVariacao={detalheProdutos} title={detalheProdutos} />
-      </div>
+      {/* Filtros: GET simples — período, área e os demais filtros ativos seguem juntos. */}
+      <details open className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between border-b border-slate-100 pb-2 text-lg font-bold text-slate-700">
+          <span className="flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16l-6 8v5l-4 2v-7z" /></svg>
+            Filtros (Cortes)
+          </span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4 transition group-open:rotate-180" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+        </summary>
+        <form action="/cortes" className="mt-4 grid w-full grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap sm:gap-4">
+          {outrosFiltros.map((d) => <input key={d} type="hidden" name={d} value={filtros[d]} />)}
+          <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:flex-1 sm:max-w-[240px]">
+            <span className={rotuloCampo}>Data inicial</span>
+            <input type="date" name="de" defaultValue={inicio} className={campo} />
+          </label>
+          <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:flex-1 sm:max-w-[240px]">
+            <span className={rotuloCampo}>Data final</span>
+            <input type="date" name="ate" defaultValue={fim} className={campo} />
+          </label>
+          <label className="col-span-2 flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:flex-1 sm:max-w-[240px]">
+            <span className={rotuloCampo}>Área responsável</span>
+            <select name="origem" defaultValue={filtros.origem ?? ""} className={campo}>
+              {AREAS.map((a) => <option key={a.valor} value={a.valor}>{a.rotulo}</option>)}
+            </select>
+          </label>
+          <div className="col-span-2 flex w-full flex-wrap items-center gap-3 md:ml-auto md:w-auto">
+            <button type="submit" className="flex items-center gap-2 rounded-xl bg-[#141a4d] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#1b2168]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.2-3.2" /></svg>
+              Atualizar dados
+            </button>
+            {/* Planilha com os mesmos filtros da tela. <a> e não <Link>: é download. */}
+            <a
+              href={url({}).replace(/^\/cortes/, "/cortes/export")}
+              className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-[#F4F7FA]"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+              </svg>
+              Exportar planilha de cortes
+            </a>
+          </div>
+        </form>
+      </details>
 
-      {(temFiltro || dia) && (
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          {dia && (
-            <span className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eef0fb] py-1 pl-3 pr-1 text-sm font-semibold text-[#1b2168]">
-              <span className="truncate">Dia: {formatDataBR(dia)}</span>
-              <Link href={url({ dia: undefined })} scroll={false} aria-label="Remover filtro de dia" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-white">
-                ✕
-              </Link>
-            </span>
-          )}
-          {DIMENSOES_CORTE.filter((d) => filtros[d]).map((d) => (
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+        <Kpi titulo="Valor perdido (venda)" valor={brl0(r.valor)} legenda="prejuízo bruto em vendas" cor="text-rose-600" borda="border-t-rose-500"
+          title={comVariacao("Quantidade cortada × preço de venda do item no pedido", r.valor, rAnt.valor)} />
+        <Kpi titulo="Valor perdido (custo)" valor={brl0(r.custo)} legenda="custo da mercadoria cortada" cor="text-amber-600" borda="border-t-amber-500"
+          title={comVariacao("Quantidade cortada × custo financeiro de hoje (PCEST.CUSTOFIN)", r.custo, rAnt.custo)} />
+        <Suspense fallback={<KpiCarregando />}>
+          <KpiTaxa periodo={periodo} valor={r.valor} />
+        </Suspense>
+        <Kpi titulo="Total SKUs cortados" valor={`${inteiro.format(r.skus)} SKUs`} legenda="produtos distintos afetados" cor="text-[#1b2168]" borda="border-t-[#2a327f]"
+          title={comVariacao(`${inteiro.format(r.pedidos)} pedidos · ${inteiro.format(r.clientes)} clientes`, r.skus, rAnt.skus)} />
+        <Kpi titulo="Volume total cortado" valor={`${inteiro.format(r.qt)} un`} legenda="unidades físicas de itens" cor="text-[#3d47a8]" borda="border-t-[#3d47a8]"
+          title={comVariacao(`${inteiro.format(r.itens)} itens de pedido cortados`, r.qt, rAnt.qt)} />
+        <Suspense fallback={<KpiCarregando />}>
+          <KpiFaturamento periodo={periodo} />
+        </Suspense>
+      </section>
+
+      {outrosFiltros.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {outrosFiltros.map((d) => (
             <span key={d} className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eef0fb] py-1 pl-3 pr-1 text-sm font-semibold text-[#1b2168]">
-              <span className="truncate">
-                {NOME_DIM[d]}: {rotuloFiltro(linhas, d, filtros[d]!)}
-              </span>
-              <Link
-                href={url({ [d]: undefined })}
-                scroll={false}
-                aria-label={`Remover filtro de ${NOME_DIM[d].toLowerCase()}`}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-white"
-              >
+              <span className="truncate">{NOME_DIM[d]}: {rotuloFiltro(linhas, d, filtros[d]!)}</span>
+              <Link href={url({ [d]: undefined })} scroll={false} aria-label={`Remover filtro de ${NOME_DIM[d].toLowerCase()}`} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:bg-white">
                 ✕
               </Link>
             </span>
           ))}
-          <Link href={url({ dia: undefined, ...Object.fromEntries(DIMENSOES_CORTE.map((d) => [d, undefined])) })} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
+          <Link href={url(Object.fromEntries(outrosFiltros.map((d) => [d, undefined])))} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
             limpar filtros
           </Link>
         </div>
       )}
 
+      <Suspense fallback={<div className="h-56 animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
+        <AnaliseSituacao periodo={periodo} periodoAnt={pAnt} atual={r} anterior={rAnt} />
+      </Suspense>
+
       {filtradas.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-slate-400">{temFiltro ? `Nenhum corte com esses filtros ${mesUnico ? "neste mês" : "neste período"}.` : `Nenhum corte ${mesUnico ? "neste mês" : "neste período"}.`}</Card>
+        <Card className="p-8 text-center text-sm text-slate-400">Nenhum corte com esses filtros {mesUnico ? "neste mês" : "neste período"}.</Card>
       ) : (
         <>
-          <div className="mb-6 grid gap-6 lg:grid-cols-3">
-            <section className="min-w-0 lg:col-span-2">
-              <SectionTitle>{porMes ? "Mês a mês" : "Dia a dia"}</SectionTitle>
-              <Card className="p-5">
-                {porMes ? (
-                  <Barras
-                    ativo={null}
-                    href={href}
-                    itens={serieMensalCortes(rMes.porDia, periodo).map((m) => ({
-                      chave: m.mes,
-                      valor: m.valor,
-                      rotulo: formatMesAno(m.mes).slice(0, 3),
-                      marco: true,
-                      dica: formatMesAno(m.mes),
-                    }))}
-                  />
-                ) : (
-                <Barras
-                  ativo={dia}
-                  href={alternarDia}
-                  itens={serie.map((d) => ({
-                    chave: d.dia,
-                    valor: d.valor,
-                    rotulo: String(Number(d.dia.slice(8))),
-                    marco: Number(d.dia.slice(8)) === 1 || Number(d.dia.slice(8)) % 5 === 0,
-                    dica: formatDataBR(d.dia),
-                  }))}
-                />
-                )}
-              </Card>
-            </section>
-            <div className="flex min-w-0 flex-col gap-6">
-              <Bloco titulo="Origem" grupos={r.porOrigem} dim="origem" ativo={filtros.origem} alternar={alternar} />
-              <section className="min-w-0">
-                <SectionTitle>Por hora</SectionTitle>
-                <Card className="p-5">
-                  <Barras
-                    altura="h-24"
-                    ativo={filtros.hora ?? null}
-                    href={(h) => alternar("hora", h)}
-                    itens={serieHoraria(r.porHora).map((h) => ({
-                      chave: h.chave,
-                      valor: h.valor,
-                      rotulo: `${h.hora}h`,
-                      marco: h.hora % 6 === 1,
-                      dica: `${h.chave}h–${String((h.hora + 1) % 24).padStart(2, "0")}h`,
-                    }))}
-                  />
-                </Card>
-              </section>
-            </div>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Bloco titulo="Motivos" grupos={r.porMotivo} dim="motivo" ativo={filtros.motivo} alternar={alternar} />
-            <Bloco titulo="Quem cortou (Harpia)" grupos={r.porUsuario} dim="usuario" ativo={filtros.usuario} alternar={alternar} vazio="Nenhum corte registrado pelo Harpia." />
-            <Bloco titulo="Fornecedores" grupos={r.porFornecedor} dim="fornecedor" ativo={filtros.fornecedor} alternar={alternar} />
-            <Bloco titulo="Compradores" grupos={r.porComprador} dim="comprador" ativo={filtros.comprador} alternar={alternar} />
-            <Bloco titulo="Produtos" grupos={r.porProduto} dim="produto" ativo={filtros.produto} alternar={alternar} />
-            <Bloco titulo="Clientes" grupos={r.porCliente} dim="cliente" ativo={filtros.cliente} alternar={alternar} />
-          </div>
-
-          <section className="mt-6">
-            <SectionTitle>{temFiltro ? "Mês a mês · todos os cortes" : "Mês a mês"}</SectionTitle>
-            <Card className="p-5">
-              <BarList
-                tone="navy"
-                items={meses.filter((m) => m.mes >= INICIO_HISTORICO).map((m) => ({
-                  label: formatMesAno(m.mes),
-                  value: m.valor,
-                  display: brl0(m.valor),
-                  href: href(m.mes),
-                }))}
-              />
-            </Card>
+          <section className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
+            <Grafico titulo="Compradores afetados" grupos={r.porComprador} top={10} dim="comprador" ativo={filtros.comprador} alternar={alternar} />
+            <Grafico titulo="Top 10 fornecedores afetados" grupos={r.porFornecedor} top={10} dim="fornecedor" ativo={filtros.fornecedor} alternar={alternar} />
+            <Grafico titulo="Top 10 produtos mais cortados" grupos={r.porProduto} top={10} dim="produto" ativo={filtros.produto} alternar={alternar} />
+            <Painel titulo="Cortes por semana">
+              <BarList tone="navy" items={serieSemanal(r.porDia).map((s) => ({ label: s.rotulo, value: s.valor, display: brl0(s.valor) }))} />
+            </Painel>
+            <Grafico titulo="Clientes mais afetados financeiramente" grupos={r.porCliente} top={10} dim="cliente" ativo={filtros.cliente} alternar={alternar} />
+            <Grafico titulo="Motivos do corte registrados" grupos={r.porMotivo} top={15} dim="motivo" ativo={filtros.motivo} alternar={alternar} />
+            <Grafico titulo="Top 5 conferentes (Harpia)" grupos={r.porUsuario} top={5} dim="usuario" ativo={filtros.usuario} alternar={alternar} vazio="Nenhum corte registrado pelo Harpia." />
           </section>
 
-          <section className="mt-6">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-              <SectionTitle>
-                {porProduto ? `Todos os produtos cortados · ${inteiro.format(produtos.length)}` : dia ? `Maiores cortes · ${formatDataBR(dia)}` : "Maiores cortes"}
-              </SectionTitle>
-              <Link href={url({ ver: porProduto ? undefined : "produtos" })} scroll={false} className="text-xs font-medium text-amber-600 hover:text-amber-700">
-                {porProduto ? "ver maiores cortes" : `ver todos os produtos (${inteiro.format(produtos.length)})`}
-              </Link>
-            </div>
-            {porProduto ? (
-              <TabelaProdutos produtos={produtos} estoque={estoque} filtrar={(c) => alternar("produto", String(c))} />
-            ) : (
-            <Card className="overflow-hidden">
-              <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[860px] text-left text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Data</th>
-                      <th className="px-4 py-3 font-semibold">Pedido</th>
-                      <th className="px-4 py-3 font-semibold">Produto</th>
-                      <th className="px-4 py-3 font-semibold">Cliente</th>
-                      <th className="px-4 py-3 text-right font-semibold">Qtd</th>
-                      <th className="px-4 py-3 text-right font-semibold">Valor</th>
-                      <th className="px-4 py-3 font-semibold">Motivo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {top.map((l, i) => {
-                      const m = lerMotivo(l.motivo);
-                      return (
-                        <tr key={i} className="border-b border-slate-50 last:border-0">
-                          <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(l.dia)}</td>
-                          <td className="px-4 py-2.5 tabular-nums">
-                            {l.temPedido ? (
-                              <Link href={hrefPedido(l)} className="text-[#2a327f] hover:underline">{l.numped}</Link>
-                            ) : (
-                              <span className="text-slate-400" title="Pedido cortado inteiro: não está mais no Winthor">{l.numped}</span>
-                            )}
-                          </td>
-                          <td className="max-w-[16rem] truncate px-4 py-2.5 font-medium text-[#141a4d]" title={l.produto}>
-                            {l.codprod} · {l.produto}
-                          </td>
-                          <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600" title={l.cliente ?? undefined}>{l.cliente ?? "—"}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{inteiro.format(l.qt)}</td>
-                          <td className="px-4 py-2.5 text-right font-semibold whitespace-nowrap tabular-nums text-[#141a4d]">{formatBRL(l.valor)}</td>
-                          <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-500" title={m.usuario ? `${m.motivo} · ${m.usuario}` : m.motivo}>
-                            {m.motivo}
-                            {m.usuario && <span className="text-slate-400"> · {m.usuario}</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <ul className="divide-y divide-slate-100 md:hidden">
-                {top.map((l, i) => {
-                  const m = lerMotivo(l.motivo);
-                  return (
-                    <li key={i} className="px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="min-w-0 truncate font-medium text-[#141a4d]">{l.produto}</p>
-                        <span className="shrink-0 font-semibold tabular-nums text-[#141a4d]">{formatBRL(l.valor)}</span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {formatDataBR(l.dia)} ·{" "}
-                        {l.temPedido ? (
-                          <Link href={hrefPedido(l)} className="text-[#2a327f] underline-offset-2 hover:underline">ped. {l.numped}</Link>
-                        ) : (
-                          <span>ped. {l.numped}</span>
-                        )}{" "}
-                        · {inteiro.format(l.qt)} un · {l.cliente ?? "—"}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-slate-400">
-                        {m.motivo}
-                        {m.usuario ? ` · ${m.usuario}` : ""}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-            )}
+          <section>
+            <h3 className={tituloCard}>Auditoria estrutural · todos os produtos cortados no período ({inteiro.format(produtos.length)})</h3>
+            <Suspense fallback={<TabelaAuditoria linhas={paraAuditoria(produtos, null, (c) => alternar("produto", String(c)))} carregandoEstoque />}>
+              <Auditoria produtos={produtos} inicio={inicio} fim={fim} hrefProduto={(c) => alternar("produto", String(c))} />
+            </Suspense>
           </section>
         </>
       )}
@@ -377,197 +201,187 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
   );
 }
 
-/** Card com a comparação contra o mês anterior como dado de apoio (rose só quando piora). */
-function CardVariacao({
-  label, value, variacao, semVariacao, title, accent,
-}: {
-  label: string;
-  value: string;
-  variacao: VariacaoCorte | null;
-  semVariacao: string;
-  title: string;
-  accent?: "red";
-}) {
+/** Indicador com faixa colorida no topo, no padrão dos cards do Flask. Detalhe no hover. */
+function Kpi({ titulo, valor, legenda, cor, borda, title }: { titulo: string; valor: string; legenda: string; cor: string; borda: string; title?: string }) {
   return (
-    <StatCard
-      label={label}
-      value={value}
-      accent={accent}
-      hint={variacao?.texto ?? semVariacao}
-      hintRuim={variacao?.piorou ?? false}
-      title={variacao ? `${title} · ${variacao.texto}` : title}
-    />
-  );
-}
-
-/**
- * Taxa de corte (corte ÷ (corte + venda líquida)) e a variação em p.p. contra o
- * mês anterior. Fica num <Suspense>: a venda líquida vem ao vivo da view de
- * faturamento (~7 s), e o resto da página não espera por ela. O mês anterior
- * (fechado) usa a foto do Supabase — sem segunda varredura da view.
- */
-async function CardTaxa({
-  periodo, periodoAnt, mesAntCurto, valor, valorAnt,
-}: {
-  periodo: Periodo;
-  periodoAnt: Periodo;
-  mesAntCurto: string;
-  valor: number;
-  valorAnt: number;
-}) {
-  const [fat, fatAnt] = await Promise.all([
-    getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null),
-    getResumoFaturamentoPeriodo(periodoAnt.de, periodoAnt.ate).catch(() => null),
-  ]);
-  const taxa = taxaCorte(valor, fat?.vendaLiquida ?? null);
-  const taxaAnt = taxaCorte(valorAnt, fatAnt?.vendaLiquida ?? null);
-  const v = variacaoTaxaCorte(taxa, taxaAnt, mesAntCurto);
-  const base = "Corte ÷ (corte + venda líquida da 111)";
-  return (
-    <StatCard
-      label="Do que foi pedido"
-      value={taxa === null ? "—" : formatPercent(taxa, 2)}
-      hint={fat?.foto ? "Winthor fora · foto" : (v?.texto ?? "corte ÷ (corte + venda líquida)")}
-      hintRuim={!fat?.foto && (v?.piorou ?? false)}
-      title={v ? `${base} · ${v.texto}` : base}
-    />
-  );
-}
-
-/**
- * Barras verticais clicáveis (dia do mês, hora do corte): clica filtra, clica de
- * novo tira. Detalhe no hover (title), sem legenda na tela. Barra sem corte não
- * é link — não há o que filtrar.
- */
-function Barras({
-  itens, ativo, href, altura = "h-40",
-}: {
-  itens: { chave: string; valor: number; rotulo: string; marco: boolean; dica: string }[];
-  ativo: string | null;
-  href: (chave: string) => string;
-  altura?: string;
-}) {
-  const max = Math.max(1, ...itens.map((d) => d.valor));
-  return (
-    <div>
-      <div className={`flex ${altura} items-end gap-[3px]`}>
-        {itens.map((d, i) => {
-          const sel = ativo === d.chave;
-          const barra = (
-            <div
-              className="crescer-y w-full rounded-t-sm transition group-hover:brightness-125"
-              style={{
-                "--i": i,
-                height: d.valor > 0 ? `${Math.max(3, (d.valor / max) * 100)}%` : "0",
-                background: sel ? COR_SELECIONADA : COR_BARRA,
-                opacity: ativo && !sel ? 0.35 : 1,
-              } as CSSProperties}
-            />
-          );
-          const dica = `${d.dica} · ${d.valor > 0 ? brl0(d.valor) : "sem corte"}`;
-          return d.valor > 0 ? (
-            <Link key={d.chave} href={href(d.chave)} scroll={false} title={`${dica} · clique para ${sel ? "tirar o filtro" : "filtrar"}`} aria-current={sel ? "true" : undefined} className="group flex h-full min-w-0 flex-1 flex-col justify-end">
-              {barra}
-            </Link>
-          ) : (
-            <div key={d.chave} title={dica} className="flex h-full min-w-0 flex-1 flex-col justify-end border-b border-slate-200">
-              {barra}
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-1 flex gap-[3px]">
-        {itens.map((d) => (
-          <span key={d.chave} className={`min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[0.65rem] font-semibold tabular-nums ${ativo === d.chave ? "text-[#c2820a]" : "text-slate-400"}`}>
-            {ativo === d.chave || (!ativo && d.marco) ? d.rotulo : ""}
-          </span>
-        ))}
-      </div>
+    <div title={title} className={`entrar flex min-h-[110px] min-w-0 flex-col justify-between rounded-2xl border border-t-4 border-slate-200/80 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-5 ${borda}`}>
+      <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{titulo}</h3>
+      <p className={`truncate text-lg font-black tracking-tight tabular-nums sm:text-xl xl:text-2xl ${cor}`}>{valor}</p>
+      <span className="text-[10px] font-medium text-slate-400">{legenda}</span>
     </div>
   );
 }
 
+const KpiCarregando = () => <div className="min-h-[110px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />;
+
 /**
- * Todos os produtos cortados (a "auditoria" do mês), com o estoque gerencial de
- * hoje. Tabela completa fica atrás do botão — a tela principal não vira planilha.
+ * % de cortes (perda) = corte ÷ (corte + venda líquida da 111). A venda líquida
+ * vem ao vivo da view de faturamento (~7 s): carrega à parte, sem segurar a página.
  */
-function TabelaProdutos({ produtos, estoque, filtrar }: { produtos: ProdutoCortado[]; estoque: Map<number, number> | null; filtrar: (codprod: number) => string }) {
-  const est = (c: number) => (estoque ? inteiro.format(estoque.get(c) ?? 0) : "—");
+async function KpiTaxa({ periodo, valor }: { periodo: Periodo; valor: number }) {
+  const fat = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null);
+  const taxa = taxaCorte(valor, fat?.vendaLiquida ?? null);
   return (
-    <Card className="overflow-hidden">
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-max text-left text-sm">
-          <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
+    <Kpi titulo="% Cortes (perda)" valor={taxa === null ? "—" : formatPercent(taxa, 2)} legenda="proporção sobre faturado" cor="text-rose-500" borda="border-t-rose-400"
+      title={`Corte ÷ (corte + venda líquida da 111)${fat?.foto ? " · Winthor fora, venda da última foto" : ""}`} />
+  );
+}
+
+async function KpiFaturamento({ periodo }: { periodo: Periodo }) {
+  const fat = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null);
+  return (
+    <Kpi titulo="Faturamento líquido" valor={fat ? brl0(fat.vendaLiquida) : "—"} legenda="base realizada no período" cor="text-emerald-600" borda="border-t-emerald-500"
+      title={`Venda líquida da rotina 111 (filiais 1 e 11)${fat?.foto ? " · Winthor fora, última foto" : ""}`} />
+  );
+}
+
+/** Atual × anterior, com a linha de resultado. Rose = piorou; o resto fica neutro. */
+async function AnaliseSituacao({ periodo, periodoAnt, atual, anterior }: { periodo: Periodo; periodoAnt: Periodo; atual: ResumoCortes; anterior: ResumoCortes }) {
+  const [fat, fatAnt] = await Promise.all([
+    getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null),
+    getResumoFaturamentoPeriodo(periodoAnt.de, periodoAnt.ate).catch(() => null),
+  ]);
+  const linha = (r: ResumoCortes, f: typeof fat) => ({
+    fat: f?.vendaLiquida ?? null,
+    venda: r.valor,
+    custo: r.custo,
+    taxa: taxaCorte(r.valor, f?.vendaLiquida ?? null),
+    skus: r.skus,
+    qt: r.qt,
+  });
+  const a = linha(atual, fat);
+  const b = linha(anterior, fatAnt);
+  const dataBR = (iso: string) => iso.split("-").reverse().join("/");
+  const faixa = (p: Periodo) => `${dataBR(p.de)} a ${dataBR(p.ate)}`;
+  const brl = (v: number | null) => (v === null ? "—" : brl0(v));
+  // Resultado: % de variação; na taxa, diferença em pontos percentuais.
+  const res = (x: number | null, y: number | null, subirEhBom = false) => {
+    if (x === null || y === null) return <span className="text-slate-400">—</span>;
+    const v = variacaoPct(x, y);
+    if (v === null) return <span className="text-slate-400">—</span>;
+    const ruim = subirEhBom ? v < 0 : v > 0;
+    return <span className={`font-semibold ${ruim && Math.abs(v) >= 0.0005 ? "text-rose-600" : "text-[#1b2168]"}`}>{pct(v)}</span>;
+  };
+  const resTaxa = () => {
+    if (a.taxa === null || b.taxa === null) return <span className="text-slate-400">—</span>;
+    const pp = (a.taxa - b.taxa) * 100;
+    const txt = `${pp > 0 ? "+" : pp < 0 ? "−" : ""}${Math.abs(pp).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`;
+    return <span className={`font-semibold ${pp >= 0.005 ? "text-rose-600" : "text-[#1b2168]"}`}>{txt}</span>;
+  };
+  const colunas: { rotulo: string; ant: ReactNode; atu: ReactNode; res: ReactNode }[] = [
+    { rotulo: "Faturamento líquido", ant: brl(b.fat), atu: brl(a.fat), res: res(a.fat, b.fat, true) },
+    { rotulo: "Valor perdido (venda)", ant: brl(b.venda), atu: brl(a.venda), res: res(a.venda, b.venda) },
+    { rotulo: "Valor perdido (custo)", ant: brl(b.custo), atu: brl(a.custo), res: res(a.custo, b.custo) },
+    { rotulo: "% Cortes (perda)", ant: b.taxa === null ? "—" : formatPercent(b.taxa, 2), atu: a.taxa === null ? "—" : formatPercent(a.taxa, 2), res: resTaxa() },
+    { rotulo: "SKUs cortados", ant: inteiro.format(b.skus), atu: inteiro.format(a.skus), res: res(a.skus, b.skus) },
+    { rotulo: "Volume cortado", ant: inteiro.format(b.qt), atu: inteiro.format(a.qt), res: res(a.qt, b.qt) },
+  ];
+  const th = "bg-[#F4F7FA] p-4 font-semibold text-slate-700 border-b border-slate-200";
+  const td = "p-4 border-b border-slate-100 tabular-nums";
+  return (
+    <section>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className={tituloCard}>Análise de situação de corte</h3>
+        <p className="text-xs text-slate-400">Atual: {faixa(periodo)} · Anterior: {faixa(periodoAnt)}</p>
+      </div>
+      {/* Desktop: a tabela do Flask */}
+      <div className="hidden w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+        <table className="w-full whitespace-nowrap text-left text-sm text-slate-600">
+          <thead>
             <tr>
-              <th className="px-4 py-3 font-semibold">Produto</th>
-              <th className="px-4 py-3 font-semibold">Fornecedor</th>
-              <th className="px-4 py-3 text-right font-semibold">Valor</th>
-              <th className="px-4 py-3 text-right font-semibold">Qtd</th>
-              <th className="px-4 py-3 text-right font-semibold" title="Pedidos · clientes · carregamentos atingidos">Ped. · cli. · cargas</th>
-              <th className="px-4 py-3 font-semibold">Último</th>
-              <th className="px-4 py-3 font-semibold">Motivo principal</th>
-              <th className="px-4 py-3 text-right font-semibold" title="Estoque gerencial de hoje (PCEST.QTESTGER) na filial do corte">Estoque hoje</th>
+              <th className={th}>Data</th>
+              {colunas.map((c) => <th key={c.rotulo} className={th}>{c.rotulo}</th>)}
             </tr>
           </thead>
           <tbody>
-            {produtos.map((p) => (
-              <tr key={p.codprod} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                <td className="max-w-[18rem] truncate px-4 py-2.5 font-medium text-[#141a4d]" title={`${p.codprod} · ${p.produto}`}>
-                  <Link href={filtrar(p.codprod)} scroll={false} className="hover:underline">{p.codprod} · {p.produto}</Link>
-                </td>
-                <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600" title={p.comprador ? `Comprador: ${p.comprador}` : undefined}>{p.fornecedor ?? "—"}</td>
-                <td className="px-4 py-2.5 text-right font-semibold whitespace-nowrap tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{inteiro.format(p.qt)}</td>
-                <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums text-slate-600">{p.pedidos} · {p.clientes} · {p.cargas}</td>
-                <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-500">{formatDataBR(p.ultimoDia).slice(0, 5)}</td>
-                <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-500" title={p.motivo}>{p.motivo}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{est(p.codprod)}</td>
-              </tr>
-            ))}
+            <tr>
+              <td className={td}>{faixa(periodoAnt)}</td>
+              {colunas.map((c) => <td key={c.rotulo} className={td}>{c.ant}</td>)}
+            </tr>
+            <tr>
+              <td className={`${td} font-semibold text-[#141a4d]`}>{faixa(periodo)}</td>
+              {colunas.map((c) => <td key={c.rotulo} className={`${td} font-semibold text-[#141a4d]`}>{c.atu}</td>)}
+            </tr>
+            <tr>
+              <td className={td}>
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-[#141a4d]">Resultado</span>
+                <span className="mt-0.5 block text-[10px] font-medium text-slate-400">atual × anterior</span>
+              </td>
+              {colunas.map((c) => <td key={c.rotulo} className={td}>{c.res}</td>)}
+            </tr>
           </tbody>
         </table>
       </div>
-      <ul className="divide-y divide-slate-100 md:hidden">
-        {produtos.map((p) => (
-          <li key={p.codprod} className="px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <Link href={filtrar(p.codprod)} scroll={false} className="min-w-0 truncate font-medium text-[#141a4d]">{p.produto}</Link>
-              <span className="shrink-0 font-semibold tabular-nums text-[#141a4d]">{formatBRL(p.valor)}</span>
-            </div>
-            <p className="mt-0.5 truncate text-xs text-slate-500">
-              {inteiro.format(p.qt)} un · {p.pedidos} ped. · estoque hoje {est(p.codprod)}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-slate-400">{p.motivo}</p>
+      {/* Mobile: um bloco por indicador */}
+      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm md:hidden">
+        {colunas.map((c) => (
+          <li key={c.rotulo} className="grid grid-cols-3 gap-2 px-4 py-3 text-sm">
+            <span className="col-span-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{c.rotulo}</span>
+            <span className="tabular-nums text-slate-500">{c.ant}</span>
+            <span className="tabular-nums font-semibold text-[#141a4d]">{c.atu}</span>
+            <span className="text-right tabular-nums">{c.res}</span>
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function Painel({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <Card className="flex min-w-0 flex-col p-4 sm:p-5">
+      <h3 className={tituloCard}>{titulo}</h3>
+      {children}
     </Card>
   );
 }
 
-function Bloco({
-  titulo, grupos, dim, ativo, alternar, vazio = "Sem dados.",
+/** Ranking em barras: clica filtra a tela toda, clica de novo tira. */
+function Grafico({
+  titulo, grupos, top, dim, ativo, alternar, vazio = "Sem dados.",
 }: {
   titulo: string;
   grupos: GrupoCorte[];
+  top: number;
   dim: DimensaoCorte;
   ativo?: string;
   alternar: (d: DimensaoCorte, chave: string) => string;
   vazio?: string;
 }) {
-  const itens = grupos.slice(0, 8);
+  const itens = grupos.slice(0, top);
   return (
-    <section>
-      <SectionTitle>{titulo}</SectionTitle>
-      <Card className="p-5">
-        {itens.length === 0 ? (
-          <p className="text-sm text-slate-400">{vazio}</p>
-        ) : (
-          <BarList
-            items={itens.map((g) => ({ label: g.rotulo, value: g.valor, display: brl0(g.valor), href: alternar(dim, g.chave), active: ativo === g.chave }))}
-          />
-        )}
-      </Card>
-    </section>
+    <Painel titulo={titulo}>
+      {itens.length === 0 ? (
+        <p className="text-sm text-slate-400">{vazio}</p>
+      ) : (
+        <BarList items={itens.map((g) => ({ label: g.rotulo, value: g.valor, display: brl0(g.valor), href: alternar(dim, g.chave), active: ativo === g.chave }))} />
+      )}
+    </Painel>
   );
+}
+
+function paraAuditoria(produtos: ProdutoCortado[], estoque: Map<number, { hoje: number; naData: number }> | null, hrefProduto: (c: number) => string): LinhaAuditoria[] {
+  return produtos.map((p) => ({
+    codprod: p.codprod,
+    produto: `${p.codprod} - ${p.produto}`,
+    href: hrefProduto(p.codprod),
+    cargas: p.cargas,
+    comprador: p.comprador ?? "Sem comprador",
+    cliente: p.cliente ?? `${inteiro.format(p.clientes)} clientes`,
+    fornecedor: p.fornecedor ?? "Sem fornecedor",
+    qt: p.qt,
+    pedidos: p.pedidos,
+    valor: p.valor,
+    ultimoDia: p.ultimoDia,
+    conferente: p.conferente,
+    motivo: p.motivo,
+    estoqueHoje: estoque ? (estoque.get(p.codprod)?.hoje ?? 0) : null,
+    estoqueNaData: estoque ? (estoque.get(p.codprod)?.naData ?? 0) : null,
+  }));
+}
+
+/** Auditoria com o estoque de hoje e do dia do corte (consulta à parte, ~4 s). */
+async function Auditoria({ produtos, inicio, fim, hrefProduto }: { produtos: ProdutoCortado[]; inicio: string; fim: string; hrefProduto: (c: number) => string }) {
+  const estoque = await lerEstoqueDosCortados(inicio, fim).catch(() => null);
+  return <TabelaAuditoria linhas={paraAuditoria(produtos, estoque, hrefProduto)} semEstoque={estoque === null} />;
 }

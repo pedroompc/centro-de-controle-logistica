@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado, cortesParaTV, type LinhaCorte } from "./cortes";
+import { lerMotivo, resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, cortesParaCsv, variacaoCorte, variacaoTaxaCorte, serieDiaria, serieHoraria, porProdutoDetalhado, cortesParaTV, serieSemanal, variacaoPct, type LinhaCorte } from "./cortes";
 
 describe("lerMotivo", () => {
   it("separa motivo e usuário do texto do Harpia", () => {
@@ -21,7 +21,7 @@ describe("lerMotivo", () => {
 
 const linha = (over: Partial<LinhaCorte>): LinhaCorte => ({
   dia: "2026-10-05", numped: 1, numcar: 10, codprod: 100, produto: "ARROZ", codfornec: 5, fornecedor: "FORN A",
-  comprador: "JOAO", codcli: 7, cliente: "MERCADO X", qt: 2, valor: 50, kg: 10,
+  comprador: "JOAO", codcli: 7, cliente: "MERCADO X", qt: 2, valor: 50, custo: 30, kg: 10,
   motivo: "1.HARPIA - FALTA DE MERCADORIA - Usuário: 3-ADM GABRIEL", temPedido: true, hora: 22, ...over,
 });
 
@@ -157,7 +157,7 @@ describe("porProdutoDetalhado", () => {
 });
 
 describe("cortesParaTV", () => {
-  const base = { numcar: null, codfornec: null, fornecedor: null, comprador: null, cliente: null, kg: 0, temPedido: true, hora: 10, produto: "P" };
+  const base = { numcar: null, codfornec: null, fornecedor: null, comprador: null, cliente: null, kg: 0, temPedido: true, hora: 10, produto: "P", custo: 0 };
   const l = (dia: string, valor: number, motivo: string, codprod = 1, numped = 1, codcli: number | null = 9) => ({ ...base, dia, valor, qt: 1, motivo, codprod, numped, codcli });
   it("agrega sem R$ nos rankings e preenche os dias sem corte", () => {
     const tv = cortesParaTV(
@@ -192,5 +192,40 @@ describe("serieMensalCortes", () => {
     expect(serieMensalCortes(porDia, { de: "2026-07-01", ate: "2026-09-30" })).toEqual([
       { mes: "2026-07-01", valor: 15 }, { mes: "2026-08-01", valor: 0 }, { mes: "2026-09-01", valor: 7 },
     ]);
+  });
+});
+
+describe("layout Flask: custo, conferente, semanas", () => {
+  it("resumo soma o custo", () => {
+    expect(resumoCortes([linha({}), linha({ custo: 12.5 })]).custo).toBe(42.5);
+  });
+
+  it("produto: conferente de maior valor e cliente só quando único", () => {
+    const [p] = porProdutoDetalhado([
+      linha({ valor: 10, motivo: "1.HARPIA - FALTA - Usuário: 1-CONF ANA" }),
+      linha({ valor: 30, numped: 2, motivo: "1.HARPIA - FALTA - Usuário: 2-CONF BIA" }),
+    ]);
+    expect(p.conferente).toBe("CONF BIA");
+    expect(p.cliente).toBe("MERCADO X");
+    const [q] = porProdutoDetalhado([linha({}), linha({ codcli: 8, cliente: "OUTRO", motivo: "ERRO" })]);
+    expect(q.cliente).toBeNull();
+    const [w] = porProdutoDetalhado([linha({ motivo: "ERRO DE DIGITACAO" })]);
+    expect(w.conferente).toBeNull();
+  });
+
+  it("semana do mês: 1–7, 8–14…; vários meses levam o mês no rótulo", () => {
+    const um = serieSemanal(new Map([["2026-10-01", 5], ["2026-10-07", 5], ["2026-10-08", 2], ["2026-10-31", 1]]));
+    expect(um).toEqual([
+      { chave: "2026-10-1", rotulo: "Semana 1", valor: 10 },
+      { chave: "2026-10-2", rotulo: "Semana 2", valor: 2 },
+      { chave: "2026-10-5", rotulo: "Semana 5", valor: 1 },
+    ]);
+    const dois = serieSemanal(new Map([["2026-09-30", 1], ["2026-10-01", 1]]));
+    expect(dois.map((s) => s.rotulo)).toEqual(["Semana 5 · 09/26", "Semana 1 · 10/26"]);
+  });
+
+  it("variação %", () => {
+    expect(variacaoPct(120, 100)).toBeCloseTo(0.2);
+    expect(variacaoPct(5, 0)).toBeNull();
   });
 });
