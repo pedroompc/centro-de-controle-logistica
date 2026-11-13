@@ -2,7 +2,9 @@
 // estado compartilhados pela página e pela tabela.
 
 /** Estados de pedido que a tela cobre (PCPEDC.POSICAO). */
-export const ESTADOS_PEDIDO = ["L", "B", "M", "F", "C"] as const;
+export const ESTADOS_PEDIDO = ["L", "M", "F", "P", "B", "C"] as const;
+/** Marcados por padrão no filtro (como no app Flask). */
+export const ESTADOS_PADRAO: EstadoPedido[] = ["L", "M", "F"];
 export type EstadoPedido = (typeof ESTADOS_PEDIDO)[number];
 
 export interface PedidoConsulta {
@@ -41,6 +43,12 @@ export interface PedidoConsulta {
   // entrada da devolução, separadas por vírgula. `null` sem devolução.
   nfOrigemDevolucao: string | null;
   nfDevolucao: string | null;
+  // Telefone do RCA (PCUSUARI.TELEFONE1, senão TELEFONE2) só com dígitos e DDD,
+  // pronto para o WhatsApp; `null` sem número válido no cadastro.
+  foneRca: string | null;
+  // Observações digitadas no pedido (OBS + OBS1 + OBS2) e de entrega (OBSENTREGA1–4).
+  obsPedido: string | null;
+  obsEntrega: string | null;
 }
 
 export interface ItemPedido {
@@ -57,6 +65,7 @@ export function estadoPedidoInfo(posicao: string): { label: string; badge: strin
     case "B": return { label: "Bloqueado", badge: "bg-rose-50 text-rose-700 border border-rose-200" };
     case "M": return { label: "Montado", badge: "bg-amber-50 text-amber-700 border border-amber-200" };
     case "F": return { label: "Faturado", badge: "bg-slate-100 text-slate-600 border border-slate-200" };
+    case "P": return { label: "Pendente", badge: "bg-amber-50 text-amber-800 border border-amber-300" };
     case "C": return { label: "Cancelado", badge: "bg-slate-100 text-slate-400 border border-slate-200" };
     default: return { label: posicao || "—", badge: "bg-slate-100 text-slate-500 border border-slate-200" };
   }
@@ -68,5 +77,6 @@ export const ROTULO_ESTADO: Record<EstadoPedido, string> = {
   B: "Bloqueado",
   M: "Montado",
   F: "Faturado",
+  P: "Pendente",
   C: "Cancelado",
 };

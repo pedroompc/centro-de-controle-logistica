@@ -3,6 +3,7 @@ import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
 import { ESTADOS_PEDIDO } from "@/domain/pedidos-consulta";
 import type { EstadoPedido, PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
+import { primeiroFoneValido } from "@/domain/whatsapp";
 
 const num = (v: unknown): number => Number(v) || 0;
 const str = (v: unknown): string | null => (v == null || String(v).trim() === "" ? null : String(v).trim());
@@ -93,6 +94,11 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
     cli.ESTENT                       AS UF,
     ped.CODUSUR                      AS CODRCA,
     usu.NOME                         AS RCA,
+    usu.TELEFONE1                    AS FONE1,
+    usu.TELEFONE2                    AS FONE2,
+    -- Observações do pedido (OBS1+OBS2 são um texto só, quebrado em duas colunas) e de entrega.
+    TRIM(TRIM(ped.OBS) || ' ' || ped.OBS1 || ped.OBS2) AS OBS_PEDIDO,
+    TRIM(ped.OBSENTREGA1 || ' ' || ped.OBSENTREGA2 || ' ' || ped.OBSENTREGA3 || ' ' || ped.OBSENTREGA4) AS OBS_ENTREGA,
     ped.POSICAO                      AS POSICAO,
     ped.NUMCAR                       AS NUMCAR,
     car.CODMOTORISTA                 AS CODMOTORISTA,
@@ -156,7 +162,8 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
 interface LinhaPedido {
   NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
-  CODRCA: number | null; RCA: string | null;
+  CODRCA: number | null; RCA: string | null; FONE1: string | null; FONE2: string | null;
+  OBS_PEDIDO: string | null; OBS_ENTREGA: string | null;
   POSICAO: string | null; NUMCAR: number | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
   CODEMITENTE: number | null; EMITENTE: string | null; EMISSAO: string | null;
@@ -217,6 +224,9 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       liberadoPor: str(r.LIBERADO_POR),
       liberadoEm: str(r.LIBERADO_EM),
       nfOrigemDevolucao: str(r.NF_ORIGEM_DEV),
+      foneRca: primeiroFoneValido(r.FONE1, r.FONE2),
+      obsPedido: str(r.OBS_PEDIDO)?.replace(/\s+/g, " ") ?? null,
+      obsEntrega: str(r.OBS_ENTREGA)?.replace(/\s+/g, " ") ?? null,
       nfDevolucao: str(r.NF_DEV),
     })) };
   } catch (erro) {

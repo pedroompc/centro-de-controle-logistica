@@ -7,6 +7,7 @@ import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import { formatBRL, formatKg } from "@/domain/format";
 import { estadoPedidoInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
+import { formatarFoneBR, linkWhatsApp } from "@/domain/whatsapp";
 import { carregarItensPedido } from "./actions";
 
 function fmtData(iso: string | null): string {
@@ -365,6 +366,40 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
   );
 }
 
+const IconeWhats = ({ className = "h-3.5 w-3.5" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.6-1.3.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z" />
+  </svg>
+);
+
+// Conversa com o RCA no WhatsApp, já com o pedido na mensagem. Não abre/fecha a linha.
+function BotaoWhats({ pedido, compacto = false }: { pedido: PedidoConsulta; compacto?: boolean }) {
+  if (!pedido.foneRca) return null;
+  // Sem o nome do RCA: o cadastro traz prefixos ("D ", "X WINE ", "OF ATACADIA ").
+  const msg = `Olá! Sobre o pedido ${pedido.numped} (${pedido.cliente}).`;
+  return (
+    <a
+      href={linkWhatsApp(pedido.foneRca, msg)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      title={`Abrir conversa no WhatsApp com ${pedido.rca ?? "o RCA"} · ${formatarFoneBR(pedido.foneRca)}`}
+      className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-[#141a4d] transition hover:border-[#141a4d]/40 hover:bg-[#eef0fb]"
+    >
+      <IconeWhats />
+      {!compacto && "WhatsApp"}
+    </a>
+  );
+}
+
+// Data e hora "YYYY-MM-DD HH:MI[:SS]" → "dd/mm/aa hh:mm".
+function fmtDataHoraCurta(v: string | null): string {
+  if (!v) return "—";
+  const [d, h] = v.split(" ");
+  return `${fmtDataCurta(d)}${h ? ` ${h.slice(0, 5)}` : ""}`;
+}
+
 // Checkbox de seleção. O clique não abre/fecha o detalhe da linha.
 function Marcar({ checked, indeterminado = false, onChange, label }: {
   checked: boolean; indeterminado?: boolean; onChange: () => void; label: string;
@@ -396,7 +431,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
   const lista = useMemo(
     () => filtrarPorBusca(pedidos, busca, (p) => [
       p.numped, p.cliente, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
-      p.nfOrigemDevolucao ?? "", p.nfDevolucao ?? "",
+      p.nfOrigemDevolucao ?? "", p.nfDevolucao ?? "", p.codRca ?? "", p.obsPedido ?? "", p.obsEntrega ?? "",
     ]),
     [pedidos, busca],
   );
@@ -461,6 +496,9 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
     setCabecalho(p);
   };
   const fecharCabecalho = useCallback(() => setCabecalho(null), []);
+  // DANFE / boletos abertos direto da linha (coluna DANFE, como no Flask).
+  const [doc, setDoc] = useState<{ pedido: PedidoConsulta; tipo: Documento } | null>(null);
+  const abrirDoc = (e: React.MouseEvent, pedido: PedidoConsulta, tipo: Documento) => { e.stopPropagation(); setDoc({ pedido, tipo }); };
 
   const campoBusca = (
     <div className="relative">
@@ -475,11 +513,8 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
     </div>
   );
 
-  // Células compactas: a tabela cabe na tela sem rolar para o lado. Abaixo de
-  // xl, RCA e DT Pedido saem da grade (continuam no detalhe da linha).
-  const th = "px-2.5 py-3 font-semibold";
-  const td = "px-2.5 py-2.5";
-  const soXl = "hidden xl:table-cell";
+  const th = "px-3 py-3 font-semibold";
+  const td = "px-3 py-2.5";
 
   return (
     <Card className="overflow-hidden">
@@ -490,10 +525,10 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
         right={campoBusca}
       />
 
-      {/* Desktop: tabela */}
+      {/* Desktop: tabela no layout do app Flask (rola para o lado em telas menores). */}
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+        <table className="w-full whitespace-nowrap text-sm">
+          <thead className="border-b border-slate-200 bg-[#F4F7FA] text-[11px] uppercase tracking-wider text-slate-600">
             <tr>
               <th className="w-8 py-3 pl-4 pr-1 text-left">
                 <Marcar
@@ -504,23 +539,28 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                 />
               </th>
               <th className={`${th} text-left`}>Pedido</th>
+              <th className={`${th} text-left`}>Data</th>
+              <th className={`${th} text-center`}>Dias</th>
+              <th className={`${th} text-left`}>Liberação</th>
               <th className={`${th} text-left`}>Cliente</th>
-              <th className={`${th} ${soXl} text-left`}>RCA</th>
-              <th className={`${th} text-left`}>Cidade</th>
-              <th className={`${th} text-left`}>Status</th>
+              <th className={`${th} text-center`}>Cód. RCA</th>
+              <th className={`${th} text-left`}>RCA</th>
+              <th className={`${th} text-left`}>Telefone RCA</th>
+              <th className={`${th} text-left`}>Posição</th>
               <th className={`${th} text-left`}>Carga</th>
               <th className={`${th} text-left`}>Motorista</th>
-              <th className={`${th} ${soXl} text-left`}>DT Pedido</th>
-              <th className={`${th} text-left`}>DT Faturada</th>
+              <th className={`${th} text-right`}>Valor total</th>
               <th className={`${th} text-right`}>Peso</th>
-              <th className={`${th} text-right`}>Valor</th>
+              <th className={`${th} text-center`}>DANFE</th>
+              <th className={`${th} text-center`}>Devolução</th>
+              <th className={`${th} text-left`}>Observação</th>
               <th className="w-8 py-3 pr-3" aria-label="Detalhes" />
             </tr>
           </thead>
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={13} className="py-12 text-center text-sm text-slate-400">
+                <td colSpan={18} className="py-12 text-center text-sm text-slate-400">
                   {busca ? `Nenhum pedido para "${busca}".` : "Nenhum pedido para os filtros selecionados."}
                 </td>
               </tr>
@@ -528,76 +568,95 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
               lista.map((p) => {
                 const estaAberto = aberto === p.numped;
                 const marcado = selecionados.has(p.numped);
+                const obs = [
+                  ...(p.obsPedido ? [{ r: "Pedido", t: p.obsPedido }] : []),
+                  ...(p.obsEntrega ? [{ r: "Entrega", t: p.obsEntrega }] : []),
+                ];
                 return (
                   <Fragment key={p.numped}>
                     <tr
                       onClick={() => clique(p.numped)}
                       onDoubleClick={() => duploClique(p)}
-                      title="Duplo clique: emitente e liberação"
+                      title="Clique: itens e endereço · duplo clique: emitente e liberação"
                       aria-expanded={estaAberto}
-                      className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/50 ${marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}`}
+                      className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/70 ${marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}`}
                     >
                       <td className="py-2.5 pl-4 pr-1">
                         <Marcar checked={marcado} onChange={() => alternar(p.numped)} label={`Selecionar pedido ${p.numped}`} />
                       </td>
                       <td className={td}>
-                        <div className="font-semibold tabular-nums text-[#141a4d]">{p.numped}</div>
-                        {/* Abaixo de xl a coluna DT Pedido some: a hora fica aqui. */}
-                        {p.horaPedido && (
-                          <div className="text-[10px] tabular-nums text-slate-400 xl:hidden" title="Hora da digitação">{p.horaPedido}</div>
-                        )}
-                        {p.temDevolucao && (
-                          <>
-                            <span className="mt-0.5 inline-flex rounded bg-rose-50 px-1.5 text-[9px] font-semibold text-rose-600">devolução</span>
-                            {p.nfOrigemDevolucao && (
-                              <div
-                                className="max-w-[110px] truncate text-[10px] tabular-nums text-slate-500"
-                                title={`NF de origem (venda devolvida): ${p.nfOrigemDevolucao}${p.nfDevolucao ? ` · NF de devolução: ${p.nfDevolucao}` : ""}`}
-                              >
-                                NF orig. {p.nfOrigemDevolucao}
-                              </div>
-                            )}
-                          </>
-                        )}
+                        <span className="inline-flex items-center gap-1 font-bold tabular-nums text-[#2a327f]">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-3.5 w-3.5" strokeLinejoin="round"><path d="M3 8 12 3l9 5v8l-9 5-9-5Z" /><path d="m3 8 9 5 9-5M12 13v8" /></svg>
+                          {p.numped}
+                        </span>
                       </td>
+                      <td className={`${td} text-xs tabular-nums text-slate-600`}>
+                        {fmtDataCurta(p.data)}
+                        {p.horaPedido && <span className="ml-1 text-slate-400" title="Hora da digitação">{p.horaPedido}</span>}
+                      </td>
+                      <td className={`${td} text-center text-xs tabular-nums ${corDias(p)}`}>{p.diasNoSistema}d</td>
+                      <td className={`${td} text-xs tabular-nums text-slate-600`} title={p.liberadoPor ? `Liberado por ${p.liberadoPor}` : undefined}>{fmtDataHoraCurta(p.liberadoEm)}</td>
                       <td className={td}>
-                        <div className="max-w-[220px] truncate text-[#141a4d]" title={p.cliente}>{p.cliente}</div>
-                        <div className="text-[10px] text-slate-400">Cód. {p.codcli}</div>
+                        <div className="max-w-[220px] truncate text-xs font-semibold text-slate-800" title={`${p.cliente} · Cód. ${p.codcli}`}>{p.cliente}</div>
+                        <div className="text-[10px] text-slate-400">{p.cidade ?? "—"}{p.uf ? ` / ${p.uf}` : ""}</div>
                       </td>
-                      <td className={`${td} ${soXl} text-slate-600`}>
-                        <div className="max-w-[130px] truncate" title={p.rca ?? undefined}>{p.rca ?? <span className="text-slate-300">—</span>}</div>
-                        {p.codRca != null && <div className="text-[10px] text-slate-400">Cód. {p.codRca}</div>}
+                      <td className={`${td} text-center text-xs tabular-nums text-slate-700`}>{p.codRca ?? "—"}</td>
+                      <td className={`${td} text-xs text-slate-700`}>
+                        <div className="max-w-[150px] truncate" title={p.rca ?? undefined}>{p.rca ?? "—"}</div>
                       </td>
-                      <td className={`${td} text-slate-600`}>
-                        <div className="max-w-[130px] truncate" title={p.cidade ?? undefined}>
-                          {p.cidade ?? "—"}{p.uf ? <span className="text-slate-400"> / {p.uf}</span> : null}
-                        </div>
+                      <td className={`${td} text-xs tabular-nums text-slate-700`}>
+                        {p.foneRca ? (
+                          <div className="flex items-center gap-1.5">
+                            <span>{formatarFoneBR(p.foneRca)}</span>
+                            <BotaoWhats pedido={p} compacto />
+                          </div>
+                        ) : "—"}
                       </td>
-                      <td className={td}>
-                        <Selo posicao={p.posicao} />
-                        <div className={`mt-0.5 text-[10px] tabular-nums ${corDias(p)}`}>{p.diasNoSistema} {p.diasNoSistema === 1 ? "dia" : "dias"}</div>
+                      <td className={td}><Selo posicao={p.posicao} /></td>
+                      <td className={`${td} text-xs tabular-nums text-slate-600`}>{p.numcar ? `#${p.numcar}` : "—"}</td>
+                      <td className={`${td} text-xs text-slate-600`}>
+                        <div className="max-w-[150px] truncate" title={p.motorista ?? undefined}>{p.motorista ?? "—"}</div>
                       </td>
-                      <td className={`${td} tabular-nums text-slate-600`}>{p.numcar ?? <span className="text-slate-300">—</span>}</td>
-                      <td className={`${td} text-slate-600`}>
-                        <div className="max-w-[150px] truncate" title={p.motorista ?? undefined}>{p.motorista ?? <span className="text-slate-300">—</span>}</div>
+                      <td className={`${td} text-right font-bold tabular-nums text-slate-800`}>{formatBRL(p.valor)}</td>
+                      <td className={`${td} text-right text-xs tabular-nums text-slate-600`}>{formatKg(p.peso)}</td>
+                      <td className={`${td} text-center`}>
+                        {p.notaFiscal != null ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <button type="button" onClick={(e) => abrirDoc(e, p, "danfe")} onDoubleClick={(e) => e.stopPropagation()} title={`Ver o DANFE da NF ${p.notaFiscal}`}
+                              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-200">
+                              <IconeNota /> NF {p.notaFiscal}
+                            </button>
+                            <button type="button" onClick={(e) => abrirDoc(e, p, "boletos")} onDoubleClick={(e) => e.stopPropagation()} title={`Boletos da NF ${p.notaFiscal}`}
+                              className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200">
+                              <IconeBoleto /> Boletos
+                            </button>
+                          </div>
+                        ) : <span className="text-xs text-slate-400">Sem NF</span>}
                       </td>
-                      <td className={`${td} ${soXl} whitespace-nowrap text-slate-600`}>
-                        <div className="tabular-nums">{fmtDataCurta(p.data)}</div>
-                        {p.horaPedido && <div className="text-[10px] tabular-nums text-slate-400" title="Hora da digitação">{p.horaPedido}</div>}
+                      <td className={`${td} text-center`}>
+                        {p.temDevolucao ? (
+                          <span className="inline-block max-w-[180px] truncate rounded bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700"
+                            title={`${p.motivoDevolucao ?? "Devolução"}${p.nfOrigemDevolucao ? ` · NF de origem ${p.nfOrigemDevolucao}` : ""}${p.nfDevolucao ? ` · NF de devolução ${p.nfDevolucao}` : ""}`}>
+                            SIM ({p.motivoDevolucao ?? "Devolução"})
+                          </span>
+                        ) : <span className="text-xs text-slate-300">Não</span>}
                       </td>
-                      <td className={`${td} whitespace-nowrap text-slate-600`}>
-                        <div className="tabular-nums">{fmtDataCurta(p.dataFaturamento)}</div>
-                        {p.notaFiscal != null && <div className="text-[10px] tabular-nums text-slate-400">NF {p.notaFiscal}</div>}
+                      <td className={`${td} text-xs`}>
+                        {obs.length ? (
+                          <div className="max-w-[260px] space-y-0.5" title={obs.map((o) => `${o.r}: ${o.t}`).join("\n")}>
+                            {obs.map((o) => (
+                              <div key={o.r} className="truncate"><span className="font-semibold text-amber-700">{o.r}:</span> <span className="text-slate-700">{o.t}</span></div>
+                            ))}
+                          </div>
+                        ) : <span className="text-slate-300">Sem obs.</span>}
                       </td>
-                      <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-600`}>{formatKg(p.peso)}</td>
-                      <td className={`${td} whitespace-nowrap text-right font-semibold tabular-nums text-[#141a4d]`}>{formatBRL(p.valor)}</td>
                       <td className="py-2.5 pr-3 text-center text-slate-400">
                         {estaAberto ? <IconeCima className="mx-auto h-4 w-4" /> : <IconeBaixo className="mx-auto h-4 w-4" />}
                       </td>
                     </tr>
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
-                        <td colSpan={13} className="p-0">
+                        <td colSpan={18} className="whitespace-normal p-0">
                           <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />
                         </td>
                       </tr>
@@ -644,6 +703,18 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {p.notaFiscal != null && <span>NF {p.notaFiscal}</span>}
                     {p.nfOrigemDevolucao && <span className="text-rose-600">NF origem {p.nfOrigemDevolucao}</span>}
                   </div>
+                  {p.foneRca && (
+                    <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+                      <span className="tabular-nums">RCA {formatarFoneBR(p.foneRca)}</span>
+                      <BotaoWhats pedido={p} />
+                    </div>
+                  )}
+                  {(p.obsPedido || p.obsEntrega) && (
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                      {p.obsPedido && <><span className="font-semibold text-amber-700">Pedido:</span> {p.obsPedido} </>}
+                      {p.obsEntrega && <><span className="font-semibold text-amber-700">Entrega:</span> {p.obsEntrega}</>}
+                    </p>
+                  )}
                 </div>
                 {estaAberto && <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />}
               </li>
@@ -653,6 +724,15 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
       </ul>
 
       {cabecalho && <ModalCabecalho pedido={cabecalho} onFechar={fecharCabecalho} />}
+      {doc && doc.pedido.notaFiscal != null && (
+        <ModalDocumento
+          documento={doc.tipo}
+          numped={doc.pedido.numped}
+          notaFiscal={doc.pedido.notaFiscal}
+          onTrocar={(tipo) => setDoc((d) => (d ? { ...d, tipo } : d))}
+          onFechar={() => setDoc(null)}
+        />
+      )}
 
       {/* Autosoma dos selecionados — barra flutuante no rodapé da tela. */}
       {soma.qtd > 0 && (
