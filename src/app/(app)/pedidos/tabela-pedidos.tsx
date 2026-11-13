@@ -224,6 +224,7 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
           </p>
           <p className="text-slate-600">
             DT Pedido: <b className="text-[#141a4d]">{fmtData(pedido.data)}</b>
+            {pedido.horaPedido && <> às <b className="text-[#141a4d]">{pedido.horaPedido}</b></>}
             {" · "}DT Faturada: <b className="text-[#141a4d]">{fmtData(pedido.dataFaturamento)}</b>
             {pedido.notaFiscal != null && <> {" · "}NF <b className="text-[#141a4d]">{pedido.notaFiscal}</b></>}
           </p>
@@ -239,6 +240,12 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
             <p className="text-slate-600">
               Motivo:{" "}
               <b className="text-rose-600">{pedido.motivoDevolucao ?? "Não informado"}</b>
+            </p>
+          )}
+          {pedido.temDevolucao && (
+            <p className="text-slate-600">
+              NF de origem: <b className="text-[#141a4d]">{pedido.nfOrigemDevolucao ?? "—"}</b>
+              {" · "}NF de devolução: <b className="text-[#141a4d]">{pedido.nfDevolucao ?? "—"}</b>
             </p>
           )}
         </div>
@@ -343,6 +350,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
   const lista = useMemo(
     () => filtrarPorBusca(pedidos, busca, (p) => [
       p.numped, p.cliente, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
+      p.nfOrigemDevolucao ?? "", p.nfDevolucao ?? "",
     ]),
     [pedidos, busca],
   );
@@ -488,7 +496,23 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       </td>
                       <td className={td}>
                         <div className="font-semibold tabular-nums text-[#141a4d]">{p.numped}</div>
-                        {p.temDevolucao && <span className="mt-0.5 inline-flex rounded bg-rose-50 px-1.5 text-[9px] font-semibold text-rose-600">devolução</span>}
+                        {/* Abaixo de xl a coluna DT Pedido some: a hora fica aqui. */}
+                        {p.horaPedido && (
+                          <div className="text-[10px] tabular-nums text-slate-400 xl:hidden" title="Hora da digitação">{p.horaPedido}</div>
+                        )}
+                        {p.temDevolucao && (
+                          <>
+                            <span className="mt-0.5 inline-flex rounded bg-rose-50 px-1.5 text-[9px] font-semibold text-rose-600">devolução</span>
+                            {p.nfOrigemDevolucao && (
+                              <div
+                                className="max-w-[110px] truncate text-[10px] tabular-nums text-slate-500"
+                                title={`NF de origem (venda devolvida): ${p.nfOrigemDevolucao}${p.nfDevolucao ? ` · NF de devolução: ${p.nfDevolucao}` : ""}`}
+                              >
+                                NF orig. {p.nfOrigemDevolucao}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </td>
                       <td className={td}>
                         <div className="max-w-[220px] truncate text-[#141a4d]" title={p.cliente}>{p.cliente}</div>
@@ -511,7 +535,10 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       <td className={`${td} text-slate-600`}>
                         <div className="max-w-[150px] truncate" title={p.motorista ?? undefined}>{p.motorista ?? <span className="text-slate-300">—</span>}</div>
                       </td>
-                      <td className={`${td} ${soXl} whitespace-nowrap tabular-nums text-slate-600`}>{fmtDataCurta(p.data)}</td>
+                      <td className={`${td} ${soXl} whitespace-nowrap text-slate-600`}>
+                        <div className="tabular-nums">{fmtDataCurta(p.data)}</div>
+                        {p.horaPedido && <div className="text-[10px] tabular-nums text-slate-400" title="Hora da digitação">{p.horaPedido}</div>}
+                      </td>
                       <td className={`${td} whitespace-nowrap text-slate-600`}>
                         <div className="tabular-nums">{fmtDataCurta(p.dataFaturamento)}</div>
                         {p.notaFiscal != null && <div className="text-[10px] tabular-nums text-slate-400">NF {p.notaFiscal}</div>}
@@ -565,10 +592,11 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {p.rca && <span>RCA: {p.rca}</span>}
                     {p.numcar != null && <span>Carga: {p.numcar}</span>}
                     {p.motorista && <span>Mot.: {p.motorista}</span>}
-                    <span>Ped.: {fmtData(p.data)}</span>
+                    <span>Ped.: {fmtData(p.data)}{p.horaPedido ? ` ${p.horaPedido}` : ""}</span>
                     <span>Fat.: {fmtData(p.dataFaturamento)}</span>
                     <span>{formatKg(p.peso)}</span>
                     {p.notaFiscal != null && <span>NF {p.notaFiscal}</span>}
+                    {p.nfOrigemDevolucao && <span className="text-rose-600">NF origem {p.nfOrigemDevolucao}</span>}
                   </div>
                 </div>
                 {estaAberto && <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />}

@@ -8,6 +8,7 @@ export type EstadoPedido = (typeof ESTADOS_PEDIDO)[number];
 export interface PedidoConsulta {
   numped: number;
   data: string; // emissão (ISO YYYY-MM-DD)
+  horaPedido: string | null; // hora da digitação (HH:MM, PCPEDC.HORA/MINUTO)
   diasNoSistema: number;
   codcli: number;
   cliente: string;
@@ -36,6 +37,10 @@ export interface PedidoConsulta {
   emissao: string | null; // data + hora da emissão "YYYY-MM-DD HH:MI"
   liberadoPor: string | null; // PCPEDC.CODFUNCLIBERA → PCEMPR.NOME
   liberadoEm: string | null; // PCPEDC.DTLIBERA "YYYY-MM-DD HH:MI:SS"
+  // Com devolução: NF(s) de venda que voltaram (nota de origem) e NF(s) de
+  // entrada da devolução, separadas por vírgula. `null` sem devolução.
+  nfOrigemDevolucao: string | null;
+  nfDevolucao: string | null;
 }
 
 export interface ItemPedido {

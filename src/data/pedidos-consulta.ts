@@ -53,9 +53,12 @@ function temIdentificadorDireto(f: FiltrosPedidos): boolean {
  * Uma linha por pedido: cliente, endereço de entrega, estado, motorista da carga,
  * data de faturamento, valor/peso, qtd de itens e se a venda teve devolução.
  *
+ * - Hora da digitação: PCPEDC.HORA/MINUTO.
+ *
  * - Motorista: PCPEDC.NUMCAR → PCCARREG.CODMOTORISTA → PCEMPR (só após montagem).
  * - Devolução: existe entrada de devolução (PCESTCOM.VLDEVOLUCAO > 0) ligada a
- *   alguma NF de saída daquele pedido.
+ *   alguma NF de saída daquele pedido. Essa NF de saída é a nota de origem
+ *   da devolução; a NF de entrada (PCNFENT.NUMNOTA) vem junto.
  */
 // WHERE dinâmico: busca por Nº do pedido curto-circuita período/estado (acha o
 // pedido em qualquer data, como a 335). Senão, aplica período + estados + os
@@ -123,7 +126,22 @@ const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
     TO_CHAR(ped.DATA, 'YYYY-MM-DD') || ' ' ||
       LPAD(NVL(ped.HORA, 0), 2, '0') || ':' || LPAD(NVL(ped.MINUTO, 0), 2, '0') AS EMISSAO,
     lib.NOME                         AS LIBERADO_POR,
-    TO_CHAR(ped.DTLIBERA, 'YYYY-MM-DD HH24:MI:SS') AS LIBERADO_EM
+    TO_CHAR(ped.DTLIBERA, 'YYYY-MM-DD HH24:MI:SS') AS LIBERADO_EM,
+    -- Nota de origem da devolução: a NF de venda (PCNFSAID) que voltou, e a NF
+    -- de entrada da devolução (PCNFENT). Mesma cadeia do TEM_DEV.
+    (SELECT LISTAGG(n, ', ') WITHIN GROUP (ORDER BY n) FROM (
+       SELECT DISTINCT nf.NUMNOTA AS n
+       FROM PCNFSAID nf
+       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
+       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
+    ))                               AS NF_ORIGEM_DEV,
+    (SELECT LISTAGG(n, ', ') WITHIN GROUP (ORDER BY n) FROM (
+       SELECT DISTINCT ne.NUMNOTA AS n
+       FROM PCNFSAID nf
+       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
+       JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
+       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
+    ))                               AS NF_DEV
   FROM PCPEDC ped
   LEFT JOIN PCCLIENT cli ON cli.CODCLI      = ped.CODCLI
   LEFT JOIN PCUSUARI usu ON usu.CODUSUR     = ped.CODUSUR
@@ -141,9 +159,9 @@ interface LinhaPedido {
   CODRCA: number | null; RCA: string | null;
   POSICAO: string | null; NUMCAR: number | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
-  MOTIVO_DEV: string | null;
   CODEMITENTE: number | null; EMITENTE: string | null; EMISSAO: string | null;
   LIBERADO_POR: string | null; LIBERADO_EM: string | null;
+  MOTIVO_DEV: string | null; NF_ORIGEM_DEV: string | null; NF_DEV: string | null;
 }
 
 /** Resultado da consulta: a lista, ou o erro técnico (p/ diagnosticar na tela). */
@@ -171,6 +189,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
     return { pedidos: rows.map((r) => ({
       numped: num(r.NUMPED),
       data: toISO(r.DATA_PEDIDO) ?? "",
+      horaPedido: str(r.EMISSAO)?.slice(11, 16) ?? null, // "HH:MI" da emissão
       diasNoSistema: num(r.DIAS),
       codcli: num(r.CODCLI),
       cliente: r.CLIENTE ?? `Cliente ${r.CODCLI}`,
@@ -197,6 +216,8 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       emissao: str(r.EMISSAO),
       liberadoPor: str(r.LIBERADO_POR),
       liberadoEm: str(r.LIBERADO_EM),
+      nfOrigemDevolucao: str(r.NF_ORIGEM_DEV),
+      nfDevolucao: str(r.NF_DEV),
     })) };
   } catch (erro) {
     const msg = (erro as Error).message;
