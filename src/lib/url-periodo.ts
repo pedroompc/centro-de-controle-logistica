@@ -4,7 +4,7 @@
 export const CHAVES_PERIODO = ["mes", "de", "ate"] as const;
 
 /** Telas que entendem o período. Ao navegar entre elas o período é preservado. */
-export const COM_PERIODO = new Set(["/", "/custos", "/receitas", "/devolucoes", "/cortes", "/faltas", "/fechamento", "/tendencias"]);
+export const COM_PERIODO = new Set(["/", "/custos", "/receitas", "/devolucoes", "/cortes", "/frota", "/faltas", "/fechamento", "/tendencias"]);
 
 type Fonte = URLSearchParams | Record<string, string | undefined | null>;
 

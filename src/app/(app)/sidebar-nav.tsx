@@ -101,6 +101,29 @@ export const items: Item[] = [
     ),
   },
   {
+    href: "/frota",
+    label: "Telemetria & Frota",
+    short: "Frota",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+        <path d="M2 6h11v10H2zM13 9h4l3 3v4h-7" />
+        <circle cx="6" cy="17.5" r="1.8" />
+        <circle cx="17" cy="17.5" r="1.8" />
+      </svg>
+    ),
+  },
+  {
+    href: "/estoque",
+    label: "Excesso de Estoque",
+    short: "Estoque",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+        <path d="M3 8 12 3l9 5v8l-9 5-9-5Z" />
+        <path d="m3 8 9 5 9-5M12 13v8" />
+      </svg>
+    ),
+  },
+  {
     href: "/pedidos-a-faturar",
     label: "Pedidos a Faturar",
     short: "Pedidos",
