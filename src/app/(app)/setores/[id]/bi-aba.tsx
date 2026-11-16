@@ -1,5 +1,6 @@
 "use client";
 
+import { lerVisao } from "@/domain/bi-geral-interativo";
 import { useState, type ReactNode } from "react";
 import type { FiltroBI } from "@/domain/bi-recebimento";
 import type { ComparacaoQuadros } from "@/domain/bi-quadros";
@@ -11,8 +12,8 @@ import { BIShell, type HrefMes } from "./bi-shell";
  * detalhe embaixo e o filtro cruzado (dia, fornecedor, tipo) vale para tudo.
  * Esc limpa os filtros.
  */
-export function BIAba({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBI; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
-  const [visao, setVisao] = useState<VisaoBI | null>(null);
+export function BIAba({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial }: { dados: DadosBI; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros; visaoInicial?: string }) {
+  const [visao, setVisao] = useState<VisaoBI | null>(() => lerVisao(visaoInicial, VISOES_BI.map((v) => v.id)));
   const [filtro, setFiltro] = useState<FiltroBI>({});
   const abrir = (v: VisaoBI) => setVisao((a) => (a === v ? null : v));
   const titulo = visao ? VISOES_BI.find((v) => v.id === visao) : null;

@@ -30,27 +30,29 @@ export interface PropsSetor {
   abas?: ReactNode;
   /** Só no BI Geral (`?cmp=`): cada quadro compara com este período. */
   comparacao?: PeriodoComparado | null;
+  /** Só no BI Geral (`?ver=`): quadro já aberto ao entrar (clique vindo da aba Geral). */
+  visaoInicial?: string;
 }
 
 // Com comparação, o período de comparação carrega DEPOIS do da tela (em
 // sequência): dois carregamentos pesados juntos derrubam conexões do Oracle.
 
-export async function ConteudoBISeparacao({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao }: PropsSetor) {
+export async function ConteudoBISeparacao({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao, visaoInicial }: PropsSetor) {
   const dados = await carregarBISeparacao(setor, funcionarios, periodo);
   const cmp = await carregarComparacao(comparacao, pisoDaAba("separacao"), (p, o) => carregarBISeparacao(setor, funcionarios, p, o), numerosSeparacao, (d) => resumoSeparacao(d).erro);
-  return <BISeparacao key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} />;
+  return <BISeparacao key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} visaoInicial={visaoInicial} />;
 }
 
-export async function ConteudoBIAbastecimento({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao }: PropsSetor) {
+export async function ConteudoBIAbastecimento({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao, visaoInicial }: PropsSetor) {
   const dados = await carregarBIAbastecimento(setor, funcionarios, periodo);
   const cmp = await carregarComparacao(comparacao, pisoDaAba("abastecimento"), (p) => carregarBIAbastecimento(setor, funcionarios, p), numerosAbastecimento, (d) => resumoAbastecimento(d).erro);
-  return <BIAbastecimento key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} />;
+  return <BIAbastecimento key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} visaoInicial={visaoInicial} />;
 }
 
-export async function ConteudoBIMotoristas({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao }: PropsSetor) {
+export async function ConteudoBIMotoristas({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao, visaoInicial }: PropsSetor) {
   const dados = await carregarBIMotoristas(setor, funcionarios, periodo);
   const cmp = await carregarComparacao(comparacao, pisoDaAba("motoristas"), (p, o) => carregarBIMotoristas(setor, funcionarios, p, o), numerosMotoristas, (d) => resumoMotoristas(d, null).erro);
-  return <BIMotoristas key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} />;
+  return <BIMotoristas key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} visaoInicial={visaoInicial} />;
 }
 
 /** Dados do BI do Recebimento no período (série, custo e fatos do descarrego). */
@@ -71,9 +73,9 @@ export async function carregarDadosRecebimento(periodo: Periodo): Promise<DadosB
   return { mes, periodo, mensal, ref, serie, custo, fatos };
 }
 
-export async function ConteudoBIRecebimento({ periodo, hrefMes, hrefSair, abas, comparacao }: Omit<PropsSetor, "setor" | "funcionarios">) {
+export async function ConteudoBIRecebimento({ periodo, hrefMes, hrefSair, abas, comparacao, visaoInicial }: Omit<PropsSetor, "setor" | "funcionarios">) {
   const dados = await carregarDadosRecebimento(periodo);
   const cmp = await carregarComparacao(comparacao, pisoDaAba("recebimento"), carregarDadosRecebimento, numerosRecebimento, (d) => resumoRecebimento(d).erro);
   // Tela cheia (overlay como o Painel da Operação); "Sair" volta a `hrefSair`.
-  return <BIAba key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} />;
+  return <BIAba key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} visaoInicial={visaoInicial} />;
 }

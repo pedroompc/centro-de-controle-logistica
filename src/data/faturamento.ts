@@ -4,6 +4,7 @@ import { primeiroDiaDoMes } from "@/domain/periodo";
 import { filialIn } from "./filiais";
 import { notaDeVenda } from "./regras-winthor";
 import type { ResumoFaturamento } from "@/domain/faturamento";
+import type { FaturamentoDia } from "@/domain/bi-geral-interativo";
 
 // Faixa de data indexável: `col >= :ini AND col < :fim + 1` (inclui o dia :fim
 // inteiro e usa índice — TRUNC(col) BETWEEN desabilitaria o índice e a query
@@ -148,6 +149,28 @@ export async function getPositivados(ini: string, fim: string): Promise<number |
     return n(rows[0]?.POSITIVADOS);
   } catch (erro) {
     console.error("[faturamento] positivados indisponível:", (erro as Error).message);
+    return null;
+  }
+}
+
+const SQL_POR_DIA = `
+SELECT TO_CHAR(TRUNC(v.DTSAIDA), 'YYYY-MM-DD') DIA, NVL(SUM(v.VENDAS), 0) VENDA,
+       NVL(SUM(v.DEVOLUCAO), 0) DEVOLUCAO, NVL(SUM(v.AVULSA), 0) AVULSA
+  FROM VIEW_BI_FATURAMENTO v
+ WHERE ${filialIn("v.CODFILIAL")} AND ${faixa("v.DTSAIDA")}
+ GROUP BY TRUNC(v.DTSAIDA)
+ ORDER BY 1`;
+
+/**
+ * Faturamento dia a dia (mesma VIEW_BI_FATURAMENTO dos valores do resumo: a soma
+ * dos dias bate com o faturamento líquido do período). `null` = Winthor fora.
+ */
+export async function getFaturamentoPorDia(ini: string, fim: string): Promise<FaturamentoDia[] | null> {
+  try {
+    const rows = await queryWinthor<{ DIA: string; VENDA: number; DEVOLUCAO: number; AVULSA: number }>(SQL_POR_DIA, { ini, fim });
+    return rows.map((r) => ({ dia: r.DIA, venda: n(r.VENDA), devolucao: n(r.DEVOLUCAO), avulsa: n(r.AVULSA) }));
+  } catch (erro) {
+    console.error("[faturamento] por dia: Winthor indisponível:", (erro as Error).message);
     return null;
   }
 }

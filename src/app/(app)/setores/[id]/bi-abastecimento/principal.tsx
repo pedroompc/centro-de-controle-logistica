@@ -1,5 +1,6 @@
 "use client";
 
+import { lerVisao } from "@/domain/bi-geral-interativo";
 import { useState, type ReactNode } from "react";
 import { numerosAbastecimento, variacaoDoQuadro, type ComparacaoQuadros } from "@/domain/bi-quadros";
 import { formatPercent } from "@/domain/format";
@@ -16,8 +17,8 @@ import { VisaoGiro } from "./giro";
 import { VisaoMovimento } from "./movimento";
 import { VisaoRupturas } from "./rupturas";
 
-export function BIAbastecimento({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
-  const [visao, setVisao] = useState<VisaoAba | null>(null);
+export function BIAbastecimento({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros; visaoInicial?: string }) {
+  const [visao, setVisao] = useState<VisaoAba | null>(() => lerVisao(visaoInicial, VISOES.map((v) => v.id)));
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoAba) => setVisao((a) => (a === v ? null : v));
   const titulo = visao ? VISOES.find((v) => v.id === visao)! : null;

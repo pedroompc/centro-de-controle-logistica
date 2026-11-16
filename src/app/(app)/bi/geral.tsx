@@ -3,7 +3,10 @@ import Link from "next/link";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { carregarResumoCasa } from "@/data/resumo-casa";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
-import { mesAnterior, mesDoPeriodo, primeiroDiaDoMes, rotuloCurto, type Periodo, type PeriodoComparado } from "@/domain/periodo";
+import { mesAnterior, mesDoPeriodo, paramsDoPeriodo, periodoDoMes, primeiroDiaDoMes, rotuloCurto, type Periodo, type PeriodoComparado } from "@/domain/periodo";
+import { visaoDoIndicador, type VisaoGeral } from "@/domain/bi-geral-interativo";
+import { DetalheCusto, DetalheCustoSobreFat, DetalheEfetivo, DetalheFaturamento, DetalheCarregando } from "./detalhes";
+import { EscVolta } from "./detalhes-cliente";
 import { getSerieTendencias } from "@/data/faturamento-mensal";
 import { serieCustosMensais } from "@/data/custos-mensais";
 import { serieEfetivoMensal } from "@/data/efetivo-mensal";
@@ -41,6 +44,8 @@ interface Cargas {
   setorBase: (s: SetorGeral) => Promise<ResumoSetorGeral | null>;
   /** Fotos mensais do faturamento: mês sem foto vai ao Winthor, então entra na fila também. */
   fechados: (qtd: number) => Promise<Awaited<ReturnType<typeof getSerieTendencias>>>;
+  /** Pontos mês a mês da casa (gráficos e tabela custo ÷ faturamento). */
+  pontos: () => Promise<PontoCasa[]>;
 }
 
 /** Comparação antes do primeiro mês com dado do setor = sem base ("sem histórico"), nunca zero. */
@@ -57,7 +62,8 @@ function criarCargas(p: {
     if (!memo.has(k)) memo.set(k, f());
     return memo.get(k) as Promise<T>;
   };
-  return {
+  const self: Cargas = {
+    pontos: () => uma("pontos", () => carregarPontos(p.periodo, self)),
     fechados: (qtd) => uma("fechados", () => (qtd > 0 ? fila(() => getSerieTendencias(qtd)).catch(() => []) : Promise.resolve([]))),
     casa: () => uma("casa", () => fila(() => carregarResumoCasa(p.periodo))),
     casaBase: () => {
@@ -73,6 +79,7 @@ function criarCargas(p: {
       return uma(`b:${s}`, () => (c ? fila(() => resumoDoSetor(s, p.setores[s], p.funcionarios, c.periodo)).catch(() => null) : Promise.resolve(null)));
     },
   };
+  return self;
 }
 
 const SETORES: SetorGeral[] = ["separacao", "recebimento", "abastecimento", "motoristas"];
@@ -94,19 +101,36 @@ const fmt = (i: IndicadorGeral): string => {
 
 // --- Números da casa (topo) -----------------------------------------------------
 
-function CartaoCasa({ rotulo, valor, sub }: { rotulo: string; valor: string; sub?: ReactNode }) {
-  return (
-    <div className="entrar rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">
-      <span className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/50">{rotulo}</span>
+/** Liga/desliga a visão do cartão no palco (o 2º clique fecha). */
+type Nav = (v: VisaoGeral) => { href: string; ativo: boolean };
+
+function CartaoCasa({ rotulo, valor, sub, nav }: { rotulo: string; valor: string; sub?: ReactNode; nav?: { href: string; ativo: boolean } }) {
+  const corpo = (
+    <>
+      <span className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/50">
+        {rotulo}
+        {nav && <span className={`normal-case tracking-normal transition ${nav.ativo ? "text-amber-300" : "text-white/25 group-hover:text-amber-300"}`}>{nav.ativo ? "fechar ×" : "detalhar ›"}</span>}
+      </span>
       <div className="mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1.25rem,2.4vw,2rem)] font-extrabold leading-none tabular-nums text-white">{valor}</div>
       <div className="mt-2 min-h-4 text-xs">{sub}</div>
-    </div>
+    </>
+  );
+  if (!nav) return <div className="entrar rounded-2xl bg-white/[0.06] px-5 py-4 ring-1 ring-white/10">{corpo}</div>;
+  return (
+    <Link
+      href={nav.href}
+      scroll={false}
+      aria-pressed={nav.ativo}
+      className={`entrar levantar group block rounded-2xl px-5 py-4 transition ${nav.ativo ? "bg-amber-400/15 ring-2 ring-amber-400" : "bg-white/[0.06] ring-1 ring-white/10 hover:bg-white/[0.1]"}`}
+    >
+      {corpo}
+    </Link>
   );
 }
 
 const GRADE_CASA = "mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4";
 
-async function NumerosCasa({ comparacao, cargas }: { comparacao: PeriodoComparado | null; cargas: Cargas }) {
+async function NumerosCasa({ comparacao, cargas, nav }: { comparacao: PeriodoComparado | null; cargas: Cargas; nav: Nav }) {
   const [a, b] = await Promise.all([cargas.casa(), cargas.casaBase()]);
   const falhou = !!comparacao && (b === null || !!b.erro);
   const v = (c: Comparacao | null) => (comparacao ? <VariacaoTV c={c} rotulo={`vs ${rotuloCurto(comparacao.periodo)}`} falhou={falhou} /> : undefined);
@@ -118,13 +142,15 @@ async function NumerosCasa({ comparacao, cargas }: { comparacao: PeriodoComparad
         rotulo="Efetivo"
         valor={a.efetivo === null ? "—" : `${a.efetivo} pessoas`}
         sub={a.erro ? <span className="text-amber-200/80" title={a.erro}>indisponível agora</span> : <span className="text-white/35">ativos hoje</span>}
+        nav={nav("efetivo")}
       />
-      <CartaoCasa rotulo="Faturamento líquido" valor={brl(a.faturamentoLiquido)} sub={pct("faturamentoLiquido", true)} />
-      <CartaoCasa rotulo="Custo logístico" valor={brl(a.custoLogistico)} sub={pct("custoLogistico", false)} />
+      <CartaoCasa rotulo="Faturamento líquido" valor={brl(a.faturamentoLiquido)} sub={pct("faturamentoLiquido", true)} nav={nav("faturamento")} />
+      <CartaoCasa rotulo="Custo logístico" valor={brl(a.custoLogistico)} sub={pct("custoLogistico", false)} nav={nav("custo")} />
       <CartaoCasa
         rotulo="Custo ÷ faturamento"
         valor={a.custoSobreFat === null ? "—" : formatPercent(a.custoSobreFat, 2)}
         sub={v(compararTaxa(a.custoSobreFat, b?.custoSobreFat, false, { casas: 2 }))}
+        nav={nav("custoSobreFat")}
       />
     </div>
   );
@@ -150,13 +176,15 @@ const GRADE_EVOLUCAO = "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-
 
 // Sem "vs mês anterior" no gráfico: a comparação fica nos cartões (Comparar), com
 // a regra de custo do Início; o histórico usa a folha da foto de cada mês.
-function serie(nome: string, pontos: PontoCasa[], valor: (p: PontoCasa) => number | null, texto: (v: number) => string): SerieEvolucao {
+function serie(nome: string, pontos: PontoCasa[], valor: (p: PontoCasa) => number | null, texto: (v: number) => string, hrefMes: (mes: string) => string): SerieEvolucao {
   const ps = pontos.filter((p) => valor(p) !== null);
   const vs = ps.map((p) => valor(p)!);
-  return { nome, rotulos: ps.map((p) => rotuloMes(p.mes)), valores: vs, textos: vs.map(texto), parcial: ps.map((p) => p.parcial) };
+  return {
+    nome, rotulos: ps.map((p) => rotuloMes(p.mes)), valores: vs, textos: vs.map(texto), parcial: ps.map((p) => p.parcial), hrefs: ps.map((p) => hrefMes(p.mes)),
+  };
 }
 
-async function EvolucaoCasa({ periodo, cargas }: { periodo: Periodo; cargas: Cargas }) {
+async function carregarPontos(periodo: Periodo, cargas: Cargas): Promise<PontoCasa[]> {
   const hojeMes = primeiroDiaDoMes();
   const ateMes = primeiroDiaDoMes(periodo.ate) > hojeMes ? hojeMes : primeiroDiaDoMes(periodo.ate);
   let inicio = ateMes;
@@ -171,7 +199,7 @@ async function EvolucaoCasa({ periodo, cargas }: { periodo: Periodo; cargas: Car
     serieEfetivoMensal(qtd + 1).catch(() => []),
   ]);
   const mes = mesDoPeriodo(periodo);
-  const pontos = montarEvolucaoCasa({
+  return montarEvolucaoCasa({
     ateMes,
     qtd: MESES_EVOLUCAO,
     hojeMes,
@@ -180,11 +208,21 @@ async function EvolucaoCasa({ periodo, cargas }: { periodo: Periodo; cargas: Car
     custosPorMes: new Map(custos.map((c) => [c.mes, c])),
     atual: mes && !a.erro ? { mes, faturamento: a.faturamentoLiquido, custo: a.custoLogistico, clientes: a.clientesAtendidos } : null,
   });
+}
+
+/** Clicar num mês do gráfico leva o BI inteiro para ele (mantém comparação e visão aberta). */
+function hrefDoMes(q: Record<string, string>, ver: VisaoGeral | null) {
+  return (mes: string) => hrefBI("geral", { ...paramsDoPeriodo(periodoDoMes(mes), undefined, true), ...(q.cmp ? { cmp: q.cmp } : {}), ...(ver ? { ver } : {}) });
+}
+
+async function EvolucaoCasa({ cargas, q, ver }: { cargas: Cargas; q: Record<string, string>; ver: VisaoGeral | null }) {
+  const pontos = await cargas.pontos();
+  const h = hrefDoMes(q, ver);
   const series = [
-    serie("Custo ÷ faturamento", pontos, (p) => p.custoSobreFat, (v) => formatPercent(v, 2)),
-    serie("Faturamento líquido", pontos, (p) => p.faturamento, reais),
-    serie("Custo logístico", pontos, (p) => p.custo, reais),
-    serie("Clientes atendidos", pontos, (p) => p.clientes, (v) => Math.round(v).toLocaleString("pt-BR")),
+    serie("Custo ÷ faturamento", pontos, (p) => p.custoSobreFat, (v) => formatPercent(v, 2), h),
+    serie("Faturamento líquido", pontos, (p) => p.faturamento, reais, h),
+    serie("Custo logístico", pontos, (p) => p.custo, reais, h),
+    serie("Clientes atendidos", pontos, (p) => p.clientes, (v) => Math.round(v).toLocaleString("pt-BR"), h),
   ];
   return (
     <div className={GRADE_EVOLUCAO}>
@@ -203,7 +241,7 @@ function EvolucaoCarregando() {
 
 // --- Placar dos setores (com Comparar) --------------------------------------------------
 
-async function PlacarSetores({ cargas, comparacao }: { cargas: Cargas; comparacao: PeriodoComparado }) {
+async function PlacarSetores({ cargas, comparacao, q }: { cargas: Cargas; comparacao: PeriodoComparado; q: Record<string, string> }) {
   const dados = await Promise.all(
     SETORES.map(async (s) => {
       const [r, base] = await Promise.all([cargas.setor(s), cargas.setorBase(s)]);
@@ -211,7 +249,7 @@ async function PlacarSetores({ cargas, comparacao }: { cargas: Cargas; comparaca
       return { setor: s, atuais, base: base && !base.erro ? base.indicadores : null };
     }),
   );
-  const linhas = montarPlacar(dados).map((l) => ({ ...l, grupo: ROTULO_ABA[l.setor] }));
+  const linhas = montarPlacar(dados).map((l) => ({ ...l, grupo: ROTULO_ABA[l.setor], href: hrefLinha(l.setor, l.chave, q) }));
   if (linhas.length === 0) return null;
   return <Placar linhas={linhas} rotuloBase={`vs ${rotuloCurto(comparacao.periodo)}`} />;
 }
@@ -235,19 +273,25 @@ async function lerSetor(s: SetorGeral, setor: Setor | undefined, funcionarios: F
   return resumoMotoristas(d, fat?.atendimentos ?? null);
 }
 
+/** Linha de setor (ou barra do placar) → BI do setor já no quadro daquele número. */
+function hrefLinha(s: SetorGeral, chave: string, q: Record<string, string>): string {
+  const ver = visaoDoIndicador(s, chave);
+  return hrefBI(s, ver ? { ...q, ver } : q);
+}
+
 function Moldura({ s, href, children }: { s: SetorGeral; href: string; children: ReactNode }) {
   return (
-    <Link href={href} className="entrar levantar group flex flex-col rounded-2xl bg-white/[0.06] p-5 ring-1 ring-white/10 transition hover:bg-white/[0.1]">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="entrar flex flex-col rounded-2xl bg-white/[0.06] p-5 ring-1 ring-white/10">
+      <Link href={href} className="group mb-3 flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">{ROTULO_ABA[s]}</span>
         <span className="text-xs text-white/30 transition group-hover:text-amber-300">abrir BI ›</span>
-      </div>
+      </Link>
       {children}
-    </Link>
+    </div>
   );
 }
 
-async function BlocoSetor(p: { cargas: Cargas; s: SetorGeral; comparacao: PeriodoComparado | null; href: string }) {
+async function BlocoSetor(p: { cargas: Cargas; s: SetorGeral; comparacao: PeriodoComparado | null; href: string; q: Record<string, string> }) {
   const cmpValido = cmpDoSetor(p.s, p.comparacao);
   const [r, base] = await Promise.all([p.cargas.setor(p.s), p.cargas.setorBase(p.s)]);
   if (r === null) {
@@ -259,11 +303,16 @@ async function BlocoSetor(p: { cargas: Cargas; s: SetorGeral; comparacao: Period
   return (
     <Moldura s={p.s} href={p.href}>
       {r.erro && <p className="mb-2 text-xs text-amber-200/80" title={r.erro}>fonte do setor indisponível agora</p>}
-      <dl className="space-y-3">
+      <div className="space-y-3">
         {r.indicadores.map((i) => (
-          <div key={i.chave} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-t border-white/[0.06] pt-2 first:border-t-0 first:pt-0">
-            <dt className="text-sm text-white/55">{i.rotulo}</dt>
-            <dd className="text-right">
+          <Link
+            key={i.chave}
+            href={hrefLinha(p.s, i.chave, p.q)}
+            title={`${i.rotulo} — abrir no BI do setor`}
+            className="-mx-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg border-t border-white/[0.06] px-2 pt-2 transition first:border-t-0 first:pt-0 hover:bg-white/[0.06] [&:hover_.rot]:text-amber-300"
+          >
+            <span className="rot text-sm text-white/55 transition">{i.rotulo}</span>
+            <span className="text-right">
               <span className="font-[family-name:var(--font-sora)] text-xl font-extrabold tabular-nums text-white">{fmt(i)}</span>
               {p.comparacao && (
                 <span className="block">
@@ -274,10 +323,10 @@ async function BlocoSetor(p: { cargas: Cargas; s: SetorGeral; comparacao: Period
                   />
                 </span>
               )}
-            </dd>
-          </div>
+            </span>
+          </Link>
         ))}
-      </dl>
+      </div>
     </Moldura>
   );
 }
@@ -296,7 +345,7 @@ function SetorCarregando({ s }: { s: SetorGeral }) {
 // --- A aba -------------------------------------------------------------------------
 
 export function AbaGeral({
-  periodo, comparacao, setores, funcionarios, hrefMes, abas, q, faltando,
+  periodo, comparacao, setores, funcionarios, hrefMes, abas, q, faltando, ver, todosSetores, admin,
 }: {
   periodo: Periodo;
   comparacao: PeriodoComparado | null;
@@ -307,6 +356,10 @@ export function AbaGeral({
   q: Record<string, string>;
   /** Aba de setor pedida, mas o setor não está cadastrado. */
   faltando?: AbaBI;
+  /** Visão aberta no palco (`?ver=`); null = Setores. */
+  ver: VisaoGeral | null;
+  todosSetores: Setor[];
+  admin: boolean;
 }) {
   // No máximo 2 cargas pesadas ao mesmo tempo, na ordem da tela; cada uma roda uma vez só.
   const cargas = criarCargas({ periodo, comparacao, setores, funcionarios });
@@ -316,17 +369,35 @@ export function AbaGeral({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
         {SETORES.map((s) => (
           <Suspense key={`${s}|${chave}`} fallback={<SetorCarregando s={s} />}>
-            <BlocoSetor cargas={cargas} s={s} comparacao={comparacao} href={hrefBI(s, q)} />
+            <BlocoSetor cargas={cargas} s={s} comparacao={comparacao} href={hrefBI(s, q)} q={q} />
           </Suspense>
         ))}
       </div>
       {comparacao && (
         <Suspense key={`placar|${chave}`} fallback={null}>
-          <PlacarSetores cargas={cargas} comparacao={comparacao} />
+          <PlacarSetores cargas={cargas} comparacao={comparacao} q={q} />
         </Suspense>
       )}
     </div>
   );
+  const nav: Nav = (v) => ({ ativo: ver === v, href: hrefBI("geral", ver === v ? q : { ...q, ver: v }) });
+  const fechar = hrefBI("geral", q);
+  const detalhe = (titulo: string, conteudo: ReactNode) => ({
+    chave: `ver|${ver}`,
+    titulo,
+    conteudo: (
+      <>
+        <EscVolta href={fechar} />
+        <Suspense key={`${ver}|${chave}`} fallback={<DetalheCarregando />}>{conteudo}</Suspense>
+      </>
+    ),
+  });
+  const palco =
+    ver === "efetivo" ? detalhe("Efetivo", <DetalheEfetivo funcionarios={funcionarios} setores={todosSetores} admin={admin} />)
+    : ver === "faturamento" ? detalhe("Faturamento dia a dia", <DetalheFaturamento periodo={periodo} />)
+    : ver === "custo" ? detalhe("Custo logístico", <DetalheCusto periodo={periodo} funcionarios={funcionarios} />)
+    : ver === "custoSobreFat" ? detalhe("Custo ÷ faturamento mês a mês", <DetalheCustoSobreFat pontos={cargas.pontos()} />)
+    : { chave: "setores", titulo: "Setores", conteudo: blocos };
   return (
     <BIShell
       titulo="BI Geral"
@@ -338,14 +409,14 @@ export function AbaGeral({
       menu={
         <>
           <Suspense key={`casa|${chave}`} fallback={<CasaCarregando />}>
-            <NumerosCasa comparacao={comparacao} cargas={cargas} />
+            <NumerosCasa comparacao={comparacao} cargas={cargas} nav={nav} />
           </Suspense>
           <Suspense key={`evolucao|${chave}`} fallback={<EvolucaoCarregando />}>
-            <EvolucaoCasa periodo={periodo} cargas={cargas} />
+            <EvolucaoCasa cargas={cargas} q={q} ver={ver} />
           </Suspense>
         </>
       }
-      palco={{ chave: "setores", titulo: "Setores", conteudo: blocos }}
+      palco={palco}
     />
   );
 }

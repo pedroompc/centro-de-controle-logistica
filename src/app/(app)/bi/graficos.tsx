@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 // Cores validadas no validador da skill dataviz contra a superfície escura do BI
 // (#1c2163): linha âmbar, piora rose, melhora neutra (sem verde — regra do site).
@@ -14,6 +16,7 @@ export interface SerieEvolucao {
   valores: number[];
   textos: string[]; // valores formatados
   parcial: boolean[]; // mês aberto: ponto vazado
+  hrefs?: (string | null)[]; // clicar no mês leva o BI para ele
 }
 
 const W = 320, H = 132;
@@ -23,6 +26,7 @@ const PW = W - PAD_L - PAD_R, PH = H - PAD_T - PAD_B;
 /** Um painel por indicador, cada um na própria escala (nunca dois eixos). */
 export function PainelEvolucao({ s }: { s: SerieEvolucao }) {
   const [hover, setHover] = useState<number | null>(null);
+  const router = useRouter();
   const n = s.valores.length;
   const ultimo = n - 1;
   const foco = hover ?? ultimo;
@@ -63,8 +67,10 @@ export function PainelEvolucao({ s }: { s: SerieEvolucao }) {
             const passo = n > 1 ? PW / (n - 1) : PW;
             const esq = Math.max(PAD_L, x(i) - passo / 2), dir = Math.min(PAD_L + PW, x(i) + passo / 2);
             return (
-              <rect key={i} x={esq} y={0} width={dir - esq} height={H} fill="transparent" onMouseEnter={() => setHover(i)}>
-                <title>{`${r}: ${s.textos[i]}${s.parcial[i] ? " (parcial)" : ""}`}</title>
+              <rect key={i} x={esq} y={0} width={dir - esq} height={H} fill="transparent" onMouseEnter={() => setHover(i)}
+                className={s.hrefs?.[i] ? "cursor-pointer" : undefined}
+                onClick={() => { const h = s.hrefs?.[i]; if (h) router.push(h); }}>
+                <title>{`${r}: ${s.textos[i]}${s.parcial[i] ? " (parcial)" : ""}${s.hrefs?.[i] ? " · clique para abrir o mês" : ""}`}</title>
               </rect>
             );
           })}
@@ -80,6 +86,7 @@ export interface LinhaPlacarTela {
   pct: number;
   texto: string;
   positivo: boolean;
+  href: string | null; // abre o BI do setor no quadro daquele número
 }
 
 /**
@@ -88,6 +95,7 @@ export interface LinhaPlacarTela {
  * disso encosta na borda — o número ao lado continua exato).
  */
 export function Placar({ linhas, rotuloBase }: { linhas: LinhaPlacarTela[]; rotuloBase: string }) {
+  const router = useRouter();
   const teto = Math.min(100, Math.max(10, ...linhas.map((l) => Math.abs(l.pct))));
   return (
     <div className="entrar rounded-2xl bg-white/[0.06] p-5 ring-1 ring-white/10">
@@ -108,8 +116,16 @@ export function Placar({ linhas, rotuloBase }: { linhas: LinhaPlacarTela[]; rotu
               {novo && (
                 <span className={`col-span-3 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-white/35 ${i > 0 ? "mt-2" : ""}`}>{l.grupo}</span>
               )}
-              <span className="truncate text-white/60" title={`${l.grupo} · ${l.rotulo}`}>{l.rotulo}</span>
-              <div className="relative h-4" title={`${l.rotulo}: ${l.texto}`}>
+              {l.href ? (
+                <Link href={l.href} className="truncate text-white/60 underline-offset-4 hover:text-amber-300 hover:underline" title={`${l.grupo} · ${l.rotulo} — abrir no BI do setor`}>{l.rotulo}</Link>
+              ) : (
+                <span className="truncate text-white/60" title={`${l.grupo} · ${l.rotulo}`}>{l.rotulo}</span>
+              )}
+              <div
+                className={`relative h-4 ${l.href ? "cursor-pointer" : ""}`}
+                title={`${l.rotulo}: ${l.texto}${l.href ? " — clique para abrir no BI do setor" : ""}`}
+                onClick={() => l.href && router.push(l.href)}
+              >
                 <div className="absolute inset-y-0 left-1/2 w-px bg-white/20" />
                 <div
                   className="absolute inset-y-0.5 rounded"

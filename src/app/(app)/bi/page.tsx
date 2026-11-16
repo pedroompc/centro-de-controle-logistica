@@ -15,6 +15,8 @@ import {
 import { AbasBI } from "./abas-bi";
 import { SeletorComparacao } from "@/components/seletor-comparacao";
 import { AbaGeral } from "./geral";
+import { isAdmin } from "@/data/auth";
+import { lerVisaoGeral } from "@/domain/bi-geral-interativo";
 
 /**
  * BI Geral: um BI só, com a aba Geral (números da casa e de cada setor) e o
@@ -23,7 +25,7 @@ import { AbaGeral } from "./geral";
 export default async function BIGeralPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string; mes?: string; de?: string; ate?: string; cmp?: string }>;
+  searchParams: Promise<{ aba?: string; mes?: string; de?: string; ate?: string; cmp?: string; ver?: string }>;
 }) {
   const sp = await searchParams;
   const aba = lerAba(sp.aba);
@@ -45,21 +47,21 @@ export default async function BIGeralPage({
     atalhos: atalhosPeriodo().filter((a) => a.periodo.ate >= piso),
   };
 
-  const [setores, funcionarios] = await Promise.all([listarSetores(), listarFuncionarios()]);
+  const [setores, funcionarios, admin] = await Promise.all([listarSetores(), listarFuncionarios(), isAdmin()]);
   const porAba = setoresDoBI(setores);
   const abas = <AbasBI ativa={aba} q={q} direita={<SeletorComparacao periodo={periodo} comparacao={cmp} piso={piso} hoje={hoje} />} />;
-  const chave = `${aba}|${periodo.de}|${periodo.ate}|${sp.cmp ?? ""}`;
-  const comum = { funcionarios, periodo, hrefMes, hrefSair: "/", abas, comparacao: cmp };
+  const chave = `${aba}|${periodo.de}|${periodo.ate}|${sp.cmp ?? ""}|${sp.ver ?? ""}`;
+  const comum = { funcionarios, periodo, hrefMes, hrefSair: "/", abas, comparacao: cmp, visaoInicial: sp.ver };
 
   let conteudo;
   if (aba === "geral") {
-    conteudo = <AbaGeral periodo={periodo} comparacao={cmp} setores={porAba} funcionarios={funcionarios} hrefMes={hrefMes} abas={abas} q={q} />;
+    conteudo = <AbaGeral periodo={periodo} comparacao={cmp} setores={porAba} funcionarios={funcionarios} hrefMes={hrefMes} abas={abas} q={q} ver={lerVisaoGeral(sp.ver)} todosSetores={setores} admin={admin} />;
   } else if (aba === "recebimento") {
-    conteudo = <ConteudoBIRecebimento periodo={periodo} hrefMes={hrefMes} hrefSair="/" abas={abas} comparacao={cmp} />;
+    conteudo = <ConteudoBIRecebimento periodo={periodo} hrefMes={hrefMes} hrefSair="/" abas={abas} comparacao={cmp} visaoInicial={sp.ver} />;
   } else {
     const setor = porAba[aba];
     if (!setor) {
-      conteudo = <AbaGeral periodo={periodo} comparacao={cmp} setores={porAba} funcionarios={funcionarios} hrefMes={hrefMes} abas={abas} q={q} faltando={aba} />;
+      conteudo = <AbaGeral periodo={periodo} comparacao={cmp} setores={porAba} funcionarios={funcionarios} hrefMes={hrefMes} abas={abas} q={q} faltando={aba} ver={lerVisaoGeral(sp.ver)} todosSetores={setores} admin={admin} />;
     } else if (aba === "separacao") {
       conteudo = <ConteudoBISeparacao setor={setor} {...comum} />;
     } else if (aba === "abastecimento") {

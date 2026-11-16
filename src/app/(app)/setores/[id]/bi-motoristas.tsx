@@ -1,5 +1,6 @@
 "use client";
 
+import { lerVisao } from "@/domain/bi-geral-interativo";
 /**
  * BI dos Motoristas em tela cheia. A entrega vem do Winthor: nota de venda em
  * carga → carga (motorista, ajudante, veículo) → capacidade do veículo. VIAGEM =
@@ -54,8 +55,8 @@ const anteriorDe = (d: DadosBIMotoristas): PontoHistoricoMot | null => d.refAnte
 const noRecorte = (d: DadosBIMotoristas, mes: string) => d.meses.includes(mes);
 
 
-export function BIMotoristas({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
-  const [visao, setVisao] = useState<VisaoMot | null>(null);
+export function BIMotoristas({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros; visaoInicial?: string }) {
+  const [visao, setVisao] = useState<VisaoMot | null>(() => lerVisao(visaoInicial, VISOES.map((v) => v.id)));
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoMot) => setVisao((a) => (a === v ? null : v));
   const visoes = VISOES.filter((v) => !v.admin || (dados.admin && dados.motoristas));

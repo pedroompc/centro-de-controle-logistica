@@ -1,5 +1,6 @@
 "use client";
 
+import { lerVisao } from "@/domain/bi-geral-interativo";
 /**
  * BI da Separação em tela cheia. A produção vem do Harpia (WMS): endereço
  * visitado (linha do mapa), pedidos pelas guias, separador pela página, erro com a origem que o
@@ -51,8 +52,8 @@ const anteriorDe = (d: DadosBISeparacao): PontoHistorico | null => d.refAnterior
 /** O mês está no recorte da tela (destaque nas barras mês a mês). */
 const noRecorte = (d: DadosBISeparacao, mes: string) => d.meses.includes(mes);
 
-export function BISeparacao({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
-  const [visao, setVisao] = useState<VisaoSep | null>(null);
+export function BISeparacao({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros; visaoInicial?: string }) {
+  const [visao, setVisao] = useState<VisaoSep | null>(() => lerVisao(visaoInicial, VISOES.map((v) => v.id)));
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoSep) => setVisao((a) => (a === v ? null : v));
   const visoes = VISOES.filter((v) => !v.admin || (dados.admin && dados.individual));
