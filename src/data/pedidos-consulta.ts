@@ -81,83 +81,116 @@ function whereClause(f: FiltrosPedidos): string {
     .join("\n    AND ");
 }
 
-const sqlPedidos = (f: FiltrosPedidos) => `SELECT * FROM (
-  SELECT
-    ped.NUMPED                       AS NUMPED,
-    ped.DATA                         AS DATA_PEDIDO,
-    TRUNC(SYSDATE) - TRUNC(ped.DATA) AS DIAS,
-    ped.CODCLI                       AS CODCLI,
-    cli.CLIENTE                      AS CLIENTE,
-    cli.ENDERENT                     AS ENDERECO,
-    cli.BAIRROENT                    AS BAIRRO,
-    cli.MUNICENT                     AS CIDADE,
-    cli.ESTENT                       AS UF,
-    ped.CODUSUR                      AS CODRCA,
-    usu.NOME                         AS RCA,
-    usu.TELEFONE1                    AS FONE1,
-    usu.TELEFONE2                    AS FONE2,
-    -- Observações do pedido (OBS1+OBS2 são um texto só, quebrado em duas colunas) e de entrega.
-    TRIM(TRIM(ped.OBS) || ' ' || ped.OBS1 || ped.OBS2) AS OBS_PEDIDO,
-    TRIM(ped.OBSENTREGA1 || ' ' || ped.OBSENTREGA2 || ' ' || ped.OBSENTREGA3 || ' ' || ped.OBSENTREGA4) AS OBS_ENTREGA,
-    ped.POSICAO                      AS POSICAO,
-    ped.NUMCAR                       AS NUMCAR,
-    car.CODMOTORISTA                 AS CODMOTORISTA,
-    emp.NOME                         AS MOTORISTA,
-    ped.DTFAT                        AS DTFAT,
-    (SELECT MAX(nf.NUMNOTA) FROM PCNFSAID nf WHERE nf.NUMPED = ped.NUMPED) AS NF,
-    NVL(ped.VLTOTAL, 0)              AS VALOR,
-    NVL(ped.TOTPESO, 0)              AS PESO,
-    (SELECT COUNT(*) FROM PCPEDI i WHERE i.NUMPED = ped.NUMPED) AS QTD_ITENS,
-    CASE WHEN EXISTS (
-      SELECT 1 FROM PCNFSAID nf
-      JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
-      WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
-    ) THEN 'S' ELSE 'N' END          AS TEM_DEV,
-    -- Motivo(s) da devolução: mesma cadeia do TEM_DEV, resolvendo o CODDEVOL da
-    -- nota de entrada em PCTABDEV.MOTIVO. DISTINCT no subselect antes do LISTAGG
-    -- (não depende do LISTAGG DISTINCT, que só existe no Oracle 19c+); vazio ⇒ NULL.
-    (SELECT LISTAGG(mt, ', ') WITHIN GROUP (ORDER BY mt) FROM (
-       SELECT DISTINCT NVL(td.MOTIVO, 'Não informado') AS mt
-       FROM PCNFSAID nf
-       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
-       JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
-       LEFT JOIN PCTABDEV td ON td.CODDEVOL  = ne.CODDEVOL
-       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
-    ))                               AS MOTIVO_DEV,
-    -- Cabeçalho: quem emitiu (8888 = Força de Vendas, o RCA lançou) e quem
-    -- liberou. DTLIBERA guarda a hora real; a emissão é DATA + HORA/MINUTO.
-    -- Datas saem como texto p/ não sofrer conversão de fuso no driver.
-    ped.CODEMITENTE                  AS CODEMITENTE,
-    emi.NOME                         AS EMITENTE,
-    TO_CHAR(ped.DATA, 'YYYY-MM-DD') || ' ' ||
-      LPAD(NVL(ped.HORA, 0), 2, '0') || ':' || LPAD(NVL(ped.MINUTO, 0), 2, '0') AS EMISSAO,
-    lib.NOME                         AS LIBERADO_POR,
-    TO_CHAR(ped.DTLIBERA, 'YYYY-MM-DD HH24:MI:SS') AS LIBERADO_EM,
-    -- Nota de origem da devolução: a NF de venda (PCNFSAID) que voltou, e a NF
-    -- de entrada da devolução (PCNFENT). Mesma cadeia do TEM_DEV.
-    (SELECT LISTAGG(n, ', ') WITHIN GROUP (ORDER BY n) FROM (
-       SELECT DISTINCT nf.NUMNOTA AS n
-       FROM PCNFSAID nf
-       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
-       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
-    ))                               AS NF_ORIGEM_DEV,
-    (SELECT LISTAGG(n, ', ') WITHIN GROUP (ORDER BY n) FROM (
-       SELECT DISTINCT ne.NUMNOTA AS n
-       FROM PCNFSAID nf
-       JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
-       JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
-       WHERE nf.NUMPED = ped.NUMPED AND NVL(ec.VLDEVOLUCAO, 0) > 0
-    ))                               AS NF_DEV
-  FROM PCPEDC ped
-  LEFT JOIN PCCLIENT cli ON cli.CODCLI      = ped.CODCLI
-  LEFT JOIN PCUSUARI usu ON usu.CODUSUR     = ped.CODUSUR
-  LEFT JOIN PCCARREG car ON car.NUMCAR      = ped.NUMCAR
-  LEFT JOIN PCEMPR   emp ON emp.MATRICULA   = car.CODMOTORISTA
-  LEFT JOIN PCEMPR   emi ON emi.MATRICULA   = ped.CODEMITENTE
-  LEFT JOIN PCEMPR   lib ON lib.MATRICULA   = ped.CODFUNCLIBERA
-  WHERE ${whereClause(f)}
-  ORDER BY ped.DATA DESC, ped.NUMPED DESC
-) WHERE ROWNUM <= ${TETO}`;
+// Duas etapas: `base` escolhe os 500 pedidos (só colunas do PCPEDC, cortadas
+// pelo ROWNUM) e só DEPOIS NF, itens e devolução são calculados — e só para
+// esses 500, num GROUP BY cada. Antes eram 6 subselects por linha, rodando
+// para todos os pedidos do período antes do corte (~2x mais lento).
+const sqlPedidos = (f: FiltrosPedidos) => `WITH base AS (
+  SELECT * FROM (
+    SELECT ped.NUMPED, ped.DATA, ped.CODCLI, ped.CODUSUR, ped.POSICAO, ped.NUMCAR, ped.DTFAT,
+           ped.VLTOTAL, ped.TOTPESO, ped.OBS, ped.OBS1, ped.OBS2,
+           ped.OBSENTREGA1, ped.OBSENTREGA2, ped.OBSENTREGA3, ped.OBSENTREGA4,
+           ped.CODEMITENTE, ped.HORA, ped.MINUTO, ped.CODFUNCLIBERA, ped.DTLIBERA
+    FROM PCPEDC ped
+    WHERE ${whereClause(f)}
+    ORDER BY ped.DATA DESC, ped.NUMPED DESC
+  ) WHERE ROWNUM <= ${TETO}
+),
+-- Devolução: entrada de devolução (PCESTCOM.VLDEVOLUCAO > 0) ligada a uma NF
+-- de saída do pedido. DISTINCT antes do LISTAGG (LISTAGG DISTINCT só no 19c+).
+dev AS (
+  SELECT x.NUMPED, LISTAGG(x.NUMNOTA, ', ') WITHIN GROUP (ORDER BY x.NUMNOTA) AS NF_ORIGEM_DEV
+  FROM (SELECT DISTINCT nf.NUMPED, nf.NUMNOTA
+        FROM base b
+        JOIN PCNFSAID nf ON nf.NUMPED = b.NUMPED
+        JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
+        WHERE NVL(ec.VLDEVOLUCAO, 0) > 0) x
+  GROUP BY x.NUMPED
+),
+devent AS (
+  SELECT x.NUMPED, LISTAGG(x.NUMNOTA, ', ') WITHIN GROUP (ORDER BY x.NUMNOTA) AS NF_DEV
+  FROM (SELECT DISTINCT nf.NUMPED, ne.NUMNOTA
+        FROM base b
+        JOIN PCNFSAID nf ON nf.NUMPED = b.NUMPED
+        JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
+        JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
+        WHERE NVL(ec.VLDEVOLUCAO, 0) > 0) x
+  GROUP BY x.NUMPED
+),
+devmot AS (
+  SELECT x.NUMPED, LISTAGG(x.MT, ', ') WITHIN GROUP (ORDER BY x.MT) AS MOTIVO_DEV
+  FROM (SELECT DISTINCT nf.NUMPED, NVL(td.MOTIVO, 'Não informado') AS MT
+        FROM base b
+        JOIN PCNFSAID nf ON nf.NUMPED = b.NUMPED
+        JOIN PCESTCOM ec ON ec.NUMTRANSVENDA = nf.NUMTRANSVENDA
+        JOIN PCNFENT  ne ON ne.NUMTRANSENT   = ec.NUMTRANSENT
+        LEFT JOIN PCTABDEV td ON td.CODDEVOL = ne.CODDEVOL
+        WHERE NVL(ec.VLDEVOLUCAO, 0) > 0) x
+  GROUP BY x.NUMPED
+),
+nfs AS (
+  SELECT nf.NUMPED, MAX(nf.NUMNOTA) AS NF
+  FROM base b JOIN PCNFSAID nf ON nf.NUMPED = b.NUMPED
+  GROUP BY nf.NUMPED
+),
+itens AS (
+  SELECT i.NUMPED, COUNT(*) AS QTD_ITENS
+  FROM base b JOIN PCPEDI i ON i.NUMPED = b.NUMPED
+  GROUP BY i.NUMPED
+)
+SELECT
+  ped.NUMPED                       AS NUMPED,
+  ped.DATA                         AS DATA_PEDIDO,
+  TRUNC(SYSDATE) - TRUNC(ped.DATA) AS DIAS,
+  ped.CODCLI                       AS CODCLI,
+  cli.CLIENTE                      AS CLIENTE,
+  cli.ENDERENT                     AS ENDERECO,
+  cli.BAIRROENT                    AS BAIRRO,
+  cli.MUNICENT                     AS CIDADE,
+  cli.ESTENT                       AS UF,
+  ped.CODUSUR                      AS CODRCA,
+  usu.NOME                         AS RCA,
+  usu.TELEFONE1                    AS FONE1,
+  usu.TELEFONE2                    AS FONE2,
+  -- Observações do pedido (OBS1+OBS2 são um texto só, quebrado em duas colunas) e de entrega.
+  TRIM(TRIM(ped.OBS) || ' ' || ped.OBS1 || ped.OBS2) AS OBS_PEDIDO,
+  TRIM(ped.OBSENTREGA1 || ' ' || ped.OBSENTREGA2 || ' ' || ped.OBSENTREGA3 || ' ' || ped.OBSENTREGA4) AS OBS_ENTREGA,
+  ped.POSICAO                      AS POSICAO,
+  ped.NUMCAR                       AS NUMCAR,
+  car.CODMOTORISTA                 AS CODMOTORISTA,
+  emp.NOME                         AS MOTORISTA,
+  ped.DTFAT                        AS DTFAT,
+  nfs.NF                           AS NF,
+  NVL(ped.VLTOTAL, 0)              AS VALOR,
+  NVL(ped.TOTPESO, 0)              AS PESO,
+  NVL(itens.QTD_ITENS, 0)          AS QTD_ITENS,
+  CASE WHEN dev.NUMPED IS NOT NULL THEN 'S' ELSE 'N' END AS TEM_DEV,
+  devmot.MOTIVO_DEV                AS MOTIVO_DEV,
+  -- Cabeçalho: quem emitiu (8888 = Força de Vendas, o RCA lançou) e quem
+  -- liberou. DTLIBERA guarda a hora real; a emissão é DATA + HORA/MINUTO.
+  -- Datas saem como texto p/ não sofrer conversão de fuso no driver.
+  ped.CODEMITENTE                  AS CODEMITENTE,
+  emi.NOME                         AS EMITENTE,
+  TO_CHAR(ped.DATA, 'YYYY-MM-DD') || ' ' ||
+    LPAD(NVL(ped.HORA, 0), 2, '0') || ':' || LPAD(NVL(ped.MINUTO, 0), 2, '0') AS EMISSAO,
+  lib.NOME                         AS LIBERADO_POR,
+  TO_CHAR(ped.DTLIBERA, 'YYYY-MM-DD HH24:MI:SS') AS LIBERADO_EM,
+  -- Nota de origem da devolução (NF de venda que voltou) e NF de entrada da devolução.
+  dev.NF_ORIGEM_DEV                AS NF_ORIGEM_DEV,
+  devent.NF_DEV                    AS NF_DEV
+FROM base ped
+LEFT JOIN PCCLIENT cli ON cli.CODCLI      = ped.CODCLI
+LEFT JOIN PCUSUARI usu ON usu.CODUSUR     = ped.CODUSUR
+LEFT JOIN PCCARREG car ON car.NUMCAR      = ped.NUMCAR
+LEFT JOIN PCEMPR   emp ON emp.MATRICULA   = car.CODMOTORISTA
+LEFT JOIN PCEMPR   emi ON emi.MATRICULA   = ped.CODEMITENTE
+LEFT JOIN PCEMPR   lib ON lib.MATRICULA   = ped.CODFUNCLIBERA
+LEFT JOIN nfs      ON nfs.NUMPED          = ped.NUMPED
+LEFT JOIN itens    ON itens.NUMPED        = ped.NUMPED
+LEFT JOIN dev      ON dev.NUMPED          = ped.NUMPED
+LEFT JOIN devent   ON devent.NUMPED       = ped.NUMPED
+LEFT JOIN devmot   ON devmot.NUMPED       = ped.NUMPED
+ORDER BY ped.DATA DESC, ped.NUMPED DESC`;
 
 interface LinhaPedido {
   NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
