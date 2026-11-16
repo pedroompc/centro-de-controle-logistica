@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { FiltroBI } from "@/domain/bi-recebimento";
+import type { ComparacaoQuadros } from "@/domain/bi-quadros";
 import { MenuBI, PalcoBI, VISOES_BI, type DadosBI, type VisaoBI } from "./bi-recebimento";
 import { BIShell, type HrefMes } from "./bi-shell";
 
@@ -10,7 +11,7 @@ import { BIShell, type HrefMes } from "./bi-shell";
  * detalhe embaixo e o filtro cruzado (dia, fornecedor, tipo) vale para tudo.
  * Esc limpa os filtros.
  */
-export function BIAba({ dados, hrefMes, hrefSair, abas }: { dados: DadosBI; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
+export function BIAba({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBI; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
   const [visao, setVisao] = useState<VisaoBI | null>(null);
   const [filtro, setFiltro] = useState<FiltroBI>({});
   const abrir = (v: VisaoBI) => setVisao((a) => (a === v ? null : v));
@@ -27,7 +28,7 @@ export function BIAba({ dados, hrefMes, hrefSair, abas }: { dados: DadosBI; href
       dicaTopo="clique num quadro para abrir · Esc limpa os filtros"
       menu={
         dados.serie.length > 0 ? (
-          <MenuBI dados={dados} visao={visao} onVisao={abrir} filtro={filtro} onFiltro={setFiltro} />
+          <MenuBI dados={dados} cmp={cmp} visao={visao} onVisao={abrir} filtro={filtro} onFiltro={setFiltro} />
         ) : (
           <div className="mt-4 rounded-2xl bg-white/[0.06] px-5 py-6 text-center text-white/40 ring-1 ring-white/10">Sem dados de recebimento.</div>
         )

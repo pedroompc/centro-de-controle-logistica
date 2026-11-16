@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { numerosAbastecimento, variacaoDoQuadro, type ComparacaoQuadros } from "@/domain/bi-quadros";
 import { formatPercent } from "@/domain/format";
 import { variacaoPercentual } from "@/domain/tendencias";
 import { pctComSinal } from "@/domain/comparacao";
 import { BIShell, type HrefMes } from "../bi-shell";
-import { Quadro, Vazio, ChipTV, ddmm, semCentavos } from "../bi-ui";
+import { Quadro, Vazio, ChipTV, VariacaoTV, ddmm, semCentavos } from "../bi-ui";
 import { resumoVolume, resumoAntecedencia, premiacaoA424 } from "@/domain/abastecimento";
 import type { DadosBIAbastecimento } from "../abastecimento-dados";
 import { OCULTAS, VISOES, VisaoAba, custoSobreFaturamento, n0, n1 } from "./base";
@@ -15,14 +16,17 @@ import { VisaoGiro } from "./giro";
 import { VisaoMovimento } from "./movimento";
 import { VisaoRupturas } from "./rupturas";
 
-export function BIAbastecimento({ dados, hrefMes, hrefSair, abas }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
+export function BIAbastecimento({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
   const [visao, setVisao] = useState<VisaoAba | null>(null);
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoAba) => setVisao((a) => (a === v ? null : v));
   const titulo = visao ? VISOES.find((v) => v.id === visao)! : null;
 
   const custo = dados.custoRecorte;
-  const delta = dados.custoMedio !== null && dados.custoMedioAnterior ? variacaoPercentual(dados.custoMedio, dados.custoMedioAnterior) : null;
+  // Com ?cmp= (BI Geral) cada quadro compara com o período escolhido — e só ele.
+  const atuais = cmp ? numerosAbastecimento(dados) : [];
+  const vq = (k: string) => (cmp && !dia ? <VariacaoTV c={variacaoDoQuadro(k, atuais, cmp.base)} rotulo={cmp.rotulo} falhou={cmp.falhou} /> : undefined);
+  const delta = !cmp && dados.custoMedio !== null && dados.custoMedioAnterior ? variacaoPercentual(dados.custoMedio, dados.custoMedioAnterior) : null;
   const sobreFat = custoSobreFaturamento(dados);
   const conta = (id: string) => dados.pessoas.filter((y) => y.papel === id).length;
   const q = (v: VisaoAba) => ({ ativo: visao === v, onClick: () => abrir(v) });
@@ -44,12 +48,14 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair, abas }: { dados: Dad
           rotulo="Custo e equipe"
           valor={custo === null ? "—" : semCentavos(custo)}
           sub={`${sobreFat !== null ? `${formatPercent(sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${conta("lider")} líder(es)${delta !== null ? ` · ${pctComSinal(delta)} vs ${dados.rotuloAnterior}` : ""}`}
+          variacao={vq("custo")}
         />
         <Quadro
           {...q("volume")}
           rotulo="Volume"
           valor={resumo ? `${n0(resumo.caixas)} cx` : "—"}
           sub={semH ?? (resumo && resumo.dias ? `${n0(resumo.abastecimentos)} reabast. · ${resumo.dias} dias` : "sem abastecimento no período")}
+          variacao={vq("volume")}
         />
         {!OCULTAS.has("antecedencia") && <Quadro
           {...q("antecedencia")}
@@ -62,18 +68,21 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair, abas }: { dados: Dad
           rotulo="Giro de picking"
           valor={h ? `${n0(abastProdutos)} abast.` : "—"}
           sub={semH ?? (abastProdutos ? `${n0(skusProdutos)} produtos · ${resumo?.dias ?? 0} dias` : "sem abastecimento no período")}
+          variacao={vq("giro")}
         />
         <Quadro
           {...q("movimento")}
           rotulo="Movimentação"
           valor={prem ? n0(prem.total) : "—"}
           sub={semH ?? (prem ? `${n0(prem.descendente)} desc. · ${n0(prem.ascendente)} asc.` : "sem dado no período")}
+          variacao={vq("movimento")}
         />
         {!OCULTAS.has("rupturas") && <Quadro
           {...q("rupturas")}
           rotulo="Rupturas"
           valor={h ? `${h.rupturas.length}` : "—"}
           sub={semH ?? (h && h.rupturas.length > 0 ? "estoque negativo no picking" : "nenhuma no período")}
+          variacao={vq("rupturas")}
         />}
       </div>
       {dia && (

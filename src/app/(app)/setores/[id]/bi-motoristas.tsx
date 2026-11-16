@@ -8,6 +8,7 @@
  * DE FATURAMENTO: das notas saídas no dia/mês, as que voltaram por motivo da Logística.
  */
 import { useState, type ReactNode } from "react";
+import { numerosMotoristas, variacaoDoQuadro, type ComparacaoQuadros } from "@/domain/bi-quadros";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { type Periodo, formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -16,7 +17,7 @@ import { totaisEntregas, porDiaEntregas, porVeiculo, faixasOcupacao, resumoDevol
 import { BIShell, type HrefMes } from "./bi-shell";
 import { indicadoresMotoristas } from "./motoristas-indicadores";
 import {
-  Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
+  Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI, VariacaoTV,
 } from "./bi-ui";
 import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel, ou } from "./bi-separacao-comum";
 import type { DadosBIMotoristas, MotoristaBI, PontoHistoricoMot } from "./motoristas-dados";
@@ -53,7 +54,7 @@ const anteriorDe = (d: DadosBIMotoristas): PontoHistoricoMot | null => d.refAnte
 const noRecorte = (d: DadosBIMotoristas, mes: string) => d.meses.includes(mes);
 
 
-export function BIMotoristas({ dados, hrefMes, hrefSair, abas }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
+export function BIMotoristas({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
   const [visao, setVisao] = useState<VisaoMot | null>(null);
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoMot) => setVisao((a) => (a === v ? null : v));
@@ -65,7 +66,10 @@ export function BIMotoristas({ dados, hrefMes, hrefSair, abas }: { dados: DadosB
   const { vs, tot, h } = ind;
   const ant = anteriorDe(dados);
   const entDiaVar = h?.entregas && h.dias && ant?.entregas && ant.dias ? varRel(h.entregas / h.dias, ant.entregas / ant.dias) : null;
-  const deltaCusto = h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
+  const deltaCusto = !cmp && h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
+  // Com ?cmp= (BI Geral) cada quadro compara com o período escolhido — e só ele.
+  const atuais = cmp ? numerosMotoristas(dados) : [];
+  const vq = (k: string) => (cmp && !dia ? <VariacaoTV c={variacaoDoQuadro(k, atuais, cmp.base)} rotulo={cmp.rotulo} falhou={cmp.falhou} /> : undefined);
   const semDado = vs ? null : "sem acesso ao Winthor";
   const dev = dados.devolucao ? resumoDevolucao(dados.devolucao, dia) : null;
   const sufixo = (r: string) => (dia ? `${r} · ${ddmm(dia)}` : r);
@@ -79,18 +83,21 @@ export function BIMotoristas({ dados, hrefMes, hrefSair, abas }: { dados: DadosB
         rotulo={sufixo("Custo e equipe")}
         valor={ind.custo === null ? "—" : semCentavos(ind.custo)}
         sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs ${dados.rotuloAnterior}` : ""}`}
+        variacao={vq("custo")}
       />
       <Quadro
         {...q("entregas")}
         rotulo={sufixo("Entregas")}
         valor={tot ? n0(tot.entregas) : "—"}
-        sub={semDado ?? `${n0(tot!.viagens)} viagens · ${t1(tot!.kg)}${!dia && entDiaVar !== null ? ` · ${sinalPct(entDiaVar)}/dia` : ""}`}
+        sub={semDado ?? `${n0(tot!.viagens)} viagens · ${t1(tot!.kg)}${!dia && !cmp && entDiaVar !== null ? ` · ${sinalPct(entDiaVar)}/dia` : ""}`}
+        variacao={vq("entregas")}
       />
       <Quadro
         {...q("frota")}
         rotulo={sufixo("Ocupação da frota")}
         valor={tot ? pct(tot.ocupacao, 0) : "—"}
         sub={semDado ?? `${tot!.veiculos} veículos · ${ou(tot!.kgPorViagem, n0)} kg/viagem`}
+        variacao={vq("frota")}
       />
       <Quadro
         {...q("km")}
@@ -99,6 +106,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair, abas }: { dados: DadosB
         sub={
           !vs ? "sem acesso ao Winthor" : !km ? "sem telemetria" : `${km.rastreados} de ${km.veiculos} veículos rastreados · ${ou(km.kmPorEntrega, n1)} km/entrega`
         }
+        variacao={vq("km")}
       />
       {dados.admin && dados.motoristas && (
         <Quadro {...q("motoristas")} rotulo="Motoristas" valor={`${dados.motoristas.length}`} sub={`${dados.motoristas.filter((m) => m.tipo === "F").length} da casa · ${dados.motoristas.filter((m) => m.tipo === "T").length} terceiros`} />
@@ -108,6 +116,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair, abas }: { dados: DadosB
         rotulo={sufixo("Devolução logística")}
         valor={dev ? pct(dev.taxa, 2) : "—"}
         sub={dev ? `${n0(dev.devolvidas)} notas · ${semCentavos(Math.round(dev.valorDevolvido))}` : "sem acesso ao Winthor"}
+        variacao={vq("devolucao")}
       />
     </div>
   );

@@ -13,6 +13,7 @@ import {
   ConteudoBIAbastecimento, ConteudoBIMotoristas, ConteudoBIRecebimento, ConteudoBISeparacao,
 } from "../setores/[id]/conteudos-bi";
 import { AbasBI } from "./abas-bi";
+import { SeletorComparacao } from "@/components/seletor-comparacao";
 import { AbaGeral } from "./geral";
 
 /**
@@ -46,15 +47,15 @@ export default async function BIGeralPage({
 
   const [setores, funcionarios] = await Promise.all([listarSetores(), listarFuncionarios()]);
   const porAba = setoresDoBI(setores);
-  const abas = <AbasBI ativa={aba} q={q} />;
+  const abas = <AbasBI ativa={aba} q={q} direita={<SeletorComparacao periodo={periodo} comparacao={cmp} piso={piso} hoje={hoje} />} />;
   const chave = `${aba}|${periodo.de}|${periodo.ate}|${sp.cmp ?? ""}`;
-  const comum = { funcionarios, periodo, hrefMes, hrefSair: "/", abas };
+  const comum = { funcionarios, periodo, hrefMes, hrefSair: "/", abas, comparacao: cmp };
 
   let conteudo;
   if (aba === "geral") {
     conteudo = <AbaGeral periodo={periodo} comparacao={cmp} setores={porAba} funcionarios={funcionarios} hrefMes={hrefMes} abas={abas} q={q} />;
   } else if (aba === "recebimento") {
-    conteudo = <ConteudoBIRecebimento periodo={periodo} hrefMes={hrefMes} hrefSair="/" abas={abas} />;
+    conteudo = <ConteudoBIRecebimento periodo={periodo} hrefMes={hrefMes} hrefSair="/" abas={abas} comparacao={cmp} />;
   } else {
     const setor = porAba[aba];
     if (!setor) {

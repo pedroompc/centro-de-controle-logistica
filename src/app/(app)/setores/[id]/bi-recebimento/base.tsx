@@ -3,7 +3,7 @@
 import { formatKg } from "@/domain/format";
 import { type Periodo, formatMesAno, mesesDoPeriodo } from "@/domain/periodo";
 import { indicesMelhores, type IndicadoresRecebimento } from "@/domain/recebimento";
-import { filtrarFatos, resumir, custoNoRecorte, type FatoDescarrego, type FiltroBI, type ResumoFatos } from "@/domain/bi-recebimento";
+import { type FatoDescarrego, type FiltroBI, type ResumoFatos } from "@/domain/bi-recebimento";
 import type { DescarregamentoTipo } from "@/domain/types";
 import type { DetalheCusto, PessoaRecebimento } from "../../../painel/painel-actions";
 import { BarrasTV, CalendarioBI, semCentavos, type PapelBI } from "../bi-ui";
@@ -58,26 +58,8 @@ export interface Filtro {
 
 // --- O recorte: tudo que os quadros e visuais mostram -----------------------
 
-export interface Recorte {
-  r: IndicadoresRecebimento; // o mês (série mensal)
-  mes: ResumoFatos; // o mês inteiro, dos fatos
-  sel: ResumoFatos; // o recorte filtrado
-  custo: number;
-  criterioCusto: string | null;
-  porNotas: boolean; // filtro de fornecedor: "carros" viram notas
-  temFatos: boolean;
-}
-
-export function recortar(dados: DadosBI, filtro: FiltroBI): Recorte | null {
-  const r = dados.ref ?? dados.serie.find((x) => x.mes === dados.mes);
-  if (!r) return null;
-  const fatos = dados.fatos ?? [];
-  const mes = resumir(fatos);
-  const sel = resumir(filtrarFatos(fatos, filtro));
-  const pesoDoDia = filtro.dia ? resumir(filtrarFatos(fatos, { dia: filtro.dia })).pesoKg : 0;
-  const { custo, criterio } = custoNoRecorte({ custoMes: r.custoPeriodo, diasMes: mes.dias, pesoMes: mes.pesoKg, pesoDoDia, pesoRecorte: sel.pesoKg, filtro });
-  return { r, mes, sel, custo, criterioCusto: criterio, porNotas: !!filtro.fornecedor, temFatos: dados.fatos !== null };
-}
+export { recortar, type Recorte } from "./recorte";
+import type { Recorte } from "./recorte";
 
 export const carrosOuNotas = (x: Recorte, s: ResumoFatos = x.sel) => (x.porNotas ? `${inteiro.format(s.notas)} notas` : `${inteiro.format(s.carros)} carros`);
 

@@ -13,7 +13,7 @@ import type { DadosBIAbastecimento } from "@/app/(app)/setores/[id]/abasteciment
 import type { DadosBIMotoristas } from "@/app/(app)/setores/[id]/motoristas-dados";
 import type { DadosBI } from "@/app/(app)/setores/[id]/bi-recebimento/base";
 
-export type FormatoIndicador = "int" | "kg" | "brl" | "pct" | "brlPorCx" | "km";
+export type FormatoIndicador = "int" | "kg" | "brl" | "pct" | "permil" | "brlPorCx" | "brlPorT" | "km";
 
 export interface IndicadorGeral {
   chave: string;
@@ -109,6 +109,9 @@ export function resumoMotoristas(d: DadosBIMotoristas, clientesAtendidos: number
 export function variacao(atual: IndicadorGeral, base: IndicadorGeral | undefined): Comparacao | null {
   if (atual.valor === null || !base || base.valor === null) return null;
   if (atual.formato === "pct") return compararTaxa(atual.valor, base.valor, atual.maiorEhBom);
+  if (atual.formato === "permil") {
+    return compararAbs(atual.valor, base.valor, atual.maiorEhBom, (n) => `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ‰`);
+  }
   if (atual.formato === "int" && base.valor === 0) return compararAbs(atual.valor, 0, atual.maiorEhBom);
   return compararPct(atual.valor, base.valor, atual.maiorEhBom);
 }

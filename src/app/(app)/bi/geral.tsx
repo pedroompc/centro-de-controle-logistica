@@ -2,7 +2,6 @@ import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { carregarResumoCasa } from "@/data/resumo-casa";
-import { hojeISO } from "@/domain/fechamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { rotuloCurto, type Periodo, type PeriodoComparado } from "@/domain/periodo";
 import { compararPct, compararTaxa, type Comparacao } from "@/domain/comparacao";
@@ -12,9 +11,8 @@ import {
 } from "@/domain/bi-geral";
 import { ROTULO_ABA, hrefBI, pisoDaAba, type AbaBI } from "@/domain/bi-geral-rotas";
 import type { Funcionario, Setor } from "@/domain/types";
-import { SeletorComparacao } from "@/components/seletor-comparacao";
-import { SetaVariacao } from "@/components/variacao";
 import { BIShell, type HrefMes } from "../setores/[id]/bi-shell";
+import { VariacaoTV } from "../setores/[id]/bi-ui";
 import { carregarBISeparacao } from "../setores/[id]/separacao-dados";
 import { carregarBIAbastecimento } from "../setores/[id]/abastecimento-dados";
 import { carregarBIMotoristas } from "../setores/[id]/motoristas-dados";
@@ -35,27 +33,12 @@ const fmt = (i: IndicadorGeral): string => {
     case "kg": return formatKg(v);
     case "brl": return reais(v);
     case "brlPorCx": return `${formatBRL(v)}/cx`;
+    case "brlPorT": return `${formatBRL(v)}/t`;
     case "pct": return formatPercent(v, 2);
+    case "permil": return `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ‰`;
     case "km": return `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km`;
   }
 };
-
-/** Variação no tema escuro: boa/neutra esmaecida, ruim em rose. Verde nunca. */
-function VariacaoTV({ c, cmp, falhou = false }: { c: Comparacao | null; cmp: PeriodoComparado; falhou?: boolean }) {
-  const ref = `vs ${rotuloCurto(cmp.periodo)}`;
-  if (!c) {
-    return falhou
-      ? <span className="text-xs text-amber-200/60" title="o banco não respondeu para o período de comparação">comparação indisponível · {ref}</span>
-      : <span className="text-xs text-white/30" title="sem dado no período de comparação">sem histórico · {ref}</span>;
-  }
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-semibold tabular-nums ${c.positivo ? "text-white/60" : "text-rose-300"}`}>
-      <SetaVariacao subindo={c.subindo} />
-      {c.texto}
-      <span className="font-normal text-white/35">{ref}</span>
-    </span>
-  );
-}
 
 // --- Números da casa (topo) -----------------------------------------------------
 
@@ -77,7 +60,7 @@ async function NumerosCasa({ periodo, comparacao, fila }: { periodo: Periodo; co
     comparacao ? fila(() => carregarResumoCasa(comparacao.periodo)).catch(() => null) : Promise.resolve(null),
   ]);
   const falhou = !!comparacao && (b === null || !!b.erro);
-  const v = (c: Comparacao | null) => (comparacao ? <VariacaoTV c={c} cmp={comparacao} falhou={falhou} /> : undefined);
+  const v = (c: Comparacao | null) => (comparacao ? <VariacaoTV c={c} rotulo={`vs ${rotuloCurto(comparacao.periodo)}`} falhou={falhou} /> : undefined);
   const pct = (k: "faturamentoLiquido" | "custoLogistico", bom: boolean) => v(a[k] === null || !b ? null : compararPct(a[k], b[k], bom));
   const brl = (n: number | null) => (n === null ? "—" : reais(n));
   return (
@@ -168,7 +151,7 @@ async function BlocoSetor(p: {
                 <span className="block">
                   <VariacaoTV
                     c={variacao(i, base?.indicadores.find((x) => x.chave === i.chave))}
-                    cmp={p.comparacao}
+                    rotulo={`vs ${rotuloCurto(p.comparacao.periodo)}`}
                     falhou={!!cmpValido && (base === null || !!base.erro)}
                   />
                 </span>
@@ -227,7 +210,6 @@ export function AbaGeral({
       hrefSair="/"
       abas={abas}
       dicaTopo={faltando ? `${ROTULO_ABA[faltando]}: setor não cadastrado em Setores` : ""}
-      topoDireita={<SeletorComparacao periodo={periodo} comparacao={comparacao} piso={hrefMes.piso} hoje={hojeISO()} />}
       menu={
         <Suspense key={`casa|${periodo.de}|${periodo.ate}|${chaveCmp}`} fallback={<CasaCarregando />}>
           <NumerosCasa periodo={periodo} comparacao={comparacao} fila={fila} />

@@ -7,6 +7,8 @@
  */
 import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { NumeroAnimado } from "@/components/movimento";
+import { SetaVariacao } from "@/components/variacao";
+import type { Comparacao } from "@/domain/comparacao";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { RUBRICAS_FOLHA, FATOR_ENCARGOS_SALARIO } from "@/domain/efetivo";
 import { ROTULO_TURNO, TURNOS } from "@/domain/metrics";
@@ -45,7 +47,23 @@ const COR_TURNO: Record<Turno, string> = {
 
 const papelDe = (papeis: PapelBI[], id: string): PapelBI => papeis.find((p) => p.id === id) ?? { id, rotulo: id, plural: id, cor: "#64748b" };
 
-export function Quadro({ ativo, onClick, rotulo, valor, sub, verde }: { ativo: boolean; onClick: () => void; rotulo: string; valor: string; sub: ReactNode; verde?: boolean }) {
+/** Variação no tema escuro: boa/neutra esmaecida, ruim em rose. Verde nunca. */
+export function VariacaoTV({ c, rotulo, falhou = false }: { c: Comparacao | null; rotulo: string; falhou?: boolean }) {
+  if (!c) {
+    return falhou
+      ? <span className="text-xs text-amber-200/60" title="o banco não respondeu para o período de comparação">comparação indisponível · {rotulo}</span>
+      : <span className="text-xs text-white/30" title="sem dado no período de comparação">sem histórico · {rotulo}</span>;
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold tabular-nums ${c.positivo ? "text-white/60" : "text-rose-300"}`}>
+      <SetaVariacao subindo={c.subindo} />
+      {c.texto}
+      <span className="font-normal text-white/35">{rotulo}</span>
+    </span>
+  );
+}
+
+export function Quadro({ ativo, onClick, rotulo, valor, sub, verde, variacao }: { ativo: boolean; onClick: () => void; rotulo: string; valor: string; sub: ReactNode; verde?: boolean; variacao?: ReactNode }) {
   return (
     <button
       type="button"
@@ -63,6 +81,7 @@ export function Quadro({ ativo, onClick, rotulo, valor, sub, verde }: { ativo: b
         <NumeroAnimado texto={valor} />
       </div>
       <div className="mt-2 truncate text-xs text-white/45">{sub}</div>
+      {variacao && <div className="mt-1 truncate">{variacao}</div>}
     </button>
   );
 }

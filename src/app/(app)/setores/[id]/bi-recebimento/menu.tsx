@@ -6,14 +6,15 @@ import { ROTULO_TIPO } from "@/domain/descarregamento";
 import { ehMelhorDaJanela, type IndicadorComparavel } from "@/domain/recebimento";
 import { filtroAtivo, type FiltroBI } from "@/domain/bi-recebimento";
 import type { PessoaRecebimento } from "../../../painel/painel-actions";
-import { Quadro, Vazio, semCentavos } from "../bi-ui";
+import { Quadro, Vazio, VariacaoTV, semCentavos } from "../bi-ui";
+import { numerosRecebimento, variacaoDoQuadro, type ComparacaoQuadros } from "@/domain/bi-quadros";
 import { DadosBI, Filtro, VisaoBI, carrosOuNotas, ddmm, fmtPeso, inteiro, recortar, trimestre } from "./base";
 import { VisaoCusto } from "./custo";
 import { VisaoDescarrego } from "./descarrego";
 import { VisaoEficiencia, VisaoReceita } from "./receita";
 
 /** O topo do BI: 6 quadros (menu) + a barra de filtros ativos. */
-export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: DadosBI; visao: VisaoBI | null; onVisao: (v: VisaoBI) => void } & Filtro) {
+export function MenuBI({ dados, cmp, visao, onVisao, filtro, onFiltro }: { dados: DadosBI; cmp?: ComparacaoQuadros; visao: VisaoBI | null; onVisao: (v: VisaoBI) => void } & Filtro) {
   const x = recortar(dados, filtro);
   if (!x) return null;
   const { r, sel } = x;
@@ -31,6 +32,9 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
   const peso = usar ? sel.pesoKg : r.pesoKg;
   const receita = usar ? sel.receita : r.receitaDescarrego;
   const pessoas = dados.custo?.pessoas ?? [];
+  // Com ?cmp= (BI Geral) cada quadro compara com o período escolhido; com filtro, não.
+  const atuais = cmp ? numerosRecebimento(dados) : [];
+  const vq = (k: string) => (cmp && semFiltro ? <VariacaoTV c={variacaoDoQuadro(k, atuais, cmp.base)} rotulo={cmp.rotulo} falhou={cmp.falhou} /> : undefined);
   const cont = (p: PessoaRecebimento["papel"]) => pessoas.filter((y) => y.papel === p).length;
 
   return (
@@ -44,15 +48,17 @@ export function MenuBI({ dados, visao, onVisao, filtro, onFiltro }: { dados: Dad
             x.criterioCusto ??
             `${pessoas.length ? `${cont("ajudante")} aj · ${cont("conferente")} conf · ${cont("empilhador")} pux` : `${r.equipe.total} pessoas`}${resumoEquip ? ` · ${resumoEquip}` : ""}`
           }
+          variacao={vq("custo")}
         />
-        <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${fmtPeso(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}${usar ? ` · ${sel.fornecedores} fornecedores` : ""}`} verde={verde("carrosPorDia")} />
-        <Quadro {...q("receita")} rotulo="Receita" valor={formatBRL(receita)} sub={`custo consome ${receita > 0 ? formatPercent(x.custo / receita) : "—"}`} verde={verde("resultado")} />
+        <Quadro {...q("descarrego")} rotulo="Descarrego" valor={usar ? carrosOuNotas(x) : `${inteiro.format(r.carros)} carros`} sub={`${fmtPeso(peso)} · ${usar ? sel.dias : r.diasDescarrego} ${(usar ? sel.dias : r.diasDescarrego) === 1 ? "dia" : "dias"}${usar ? ` · ${sel.fornecedores} fornecedores` : ""}`} verde={verde("carrosPorDia")} variacao={vq("descarrego")} />
+        <Quadro {...q("receita")} rotulo="Receita" valor={formatBRL(receita)} sub={`custo consome ${receita > 0 ? formatPercent(x.custo / receita) : "—"}`} verde={verde("resultado")} variacao={vq("receita")} />
         <Quadro
           {...q("eficiencia")}
           rotulo="Eficiência"
           valor={peso > 0 ? `${formatBRL(x.custo / (peso / 1000))}/t` : "—"}
           sub={peso > 0 && receita > 0 ? `receita ${semCentavos(receita / (peso / 1000))}/t` : "custo por tonelada"}
           verde={verde("custoPorTonelada")}
+          variacao={vq("eficiencia")}
         />
       </div>
       <BarraFiltros filtro={filtro} onFiltro={onFiltro} />

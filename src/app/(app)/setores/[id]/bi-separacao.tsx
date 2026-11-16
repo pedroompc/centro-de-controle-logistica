@@ -8,6 +8,7 @@
  * filtra Produção, Turnos, Qualidade e o custo; Esc limpa.
  */
 import { useState, type ReactNode } from "react";
+import { numerosSeparacao, variacaoDoQuadro, type ComparacaoQuadros } from "@/domain/bi-quadros";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -17,7 +18,7 @@ import {
 import { BIShell, type HrefMes } from "./bi-shell";
 import { indicadoresSeparacao } from "./separacao-indicadores";
 import {
-  Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
+  Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI, VariacaoTV,
 } from "./bi-ui";
 import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel } from "./bi-separacao-comum";
 import { VisaoTurnos } from "./bi-separacao-turnos";
@@ -50,7 +51,7 @@ const anteriorDe = (d: DadosBISeparacao): PontoHistorico | null => d.refAnterior
 /** O mês está no recorte da tela (destaque nas barras mês a mês). */
 const noRecorte = (d: DadosBISeparacao, mes: string) => d.meses.includes(mes);
 
-export function BISeparacao({ dados, hrefMes, hrefSair, abas }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
+export function BISeparacao({ dados, hrefMes, hrefSair, abas, cmp }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode; cmp?: ComparacaoQuadros }) {
   const [visao, setVisao] = useState<VisaoSep | null>(null);
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoSep) => setVisao((a) => (a === v ? null : v));
@@ -63,7 +64,10 @@ export function BISeparacao({ dados, hrefMes, hrefSair, abas }: { dados: DadosBI
   const ant = anteriorDe(dados);
   const h = ind.h;
   const linhasDiaVar = h?.linhas && h.dias && ant?.linhas && ant.dias ? varRel(h.linhas / h.dias, ant.linhas / ant.dias) : null;
-  const deltaCusto = h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
+  const deltaCusto = !cmp && h?.custo != null && ant?.custo ? variacaoPercentual(h.custo, ant.custo) : null;
+  // Com ?cmp= (BI Geral) cada quadro compara com o período escolhido — e só ele.
+  const atuais = cmp ? numerosSeparacao(dados) : [];
+  const vq = (k: string) => (cmp && !dia ? <VariacaoTV c={variacaoDoQuadro(k, atuais, cmp.base)} rotulo={cmp.rotulo} falhou={cmp.falhou} /> : undefined);
   const rk = rankingTurnos(ind.turnos);
   const cobertura = tot && tot.linhas > 0 ? tot.linhasComSeparador / tot.linhas : null;
   const semProd = p ? null : "sem acesso ao Harpia";
@@ -75,18 +79,21 @@ export function BISeparacao({ dados, hrefMes, hrefSair, abas }: { dados: DadosBI
         rotulo={dia ? `Custo e equipe · ${ddmm(dia)}` : "Custo e equipe"}
         valor={ind.custo === null ? "—" : semCentavos(ind.custo)}
         sub={`${ind.sobreFat !== null ? `${formatPercent(ind.sobreFat, 2)} do fat. líquido · ` : ""}${dados.pessoas.length} pessoas · ${dados.pessoas.filter((y) => y.papel === "lider").length} líder(es)${deltaCusto !== null ? ` · ${sinalPct(deltaCusto)} vs ${dados.rotuloAnterior}` : ""}`}
+        variacao={vq("custo")}
       />
       <Quadro
         {...q("producao")}
         rotulo={dia ? `Produção · ${ddmm(dia)}` : "Produção"}
         valor={tot ? n0(tot.linhas) : "—"}
-        sub={semProd ?? `endereços · ${n0(tot!.pedidos)} pedidos · ${t1(tot!.kg)}${!dia && linhasDiaVar !== null ? ` · ${sinalPct(linhasDiaVar)}/dia` : ""}`}
+        sub={semProd ?? `endereços · ${n0(tot!.pedidos)} pedidos · ${t1(tot!.kg)}${!dia && !cmp && linhasDiaVar !== null ? ` · ${sinalPct(linhasDiaVar)}/dia` : ""}`}
+        variacao={vq("producao")}
       />
       <Quadro
         {...q("turnos")}
         rotulo={dia ? `Dia × Noite · ${ddmm(dia)}` : "Dia × Noite"}
         valor={tot ? `${n0(ind.turnos.reduce((x, t) => x + Math.round(t.kg), 0))} kg` : "—"}
         sub={semProd ?? ind.turnos.map((t) => `${t.rotulo} ${n0(t.kg)} kg`).join(" + ")}
+        variacao={vq("turnos")}
       />
       {dados.admin && dados.individual && (
         <Quadro {...q("operadores")} rotulo="Operadores" valor={`${dados.individual.separadores.length} separadores`} sub={`${pct(cobertura, 0)} dos endereços com registro`} />
@@ -96,6 +103,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair, abas }: { dados: DadosBI
         rotulo={dia ? `Qualidade · ${ddmm(dia)}` : "Qualidade"}
         valor={ind.taxaErro === null ? "—" : `${n1(ind.taxaErro)} ‰`}
         sub={semProd ?? `${n0(ind.erros!.separador.itens)} itens com erro`}
+        variacao={vq("qualidade")}
       />
     </div>
   );
