@@ -15,6 +15,11 @@ import type { DadosBIAbastecimento } from "@/app/(app)/setores/[id]/abasteciment
 import type { DadosBIMotoristas } from "@/app/(app)/setores/[id]/motoristas-dados";
 import type { DadosBI } from "@/app/(app)/setores/[id]/bi-recebimento/base";
 
+/** Carga só para os quadros (período de comparação): sem visões de admin nem o período anterior ao pedido. */
+export interface OpcoesCarga {
+  soQuadros?: boolean;
+}
+
 /** O que a aba de setor recebe quando há `?cmp=`: os números do período de comparação. */
 export interface ComparacaoQuadros {
   rotulo: string; // "vs Set/26"
@@ -53,7 +58,9 @@ export function numerosAbastecimento(d: DadosBIAbastecimento): IndicadorGeral[] 
   const h = "dados" in d.harpia ? d.harpia.dados : null;
   const prem = h ? premiacaoA424(h.movimentoPiso.a424, null, h.movimentoPiso.empilhadores, h.movimentoPiso.lancadoresWms) : null;
   return [
-    q("custo", d.custoRecorte, "brl", false),
+    // Custo: a taxa mensal (custo médio por mês) — o recorte do mês aberto é o mês
+    // cheio e o do período cortado é proporcional; comparar os dois distorce.
+    q("custo", d.custoMedio, "brl", false),
     q("volume", h ? resumoVolume(h.reabastecimento).caixas : null, "int", true),
     q("giro", h ? h.curvas.reduce((t, c) => t + c.abastecimentos, 0) : null, "int", true),
     q("movimento", prem?.total ?? null, "int", true),
@@ -87,7 +94,7 @@ export function variacaoDoQuadro(chave: string, atuais: IndicadorGeral[], base: 
 export async function carregarComparacao<D>(
   cmp: PeriodoComparado | null | undefined,
   piso: string,
-  carregar: (p: Periodo) => Promise<D>,
+  carregar: (p: Periodo, opcoes: { soQuadros: true }) => Promise<D>,
   numeros: (d: D) => IndicadorGeral[],
   erroDe: (d: D) => string | null,
 ): Promise<ComparacaoQuadros | undefined> {
@@ -96,7 +103,7 @@ export async function carregarComparacao<D>(
   if (cmp.periodo.de < piso) return { rotulo, base: null, falhou: false };
   try {
     const r = await comNovaTentativa(async () => {
-      const d = await carregar(cmp.periodo);
+      const d = await carregar(cmp.periodo, { soQuadros: true });
       return { d, erro: erroDe(d) };
     });
     return { rotulo, base: numeros(r.d), falhou: !!r.erro };

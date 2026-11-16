@@ -1,4 +1,5 @@
 import { listarEquipamentos } from "@/data/equipamentos";
+import type { OpcoesCarga } from "@/domain/bi-quadros";
 import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
@@ -78,7 +79,7 @@ export interface DadosBIMotoristas {
 
 const erroMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export async function carregarBIMotoristas(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo): Promise<DadosBIMotoristas> {
+export async function carregarBIMotoristas(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo, opcoes: OpcoesCarga = {}): Promise<DadosBIMotoristas> {
   const atual = primeiroDiaDoMes();
   const hoje = new Date();
   const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
@@ -95,7 +96,8 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   const pAnt = periodoAnterior(periodo, hoje);
 
   const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro, cadastroFrota, cidadesMot, viagensAnt] = await Promise.all([
-    isAdmin(),
+    // Só os quadros (comparação do BI Geral): sem o individual de admin nem o período anterior.
+    opcoes.soQuadros ? Promise.resolve(false) : isAdmin(),
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     lembrar(`lerViagensPeriodo:${chave}`, ttl, () => lerViagensPeriodo(de, ate)).then(
@@ -116,7 +118,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     lerCadastroFrota().catch(() => null),
     lembrar(`motoristaCidades:${chave}`, ttl, () => getMotoristaCidades(de, ate)).catch(() => null),
     // Período: viagens do período anterior para comparar entregas por dia.
-    mensal ? Promise.resolve(null) : lembrar(`lerViagensPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate)).catch(() => null),
+    mensal || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerViagensPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate)).catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");

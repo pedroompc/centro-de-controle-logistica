@@ -37,7 +37,7 @@ export interface PropsSetor {
 
 export async function ConteudoBISeparacao({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao }: PropsSetor) {
   const dados = await carregarBISeparacao(setor, funcionarios, periodo);
-  const cmp = await carregarComparacao(comparacao, pisoDaAba("separacao"), (p) => carregarBISeparacao(setor, funcionarios, p), numerosSeparacao, (d) => resumoSeparacao(d).erro);
+  const cmp = await carregarComparacao(comparacao, pisoDaAba("separacao"), (p, o) => carregarBISeparacao(setor, funcionarios, p, o), numerosSeparacao, (d) => resumoSeparacao(d).erro);
   return <BISeparacao key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} />;
 }
 
@@ -49,7 +49,7 @@ export async function ConteudoBIAbastecimento({ setor, funcionarios, periodo, hr
 
 export async function ConteudoBIMotoristas({ setor, funcionarios, periodo, hrefMes, hrefSair, abas, comparacao }: PropsSetor) {
   const dados = await carregarBIMotoristas(setor, funcionarios, periodo);
-  const cmp = await carregarComparacao(comparacao, pisoDaAba("motoristas"), (p) => carregarBIMotoristas(setor, funcionarios, p), numerosMotoristas, (d) => resumoMotoristas(d, null).erro);
+  const cmp = await carregarComparacao(comparacao, pisoDaAba("motoristas"), (p, o) => carregarBIMotoristas(setor, funcionarios, p, o), numerosMotoristas, (d) => resumoMotoristas(d, null).erro);
   return <BIMotoristas key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} cmp={cmp} />;
 }
 

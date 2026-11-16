@@ -69,12 +69,17 @@ describe("numerosAbastecimento", () => {
       rupturas: [{}, {}],
       curvas: [{ abastecimentos: 8, skus: 3 }, { abastecimentos: 4, skus: 1 }],
     };
-    const r = numerosAbastecimento({ custoRecorte: 5000, harpia: { dados: h } } as unknown as DadosBIAbastecimento);
+    const r = numerosAbastecimento({ custoRecorte: 5000, custoMedio: 5000, harpia: { dados: h } } as unknown as DadosBIAbastecimento);
     expect(r.map((i) => i.chave)).toEqual(["custo", "volume", "giro", "movimento", "rupturas"]);
     expect(mapa(r)).toEqual({ custo: 5000, volume: 50, giro: 12, movimento: 40, rupturas: 2 });
   });
+  it("custo compara a taxa mensal (mês aberto × período cortado não distorce)", () => {
+    // Nov aberto: custoRecorte = mês cheio; 01–16/out: custoRecorte = proporcional. A régua é o custo médio por mês.
+    const r = numerosAbastecimento({ custoRecorte: 2580, custoMedio: 5000, harpia: { erro: "x" } } as unknown as DadosBIAbastecimento);
+    expect(r.find((i) => i.chave === "custo")!.valor).toBe(5000);
+  });
   it("Harpia fora: só o custo", () => {
-    const r = numerosAbastecimento({ custoRecorte: null, harpia: { erro: "x" } } as unknown as DadosBIAbastecimento);
+    const r = numerosAbastecimento({ custoRecorte: null, custoMedio: null, harpia: { erro: "x" } } as unknown as DadosBIAbastecimento);
     expect(mapa(r)).toEqual({ custo: null, volume: null, giro: null, movimento: null, rupturas: null });
   });
 });
@@ -123,8 +128,9 @@ describe("carregarComparacao", () => {
   });
   it("carrega o período de comparação pelo mesmo carregador", async () => {
     const vistos: string[] = [];
-    const r = await carregarComparacao(cmp, "2025-10-01", async (p) => (vistos.push(p.de), { n: 7 }), numeros, () => null);
-    expect(vistos).toEqual(["2026-09-01"]);
+    const r = await carregarComparacao(cmp, "2025-10-01", async (p, o) => (vistos.push(`${p.de}|${o.soQuadros}`), { n: 7 }), numeros, () => null);
+    // Só o que os quadros usam: sem visões de admin nem o período anterior ao comparado.
+    expect(vistos).toEqual(["2026-09-01|true"]);
     expect(r).toEqual({ rotulo: "vs Set/26", base: numeros({ n: 7 }), falhou: false });
   });
   it("antes do piso do setor: sem histórico, sem consultar", async () => {

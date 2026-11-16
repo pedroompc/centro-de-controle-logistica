@@ -1,4 +1,5 @@
 import { listarEquipamentos } from "@/data/equipamentos";
+import type { OpcoesCarga } from "@/domain/bi-quadros";
 import { lerSeparacaoHarpia, lerIndividuaisHarpia, lerProducaoIndividual, lerMesesSeparacaoHarpia, lerTotaisSeparacaoHarpia, lerSkusTurnoDia, type DadosHarpiaSeparacao, type ProdutoErro } from "@/data/harpia-separacao";
 import { listarUsuariosHarpia } from "@/data/harpia-usuarios";
 import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo, vendaLiquidaDasFotos } from "@/data/faturamento-mensal";
@@ -114,7 +115,7 @@ async function tentar<T>(rotulo: string, f: () => Promise<T>): Promise<T | { err
 const ok = <T extends object>(x: T | { erro: string }): x is T => !("erro" in x);
 
 /** Equipe, custo, produção (Harpia, peso do Winthor) e — só admin — o individual. */
-export async function carregarBISeparacao(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo): Promise<DadosBISeparacao> {
+export async function carregarBISeparacao(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo, opcoes: OpcoesCarga = {}): Promise<DadosBISeparacao> {
   const atual = primeiroDiaDoMes();
   const hoje = new Date();
   const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
@@ -130,7 +131,8 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   const chave = `${de}|${ate}`;
   const pAnt = periodoAnterior(periodo, hoje);
 
-  const admin = await isAdmin();
+  // Só os quadros (comparação do BI Geral): sem o individual de admin.
+  const admin = opcoes.soQuadros ? false : await isAdmin();
   // Comparação individual: mês anterior inteiro (recorte mensal) ou o período anterior.
   const mesAnt = mesAnterior(mes);
   const indivAnt: Periodo | null = mensal ? (mesAnt >= INICIO_SEPARADOR ? periodoDoMes(mesAnt) : null) : pAnt.de >= INICIO_SEPARADOR ? pAnt : null;
@@ -156,7 +158,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       ? lembrar(`lerProducaoIndividual:${indivAnt.de}|${indivAnt.ate}`, ttlDoPeriodo(indivAnt), () => lerProducaoIndividual(indivAnt.de, indivAnt.ate)).catch(() => null)
       : Promise.resolve(null),
     mensal ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${chave}`, ttl, () => lerTotaisSeparacaoHarpia(de, ate)).catch(() => null),
-    mensal ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerTotaisSeparacaoHarpia(pAnt.de, pAnt.ate)).catch(() => null),
+    mensal || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerTotaisSeparacaoHarpia(pAnt.de, pAnt.ate)).catch(() => null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
