@@ -28,6 +28,16 @@ Push na `main` → em até ~3 min o servidor percebe, builda e troca de versão 
 > `git reset --hard`: qualquer arquivo versionado editado à mão no servidor é descartado.
 > `.env.local`, `logs\` e `node_modules` não são tocados.
 
+## Coletor da frota (Fulltrack)
+
+- **Centro - Coletor frota** (boot): `coletor-frota.ps1` roda `scripts\coletor-frota\index.mjs`
+  (posições a cada 10 min, histórico a cada 6 h) e sobe de novo se cair. Log em `logs\coletor-frota.log`.
+- Já com o app instalado, para pôr só o coletor: PowerShell **como Administrador**
+  `powershell -ExecutionPolicy Bypass -File deploy\windows\instalar-coletor.ps1`.
+- O deploy automático **não** reinicia o coletor: commit que mexa em `scripts\coletor-frota`
+  só entra depois de `Stop-ScheduledTask "Centro - Coletor frota"; Start-ScheduledTask "Centro - Coletor frota"`.
+- Coletor parado não perde histórico: ao voltar, baixa as janelas de 15 dias que ficaram para trás.
+
 ## Dia a dia
 
 | O quê | Como |

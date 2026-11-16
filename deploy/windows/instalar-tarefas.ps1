@@ -4,6 +4,7 @@
 #
 #   "Centro - App"               -> no boot, sobe o app na porta 3000 (volta sozinho se cair)
 #   "Centro - Deploy automatico" -> a cada 3 min, publica commit novo da main
+#   "Centro - Coletor frota"     -> no boot, coletor da telemetria Fulltrack (volta sozinho se cair)
 # Rodam como SYSTEM: não dependem de alguém logado no servidor.
 $ErrorActionPreference = "Stop"
 $raiz = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -22,6 +23,9 @@ $dep = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -ExecutionPoli
 $cada3 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 3)
 $cfgDep = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 45) -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName "Centro - Deploy automatico" -Action $dep -Trigger $cada3 -Principal $quem -Settings $cfgDep -Force | Out-Null
+
+# Coletor da frota (Fulltrack -> Supabase): tarefa própria, ver instalar-coletor.ps1.
+& $ps -NoProfile -ExecutionPolicy Bypass -File "$raiz\deploy\windows\instalar-coletor.ps1"
 
 # Funnel em segundo plano: a configuração fica salva no Tailscale e volta no boot.
 $ts = "C:\Program Files\Tailscale\tailscale.exe"
