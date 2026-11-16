@@ -12,9 +12,10 @@ import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
 import {
-  totaisProducao, custoDoPeriodo, custosUnitarios, custoSobreFaturamento, resumoErros, porMilLinhas, resumoPorTurno, rankingTurnos,
+  totaisProducao, custoSobreFaturamento, rankingTurnos,
 } from "@/domain/separacao";
 import { BIShell, type HrefMes } from "./bi-shell";
+import { indicadoresSeparacao } from "./separacao-indicadores";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
@@ -44,25 +45,6 @@ const PAPEIS: PapelBI[] = [
 ];
 
 const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
-const temProd = (p: DadosBISeparacao["producao"]): p is ProducaoBI => "linhas" in p;
-
-/** Indicadores do recorte (mês/período ou 1 dia) — a MESMA conta alimenta cards, tabelas e gráficos. */
-function indicadores(d: DadosBISeparacao, dia: string | null) {
-  const p = temProd(d.producao) ? d.producao : null;
-  const h = d.ref;
-  const totMes = p ? totaisProducao(p.linhas, p.dias) : null;
-  const tot = p ? totaisProducao(p.linhas, p.dias, dia) : null;
-  const custo = custoDoPeriodo(h?.custo ?? null, d.fracaoMes, totMes?.dias ?? 0, !!dia);
-  const unit = tot ? custosUnitarios(custo, tot) : custosUnitarios(null, { pedidos: 0, linhas: 0, kg: 0, caixas: 0 });
-  const sobreFat = custoSobreFaturamento(h?.custoPeriodo ?? null, d.faturamentoLiquido);
-  const erros = p ? resumoErros(p.erros, dia) : null;
-  const folha = d.folhaRef;
-  const turnos = p
-    ? resumoPorTurno({ linhas: p.linhas, erros: p.erros, equipe: p.equipe, custoFolhaPeriodo: custoDoPeriodo(folha, d.fracaoMes, totMes?.dias ?? 0, !!dia), skus: p.skusTurno, dia })
-    : [];
-  return { p, h, tot, totMes, custo, unit, sobreFat, erros, turnos, taxaErro: erros && tot ? porMilLinhas(erros.separador.itens, tot.linhas) : null };
-}
-
 /** Recorte de comparação (compara taxas por dia, não totais de recorte incompleto). */
 const anteriorDe = (d: DadosBISeparacao): PontoHistorico | null => d.refAnterior;
 /** O mês está no recorte da tela (destaque nas barras mês a mês). */
@@ -76,7 +58,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
   const titulo = visao ? visoes.find((v) => v.id === visao) ?? null : null;
   const q = (v: VisaoSep) => ({ ativo: visao === v, onClick: () => abrir(v) });
 
-  const ind = indicadores(dados, dia);
+  const ind = indicadoresSeparacao(dados, dia);
   const { p, tot } = ind;
   const ant = anteriorDe(dados);
   const h = ind.h;
@@ -199,7 +181,7 @@ const MEDIDA_CUSTO: Record<MedidaCusto, { rotulo: string; valor: (x: PontoHistor
 function VisaoCusto({ dados, dia }: { dados: DadosBISeparacao; dia: string | null }) {
   const { sub, abrir, fechar } = useSub<SubCusto>();
   const { pessoas, equipamentos } = dados;
-  const ind = indicadores(dados, dia);
+  const ind = indicadoresSeparacao(dados, dia);
   if (pessoas.length === 0 && equipamentos.length === 0) return <Vazio>Nenhum funcionário ativo neste setor.</Vazio>;
   const folha = pessoas.reduce((t, y) => t + y.custo, 0);
   const custoEquip = equipamentos.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);

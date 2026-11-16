@@ -11,9 +11,10 @@ import { useState } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { type Periodo, formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
-import { custoDoPeriodo, custoSobreFaturamento } from "@/domain/separacao";
+import { custoSobreFaturamento } from "@/domain/separacao";
 import { totaisEntregas, porDiaEntregas, porVeiculo, faixasOcupacao, resumoDevolucao, devolucaoPorDia, type ViagemEntrega, type DiaEntregas } from "@/domain/motoristas";
 import { BIShell, type HrefMes } from "./bi-shell";
+import { indicadoresMotoristas } from "./motoristas-indicadores";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI,
 } from "./bi-ui";
@@ -41,35 +42,12 @@ const PAPEIS: PapelBI[] = [
 ];
 
 const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
-const comViagens = (e: DadosBIMotoristas["entregas"]): e is { viagens: ViagemEntrega[] } => "viagens" in e;
 const ROT_TIPO = { F: "casa", T: "terceiro" } as const;
 /** "JOSE RAPHAEL OLIVEIRA DA SILVA" → "JOSE SILVA" (primeiro + último). */
 const nomeCurto = (nome: string) => {
   const t = nome.trim().split(/\s+/);
   return t.length > 1 ? `${t[0]} ${t[t.length - 1]}` : t[0];
 };
-
-/** Indicadores do recorte (mês ou 1 dia) — a MESMA conta alimenta cards e gráficos. */
-function indicadores(d: DadosBIMotoristas, dia: string | null) {
-  const vs = comViagens(d.entregas) ? d.entregas.viagens : null;
-  const h = d.ref;
-  const totMes = vs ? totaisEntregas(vs) : null;
-  const tot = vs ? totaisEntregas(vs, dia) : null;
-  const custo = custoDoPeriodo(h?.custo ?? null, d.fracaoMes, totMes?.dias ?? 0, !!dia);
-  const por = (q: number | undefined) => (custo === null || !q ? null : custo / q);
-  return {
-    vs,
-    h,
-    tot,
-    custo,
-    /** parte do custo mensal que cabe ao recorte (mesma regra do custo da equipe) */
-    fracaoCusto: custoDoPeriodo(1, d.fracaoMes, totMes?.dias ?? 0, !!dia) ?? 0,
-    porEntrega: por(tot?.entregas),
-    porViagem: por(tot?.viagens),
-    porTonelada: tot && tot.kg > 0 && custo !== null ? custo / (tot.kg / 1000) : null,
-    sobreFat: custoSobreFaturamento(h?.custoPeriodo ?? null, d.faturamentoLiquido),
-  };
-}
 
 const anteriorDe = (d: DadosBIMotoristas): PontoHistoricoMot | null => d.refAnterior;
 const noRecorte = (d: DadosBIMotoristas, mes: string) => d.meses.includes(mes);
@@ -83,7 +61,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
   const titulo = visao ? visoes.find((v) => v.id === visao) ?? null : null;
   const q = (v: VisaoMot) => ({ ativo: visao === v, onClick: () => abrir(v) });
 
-  const ind = indicadores(dados, dia);
+  const ind = indicadoresMotoristas(dados, dia);
   const { vs, tot, h } = ind;
   const ant = anteriorDe(dados);
   const entDiaVar = h?.entregas && h.dias && ant?.entregas && ant.dias ? varRel(h.entregas / h.dias, ant.entregas / ant.dias) : null;
@@ -212,7 +190,7 @@ const MEDIDA_CUSTO: Record<MedidaCusto, { valor: (x: PontoHistoricoMot) => numbe
 function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | null }) {
   const { sub, abrir, fechar } = useSub<SubCusto>();
   const { pessoas, equipamentos } = dados;
-  const ind = indicadores(dados, dia);
+  const ind = indicadoresMotoristas(dados, dia);
   if (pessoas.length === 0 && equipamentos.length === 0) return <Vazio>Nenhum funcionário ativo neste setor.</Vazio>;
   const folha = pessoas.reduce((t, y) => t + y.custo, 0);
   const custoEquip = equipamentos.reduce((t, e) => t + e.quantidade * e.custoUnitario, 0);
