@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { somaNosMeses, custoBrutoDoPeriodo, custoLogisticoDoPeriodo, efetivoDoPeriodo } from "./custo-periodo";
+import { somaNosMeses, custoBrutoDoPeriodo, custoLogisticoDoPeriodo } from "./custo-periodo";
 import type { CustoMensal } from "./types";
 
 describe("somaNosMeses", () => {
@@ -85,18 +85,5 @@ describe("custoLogisticoDoPeriodo (regra do Início)", () => {
   });
   it("período livre: soma dos meses tocados", () => {
     expect(custoLogisticoDoPeriodo(base)).toBe(3015);
-  });
-});
-
-describe("efetivoDoPeriodo", () => {
-  const fotos = new Map([["2026-09-01", { mes: "2026-09-01", ativos: 130, afastados: 2, folhaTotal: 0 }]]);
-  it("mês corrente: ativos de hoje", () => {
-    expect(efetivoDoPeriodo("2026-11-01", "2026-11-01", 142, fotos)).toBe(142);
-  });
-  it("mês fechado com foto: ativos da foto", () => {
-    expect(efetivoDoPeriodo("2026-09-01", "2026-11-01", 142, fotos)).toBe(130);
-  });
-  it("mês fechado sem foto: null", () => {
-    expect(efetivoDoPeriodo("2026-10-01", "2026-11-01", 142, fotos)).toBeNull();
   });
 });

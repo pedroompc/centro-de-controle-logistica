@@ -1,7 +1,7 @@
 // BI Geral: o resumo de cada setor na aba Geral. Nenhuma conta nova — cada
 // número sai da MESMA função que o BI do setor usa nos quadros dele (ver
 // docs/superpowers/specs/2026-11-16-bi-geral-design.md).
-import { compararPct, type Comparacao } from "./comparacao";
+import { compararAbs, compararPct, compararTaxa, type Comparacao } from "./comparacao";
 import { resumir } from "./bi-recebimento";
 import { resumoVolume, premiacaoA424 } from "./abastecimento";
 import { resumoDevolucao } from "./motoristas";
@@ -103,8 +103,33 @@ export function resumoMotoristas(d: DadosBIMotoristas, clientesAtendidos: number
   };
 }
 
-/** Variação contra o período de comparação; null quando falta um dos lados. */
+/** Variação contra o período de comparação (taxa em p.p., o resto em %); null quando falta um dos lados. */
 export function variacao(atual: IndicadorGeral, base: IndicadorGeral | undefined): Comparacao | null {
   if (atual.valor === null || !base || base.valor === null) return null;
+  if (atual.formato === "pct") return compararTaxa(atual.valor, base.valor, atual.maiorEhBom);
+  if (atual.formato === "int" && base.valor === 0) return compararAbs(atual.valor, 0, atual.maiorEhBom);
   return compararPct(atual.valor, base.valor, atual.maiorEhBom);
+}
+
+/**
+ * Roda de novo UMA vez quando a fonte do setor falhou (`erro`): com todos os
+ * setores consultando o Oracle ao mesmo tempo, uma conexão às vezes cai no meio
+ * ("buffer bounds"); a segunda tentativa já pega conexão nova do pool.
+ */
+export async function comNovaTentativa<T extends { erro: string | null }>(f: () => Promise<T>): Promise<T> {
+  const r = await f();
+  return r.erro ? f() : r;
+}
+
+/**
+ * Fila de uma tarefa por vez. A aba Geral carrega os setores em sequência: com
+ * todos de uma vez o Oracle derruba conexões e o faturamento cai na foto antiga.
+ */
+export function criarFila(): <T>(f: () => Promise<T>) => Promise<T> {
+  let fim: Promise<unknown> = Promise.resolve();
+  return <T>(f: () => Promise<T>) => {
+    const p = fim.then(f, f);
+    fim = p.catch(() => undefined);
+    return p;
+  };
 }

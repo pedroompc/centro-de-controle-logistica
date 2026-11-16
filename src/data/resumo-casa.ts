@@ -5,14 +5,14 @@ import { listarFuncionarios } from "@/data/funcionarios";
 import { listarLancamentosDoMes, serieCustosMensais } from "@/data/custos-mensais";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
-import { custoLogisticoDoPeriodo, efetivoDoPeriodo } from "@/domain/custo-periodo";
+import { custoLogisticoDoPeriodo } from "@/domain/custo-periodo";
 import { totaisEfetivoPorMes } from "@/domain/efetivo";
 import { percentualCustoLogistico } from "@/domain/faturamento";
 import { hojeISO } from "@/domain/fechamento";
-import { INICIO_HISTORICO, mesDoPeriodo, mesesDoPeriodo, primeiroDiaDoMes, temHistoricoSupabase, type Periodo } from "@/domain/periodo";
+import { INICIO_HISTORICO, mesDoPeriodo, mesesDoPeriodo, temHistoricoSupabase, type Periodo } from "@/domain/periodo";
 
 export interface ResumoCasa {
-  efetivo: number | null;
+  efetivo: number; // ativos hoje
   faturamentoLiquido: number | null;
   clientesAtendidos: number | null; // cliente distinto por dia (PDVs atendidos)
   custoLogistico: number | null;
@@ -44,7 +44,7 @@ export async function carregarResumoCasa(periodo: Periodo): Promise<ResumoCasa> 
   });
   const venda = fat?.vendaLiquida ?? null;
   return {
-    efetivo: efetivoDoPeriodo(primeiroDiaDoMes(periodo.ate), primeiroDiaDoMes(), ativos.length, new Map(efTotais.map((t) => [t.mes, t]))),
+    efetivo: ativos.length, // como o Início: ativos de HOJE (não há foto confiável por mês)
     faturamentoLiquido: venda,
     clientesAtendidos: fat?.atendimentos ?? null,
     custoLogistico: custo,

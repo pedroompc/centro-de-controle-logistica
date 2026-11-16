@@ -124,9 +124,3 @@ export function custoLogisticoDoPeriodo(p: {
   if (p.mesUnico) return p.lancamentosMes.reduce((t, c) => t + c.valor, 0) + p.folhaAtual;
   return custoBrutoDoPeriodo(p.meses, p.folhaPorMes, p.custosPorMes);
 }
-
-/** Efetivo do mês de referência: corrente = ativos de hoje; fechado = foto do mês (sem foto: null). */
-export function efetivoDoPeriodo(mesRef: string, mesCorrente: string, ativosHoje: number, fotos: Map<string, { ativos: number }>): number | null {
-  if (mesRef >= mesCorrente) return ativosHoje;
-  return fotos.get(mesRef)?.ativos ?? null;
-}

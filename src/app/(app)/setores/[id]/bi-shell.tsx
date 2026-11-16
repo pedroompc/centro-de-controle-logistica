@@ -132,7 +132,7 @@ export function BIShell({
             <div className="flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-2 text-center">
               <span className="text-4xl text-white/20" aria-hidden>↑</span>
               <p className="text-xl font-semibold text-white/60">Clique num quadro acima para abrir o detalhe</p>
-              <p className="text-sm text-white/35">Clique de novo no mesmo quadro para fechar · F tela cheia · Sair volta ao setor</p>
+              <p className="text-sm text-white/35">Clique de novo no mesmo quadro para fechar · F tela cheia</p>
             </div>
           )}
         </div>

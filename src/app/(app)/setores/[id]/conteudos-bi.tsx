@@ -15,6 +15,7 @@ import { BIAbastecimento } from "./bi-abastecimento";
 import { carregarBIMotoristas } from "./motoristas-dados";
 import { BIMotoristas } from "./bi-motoristas";
 import type { HrefMes } from "./bi-shell";
+import type { DadosBI } from "./bi-recebimento/base";
 import type { Funcionario, Setor } from "@/domain/types";
 
 export interface PropsSetor {
@@ -41,7 +42,8 @@ export async function ConteudoBIMotoristas({ setor, funcionarios, periodo, hrefM
   return <BIMotoristas key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} />;
 }
 
-export async function ConteudoBIRecebimento({ periodo, hrefMes, hrefSair, abas }: Omit<PropsSetor, "setor" | "funcionarios">) {
+/** Dados do BI do Recebimento no período (série, custo e fatos do descarrego). */
+export async function carregarDadosRecebimento(periodo: Periodo): Promise<DadosBI> {
   const mensal = tipoPeriodo(periodo) === "mes";
   const hoje = hojeISO();
   const mes = primeiroDiaDoMes(periodo.ate < hoje ? periodo.ate : hoje);
@@ -55,6 +57,11 @@ export async function ConteudoBIRecebimento({ periodo, hrefMes, hrefSair, abas }
   const ref = mensal
     ? undefined
     : (indicadoresDoPeriodo({ periodo, mes, serie, fatos: resumir(fatos ?? []), faturamentoLiquido: fat?.vendaLiquida ?? null }) ?? undefined);
+  return { mes, periodo, mensal, ref, serie, custo, fatos };
+}
+
+export async function ConteudoBIRecebimento({ periodo, hrefMes, hrefSair, abas }: Omit<PropsSetor, "setor" | "funcionarios">) {
+  const dados = await carregarDadosRecebimento(periodo);
   // Tela cheia (overlay como o Painel da Operação); "Sair" volta a `hrefSair`.
-  return <BIAba key={`${periodo.de}|${periodo.ate}`} dados={{ mes, periodo, mensal, ref, serie, custo, fatos }} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} />;
+  return <BIAba key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={hrefSair} hrefMes={hrefMes} abas={abas} />;
 }

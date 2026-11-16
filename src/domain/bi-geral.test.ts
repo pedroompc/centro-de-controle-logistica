@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resumoSeparacao, resumoAbastecimento, resumoMotoristas, resumoRecebimento, variacao, type IndicadorGeral } from "./bi-geral";
-import { compararPct } from "./comparacao";
+import { resumoSeparacao, resumoAbastecimento, resumoMotoristas, resumoRecebimento, variacao, comNovaTentativa, criarFila, type IndicadorGeral } from "./bi-geral";
+import { compararAbs, compararPct, compararTaxa } from "./comparacao";
 import type { DadosBISeparacao } from "@/app/(app)/setores/[id]/separacao-dados";
 import type { DadosBIAbastecimento } from "@/app/(app)/setores/[id]/abastecimento-dados";
 import type { DadosBIMotoristas } from "@/app/(app)/setores/[id]/motoristas-dados";
@@ -113,9 +113,63 @@ describe("variacao", () => {
     expect(variacao(ind(110), ind(100))).toEqual(compararPct(110, 100, true));
   });
 
+  it("taxa compara em pontos percentuais", () => {
+    const taxa = (valor: number): IndicadorGeral => ({ chave: "devolucao", rotulo: "Devolução", valor, formato: "pct", maiorEhBom: false });
+    expect(variacao(taxa(0.03), taxa(0.02))).toEqual(compararTaxa(0.03, 0.02, false));
+  });
+
+  it("contagem com base zero compara pela diferença absoluta", () => {
+    const r = (valor: number): IndicadorGeral => ({ chave: "rupturas", rotulo: "Rupturas", valor, formato: "int", maiorEhBom: false });
+    expect(variacao(r(6), r(0))).toEqual(compararAbs(6, 0, false));
+  });
+
   it("sem base: null", () => {
     expect(variacao(ind(110), ind(null))).toBeNull();
     expect(variacao(ind(110), undefined)).toBeNull();
     expect(variacao(ind(null), ind(100))).toBeNull();
+  });
+});
+
+describe("comNovaTentativa", () => {
+  it("fonte falhou: tenta mais uma vez e fica com a segunda resposta", async () => {
+    const respostas = [{ erro: "buffer bounds" as string | null }, { erro: null }];
+    let n = 0;
+    const r = await comNovaTentativa(async () => respostas[n++]);
+    expect(n).toBe(2);
+    expect(r.erro).toBeNull();
+  });
+  it("deu certo de primeira: não repete", async () => {
+    let n = 0;
+    await comNovaTentativa(async () => (n++, { erro: null }));
+    expect(n).toBe(1);
+  });
+  it("falhou duas vezes: devolve a falha", async () => {
+    let n = 0;
+    const r = await comNovaTentativa(async () => (n++, { erro: "x" as string | null }));
+    expect(n).toBe(2);
+    expect(r.erro).toBe("x");
+  });
+});
+
+describe("criarFila", () => {
+  it("roda uma tarefa por vez, na ordem de chegada", async () => {
+    const fila = criarFila();
+    const log: string[] = [];
+    const tarefa = (nome: string, ms: number) => fila(async () => {
+      log.push(`ini ${nome}`);
+      await new Promise((r) => setTimeout(r, ms));
+      log.push(`fim ${nome}`);
+      return nome;
+    });
+    const r = await Promise.all([tarefa("a", 20), tarefa("b", 1)]);
+    expect(r).toEqual(["a", "b"]);
+    expect(log).toEqual(["ini a", "fim a", "ini b", "fim b"]);
+  });
+  it("uma tarefa que falha não trava a fila", async () => {
+    const fila = criarFila();
+    const a = fila(async () => { throw new Error("x"); });
+    const b = fila(async () => "ok");
+    await expect(a).rejects.toThrow("x");
+    await expect(b).resolves.toBe("ok");
   });
 });
