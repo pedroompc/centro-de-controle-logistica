@@ -105,3 +105,28 @@ export function custoDoRecorte(
   }
   return { total: achou ? total : null, fracao, completo: achou && completo };
 }
+
+/**
+ * Custo logístico do período — a regra do card "Custo total" do Início, usada
+ * também pelo BI Geral. Antes do histórico do Supabase: null. Mês inteiro =
+ * lançamentos do mês + folha atual dos ativos; período livre = soma dos meses.
+ */
+export function custoLogisticoDoPeriodo(p: {
+  comHistorico: boolean;
+  mesUnico: string | null;
+  lancamentosMes: { valor: number }[];
+  folhaAtual: number;
+  meses: string[];
+  folhaPorMes: Map<string, number>;
+  custosPorMes: Map<string, CustoDoMes>;
+}): number | null {
+  if (!p.comHistorico) return null;
+  if (p.mesUnico) return p.lancamentosMes.reduce((t, c) => t + c.valor, 0) + p.folhaAtual;
+  return custoBrutoDoPeriodo(p.meses, p.folhaPorMes, p.custosPorMes);
+}
+
+/** Efetivo do mês de referência: corrente = ativos de hoje; fechado = foto do mês (sem foto: null). */
+export function efetivoDoPeriodo(mesRef: string, mesCorrente: string, ativosHoje: number, fotos: Map<string, { ativos: number }>): number | null {
+  if (mesRef >= mesCorrente) return ativosHoje;
+  return fotos.get(mesRef)?.ativos ?? null;
+}

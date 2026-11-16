@@ -25,11 +25,11 @@ import {
 import { hojeISO } from "@/domain/fechamento";
 import { PeriodoNav } from "@/components/periodo-nav";
 import { ComparaPeriodos } from "@/components/compara-periodos";
-import { custoBrutoDoPeriodo, somaNosMeses } from "@/domain/custo-periodo";
+import { custoBrutoDoPeriodo, custoLogisticoDoPeriodo, somaNosMeses } from "@/domain/custo-periodo";
 import { listarLancamentosDoMes, serieCustosMensais } from "@/data/custos-mensais";
 import { serieEfetivoSetorMensal, registrarFotoEfetivoSetor } from "@/data/efetivo-mensal";
 import { receitaTotalDoPeriodo } from "@/data/receitas";
-import { totalDoMes, somaLancamentos } from "@/domain/custos-metrics";
+import { somaLancamentos } from "@/domain/custos-metrics";
 import { custoLiquido } from "@/domain/receitas-metrics";
 import { fotoSetorAtual, totaisEfetivoPorMes } from "@/domain/efetivo";
 import { compararSerie, type PontoValor } from "@/domain/comparativo-mensal";
@@ -142,7 +142,7 @@ export default async function Dashboard({
   // sempre); período livre = soma dos meses que toca (foto da folha + custos).
   const folhaPorMes = new Map(efTotais.map((t) => [t.mes, t.folhaTotal]));
   const custoDe = (p: Periodo) => custoBrutoDoPeriodo(mesesDoPeriodo(p), folhaPorMes, custosPorMes);
-  const custoTotalMes: number | null = !comHistorico ? null : mesUnico ? totalDoMes(lancamentosMes, custoEfetivo) : custoDe(periodo);
+  const custoTotalMes = custoLogisticoDoPeriodo({ comHistorico, mesUnico, lancamentosMes, folhaAtual: custoEfetivo, meses, folhaPorMes, custosPorMes });
   const liquidoDe = (c: number | null, r: number | null) => (c === null || r === null ? null : custoLiquido(c, r));
   const custoLiquidoMes = liquidoDe(custoTotalMes, receitasMes);
   const custoCmp = pCmp ? custoDe(pCmp) : null;

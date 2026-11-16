@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { somaNosMeses, custoBrutoDoPeriodo } from "./custo-periodo";
+import { somaNosMeses, custoBrutoDoPeriodo, custoLogisticoDoPeriodo, efetivoDoPeriodo } from "./custo-periodo";
+import type { CustoMensal } from "./types";
 
 describe("somaNosMeses", () => {
   const m = new Map([["2026-07-01", 10], ["2026-08-01", 20]]);
@@ -67,5 +68,35 @@ describe("custoDoRecorte", () => {
   });
   it("nenhum mês com custo = null", () => {
     expect(custoDoRecorte({ de: "2025-10-01", ate: "2025-12-31" }, custos, hoje)).toEqual({ total: null, fracao: 3, completo: false });
+  });
+});
+
+describe("custoLogisticoDoPeriodo (regra do Início)", () => {
+  const lanc = [{ valor: 100 }, { valor: 50 }] as CustoMensal[];
+  const folhaPorMes = new Map([["2026-08-01", 1000], ["2026-09-01", 2000]]);
+  const custosPorMes = new Map([["2026-08-01", { fixos: 10, variaveis: 5 }]]);
+  const base = { comHistorico: true, mesUnico: null, lancamentosMes: lanc, folhaAtual: 700, meses: ["2026-08-01", "2026-09-01"], folhaPorMes, custosPorMes };
+
+  it("sem histórico no Supabase: null", () => {
+    expect(custoLogisticoDoPeriodo({ ...base, comHistorico: false })).toBeNull();
+  });
+  it("mês único: lançamentos do mês + folha atual", () => {
+    expect(custoLogisticoDoPeriodo({ ...base, mesUnico: "2026-08-01" })).toBe(850);
+  });
+  it("período livre: soma dos meses tocados", () => {
+    expect(custoLogisticoDoPeriodo(base)).toBe(3015);
+  });
+});
+
+describe("efetivoDoPeriodo", () => {
+  const fotos = new Map([["2026-09-01", { mes: "2026-09-01", ativos: 130, afastados: 2, folhaTotal: 0 }]]);
+  it("mês corrente: ativos de hoje", () => {
+    expect(efetivoDoPeriodo("2026-11-01", "2026-11-01", 142, fotos)).toBe(142);
+  });
+  it("mês fechado com foto: ativos da foto", () => {
+    expect(efetivoDoPeriodo("2026-09-01", "2026-11-01", 142, fotos)).toBe(130);
+  });
+  it("mês fechado sem foto: null", () => {
+    expect(efetivoDoPeriodo("2026-10-01", "2026-11-01", 142, fotos)).toBeNull();
   });
 });
