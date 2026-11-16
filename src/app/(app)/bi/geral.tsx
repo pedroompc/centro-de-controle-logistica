@@ -3,7 +3,13 @@ import Link from "next/link";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { carregarResumoCasa } from "@/data/resumo-casa";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
-import { rotuloCurto, type Periodo, type PeriodoComparado } from "@/domain/periodo";
+import { mesAnterior, mesDoPeriodo, primeiroDiaDoMes, rotuloCurto, type Periodo, type PeriodoComparado } from "@/domain/periodo";
+import { getSerieTendencias } from "@/data/faturamento-mensal";
+import { serieCustosMensais } from "@/data/custos-mensais";
+import { serieEfetivoMensal } from "@/data/efetivo-mensal";
+import { montarEvolucaoCasa, montarPlacar, type PontoCasa } from "@/domain/bi-geral-graficos";
+import { PainelEvolucao, Placar, type SerieEvolucao } from "./graficos";
+import type { ResumoCasa } from "@/data/resumo-casa";
 import { compararPct, compararTaxa, type Comparacao } from "@/domain/comparacao";
 import {
   comNovaTentativa, criarFila, resumoAbastecimento, resumoMotoristas, resumoRecebimento, resumoSeparacao, variacao,
@@ -21,7 +27,53 @@ import { carregarDadosRecebimento } from "../setores/[id]/conteudos-bi";
 /** R$ sem centavos (número grande na tela). */
 const reais = (v: number) => formatBRL(Math.round(v)).replace(",00", "");
 
-type Fila = ReturnType<typeof criarFila>;
+
+type CargaSetor = ResumoSetorGeral | null | { erro: string };
+
+/**
+ * Cada carga roda UMA vez por tela (pela fila de 2) e é dividida entre quem
+ * precisa dela: os cartões e o gráfico da casa; o bloco do setor e o placar.
+ */
+interface Cargas {
+  casa: () => Promise<ResumoCasa>;
+  casaBase: () => Promise<ResumoCasa | null>;
+  setor: (s: SetorGeral) => Promise<CargaSetor>;
+  setorBase: (s: SetorGeral) => Promise<ResumoSetorGeral | null>;
+  /** Fotos mensais do faturamento: mês sem foto vai ao Winthor, então entra na fila também. */
+  fechados: (qtd: number) => Promise<Awaited<ReturnType<typeof getSerieTendencias>>>;
+}
+
+/** Comparação antes do primeiro mês com dado do setor = sem base ("sem histórico"), nunca zero. */
+function cmpDoSetor(s: SetorGeral, c: PeriodoComparado | null): PeriodoComparado | null {
+  return c && c.periodo.de >= pisoDaAba(s as AbaBI) ? c : null;
+}
+
+function criarCargas(p: {
+  periodo: Periodo; comparacao: PeriodoComparado | null; setores: Partial<Record<AbaBI, Setor>>; funcionarios: Funcionario[];
+}): Cargas {
+  const fila = criarFila(2);
+  const memo = new Map<string, Promise<unknown>>();
+  const uma = <T,>(k: string, f: () => Promise<T>): Promise<T> => {
+    if (!memo.has(k)) memo.set(k, f());
+    return memo.get(k) as Promise<T>;
+  };
+  return {
+    fechados: (qtd) => uma("fechados", () => (qtd > 0 ? fila(() => getSerieTendencias(qtd)).catch(() => []) : Promise.resolve([]))),
+    casa: () => uma("casa", () => fila(() => carregarResumoCasa(p.periodo))),
+    casaBase: () => {
+      const c = p.comparacao;
+      return uma("casaBase", () => (c ? fila(() => carregarResumoCasa(c.periodo)).catch(() => null) : Promise.resolve(null)));
+    },
+    setor: (s) =>
+      uma(`s:${s}`, () =>
+        fila(() => resumoDoSetor(s, p.setores[s], p.funcionarios, p.periodo)).catch((e: unknown) => ({ erro: e instanceof Error ? e.message : String(e) })),
+      ),
+    setorBase: (s) => {
+      const c = cmpDoSetor(s, p.comparacao);
+      return uma(`b:${s}`, () => (c ? fila(() => resumoDoSetor(s, p.setores[s], p.funcionarios, c.periodo)).catch(() => null) : Promise.resolve(null)));
+    },
+  };
+}
 
 const SETORES: SetorGeral[] = ["separacao", "recebimento", "abastecimento", "motoristas"];
 
@@ -54,11 +106,8 @@ function CartaoCasa({ rotulo, valor, sub }: { rotulo: string; valor: string; sub
 
 const GRADE_CASA = "mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4";
 
-async function NumerosCasa({ periodo, comparacao, fila }: { periodo: Periodo; comparacao: PeriodoComparado | null; fila: Fila }) {
-  const [a, b] = await Promise.all([
-    fila(() => carregarResumoCasa(periodo)),
-    comparacao ? fila(() => carregarResumoCasa(comparacao.periodo)).catch(() => null) : Promise.resolve(null),
-  ]);
+async function NumerosCasa({ comparacao, cargas }: { comparacao: PeriodoComparado | null; cargas: Cargas }) {
+  const [a, b] = await Promise.all([cargas.casa(), cargas.casaBase()]);
   const falhou = !!comparacao && (b === null || !!b.erro);
   const v = (c: Comparacao | null) => (comparacao ? <VariacaoTV c={c} rotulo={`vs ${rotuloCurto(comparacao.periodo)}`} falhou={falhou} /> : undefined);
   const pct = (k: "faturamentoLiquido" | "custoLogistico", bom: boolean) => v(a[k] === null || !b ? null : compararPct(a[k], b[k], bom));
@@ -89,6 +138,82 @@ function CasaCarregando() {
       ))}
     </div>
   );
+}
+
+
+// --- Evolução mês a mês da casa ------------------------------------------------------
+
+const MES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const rotuloMes = (mes: string) => `${MES_ABREV[Number(mes.slice(5, 7)) - 1]}/${mes.slice(2, 4)}`;
+const MESES_EVOLUCAO = 12;
+const GRADE_EVOLUCAO = "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4";
+
+// Sem "vs mês anterior" no gráfico: a comparação fica nos cartões (Comparar), com
+// a regra de custo do Início; o histórico usa a folha da foto de cada mês.
+function serie(nome: string, pontos: PontoCasa[], valor: (p: PontoCasa) => number | null, texto: (v: number) => string): SerieEvolucao {
+  const ps = pontos.filter((p) => valor(p) !== null);
+  const vs = ps.map((p) => valor(p)!);
+  return { nome, rotulos: ps.map((p) => rotuloMes(p.mes)), valores: vs, textos: vs.map(texto), parcial: ps.map((p) => p.parcial) };
+}
+
+async function EvolucaoCasa({ periodo, cargas }: { periodo: Periodo; cargas: Cargas }) {
+  const hojeMes = primeiroDiaDoMes();
+  const ateMes = primeiroDiaDoMes(periodo.ate) > hojeMes ? hojeMes : primeiroDiaDoMes(periodo.ate);
+  let inicio = ateMes;
+  for (let i = 1; i < MESES_EVOLUCAO; i++) inicio = mesAnterior(inicio);
+  // Quantos meses fechados (contando de hoje para trás) cobrem a janela.
+  let qtd = 0;
+  for (let m = mesAnterior(hojeMes); m >= inicio; m = mesAnterior(m)) qtd++;
+  const [a, fechados, custos, efetivo] = await Promise.all([
+    cargas.casa(),
+    cargas.fechados(qtd),
+    serieCustosMensais(qtd + 1).catch(() => []),
+    serieEfetivoMensal(qtd + 1).catch(() => []),
+  ]);
+  const mes = mesDoPeriodo(periodo);
+  const pontos = montarEvolucaoCasa({
+    ateMes,
+    qtd: MESES_EVOLUCAO,
+    hojeMes,
+    fechados,
+    folhaPorMes: new Map(efetivo.map((e) => [e.mes, e.folhaTotal])),
+    custosPorMes: new Map(custos.map((c) => [c.mes, c])),
+    atual: mes && !a.erro ? { mes, faturamento: a.faturamentoLiquido, custo: a.custoLogistico, clientes: a.clientesAtendidos } : null,
+  });
+  const series = [
+    serie("Custo ÷ faturamento", pontos, (p) => p.custoSobreFat, (v) => formatPercent(v, 2)),
+    serie("Faturamento líquido", pontos, (p) => p.faturamento, reais),
+    serie("Custo logístico", pontos, (p) => p.custo, reais),
+    serie("Clientes atendidos", pontos, (p) => p.clientes, (v) => Math.round(v).toLocaleString("pt-BR")),
+  ];
+  return (
+    <div className={GRADE_EVOLUCAO}>
+      {series.map((s) => <PainelEvolucao key={s.nome} s={s} />)}
+    </div>
+  );
+}
+
+function EvolucaoCarregando() {
+  return (
+    <div className={GRADE_EVOLUCAO}>
+      {[0, 1, 2, 3].map((k) => <div key={k} className="h-[11.5rem] animate-pulse rounded-2xl bg-white/[0.04] ring-1 ring-white/10" />)}
+    </div>
+  );
+}
+
+// --- Placar dos setores (com Comparar) --------------------------------------------------
+
+async function PlacarSetores({ cargas, comparacao }: { cargas: Cargas; comparacao: PeriodoComparado }) {
+  const dados = await Promise.all(
+    SETORES.map(async (s) => {
+      const [r, base] = await Promise.all([cargas.setor(s), cargas.setorBase(s)]);
+      const atuais = r && "indicadores" in r && !r.erro ? r.indicadores : [];
+      return { setor: s, atuais, base: base && !base.erro ? base.indicadores : null };
+    }),
+  );
+  const linhas = montarPlacar(dados).map((l) => ({ ...l, grupo: ROTULO_ABA[l.setor] }));
+  if (linhas.length === 0) return null;
+  return <Placar linhas={linhas} rotuloBase={`vs ${rotuloCurto(comparacao.periodo)}`} />;
 }
 
 // --- Um bloco por setor ------------------------------------------------------------
@@ -122,16 +247,9 @@ function Moldura({ s, href, children }: { s: SetorGeral; href: string; children:
   );
 }
 
-async function BlocoSetor(p: {
-  fila: Fila;
-  s: SetorGeral; setor: Setor | undefined; funcionarios: Funcionario[]; periodo: Periodo; comparacao: PeriodoComparado | null; href: string;
-}) {
-  // Comparação antes do primeiro mês com dado do setor = sem base ("sem histórico"), nunca zero.
-  const cmpValido = p.comparacao && p.comparacao.periodo.de >= pisoDaAba(p.s as AbaBI) ? p.comparacao : null;
-  const [r, base] = await Promise.all([
-    p.fila(() => resumoDoSetor(p.s, p.setor, p.funcionarios, p.periodo)).catch((e: unknown) => ({ erro: e instanceof Error ? e.message : String(e) })),
-    cmpValido ? p.fila(() => resumoDoSetor(p.s, p.setor, p.funcionarios, cmpValido.periodo)).catch(() => null) : Promise.resolve(null),
-  ]);
+async function BlocoSetor(p: { cargas: Cargas; s: SetorGeral; comparacao: PeriodoComparado | null; href: string }) {
+  const cmpValido = cmpDoSetor(p.s, p.comparacao);
+  const [r, base] = await Promise.all([p.cargas.setor(p.s), p.cargas.setorBase(p.s)]);
   if (r === null) {
     return <Moldura s={p.s} href={p.href}><p className="text-sm text-white/40">setor não cadastrado em Setores</p></Moldura>;
   }
@@ -190,16 +308,23 @@ export function AbaGeral({
   /** Aba de setor pedida, mas o setor não está cadastrado. */
   faltando?: AbaBI;
 }) {
-  // No máximo 2 cargas pesadas ao mesmo tempo (casa e setores), na ordem da tela.
-  const fila = criarFila(2);
-  const chaveCmp = comparacao ? `${comparacao.periodo.de}|${comparacao.periodo.ate}` : "";
+  // No máximo 2 cargas pesadas ao mesmo tempo, na ordem da tela; cada uma roda uma vez só.
+  const cargas = criarCargas({ periodo, comparacao, setores, funcionarios });
+  const chave = `${periodo.de}|${periodo.ate}|${comparacao ? `${comparacao.periodo.de}|${comparacao.periodo.ate}` : ""}`;
   const blocos = (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
-      {SETORES.map((s) => (
-        <Suspense key={`${s}|${periodo.de}|${periodo.ate}|${chaveCmp}`} fallback={<SetorCarregando s={s} />}>
-          <BlocoSetor fila={fila} s={s} setor={setores[s]} funcionarios={funcionarios} periodo={periodo} comparacao={comparacao} href={hrefBI(s, q)} />
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
+        {SETORES.map((s) => (
+          <Suspense key={`${s}|${chave}`} fallback={<SetorCarregando s={s} />}>
+            <BlocoSetor cargas={cargas} s={s} comparacao={comparacao} href={hrefBI(s, q)} />
+          </Suspense>
+        ))}
+      </div>
+      {comparacao && (
+        <Suspense key={`placar|${chave}`} fallback={null}>
+          <PlacarSetores cargas={cargas} comparacao={comparacao} />
         </Suspense>
-      ))}
+      )}
     </div>
   );
   return (
@@ -211,9 +336,14 @@ export function AbaGeral({
       abas={abas}
       dicaTopo={faltando ? `${ROTULO_ABA[faltando]}: setor não cadastrado em Setores` : ""}
       menu={
-        <Suspense key={`casa|${periodo.de}|${periodo.ate}|${chaveCmp}`} fallback={<CasaCarregando />}>
-          <NumerosCasa periodo={periodo} comparacao={comparacao} fila={fila} />
-        </Suspense>
+        <>
+          <Suspense key={`casa|${chave}`} fallback={<CasaCarregando />}>
+            <NumerosCasa comparacao={comparacao} cargas={cargas} />
+          </Suspense>
+          <Suspense key={`evolucao|${chave}`} fallback={<EvolucaoCarregando />}>
+            <EvolucaoCasa periodo={periodo} cargas={cargas} />
+          </Suspense>
+        </>
       }
       palco={{ chave: "setores", titulo: "Setores", conteudo: blocos }}
     />
