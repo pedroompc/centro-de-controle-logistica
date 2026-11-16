@@ -221,6 +221,7 @@ function ModalCabecalho({ pedido, onFechar }: { pedido: PedidoConsulta; onFechar
   }, [onFechar]);
 
   const espera = intervalo(pedido.emissao, pedido.liberadoEm);
+  const esperaFat = intervalo(pedido.liberadoEm?.slice(0, 16) ?? pedido.emissao, pedido.faturadoEm);
   const emitente = pedido.emitidoPelaForcaDeVendas
     ? `Força de Vendas${pedido.rca ? ` · ${pedido.rca}` : ""}`
     : pedido.emitente ?? "—";
@@ -259,6 +260,11 @@ function ModalCabecalho({ pedido, onFechar }: { pedido: PedidoConsulta; onFechar
               rotulo="Liberado em"
               valor={pedido.liberadoEm ? fmtDataHora(pedido.liberadoEm) : <span className="font-normal text-slate-400">—</span>}
               sub={espera ? `${espera} após a emissão` : undefined}
+            />
+            <Campo
+              rotulo="Faturado em"
+              valor={pedido.faturadoEm ? fmtDataHora(pedido.faturadoEm) : <span className="font-normal text-slate-400">Não faturado</span>}
+              sub={esperaFat ? `${esperaFat} após a ${pedido.liberadoEm ? "liberação" : "emissão"}` : undefined}
             />
           </div>
         </div>

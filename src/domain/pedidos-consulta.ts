@@ -39,6 +39,7 @@ export interface PedidoConsulta {
   emissao: string | null; // data + hora da emissão "YYYY-MM-DD HH:MI"
   liberadoPor: string | null; // PCPEDC.CODFUNCLIBERA → PCEMPR.NOME
   liberadoEm: string | null; // PCPEDC.DTLIBERA "YYYY-MM-DD HH:MI:SS"
+  faturadoEm: string | null; // PCPEDC.DTFAT + HORAFAT/MINUTOFAT "YYYY-MM-DD HH:MI"; null se não faturado
   // Com devolução: NF(s) de venda que voltaram (nota de origem) e NF(s) de
   // entrada da devolução, separadas por vírgula. `null` sem devolução.
   nfOrigemDevolucao: string | null;

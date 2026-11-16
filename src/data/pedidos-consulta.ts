@@ -90,7 +90,8 @@ const sqlPedidos = (f: FiltrosPedidos) => `WITH base AS (
     SELECT ped.NUMPED, ped.DATA, ped.CODCLI, ped.CODUSUR, ped.POSICAO, ped.NUMCAR, ped.DTFAT,
            ped.VLTOTAL, ped.TOTPESO, ped.OBS, ped.OBS1, ped.OBS2,
            ped.OBSENTREGA1, ped.OBSENTREGA2, ped.OBSENTREGA3, ped.OBSENTREGA4,
-           ped.CODEMITENTE, ped.HORA, ped.MINUTO, ped.CODFUNCLIBERA, ped.DTLIBERA
+           ped.CODEMITENTE, ped.HORA, ped.MINUTO, ped.CODFUNCLIBERA, ped.DTLIBERA,
+           ped.HORAFAT, ped.MINUTOFAT
     FROM PCPEDC ped
     WHERE ${whereClause(f)}
     ORDER BY ped.DATA DESC, ped.NUMPED DESC
@@ -175,6 +176,11 @@ SELECT
     LPAD(NVL(ped.HORA, 0), 2, '0') || ':' || LPAD(NVL(ped.MINUTO, 0), 2, '0') AS EMISSAO,
   lib.NOME                         AS LIBERADO_POR,
   TO_CHAR(ped.DTLIBERA, 'YYYY-MM-DD HH24:MI:SS') AS LIBERADO_EM,
+  -- Faturamento: DTFAT só tem a data; a hora vem de HORAFAT/MINUTOFAT.
+  CASE WHEN ped.DTFAT IS NOT NULL THEN
+    TO_CHAR(ped.DTFAT, 'YYYY-MM-DD') || ' ' ||
+    LPAD(NVL(ped.HORAFAT, 0), 2, '0') || ':' || LPAD(NVL(ped.MINUTOFAT, 0), 2, '0')
+  END                              AS FATURADO_EM,
   -- Nota de origem da devolução (NF de venda que voltou) e NF de entrada da devolução.
   dev.NF_ORIGEM_DEV                AS NF_ORIGEM_DEV,
   devent.NF_DEV                    AS NF_DEV
@@ -200,7 +206,7 @@ interface LinhaPedido {
   POSICAO: string | null; NUMCAR: number | null; CODMOTORISTA: number | null; MOTORISTA: string | null; DTFAT: unknown;
   NF: number | null; VALOR: number; PESO: number; QTD_ITENS: number; TEM_DEV: string | null;
   CODEMITENTE: number | null; EMITENTE: string | null; EMISSAO: string | null;
-  LIBERADO_POR: string | null; LIBERADO_EM: string | null;
+  LIBERADO_POR: string | null; LIBERADO_EM: string | null; FATURADO_EM: string | null;
   MOTIVO_DEV: string | null; NF_ORIGEM_DEV: string | null; NF_DEV: string | null;
 }
 
@@ -256,6 +262,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       emissao: str(r.EMISSAO),
       liberadoPor: str(r.LIBERADO_POR),
       liberadoEm: str(r.LIBERADO_EM),
+      faturadoEm: str(r.FATURADO_EM),
       nfOrigemDevolucao: str(r.NF_ORIGEM_DEV),
       foneRca: primeiroFoneValido(r.FONE1, r.FONE2),
       obsPedido: str(r.OBS_PEDIDO)?.replace(/\s+/g, " ") ?? null,
