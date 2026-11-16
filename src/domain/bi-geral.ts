@@ -52,11 +52,13 @@ export function resumoSeparacao(d: DadosBISeparacao): ResumoSetorGeral {
 
 /** Peso, carros e receita do descarrego — mesma escolha do BI (fatos do recorte; sem fatos, a série do mês). */
 export function resumoRecebimento(d: DadosBI): ResumoSetorGeral {
-  const r = d.ref ?? d.serie.find((x) => x.mes === d.mes) ?? null;
+  // Período livre sem os fatos do descarrego: o `ref` vem zerado — sem dado, não 0.
+  const semFatos = !d.mensal && d.fatos === null;
+  const r = semFatos ? null : (d.ref ?? d.serie.find((x) => x.mes === d.mes) ?? null);
   const f = r && d.fatos !== null ? resumir(d.fatos) : null;
   return {
     setor: "recebimento",
-    erro: null,
+    erro: semFatos ? "descarrego indisponível" : null,
     indicadores: [
       ind("peso", "Peso descarregado", r ? (f ? f.pesoKg : r.pesoKg) : null, "kg", true),
       ind("carros", "Carros descarregados", r ? (f ? f.carros : r.carros) : null, "int", true),
@@ -118,18 +120,34 @@ export function variacao(atual: IndicadorGeral, base: IndicadorGeral | undefined
  */
 export async function comNovaTentativa<T extends { erro: string | null }>(f: () => Promise<T>): Promise<T> {
   const r = await f();
-  return r.erro ? f() : r;
+  return r.erro && conexaoCaiu(r.erro) ? f() : r;
+}
+
+/** Conexão morta no meio da consulta (vale repetir). Timeout e erro de SQL não: repetir só faria esperar de novo. */
+export function conexaoCaiu(msg: string): boolean {
+  return /buffer bounds|NJS-(500|521)|ORA-(03113|03114|03135)/i.test(msg);
 }
 
 /**
- * Fila de uma tarefa por vez. A aba Geral carrega os setores em sequência: com
- * todos de uma vez o Oracle derruba conexões e o faturamento cai na foto antiga.
+ * Fila com no máximo `limite` tarefas ao mesmo tempo, na ordem de chegada. A
+ * aba Geral não dispara todos os setores juntos: com tudo de uma vez o Oracle
+ * derruba conexões e o faturamento cai na foto antiga. Com 2 por vez um setor
+ * lento não segura sozinho os outros.
  */
-export function criarFila(): <T>(f: () => Promise<T>) => Promise<T> {
-  let fim: Promise<unknown> = Promise.resolve();
-  return <T>(f: () => Promise<T>) => {
-    const p = fim.then(f, f);
-    fim = p.catch(() => undefined);
-    return p;
+export function criarFila(limite: number): <T>(f: () => Promise<T>) => Promise<T> {
+  let rodando = 0;
+  const espera: (() => void)[] = [];
+  const liberar = () => {
+    rodando--;
+    espera.shift()?.();
   };
+  return <T>(f: () => Promise<T>) =>
+    new Promise<T>((resolve, reject) => {
+      const iniciar = () => {
+        rodando++;
+        f().then(resolve, reject).finally(liberar);
+      };
+      if (rodando < limite) iniciar();
+      else espera.push(iniciar);
+    });
 }

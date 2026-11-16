@@ -12,7 +12,8 @@ import { hojeISO } from "@/domain/fechamento";
 import { INICIO_HISTORICO, mesDoPeriodo, mesesDoPeriodo, temHistoricoSupabase, type Periodo } from "@/domain/periodo";
 
 export interface ResumoCasa {
-  efetivo: number; // ativos hoje
+  efetivo: number | null; // ativos hoje
+  erro: string | null; // Supabase fora: tudo vem null e a tela mostra "indisponível"
   faturamentoLiquido: number | null;
   clientesAtendidos: number | null; // cliente distinto por dia (PDVs atendidos)
   custoLogistico: number | null;
@@ -20,6 +21,16 @@ export interface ResumoCasa {
 }
 
 export async function carregarResumoCasa(periodo: Periodo): Promise<ResumoCasa> {
+  try {
+    return await ler(periodo);
+  } catch (e) {
+    const erro = e instanceof Error ? e.message : String(e);
+    console.error("[resumo-casa]", erro);
+    return { efetivo: null, faturamentoLiquido: null, clientesAtendidos: null, custoLogistico: null, custoSobreFat: null, erro };
+  }
+}
+
+async function ler(periodo: Periodo): Promise<ResumoCasa> {
   const mesUnico = mesDoPeriodo(periodo);
   const comHistorico = temHistoricoSupabase(periodo);
   const qtdSerie = Math.max(12, mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() }).length);
@@ -49,5 +60,6 @@ export async function carregarResumoCasa(periodo: Periodo): Promise<ResumoCasa> 
     clientesAtendidos: fat?.atendimentos ?? null,
     custoLogistico: custo,
     custoSobreFat: custo === null || venda === null ? null : percentualCustoLogistico(custo, venda),
+    erro: null,
   };
 }

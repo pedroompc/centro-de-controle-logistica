@@ -1,7 +1,7 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
-import { carregarResumoCasa, type ResumoCasa } from "@/data/resumo-casa";
+import { carregarResumoCasa } from "@/data/resumo-casa";
 import { hojeISO } from "@/domain/fechamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { rotuloCurto, type Periodo, type PeriodoComparado } from "@/domain/periodo";
@@ -76,12 +76,17 @@ async function NumerosCasa({ periodo, comparacao, fila }: { periodo: Periodo; co
     fila(() => carregarResumoCasa(periodo)),
     comparacao ? fila(() => carregarResumoCasa(comparacao.periodo)).catch(() => null) : Promise.resolve(null),
   ]);
-  const v = (c: Comparacao | null) => (comparacao ? <VariacaoTV c={c} cmp={comparacao} /> : undefined);
-  const pct = (k: keyof ResumoCasa, bom: boolean) => v(a[k] === null || !b ? null : compararPct(a[k] as number, b[k], bom));
+  const falhou = !!comparacao && (b === null || !!b.erro);
+  const v = (c: Comparacao | null) => (comparacao ? <VariacaoTV c={c} cmp={comparacao} falhou={falhou} /> : undefined);
+  const pct = (k: "faturamentoLiquido" | "custoLogistico", bom: boolean) => v(a[k] === null || !b ? null : compararPct(a[k], b[k], bom));
   const brl = (n: number | null) => (n === null ? "—" : reais(n));
   return (
     <div className={GRADE_CASA}>
-      <CartaoCasa rotulo="Efetivo" valor={a.efetivo === null ? "—" : `${a.efetivo} pessoas`} sub={<span className="text-white/35">ativos hoje</span>} />
+      <CartaoCasa
+        rotulo="Efetivo"
+        valor={a.efetivo === null ? "—" : `${a.efetivo} pessoas`}
+        sub={a.erro ? <span className="text-amber-200/80" title={a.erro}>indisponível agora</span> : <span className="text-white/35">ativos hoje</span>}
+      />
       <CartaoCasa rotulo="Faturamento líquido" valor={brl(a.faturamentoLiquido)} sub={pct("faturamentoLiquido", true)} />
       <CartaoCasa rotulo="Custo logístico" valor={brl(a.custoLogistico)} sub={pct("custoLogistico", false)} />
       <CartaoCasa
@@ -202,8 +207,8 @@ export function AbaGeral({
   /** Aba de setor pedida, mas o setor não está cadastrado. */
   faltando?: AbaBI;
 }) {
-  // Uma consulta pesada por vez (casa e depois cada setor), na ordem da tela.
-  const fila = criarFila();
+  // No máximo 2 cargas pesadas ao mesmo tempo (casa e setores), na ordem da tela.
+  const fila = criarFila(2);
   const chaveCmp = comparacao ? `${comparacao.periodo.de}|${comparacao.periodo.ate}` : "";
   const blocos = (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">

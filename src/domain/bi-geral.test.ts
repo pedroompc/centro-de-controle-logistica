@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resumoSeparacao, resumoAbastecimento, resumoMotoristas, resumoRecebimento, variacao, comNovaTentativa, criarFila, type IndicadorGeral } from "./bi-geral";
+import { resumoSeparacao, resumoAbastecimento, resumoMotoristas, resumoRecebimento, variacao, comNovaTentativa, criarFila, conexaoCaiu, type IndicadorGeral } from "./bi-geral";
 import { compararAbs, compararPct, compararTaxa } from "./comparacao";
 import type { DadosBISeparacao } from "@/app/(app)/setores/[id]/separacao-dados";
 import type { DadosBIAbastecimento } from "@/app/(app)/setores/[id]/abastecimento-dados";
@@ -90,18 +90,25 @@ describe("resumoRecebimento", () => {
 
   it("com fatos usa os fatos do recorte", () => {
     const fatos = [{ dia: "2026-10-01", fornecedor: "X", tipo: "batido", carros: 2, descargasVolume: 0, caixas: 0, pesoKg: 1500, receita: 120, notas: 2 }];
-    const r = resumoRecebimento({ mes: "2026-10-01", serie, fatos } as unknown as DadosBI);
+    const r = resumoRecebimento({ mes: "2026-10-01", mensal: true, serie, fatos } as unknown as DadosBI);
     expect(r.indicadores.map((i) => i.chave)).toEqual(["peso", "carros", "receita"]);
     expect(valores(r)).toEqual([1500, 2, 120]);
   });
 
-  it("sem fatos usa a série do mês", () => {
-    const r = resumoRecebimento({ mes: "2026-10-01", serie, fatos: null } as unknown as DadosBI);
+  it("mês inteiro sem fatos usa a série do mês", () => {
+    const r = resumoRecebimento({ mes: "2026-10-01", mensal: true, serie, fatos: null } as unknown as DadosBI);
     expect(valores(r)).toEqual([9000, 30, 800]);
   });
 
+  it("período livre com o descarrego fora: erro e nenhum número (nunca 0)", () => {
+    const ref = { mes: "2026-10-01", pesoKg: 0, carros: 0, receitaDescarrego: 0 };
+    const r = resumoRecebimento({ mes: "2026-10-01", mensal: false, ref, serie, fatos: null } as unknown as DadosBI);
+    expect(r.erro).toBeTruthy();
+    expect(valores(r)).toEqual([null, null, null]);
+  });
+
   it("mês fora da série: nenhum número", () => {
-    const r = resumoRecebimento({ mes: "2026-05-01", serie, fatos: null } as unknown as DadosBI);
+    const r = resumoRecebimento({ mes: "2026-05-01", mensal: true, serie, fatos: null } as unknown as DadosBI);
     expect(valores(r)).toEqual([null, null, null]);
   });
 });
@@ -132,7 +139,7 @@ describe("variacao", () => {
 
 describe("comNovaTentativa", () => {
   it("fonte falhou: tenta mais uma vez e fica com a segunda resposta", async () => {
-    const respostas = [{ erro: "buffer bounds" as string | null }, { erro: null }];
+    const respostas = [{ erro: "Attempt to access memory outside buffer bounds" as string | null }, { erro: null }];
     let n = 0;
     const r = await comNovaTentativa(async () => respostas[n++]);
     expect(n).toBe(2);
@@ -143,17 +150,23 @@ describe("comNovaTentativa", () => {
     await comNovaTentativa(async () => (n++, { erro: null }));
     expect(n).toBe(1);
   });
-  it("falhou duas vezes: devolve a falha", async () => {
+  it("conexão caiu duas vezes: devolve a falha", async () => {
     let n = 0;
-    const r = await comNovaTentativa(async () => (n++, { erro: "x" as string | null }));
+    const r = await comNovaTentativa(async () => (n++, { erro: "Attempt to access memory outside buffer bounds" as string | null }));
     expect(n).toBe(2);
-    expect(r.erro).toBe("x");
+    expect(r.erro).toMatch(/buffer bounds/);
+  });
+  it("timeout ou erro de SQL: não repete (só esperaria de novo)", async () => {
+    let n = 0;
+    const r = await comNovaTentativa(async () => (n++, { erro: "NJS-040: connection request timeout" as string | null }));
+    expect(n).toBe(1);
+    expect(r.erro).toMatch(/NJS-040/);
   });
 });
 
 describe("criarFila", () => {
-  it("roda uma tarefa por vez, na ordem de chegada", async () => {
-    const fila = criarFila();
+  it("com limite 1, roda uma tarefa por vez, na ordem de chegada", async () => {
+    const fila = criarFila(1);
     const log: string[] = [];
     const tarefa = (nome: string, ms: number) => fila(async () => {
       log.push(`ini ${nome}`);
@@ -165,11 +178,34 @@ describe("criarFila", () => {
     expect(r).toEqual(["a", "b"]);
     expect(log).toEqual(["ini a", "fim a", "ini b", "fim b"]);
   });
+  it("com limite 2, roda no máximo duas ao mesmo tempo", async () => {
+    const fila = criarFila(2);
+    let rodando = 0;
+    let pico = 0;
+    const tarefa = () => fila(async () => {
+      rodando++;
+      pico = Math.max(pico, rodando);
+      await new Promise((r) => setTimeout(r, 5));
+      rodando--;
+    });
+    await Promise.all([tarefa(), tarefa(), tarefa(), tarefa()]);
+    expect(pico).toBe(2);
+  });
   it("uma tarefa que falha não trava a fila", async () => {
-    const fila = criarFila();
+    const fila = criarFila(1);
     const a = fila(async () => { throw new Error("x"); });
     const b = fila(async () => "ok");
     await expect(a).rejects.toThrow("x");
     await expect(b).resolves.toBe("ok");
+  });
+});
+
+describe("conexaoCaiu", () => {
+  it("reconhece conexão morta, não timeout", () => {
+    expect(conexaoCaiu("Attempt to access memory outside buffer bounds")).toBe(true);
+    expect(conexaoCaiu("NJS-521: connection to host was closed")).toBe(true);
+    expect(conexaoCaiu("ORA-03113: end-of-file on communication channel")).toBe(true);
+    expect(conexaoCaiu("NJS-040: connection request timeout")).toBe(false);
+    expect(conexaoCaiu("ORA-00904: invalid identifier")).toBe(false);
   });
 });
