@@ -10,15 +10,9 @@ import { isAdmin } from "@/data/auth";
 import { headcountPorStatus, faltasNoPeriodo, resumoPorTurno, ROTULO_TURNO } from "@/domain/metrics";
 import { formatBRL } from "@/domain/format";
 import {
-  inicioFimMesAtual, INICIO_HISTORICO, PISO_HARPIA, type Periodo,
-  lerPeriodo, deslocarPeriodo, paramsDoPeriodo, mesDoPeriodo, primeiroDiaDoMes, atalhosPeriodo, tipoPeriodo,
+  inicioFimMesAtual, INICIO_HISTORICO, PISO_HARPIA, lerPeriodo, deslocarPeriodo, paramsDoPeriodo, mesDoPeriodo, primeiroDiaDoMes, atalhosPeriodo,
 } from "@/domain/periodo";
 import { hojeISO } from "@/domain/fechamento";
-import { carregarRecebimento, carregarDetalheCusto, carregarFatosDescarrego, carregarFatosDescarregoPeriodo } from "../../painel/painel-actions";
-import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
-import { indicadoresDoPeriodo } from "@/domain/recebimento";
-import { resumir } from "@/domain/bi-recebimento";
-import { BIAba } from "./bi-aba";
 import { PageHeader, StatCard, Card, SectionTitle, BackLink, StatusBadge } from "@/components/ui";
 import { BotaoConfirmar } from "@/components/confirm-button";
 import { ehSetorRecebimento } from "@/domain/recebimento";
@@ -26,15 +20,10 @@ import { carregarAnaliseRecebimento } from "./recebimento-dados";
 import { RecebimentoDesempenho } from "./recebimento-desempenho";
 import { RecebimentoProjecoes } from "./recebimento-projecoes";
 import { ehSetorSeparacao } from "@/domain/separacao";
-import { carregarBISeparacao } from "./separacao-dados";
-import { BISeparacao } from "./bi-separacao";
 import { ehSetorAbastecimento } from "@/domain/abastecimento";
-import { carregarBIAbastecimento } from "./abastecimento-dados";
-import { BIAbastecimento } from "./bi-abastecimento";
 import { ehSetorMotoristas } from "@/domain/motoristas";
-import { carregarBIMotoristas } from "./motoristas-dados";
-import { BIMotoristas } from "./bi-motoristas";
 import { EsqueletoBI } from "./esqueleto-bi";
+import { ConteudoBISeparacao, ConteudoBIAbastecimento, ConteudoBIMotoristas, ConteudoBIRecebimento } from "./conteudos-bi";
 import type { HrefMes } from "./bi-shell";
 import type { Funcionario, Setor } from "@/domain/types";
 
@@ -125,14 +114,14 @@ export default async function SetorDetalhe({
   if (separacao && abaParam === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBISeparacao setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} />
+        <ConteudoBISeparacao setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} hrefSair={`/setores/${id}`} />
       </Suspense>
     );
   }
   if (abastecimento && abaParam === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBIAbastecimento setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} />
+        <ConteudoBIAbastecimento setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} hrefSair={`/setores/${id}`} />
       </Suspense>
     );
   }
@@ -140,7 +129,7 @@ export default async function SetorDetalhe({
   if (motoristas && abaParam === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBIMotoristas setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} />
+        <ConteudoBIMotoristas setor={setor} funcionarios={funcionarios} periodo={periodoBI} hrefMes={hrefMes} hrefSair={`/setores/${id}`} />
       </Suspense>
     );
   }
@@ -149,7 +138,7 @@ export default async function SetorDetalhe({
   if (aba === "bi") {
     return (
       <Suspense key={chave} fallback={<EsqueletoBI />}>
-        <ConteudoBIRecebimento id={id} periodo={periodoBI} hrefMes={hrefMes} />
+        <ConteudoBIRecebimento periodo={periodoBI} hrefMes={hrefMes} hrefSair={`/setores/${id}`} />
       </Suspense>
     );
   }
@@ -305,39 +294,6 @@ export default async function SetorDetalhe({
       </Card>
     </div>
   );
-}
-
-async function ConteudoBISeparacao({ setor, funcionarios, periodo, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; periodo: Periodo; hrefMes: HrefMes }) {
-  const dados = await carregarBISeparacao(setor, funcionarios, periodo);
-  return <BISeparacao key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
-}
-
-async function ConteudoBIAbastecimento({ setor, funcionarios, periodo, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; periodo: Periodo; hrefMes: HrefMes }) {
-  const dados = await carregarBIAbastecimento(setor, funcionarios, periodo);
-  return <BIAbastecimento key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
-}
-
-async function ConteudoBIMotoristas({ setor, funcionarios, periodo, hrefMes }: { setor: Setor; funcionarios: Funcionario[]; periodo: Periodo; hrefMes: HrefMes }) {
-  const dados = await carregarBIMotoristas(setor, funcionarios, periodo);
-  return <BIMotoristas key={`${periodo.de}|${periodo.ate}`} dados={dados} hrefSair={`/setores/${setor.id}`} hrefMes={hrefMes} />;
-}
-
-async function ConteudoBIRecebimento({ id, periodo, hrefMes }: { id: string; periodo: Periodo; hrefMes: HrefMes }) {
-  const mensal = tipoPeriodo(periodo) === "mes";
-  const hoje = hojeISO();
-  const mes = primeiroDiaDoMes(periodo.ate < hoje ? periodo.ate : hoje);
-  const [serie, custo, fatos, fat] = await Promise.all([
-    carregarRecebimento(),
-    carregarDetalheCusto().catch(() => null),
-    (mensal ? carregarFatosDescarrego(mes) : carregarFatosDescarregoPeriodo(periodo.de, periodo.ate)).catch(() => null),
-    mensal ? Promise.resolve(null) : getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null),
-  ]);
-  // Período: a linha de indicadores é montada dos fatos do período + custo proporcional dos meses.
-  const ref = mensal
-    ? undefined
-    : (indicadoresDoPeriodo({ periodo, mes, serie, fatos: resumir(fatos ?? []), faturamentoLiquido: fat?.vendaLiquida ?? null }) ?? undefined);
-  // Tela cheia (overlay como o Painel da Operação); "Sair" volta ao setor.
-  return <BIAba key={`${periodo.de}|${periodo.ate}`} dados={{ mes, periodo, mensal, ref, serie, custo, fatos }} hrefSair={`/setores/${id}`} hrefMes={hrefMes} />;
 }
 
 async function ConteudoAnaliseRecebimento({ aba, funcionarios, setores }: { aba: string; funcionarios: Funcionario[]; setores: Setor[] }) {

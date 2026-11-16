@@ -37,6 +37,8 @@ export function BIShell({
   palco,
   onEsc,
   dicaTopo = "clique num quadro para abrir",
+  abas,
+  topoDireita,
 }: {
   titulo: string;
   periodo: Periodo;
@@ -46,6 +48,10 @@ export function BIShell({
   palco: { chave: string; titulo: string; contexto?: string; conteudo: ReactNode } | null;
   onEsc?: () => void;
   dicaTopo?: string;
+  /** Barra de abas (BI Geral), logo abaixo do título e acima do menu. */
+  abas?: ReactNode;
+  /** Controle extra no topo, antes de Tela cheia/Sair (ex.: comparação). */
+  topoDireita?: ReactNode;
 }) {
   const telaCheia = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
@@ -95,6 +101,7 @@ export function BIShell({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {topoDireita}
             <button type="button" onClick={telaCheia} className={botao}>
               Tela cheia
             </button>
@@ -103,6 +110,7 @@ export function BIShell({
             </Link>
           </div>
         </div>
+        {abas}
         {menu}
       </header>
 

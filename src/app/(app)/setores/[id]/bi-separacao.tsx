@@ -7,7 +7,7 @@
  * consultas de validação: docs/bi-separacao/indicadores.md. Clicar num dia
  * filtra Produção, Turnos, Qualidade e o custo; Esc limpa.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -50,7 +50,7 @@ const anteriorDe = (d: DadosBISeparacao): PontoHistorico | null => d.refAnterior
 /** O mês está no recorte da tela (destaque nas barras mês a mês). */
 const noRecorte = (d: DadosBISeparacao, mes: string) => d.meses.includes(mes);
 
-export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string }) {
+export function BISeparacao({ dados, hrefMes, hrefSair, abas }: { dados: DadosBISeparacao; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
   const [visao, setVisao] = useState<VisaoSep | null>(null);
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoSep) => setVisao((a) => (a === v ? null : v));
@@ -102,6 +102,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair }: { dados: DadosBISepara
 
   return (
     <BIShell
+      abas={abas}
       titulo={`BI da ${dados.setor.charAt(0)}${dados.setor.slice(1).toLowerCase()}`}
       periodo={dados.periodo}
       hrefMes={hrefMes}

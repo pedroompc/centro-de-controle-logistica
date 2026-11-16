@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatPercent } from "@/domain/format";
 import { variacaoPercentual } from "@/domain/tendencias";
 import { pctComSinal } from "@/domain/comparacao";
@@ -15,7 +15,7 @@ import { VisaoGiro } from "./giro";
 import { VisaoMovimento } from "./movimento";
 import { VisaoRupturas } from "./rupturas";
 
-export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string }) {
+export function BIAbastecimento({ dados, hrefMes, hrefSair, abas }: { dados: DadosBIAbastecimento; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
   const [visao, setVisao] = useState<VisaoAba | null>(null);
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoAba) => setVisao((a) => (a === v ? null : v));
@@ -90,6 +90,7 @@ export function BIAbastecimento({ dados, hrefMes, hrefSair }: { dados: DadosBIAb
 
   return (
     <BIShell
+      abas={abas}
       titulo={`BI do ${dados.setor.charAt(0)}${dados.setor.slice(1).toLowerCase()}`}
       periodo={dados.periodo}
       hrefMes={hrefMes}

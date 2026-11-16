@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { FiltroBI } from "@/domain/bi-recebimento";
 import { MenuBI, PalcoBI, VISOES_BI, type DadosBI, type VisaoBI } from "./bi-recebimento";
 import { BIShell, type HrefMes } from "./bi-shell";
@@ -10,7 +10,7 @@ import { BIShell, type HrefMes } from "./bi-shell";
  * detalhe embaixo e o filtro cruzado (dia, fornecedor, tipo) vale para tudo.
  * Esc limpa os filtros.
  */
-export function BIAba({ dados, hrefMes, hrefSair }: { dados: DadosBI; hrefMes: HrefMes; hrefSair: string }) {
+export function BIAba({ dados, hrefMes, hrefSair, abas }: { dados: DadosBI; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
   const [visao, setVisao] = useState<VisaoBI | null>(null);
   const [filtro, setFiltro] = useState<FiltroBI>({});
   const abrir = (v: VisaoBI) => setVisao((a) => (a === v ? null : v));
@@ -18,6 +18,7 @@ export function BIAba({ dados, hrefMes, hrefSair }: { dados: DadosBI; hrefMes: H
 
   return (
     <BIShell
+      abas={abas}
       titulo="BI do Recebimento"
       periodo={dados.periodo}
       hrefMes={hrefMes}

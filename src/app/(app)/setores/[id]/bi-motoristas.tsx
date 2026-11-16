@@ -7,7 +7,7 @@
  * filtra Custo, Entregas, Frota e Devolução; Esc limpa. Devolução é POR PERÍODO
  * DE FATURAMENTO: das notas saídas no dia/mês, as que voltaram por motivo da Logística.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { type Periodo, formatMesAno, rotuloPeriodo } from "@/domain/periodo";
 import { variacaoPercentual } from "@/domain/tendencias";
@@ -53,7 +53,7 @@ const anteriorDe = (d: DadosBIMotoristas): PontoHistoricoMot | null => d.refAnte
 const noRecorte = (d: DadosBIMotoristas, mes: string) => d.meses.includes(mes);
 
 
-export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string }) {
+export function BIMotoristas({ dados, hrefMes, hrefSair, abas }: { dados: DadosBIMotoristas; hrefMes: HrefMes; hrefSair: string; abas?: ReactNode }) {
   const [visao, setVisao] = useState<VisaoMot | null>(null);
   const [dia, setDia] = useState<string | null>(null);
   const abrir = (v: VisaoMot) => setVisao((a) => (a === v ? null : v));
@@ -114,6 +114,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair }: { dados: DadosBIMotor
 
   return (
     <BIShell
+      abas={abas}
       titulo="BI dos Motoristas"
       periodo={dados.periodo}
       hrefMes={hrefMes}
