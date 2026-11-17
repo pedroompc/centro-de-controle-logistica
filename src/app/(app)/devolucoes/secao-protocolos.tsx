@@ -416,7 +416,15 @@ function TabelaMotoristasProtocolos({ r }: { r: RelatorioProtocolos }) {
   );
 }
 
-export default function SecaoProtocolos({ de, ate }: { de: string; ate: string }) {
+export default function SecaoProtocolos({
+  de,
+  ate,
+  onCarregado,
+}: {
+  de: string;
+  ate: string;
+  onCarregado?: (r: RelatorioProtocolos) => void;
+}) {
   const [r, setR] = useState<RelatorioProtocolos | null>(null);
   const [erro, setErro] = useState(false);
   const [aba, setAba] = useState<"abertos" | "motoristas">("abertos");
@@ -424,11 +432,13 @@ export default function SecaoProtocolos({ de, ate }: { de: string; ate: string }
   const carregar = useCallback(async () => {
     setErro(false);
     try {
-      setR(await carregarProtocolos({ de, ate }));
+      const dados = await carregarProtocolos({ de, ate });
+      setR(dados);
+      onCarregado?.(dados);
     } catch {
       setErro(true);
     }
-  }, [de, ate]);
+  }, [de, ate, onCarregado]);
 
   // Busca sob demanda ao montar (mesmo padrão das abas acima): o setState faz
   // parte do fluxo, por isso a regra de "setState no efeito" é dispensada.

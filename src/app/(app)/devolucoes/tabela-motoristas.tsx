@@ -30,6 +30,21 @@ function SeloTipo({ tipo }: { tipo: TipoMotorista }) {
   );
 }
 
+/** Imprime/salva em PDF a ficha só deste motorista (motivos detalhados). */
+function BotaoPdfMotorista({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex justify-end px-4 pb-3">
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-[#181d55] hover:text-[#181d55]"
+      >
+        PDF deste motorista
+      </button>
+    </div>
+  );
+}
+
 function Th({
   col, rotulo, sort, onSort,
 }: {
@@ -68,9 +83,11 @@ function Th({
 export default function TabelaMotoristas({
   motoristas,
   motivos = {},
+  onPdf,
 }: {
   motoristas: DevolucaoPorMotorista[];
   motivos?: Record<number, MotivoDetalhe[]>;
+  onPdf?: (codMotorista: number) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [tipo, setTipo] = useState<FiltroTipoMotorista>("");
@@ -241,6 +258,7 @@ export default function TabelaMotoristas({
                       <tr className="border-b border-slate-100 bg-slate-50/60">
                         <td colSpan={7} className="p-0">
                           <DetalheMotivos motivos={motivos[m.codMotorista] ?? []} />
+                          {onPdf && <BotaoPdfMotorista onClick={() => onPdf(m.codMotorista)} />}
                         </td>
                       </tr>
                     )}
@@ -304,7 +322,12 @@ export default function TabelaMotoristas({
                     </span>
                   </div>
                 </div>
-                {estaAberto && <DetalheMotivos motivos={motivos[m.codMotorista] ?? []} />}
+                {estaAberto && (
+                  <>
+                    <DetalheMotivos motivos={motivos[m.codMotorista] ?? []} />
+                    {onPdf && <BotaoPdfMotorista onClick={() => onPdf(m.codMotorista)} />}
+                  </>
+                )}
               </li>
             );
           })

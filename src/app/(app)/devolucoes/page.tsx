@@ -282,6 +282,7 @@ export default async function DevolucoesPage({
         cidadeNome={cidadeNome}
         base={base}
         porMotivo={r.porMotivo}
+        periodoLabel={rotuloPeriodo(periodo)}
       />
 
       <p className="mt-4 text-xs text-slate-400">

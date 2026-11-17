@@ -22,6 +22,20 @@ import TabelaBairrosRMR from "./tabela-bairros-rmr";
 import MapaLazy from "./mapa-lazy";
 import SecaoProtocolos from "./secao-protocolos";
 import TabelaSupervisores from "./tabela-supervisores";
+import { imprimirRelatorio } from "@/lib/imprimir-relatorio";
+import type { RelatorioProtocolos } from "@/domain/devolucoes-protocolos";
+import {
+  documentoRelatorio,
+  resumoDoPeriodo,
+  relatorioMotoristas,
+  relatorioRanking,
+  relatorioSupervisores,
+  relatorioMotivos,
+  relatorioDiaSemana,
+  relatorioCidades,
+  relatorioBairros,
+  relatorioProtocolos,
+} from "@/domain/devolucoes-relatorio";
 import type { PastaDevolucao } from "@/domain/devolucoes-supervisor";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "./icons";
 
@@ -89,6 +103,7 @@ export default function SecoesDevolucao({
   cidadeNome,
   base,
   porMotivo,
+  periodoLabel,
 }: {
   de: string;
   ate: string;
@@ -98,6 +113,7 @@ export default function SecoesDevolucao({
   cidadeNome?: string;
   base: BaseDevolucao;
   porMotivo: DevolucaoPorMotivo[];
+  periodoLabel: string;
 }) {
   const router = useRouter();
   const [aba, setAba] = useState<Aba>("motoristas");
@@ -107,6 +123,7 @@ export default function SecoesDevolucao({
   // Retorno ao estoque busca os próprios dados; depois de aberto fica montado
   // (só escondido) para não reler o Harpia a cada troca de aba.
   const [retornoAberto, setRetornoAberto] = useState(false);
+  const [protocolos, setProtocolos] = useState<RelatorioProtocolos | null>(null);
 
   // Busca os dados de uma aba (se ainda não estão em cache). Motivos usa o núcleo
   // (já veio do SSR) e o mapa/rankings vêm por Server Action, guardados no cache.
@@ -187,12 +204,57 @@ export default function SecoesDevolucao({
     router.push(q ? `/devolucoes?${q}` : "/devolucoes");
   };
 
+  // Relatório da aba em PDF (diálogo de impressão: imprimir ou "Salvar como PDF").
+  // `so` = só um motorista (botão dentro da ficha dele).
+  const exportar = (alvo: Aba, so?: number) => {
+    const ctx = { periodo: periodoLabel, base, motivo, setor, cidade: cidadeNome, geradoEm: new Date() };
+    const resumo = resumoDoPeriodo(porMotivo);
+    let secao = "";
+    let corpo = "";
+    let comResumo = true;
+    if (alvo === "motoristas" && cache.motoristas) {
+      const nome = so != null ? cache.motoristas.itens.find((m) => m.codMotorista === so)?.nome : undefined;
+      secao = nome ? `Motorista ${nome}` : "Motoristas";
+      corpo = relatorioMotoristas(cache.motoristas.itens, cache.motoristas.motivos, so);
+      comResumo = so == null;
+    } else if (alvo === "clientes" && cache.clientes) {
+      secao = "Clientes";
+      corpo = relatorioRanking("Cliente", clientesItens, cache.clientes.motivos);
+    } else if (alvo === "vendedores" && cache.vendedores) {
+      secao = "Vendedores";
+      corpo = relatorioRanking("Vendedor", vendedoresItens, cache.vendedores.motivos, 1000);
+    } else if (alvo === "supervisores" && cache.supervisores) {
+      secao = "Supervisores";
+      corpo = relatorioSupervisores(cache.supervisores);
+      comResumo = false;
+    } else if (alvo === "motivos") {
+      secao = "Motivos";
+      corpo = relatorioMotivos(porMotivo);
+    } else if (alvo === "dias" && cache.dias) {
+      secao = "Dia da semana";
+      corpo = relatorioDiaSemana(cache.dias);
+    } else if (alvo === "mapa" && cache.mapa) {
+      secao = "Cidades de PE";
+      corpo = relatorioCidades(cache.mapa);
+    } else if (alvo === "bairros" && cache.bairros) {
+      secao = cidadeNome ? `Bairros de ${cidadeNome}` : "Bairros da RMR";
+      corpo = relatorioBairros(cache.bairros);
+    } else if (alvo === "retorno" && protocolos) {
+      secao = "Retorno ao estoque";
+      corpo = relatorioProtocolos(protocolos);
+      comResumo = false;
+    } else return;
+    imprimirRelatorio(documentoRelatorio(secao, ctx, corpo, comResumo ? resumo : ""));
+  };
+  const podeExportar = aba === "motivos" || (aba === "retorno" ? protocolos !== null : cache[aba as keyof Cache] !== undefined);
+
   const estaCarregando = aba !== "retorno" && carregando === aba && cache[aba as keyof Cache] === undefined;
   const falhou = erro[aba];
 
   return (
     <div>
-      <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Seções de devolução">
+      <div className="mb-4 flex items-start gap-2">
+      <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Seções de devolução">
         {abas.map((t) => {
           const ativo = aba === t.id;
           const lido = t.id === "motivos" || (t.id === "retorno" ? retornoAberto : cache[t.id as keyof Cache] !== undefined);
@@ -221,10 +283,24 @@ export default function SecoesDevolucao({
           );
         })}
       </div>
+        <button
+          type="button"
+          onClick={() => exportar(aba)}
+          disabled={!podeExportar}
+          title="Imprimir ou salvar esta seção em PDF"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#181d55] hover:text-[#181d55] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden>
+            <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z" />
+          </svg>
+          <span className="hidden sm:inline">Exportar PDF</span>
+          <span className="sm:hidden">PDF</span>
+        </button>
+      </div>
 
       {retornoAberto && (
         <div className={aba === "retorno" ? "" : "hidden"}>
-          <SecaoProtocolos de={de} ate={ate} />
+          <SecaoProtocolos de={de} ate={ate} onCarregado={setProtocolos} />
         </div>
       )}
 
@@ -243,7 +319,11 @@ export default function SecoesDevolucao({
       ) : (
         <>
           {aba === "motoristas" && (
-            <TabelaMotoristas motoristas={cache.motoristas?.itens ?? []} motivos={cache.motoristas?.motivos ?? {}} />
+            <TabelaMotoristas
+              motoristas={cache.motoristas?.itens ?? []}
+              motivos={cache.motoristas?.motivos ?? {}}
+              onPdf={(cod) => exportar("motoristas", cod)}
+            />
           )}
 
           {aba === "clientes" && (
