@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { comPeriodo } from "@/lib/url-periodo";
-import { agruparMenu, ordenarMenu, rodapeMenu } from "@/domain/menu";
+import { agruparMenu, ordenarMenu, rodapeMenu, itemAtivo } from "@/domain/menu";
 
 // `short` = rótulo curto para a barra inferior do celular; `primary` marca os
 // itens que ficam sempre à mão nessa barra (os demais vão para a folha "Mais").
@@ -125,8 +125,7 @@ export const items: Item[] = [
   {
     href: "/pedidos-a-faturar",
     label: "Pedidos a Faturar",
-    short: "Pedidos",
-    primary: true,
+    short: "A faturar",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
@@ -138,7 +137,8 @@ export const items: Item[] = [
   {
     href: "/pedidos",
     label: "Consulta de Pedidos",
-    short: "Consultar",
+    short: "Pedidos",
+    primary: true,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
         <circle cx="11" cy="11" r="7" />
@@ -203,9 +203,7 @@ export const items: Item[] = [
   },
 ];
 
-export function isActive(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
-}
+export const isActive = itemAtivo;
 
 /** Itens do menu que o papel enxerga (admin vê tudo), na ordem do menu (`@/domain/menu`). */
 export function itensVisiveis(admin: boolean): Item[] {

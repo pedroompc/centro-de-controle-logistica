@@ -17,7 +17,7 @@ export function MobileNav({ userEmail, admin }: { userEmail?: string | null; adm
   const [maisAberto, setMaisAberto] = useState(false);
 
   // Ordem escolhida para a barra inferior (independente da ordem da lateral).
-  const ORDEM_BARRA = ["/", "/pedidos-a-faturar", "/devolucoes", "/receitas"];
+  const ORDEM_BARRA = ["/", "/pedidos", "/devolucoes", "/receitas"];
   const items = itensVisiveis(admin);
   const primarios = items
     .filter((i) => i.primary)

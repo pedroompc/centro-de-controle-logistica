@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GRUPOS_MENU, RODAPE_MENU, agruparMenu, ordenarMenu, rodapeMenu } from "./menu";
+import { GRUPOS_MENU, RODAPE_MENU, agruparMenu, ordenarMenu, rodapeMenu, itemAtivo } from "./menu";
 
 const it_ = (href: string) => ({ href });
 
@@ -24,5 +24,21 @@ describe("menu", () => {
 
   it("lista plana: grupos, tela nova fora do mapa e rodapé no fim", () => {
     expect(ordenarMenu([it_("/painel"), it_("/nova"), it_("/receitas"), it_("/")]).map((i) => i.href)).toEqual(["/", "/receitas", "/nova", "/painel"]);
+  });
+});
+
+describe("itemAtivo", () => {
+  it("acende o item e as subtelas, mas não outra tela com o mesmo começo", () => {
+    expect(itemAtivo("/pedidos", "/pedidos")).toBe(true);
+    expect(itemAtivo("/pedidos-a-faturar", "/pedidos")).toBe(false);
+    expect(itemAtivo("/pedidos-a-faturar", "/pedidos-a-faturar")).toBe(true);
+    expect(itemAtivo("/custos/frota", "/custos")).toBe(true);
+    expect(itemAtivo("/custos", "/")).toBe(false);
+    expect(itemAtivo("/", "/")).toBe(true);
+  });
+
+  it("Consulta de Pedidos vem antes de Pedidos a Faturar", () => {
+    const op = GRUPOS_MENU.find((g) => g.titulo === "Operação")!.hrefs;
+    expect(op.indexOf("/pedidos")).toBeLessThan(op.indexOf("/pedidos-a-faturar"));
   });
 });

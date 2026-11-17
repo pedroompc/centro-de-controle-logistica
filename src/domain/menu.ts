@@ -10,11 +10,17 @@ export interface GrupoMenu {
 
 export const GRUPOS_MENU: GrupoMenu[] = [
   { titulo: "Visão geral", hrefs: ["/", "/bi"] },
-  { titulo: "Operação", hrefs: ["/setores", "/funcionarios", "/pedidos-a-faturar", "/pedidos", "/devolucoes", "/cortes", "/frota"] },
+  { titulo: "Operação", hrefs: ["/setores", "/funcionarios", "/pedidos", "/pedidos-a-faturar", "/devolucoes", "/cortes", "/frota"] },
   { titulo: "Gestão", hrefs: ["/custos", "/receitas", "/tendencias", "/estoque", "/fechamento"] },
 ];
 
 export const RODAPE_MENU = ["/painel", "/auditoria"];
+
+/** Tela atual é a do item (ou uma subtela dele): "/pedidos" não acende em "/pedidos-a-faturar". */
+export function itemAtivo(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 /** Itens agrupados na ordem do menu (só os presentes em `itens`; grupo vazio some). */
 export function agruparMenu<T extends { href: string }>(itens: T[]): { titulo: string; itens: T[] }[] {
