@@ -18,6 +18,7 @@ import type {
 import type { LinhaCidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import type { DevolucaoMotDia, MotoristaCidade } from "@/domain/motoristas";
 import { montarDiasSemana, type BaseDevolucao, type DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
+import { agruparPorPasta, setoresZerados, SETORES, type LinhaSupervisor, type PastaDevolucao } from "@/domain/devolucoes-supervisor";
 
 // Códigos IBGE dos municípios da RMR, derivados da MESMA classificação do painel
 // (a geometria de PE + o classificador de região) — evita hardcode de código e
@@ -748,3 +749,68 @@ export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: stri
     valorExpedido: n(r.VALOR_EXPEDIDO), valorDevolvido: n(r.VALOR_DEVOLVIDO),
   }));
 }
+
+// --- Devolução por SUPERVISOR (aba Supervisores) ------------------------------
+// Supervisor = cadastro atual do RCA da nota de venda (PCUSUARI.CODSUPERVISOR);
+// 0 = RCA sem supervisor. Venda faturada da VIEW_BI_FATURAMENTO (base do 111,
+// sem ST/IPI/bonificação) pela data de saída; devolução da `edf` (respeita a
+// base: data da devolução ou dia faturado). O agrupamento em pastas é no domínio.
+const sqlSupervisorFaturado = (f: FiltrosDevolucao) => `
+SELECT NVL(u.CODSUPERVISOR, 0) SUP, MAX(ps.NOME) NOME, ROUND(SUM(v.VENDAS), 2) FATURADO
+FROM VIEW_BI_FATURAMENTO v
+LEFT JOIN PCUSUARI u ON u.CODUSUR = v.CODUSUR
+LEFT JOIN PCSUPERV ps ON ps.CODSUPERVISOR = u.CODSUPERVISOR
+WHERE ${filialIn("v.CODFILIAL")} AND ${faixa("v.DTSAIDA")}${f.ibge ? `\n  AND ${naCidade("v.CODCLI")}` : ""}
+GROUP BY NVL(u.CODSUPERVISOR, 0)`;
+
+const sqlSupervisorDevolucao = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+SELECT NVL(u.CODSUPERVISOR, 0) SUP, MAX(ps.NOME) NOME, edf.SETOR, ROUND(SUM(edf.VL), 2) VALOR
+FROM edf
+JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+LEFT JOIN PCUSUARI u ON u.CODUSUR = s.CODUSUR
+LEFT JOIN PCSUPERV ps ON ps.CODSUPERVISOR = u.CODSUPERVISOR
+WHERE edf.NUMTRANSVENDA > 0
+GROUP BY NVL(u.CODSUPERVISOR, 0), edf.SETOR`;
+
+interface LinhaSupFat { SUP: number; NOME: string | null; FATURADO: number }
+interface LinhaSupDev { SUP: number; NOME: string | null; SETOR: string; VALOR: number }
+
+/**
+ * Aba SUPERVISORES (sob demanda): faturamento líquido e devolução por setor de
+ * cada supervisor, agrupados em pastas. Motivo/setor filtram só a devolução
+ * exibida; o líquido sempre desconta a devolução inteira do supervisor.
+ */
+export const getSupervisoresDevolucao = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
+): Promise<PastaDevolucao[]> => {
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
+  const semFiltro: FiltrosDevolucao = { ibge, base };
+  const filtrado = Boolean(motivo || setor);
+  const [fat, dev, devTodos] = await Promise.all([
+    queryWinthor<LinhaSupFat>(sqlSupervisorFaturado(semFiltro), bindsDe(ini, fim, semFiltro)),
+    queryWinthor<LinhaSupDev>(sqlSupervisorDevolucao(f), bindsDe(ini, fim, f)),
+    filtrado
+      ? queryWinthor<LinhaSupDev>(sqlSupervisorDevolucao(semFiltro), bindsDe(ini, fim, semFiltro))
+      : Promise.resolve(null),
+  ]);
+  const linhas = new Map<number, LinhaSupervisor>();
+  const de = (cod: number, nome: string | null) => {
+    let l = linhas.get(cod);
+    if (!l) {
+      l = { cod, nome: nome ?? "", faturado: 0, devolvidoTodos: 0, setores: setoresZerados() };
+      linhas.set(cod, l);
+    }
+    if (!l.nome && nome) l.nome = nome;
+    return l;
+  };
+  for (const r of fat) de(n(r.SUP), r.NOME).faturado += n(r.FATURADO);
+  for (const r of dev) {
+    const l = de(n(r.SUP), r.NOME);
+    const s = (SETORES as string[]).includes(r.SETOR) ? (r.SETOR as SetorDevolucao) : "Não classificado";
+    l.setores[s] += n(r.VALOR);
+    if (!filtrado) l.devolvidoTodos += n(r.VALOR);
+  }
+  for (const r of devTodos ?? []) de(n(r.SUP), r.NOME).devolvidoTodos += n(r.VALOR);
+  for (const l of linhas.values()) if (!l.nome) l.nome = l.cod === 0 ? "SEM SUPERVISOR" : `Supervisor ${l.cod}`;
+  return agruparPorPasta([...linhas.values()]);
+});

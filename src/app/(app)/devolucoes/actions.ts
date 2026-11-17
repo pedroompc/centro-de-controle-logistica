@@ -7,7 +7,9 @@ import {
   getDevolucaoPorCidade,
   getDevolucaoPorBairro,
   getDevolucaoPorDiaSemana,
+  getSupervisoresDevolucao,
 } from "@/data/devolucoes";
+import type { PastaDevolucao } from "@/domain/devolucoes-supervisor";
 import { getProtocolosDevolucao } from "@/data/devolucoes-protocolos";
 import { montarRelatorio, type RelatorioProtocolos } from "@/domain/devolucoes-protocolos";
 import { comTaxa } from "@/domain/devolucoes-mapa";
@@ -53,6 +55,12 @@ export async function carregarClientes(c: ContextoDevolucao): Promise<SecaoRanki
 export async function carregarVendedores(c: ContextoDevolucao): Promise<SecaoRanking<DevolucaoPorVendedor>> {
   const x = contexto(c);
   return getVendedoresDevolucao(x.inicio, x.fim, x.motivo, x.setor, x.ibge, x.base);
+}
+
+/** Supervisores agrupados em pastas (DIA FOOD, DIA WINE…), com taxa sobre o líquido. */
+export async function carregarSupervisores(c: ContextoDevolucao): Promise<PastaDevolucao[]> {
+  const x = contexto(c);
+  return getSupervisoresDevolucao(x.inicio, x.fim, x.motivo, x.setor, x.ibge, x.base);
 }
 
 export async function carregarMotoristas(c: ContextoDevolucao): Promise<SecaoRanking<DevolucaoPorMotorista>> {

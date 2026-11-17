@@ -13,7 +13,7 @@ import type {
 } from "@/domain/devolucoes";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { setorPill } from "@/domain/devolucoes-ui";
-import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa, carregarBairros, carregarDiaSemana } from "./actions";
+import { carregarClientes, carregarVendedores, carregarSupervisores, carregarMotoristas, carregarMapa, carregarBairros, carregarDiaSemana } from "./actions";
 import type { BaseDevolucao, DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
 import PainelDiaSemana from "./painel-dia-semana";
 import TabelaMotoristas from "./tabela-motoristas";
@@ -21,14 +21,17 @@ import PainelRanking, { type ItemRanking } from "./painel-ranking";
 import TabelaBairrosRMR from "./tabela-bairros-rmr";
 import MapaLazy from "./mapa-lazy";
 import SecaoProtocolos from "./secao-protocolos";
+import TabelaSupervisores from "./tabela-supervisores";
+import type { PastaDevolucao } from "@/domain/devolucoes-supervisor";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "./icons";
 
-type Aba = "motoristas" | "clientes" | "vendedores" | "motivos" | "dias" | "mapa" | "bairros" | "retorno";
+type Aba = "motoristas" | "clientes" | "vendedores" | "supervisores" | "motivos" | "dias" | "mapa" | "bairros" | "retorno";
 
 /** Cache client-side das abas já carregadas (some ao trocar mês/filtro via `key`). */
 interface Cache {
   clientes?: SecaoRanking<DevolucaoPorCliente>;
   vendedores?: SecaoRanking<DevolucaoPorVendedor>;
+  supervisores?: PastaDevolucao[];
   motoristas?: SecaoRanking<DevolucaoPorMotorista>;
   dias?: DevolucaoDiaSemana[];
   mapa?: CidadeDevolucao[];
@@ -124,6 +127,9 @@ export default function SecoesDevolucao({
       } else if (alvo === "vendedores") {
         const d = await carregarVendedores(ctx);
         setCache((c) => ({ ...c, vendedores: d }));
+      } else if (alvo === "supervisores") {
+        const d = await carregarSupervisores(ctx);
+        setCache((c) => ({ ...c, supervisores: d }));
       } else if (alvo === "motoristas") {
         const d = await carregarMotoristas(ctx);
         setCache((c) => ({ ...c, motoristas: d }));
@@ -159,6 +165,7 @@ export default function SecoesDevolucao({
     { id: "motoristas", label: "Motoristas", icon: <IconeCaminhao className="h-4 w-4" /> },
     { id: "clientes", label: "Clientes", icon: <IconePredio className="h-4 w-4" /> },
     { id: "vendedores", label: "Vendedores", icon: <IconeUsuario className="h-4 w-4" /> },
+    { id: "supervisores", label: "Supervisores", icon: <IconeUsuario className="h-4 w-4" /> },
     { id: "motivos", label: "Motivos", icon: <IconeEtiqueta className="h-4 w-4" /> },
     { id: "dias", label: "Dia da semana", icon: <IconeEtiqueta className="h-4 w-4" /> },
     { id: "mapa", label: "Mapa PE", icon: <IconePredio className="h-4 w-4" /> },
@@ -263,6 +270,8 @@ export default function SecoesDevolucao({
               motivos={cache.vendedores?.motivos ?? {}}
             />
           )}
+
+          {aba === "supervisores" && <TabelaSupervisores pastas={cache.supervisores ?? []} base={base} />}
 
           {aba === "motivos" && (
             <Card className="overflow-hidden">
