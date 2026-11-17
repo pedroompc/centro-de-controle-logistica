@@ -6,6 +6,7 @@ import { mapCustoFixo } from "./mappers";
 import { assertAdmin } from "./auth";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import type { CustoFixo } from "@/domain/types";
+import { valorBR } from "@/domain/formulario";
 
 export async function listarCustosFixos(): Promise<CustoFixo[]> {
   const supabase = await createClient();
@@ -21,8 +22,8 @@ export async function listarCustosFixos(): Promise<CustoFixo[]> {
 export async function criarCustoFixo(formData: FormData): Promise<void> {
   await assertAdmin();
   const nome = String(formData.get("nome") ?? "").trim();
-  const valor = Number(formData.get("valor") ?? 0);
-  if (!nome) return;
+  const valor = valorBR(formData.get("valor"));
+  if (!nome || valor === null) return;
   const supabase = await createClient();
   const { error } = await supabase.from("custos_fixos").insert({ nome, valor });
   if (error) throw new Error(error.message);
@@ -54,10 +55,8 @@ export async function criarCustoFixo(formData: FormData): Promise<void> {
 export async function editarValorCustoFixo(formData: FormData): Promise<void> {
   await assertAdmin();
   const id = String(formData.get("id") ?? "");
-  const raw = formData.get("valor");
-  if (raw === null || String(raw).trim() === "") return;
-  const valor = Number(raw);
-  if (Number.isNaN(valor)) return;
+  const valor = valorBR(formData.get("valor"));
+  if (valor === null) return;
   const supabase = await createClient();
   const { error } = await supabase.from("custos_fixos").update({ valor }).eq("id", id);
   if (error) throw new Error(error.message);

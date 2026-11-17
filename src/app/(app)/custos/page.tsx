@@ -29,6 +29,7 @@ import { PeriodoNav } from "@/components/periodo-nav";
 import { isAdmin } from "@/data/auth";
 import { AbrirMesButton } from "./abrir-mes-button";
 import { LancarVariavelForm } from "./lancar-variavel-form";
+import { CAMPO_VALOR, paraCampoBR } from "@/domain/formulario";
 
 const hrefCustos = (p: Record<string, string>) => (Object.keys(p).length ? `/custos?${new URLSearchParams(p)}` : "/custos");
 
@@ -173,7 +174,7 @@ function BlocoLancamentos({
                   {admin ? (
                     <form action={editarLancamento} className="flex items-center gap-2">
                       <input type="hidden" name="id" value={l.id} />
-                      <input name="valor" type="number" step="0.01" min="0" defaultValue={l.valor} required className={editInput} />
+                      <input name="valor" {...CAMPO_VALOR} defaultValue={paraCampoBR(l.valor)} required className={editInput} />
                       <button className="text-xs font-medium text-slate-500 hover:text-[#141a4d]">salvar</button>
                     </form>
                   ) : (
@@ -214,10 +215,8 @@ function BlocoLancamentos({
                   <input type="hidden" name="id" value={l.id} />
                   <input
                     name="valor"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    defaultValue={l.valor}
+                    {...CAMPO_VALOR}
+                    defaultValue={paraCampoBR(l.valor)}
                     required
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50"
                   />

@@ -3,6 +3,7 @@ import { isAdmin } from "@/data/auth";
 import { formatBRL } from "@/domain/format";
 import { PageHeader, Card, BackLink, StatCard } from "@/components/ui";
 import { CustoFixoForm } from "./custo-fixo-form";
+import { CAMPO_VALOR, paraCampoBR } from "@/domain/formulario";
 
 const editInput =
   "w-32 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -41,7 +42,7 @@ export default async function CustosFixosPage() {
                     {admin ? (
                       <form action={editarValorCustoFixo} className="flex items-center gap-2">
                         <input type="hidden" name="id" value={f.id} />
-                        <input name="valor" type="number" step="0.01" min="0" defaultValue={f.valor} required className={editInput} />
+                        <input name="valor" {...CAMPO_VALOR} defaultValue={paraCampoBR(f.valor)} required className={editInput} />
                         <button className="text-xs font-medium text-slate-500 hover:text-[#141a4d]">salvar</button>
                       </form>
                     ) : (
@@ -80,10 +81,8 @@ export default async function CustosFixosPage() {
                     <input type="hidden" name="id" value={f.id} />
                     <input
                       name="valor"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      defaultValue={f.valor}
+                      {...CAMPO_VALOR}
+                      defaultValue={paraCampoBR(f.valor)}
                       required
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50"
                     />

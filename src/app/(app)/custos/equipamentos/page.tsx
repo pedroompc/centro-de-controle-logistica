@@ -4,6 +4,7 @@ import { listarSetores } from "@/data/setores";
 import { formatBRL } from "@/domain/format";
 import { PageHeader, Card, BackLink, StatCard } from "@/components/ui";
 import { EquipamentoForm } from "./equipamento-form";
+import { CAMPO_VALOR, paraCampoBR } from "@/domain/formulario";
 
 const editInput =
   "rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -58,7 +59,7 @@ export default async function EquipamentosPage() {
                       <input type="hidden" name="id" value={e.id} />
                       <input name="quantidade" type="number" min="0" step="1" defaultValue={e.quantidade} required className={`${editInput} w-16`} aria-label="Quantidade" />
                       <span className="text-slate-400">×</span>
-                      <input name="custo_unitario" type="number" min="0" step="0.01" defaultValue={e.custoUnitario} required className={`${editInput} w-28`} aria-label="Custo por unidade" />
+                      <input name="custo_unitario" {...CAMPO_VALOR} defaultValue={paraCampoBR(e.custoUnitario)} required className={`${editInput} w-28`} aria-label="Custo por unidade" />
                       <button className="text-xs font-medium text-slate-500 hover:text-[#141a4d]">salvar</button>
                     </form>
                   ) : (

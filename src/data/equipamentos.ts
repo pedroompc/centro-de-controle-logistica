@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertAdmin } from "./auth";
 import { sincronizarEquipamentosAbertos } from "./equipamentos-sync";
 import type { Equipamento } from "@/domain/types";
+import { valorBR } from "@/domain/formulario";
 
 /**
  * Equipamentos ativos de todos os setores (cada um diz o seu `setor`). `null` = tabela ainda não migrada (0023)
@@ -36,7 +37,7 @@ function lerForm(formData: FormData) {
     nome: String(formData.get("nome") ?? "").trim(),
     setor: String(formData.get("setor") ?? "").trim() || "Recebimento",
     quantidade: Math.max(0, Math.round(Number(formData.get("quantidade") ?? 0))),
-    custo_unitario: Math.max(0, Number(formData.get("custo_unitario") ?? 0)),
+    custo_unitario: valorBR(formData.get("custo_unitario")) ?? Number.NaN, // NaN = inválido, a ação não grava
   };
 }
 

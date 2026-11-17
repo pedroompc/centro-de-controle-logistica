@@ -2,6 +2,7 @@ import { lerCadastroFrota, salvarParametrosFrota, salvarModeloFrota, salvarVeicu
 import { isAdmin } from "@/data/auth";
 import { formatBRL } from "@/domain/format";
 import { PageHeader, Card, BackLink, StatCard, SectionTitle } from "@/components/ui";
+import { CAMPO_VALOR, paraCampoBR } from "@/domain/formulario";
 
 const campo =
   "rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -54,15 +55,15 @@ function Conteudo({ cadastro, admin }: { cadastro: NonNullable<Awaited<ReturnTyp
             <form action={salvarParametrosFrota} className="flex flex-wrap items-end gap-3 text-sm">
               <label className="grid gap-1 text-xs font-medium text-slate-500">
                 Diesel (R$/litro)
-                <input name="preco_diesel" type="number" min="0" step="0.001" defaultValue={p.precoDiesel} required className={`${campo} w-28`} />
+                <input name="preco_diesel" {...CAMPO_VALOR} defaultValue={paraCampoBR(p.precoDiesel, 3)} required className={`${campo} w-28`} />
               </label>
               <label className="grid gap-1 text-xs font-medium text-slate-500">
                 Desgaste da frota (R$/mês)
-                <input name="desgaste_mensal" type="number" min="0" step="0.01" defaultValue={p.desgasteMensal} required className={`${campo} w-36`} />
+                <input name="desgaste_mensal" {...CAMPO_VALOR} defaultValue={paraCampoBR(p.desgasteMensal)} required className={`${campo} w-36`} />
               </label>
               <label className="grid gap-1 text-xs font-medium text-slate-500">
                 Manutenção da frota (R$/mês)
-                <input name="manutencao_mensal" type="number" min="0" step="0.01" defaultValue={p.manutencaoMensal} required className={`${campo} w-36`} />
+                <input name="manutencao_mensal" {...CAMPO_VALOR} defaultValue={paraCampoBR(p.manutencaoMensal)} required className={`${campo} w-36`} />
               </label>
               <button className={botao}>Salvar</button>
             </form>
@@ -90,7 +91,7 @@ function Conteudo({ cadastro, admin }: { cadastro: NonNullable<Awaited<ReturnTyp
                       {admin ? (
                         <form action={salvarModeloFrota} className="flex items-center gap-2">
                           <input type="hidden" name="modelo" value={m.modelo} />
-                          <input name="km_por_litro" type="number" min="0.1" step="0.01" defaultValue={m.kmPorLitro} required className={`${campo} w-20`} aria-label={`km/L do ${m.modelo}`} />
+                          <input name="km_por_litro" {...CAMPO_VALOR} defaultValue={paraCampoBR(m.kmPorLitro)} required className={`${campo} w-20`} aria-label={`km/L do ${m.modelo}`} />
                           <button className="text-xs font-medium text-slate-500 hover:text-[#141a4d]">salvar</button>
                         </form>
                       ) : (
@@ -105,7 +106,7 @@ function Conteudo({ cadastro, admin }: { cadastro: NonNullable<Awaited<ReturnTyp
             {admin && (
               <form action={salvarModeloFrota} className="flex flex-wrap items-center gap-2 border-t border-slate-100 p-3">
                 <input name="modelo" required placeholder="Modelo (ex: 9.170)" className={`${campo} w-36`} />
-                <input name="km_por_litro" type="number" min="0.1" step="0.01" required placeholder="km/L" className={`${campo} w-20`} />
+                <input name="km_por_litro" {...CAMPO_VALOR} required placeholder="km/L" className={`${campo} w-20`} />
                 <button className={botao}>Adicionar</button>
               </form>
             )}

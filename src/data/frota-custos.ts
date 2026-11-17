@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertAdmin } from "./auth";
 import { normalizarPlaca } from "@/domain/frota";
 import type { CadastroFrota } from "@/domain/frota-custo";
+import { valorBR } from "@/domain/formulario";
 
 const ausente = (code?: string) => code === "42P01" || code === "PGRST205";
 
@@ -36,7 +37,7 @@ export async function lerCadastroFrota(): Promise<CadastroFrota | null> {
   };
 }
 
-const num = (f: FormData, k: string) => Number(String(f.get(k) ?? "").replace(",", "."));
+const num = (f: FormData, k: string) => valorBR(f.get(k)) ?? Number.NaN; // NaN = inválido, a ação não grava
 const txt = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
 function revalidar() {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { umDe } from "@/domain/formulario";
+import { umDe, valorBR } from "@/domain/formulario";
 import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
 import { sincronizarEquipamentosDoMes } from "./equipamentos-sync";
@@ -115,12 +115,13 @@ export async function adicionarLancamento(formData: FormData): Promise<void> {
     mes: data ? primeiroDiaDoMes(data) : String(formData.get("mes") ?? ""),
     nome: String(formData.get("nome") ?? "").trim(),
     tipo: umDe(formData.get("tipo"), ["fixo", "variavel"] as const, "variavel"),
-    valor: Number(formData.get("valor") ?? 0),
+    valor: valorBR(formData.get("valor")),
     data,
   };
-  if (!registro.mes || !registro.nome) return;
+  const { valor } = registro;
+  if (!registro.mes || !registro.nome || valor === null) return;
   const supabase = await createClient();
-  const { error } = await supabase.from("custos_mensais").insert(registro);
+  const { error } = await supabase.from("custos_mensais").insert({ ...registro, valor });
   if (error) throw new Error(error.message);
   revalidatePath("/custos");
   revalidatePath("/");
@@ -129,10 +130,8 @@ export async function adicionarLancamento(formData: FormData): Promise<void> {
 export async function editarLancamento(formData: FormData): Promise<void> {
   await assertAdmin();
   const id = String(formData.get("id") ?? "");
-  const raw = formData.get("valor");
-  if (raw === null || String(raw).trim() === "") return;
-  const valor = Number(raw);
-  if (Number.isNaN(valor)) return;
+  const valor = valorBR(formData.get("valor"));
+  if (valor === null) return;
   const supabase = await createClient();
   const { error } = await supabase.from("custos_mensais").update({ valor }).eq("id", id);
   if (error) throw new Error(error.message);

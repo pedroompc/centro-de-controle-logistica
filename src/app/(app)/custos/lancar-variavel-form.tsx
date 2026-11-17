@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { adicionarLancamento } from "@/data/custos-mensais";
+import { CAMPO_VALOR } from "@/domain/formulario";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -24,7 +25,7 @@ export function LancarVariavelForm({ mes }: { mes: string }) {
       <input type="hidden" name="tipo" value="variavel" />
       <input name="data" type="date" required defaultValue={dataPadrao} className={field} />
       <input name="nome" required placeholder="Item (ex: Gasolina)" className={field} />
-      <input name="valor" type="number" step="0.01" min="0" required placeholder="Valor" className={field} />
+      <input name="valor" {...CAMPO_VALOR} required placeholder="Valor (ex.: 1.234,56)" className={field} />
       <button className="rounded-xl bg-[#181d55] px-4 py-2 font-semibold text-white transition hover:bg-[#10143f]">Adicionar</button>
       <button type="button" onClick={() => setAberto(false)} className="rounded-xl border border-slate-200 px-4 py-2 font-medium text-slate-600 hover:bg-slate-50">
         Cancelar

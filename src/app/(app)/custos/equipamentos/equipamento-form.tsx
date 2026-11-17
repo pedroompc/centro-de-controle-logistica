@@ -1,6 +1,7 @@
 "use client";
 
 import { criarEquipamento } from "@/data/equipamentos";
+import { CAMPO_VALOR } from "@/domain/formulario";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
@@ -15,7 +16,7 @@ export function EquipamentoForm({ setores }: { setores: string[] }) {
         ))}
       </select>
       <input name="quantidade" type="number" min="0" step="1" defaultValue={1} required placeholder="Qtd" className={`${field} w-20`} />
-      <input name="custo_unitario" type="number" min="0" step="0.01" required placeholder="Custo/mês por unidade" className={field} />
+      <input name="custo_unitario" {...CAMPO_VALOR} required placeholder="Custo/mês por unidade" className={field} />
       <button className="rounded-xl bg-[#181d55] px-4 py-2 font-semibold text-white transition hover:bg-[#10143f]">Adicionar</button>
     </form>
   );
