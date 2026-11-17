@@ -10,6 +10,12 @@
  */
 import { normalizarPlaca, type ResumoKm } from "./frota";
 
+/**
+ * Prefixo das linhas que o coletor grava sozinho em custos_mensais (diesel
+ * estimado, desgaste e manutenção — scripts/coletor-frota/custo-frota.mjs).
+ */
+export const PREFIXO_FROTA = "Frota · ";
+
 export interface ModeloConsumo {
   modelo: string;
   kmPorLitro: number;

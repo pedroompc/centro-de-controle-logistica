@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { veiculos, posicoes, eventosIntervalo, FulltrackErro } from "./fulltrack.mjs";
 import { leiturasRecentes, resumirHodometroPorDia, kmGpsPorDia, janelasHistorico, normalizarPlaca, soDaFrota } from "./resumo.mjs";
+import { linhasCustoFrota, mesesParaAtualizar, PREFIXO_FROTA } from "./custo-frota.mjs";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 try {
@@ -35,6 +36,7 @@ const MAX_JANELAS = Number(process.argv.find((a) => a.startsWith("--max-janelas=
 const HISTORICO_DESDE = new Date("2026-07-01T03:00:00Z"); // 01/07/2026 00:00 em Recife
 const INTERVALO_POSICOES_MS = 10 * 60_000;
 const INTERVALO_HISTORICO_MS = 6 * 3600_000;
+const CUSTO_DESDE = "2026-07-01"; // início do histórico de custos (INICIO_HISTORICO do app)
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -126,6 +128,76 @@ async function cicloHistorico() {
   log(`histórico: ${ok}/${pendentes.length} janelas processadas${SECO ? " (seco)" : ""}`);
 }
 
+/** Todas as linhas de uma consulta, em páginas de 1000 (limite do Supabase). */
+async function lerTudo(consulta) {
+  const linhas = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await consulta().range(de, de + 999);
+    if (error) throw new Error(error.message);
+    linhas.push(...data);
+    if (data.length < 1000) return linhas;
+  }
+}
+
+/**
+ * Custo da frota no custo logístico (ver custo-frota.mjs): grava as linhas
+ * "Frota · …" dos meses abertos e dos que ainda não as têm. Só mexe na linha
+ * cujo valor mudou (custos_mensais é auditado).
+ */
+async function cicloCustoFrota() {
+  const [p, modelos, veiculosAtivos, gravadas] = await Promise.all([
+    dbLeitura.from("frota_parametros").select("preco_diesel, desgaste_mensal, manutencao_mensal").eq("id", 1).maybeSingle(),
+    dbLeitura.from("frota_consumo_modelos").select("modelo, km_por_litro"),
+    dbLeitura.from("frota_veiculos").select("placa, modelo").eq("ativo", true),
+    lerTudo(() => dbLeitura.from("custos_mensais").select("id, mes, nome, valor").like("nome", `${PREFIXO_FROTA}%`)),
+  ]);
+  const erro = p.error ?? modelos.error ?? veiculosAtivos.error;
+  if (erro) throw new Error(erro.message);
+  if (!p.data) throw new Error("frota_parametros sem linha");
+  if (!veiculosAtivos.data.length) throw new Error("nenhum veículo ativo em frota_veiculos");
+  const cadastro = {
+    precoDiesel: Number(p.data.preco_diesel) || 0,
+    desgasteMensal: Number(p.data.desgaste_mensal) || 0,
+    manutencaoMensal: Number(p.data.manutencao_mensal) || 0,
+    kmPorLitro: new Map(modelos.data.map((r) => [String(r.modelo), Number(r.km_por_litro) || 0])),
+    modeloDaPlaca: new Map(veiculosAtivos.data.map((r) => [normalizarPlaca(r.placa), String(r.modelo)])),
+  };
+  const porMes = new Map();
+  for (const r of gravadas) porMes.set(String(r.mes), [...(porMes.get(String(r.mes)) ?? []), r]);
+
+  let mudou = 0;
+  const meses = mesesParaAtualizar(CUSTO_DESDE, new Date(), new Set(porMes.keys()));
+  for (const mes of meses) {
+    const [a, m] = mes.split("-").map(Number);
+    const fim = `${mes.slice(0, 8)}${String(new Date(Date.UTC(a, m, 0)).getUTCDate()).padStart(2, "0")}`;
+    const hod = await lerTudo(() =>
+      dbLeitura.from("frota_hodometro_diario").select("placa, dia, hodometro_min_m, hodometro_max_m, km_gps").gte("dia", mes).lte("dia", fim).order("dia").order("placa"),
+    );
+    const linhas = linhasCustoFrota(hod, cadastro);
+    const atuais = new Map((porMes.get(mes) ?? []).map((r) => [r.nome, r]));
+    if (SECO) {
+      log(`custo frota ${mes.slice(0, 7)} (seco): ${linhas.map((l) => `${l.nome.slice(PREFIXO_FROTA.length)} ${l.valor}`).join(" · ")}`);
+      continue;
+    }
+    for (const l of linhas) {
+      const r = atuais.get(l.nome);
+      atuais.delete(l.nome);
+      if (r && Number(r.valor) === l.valor) continue;
+      const { error } = r
+        ? await db.from("custos_mensais").update({ valor: l.valor }).eq("id", r.id)
+        : await db.from("custos_mensais").insert({ mes, nome: l.nome, tipo: l.tipo, valor: l.valor });
+      if (error) throw new Error(`custo frota ${mes}: ${error.message}`);
+      mudou++;
+    }
+    for (const r of atuais.values()) {
+      const { error } = await db.from("custos_mensais").delete().eq("id", r.id);
+      if (error) throw new Error(`custo frota ${mes}: ${error.message}`);
+      mudou++;
+    }
+  }
+  log(`custo frota: ${meses.length} mês(es) conferidos, ${mudou} linha(s) alteradas${SECO ? " (seco)" : ""}`);
+}
+
 async function laco(nome, fn, intervalo) {
   for (;;) {
     try {
@@ -144,5 +216,6 @@ log(`coletor da frota iniciado${SECO ? " em modo seco" : ""}${UMA_VEZ ? " (uma v
 await Promise.all([
   laco("posições", cicloPosicoes, INTERVALO_POSICOES_MS),
   laco("histórico", cicloHistorico, INTERVALO_HISTORICO_MS),
+  laco("custo frota", cicloCustoFrota, INTERVALO_HISTORICO_MS),
 ]);
 log("coletor encerrado");

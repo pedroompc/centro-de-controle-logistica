@@ -7,6 +7,7 @@ import { mapCustoMensal } from "./mappers";
 import { assertAdmin } from "./auth";
 import { sincronizarEquipamentosDoMes } from "./equipamentos-sync";
 import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
+import { PREFIXO_FROTA } from "@/domain/frota-custo";
 import type { CustoMensal } from "@/domain/types";
 
 const COLUNAS = "id, mes, nome, tipo, valor, data";
@@ -81,6 +82,8 @@ export async function materializarMes(mes: string): Promise<void> {
     .select("id")
     .eq("mes", mes)
     .eq("tipo", "fixo")
+    // As linhas "Frota · …" o coletor grava sozinho: não contam como mês já materializado.
+    .not("nome", "like", `${PREFIXO_FROTA}%`)
     .limit(1);
   if (e1) throw new Error(e1.message);
   if (jaTem && jaTem.length > 0) return;
