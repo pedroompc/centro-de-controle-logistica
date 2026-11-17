@@ -10,6 +10,8 @@
 // - histórico (a cada 6 h): eventos desde 01/07/2026 em janelas de 15 dias. Janela
 //   já encerrada é baixada uma vez só (frota_historico_janelas); a em andamento é
 //   refeita a cada ciclo. Uma consulta por vez, com pausa entre elas.
+// Só os veículos ativos de frota_veiculos (Custos → Frota): a conta da Fulltrack
+// também rastreia carro de vendedor, que fica de fora.
 //
 // Precisa no .env.local (ou no ambiente do serviço): NEXT_PUBLIC_SUPABASE_URL,
 // SUPABASE_SERVICE_ROLE_KEY e FULLTRACK_*. A chave de serviço fica só no servidor.
@@ -17,7 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { veiculos, posicoes, eventosIntervalo, FulltrackErro } from "./fulltrack.mjs";
-import { leiturasRecentes, resumirHodometroPorDia, kmGpsPorDia, janelasHistorico, normalizarPlaca } from "./resumo.mjs";
+import { leiturasRecentes, resumirHodometroPorDia, kmGpsPorDia, janelasHistorico, normalizarPlaca, soDaFrota } from "./resumo.mjs";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 try {
@@ -44,6 +46,16 @@ function supabase() {
   return createClient(url, chave, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 const db = SECO ? null : supabase();
+const dbLeitura = db ?? supabase(); // no modo seco também lê (frota), só não grava
+
+/** Placas ativas da frota (Custos → Frota). Sem nenhuma, o ciclo para — nunca coleta todos. */
+async function placasDaFrota() {
+  const { data, error } = await dbLeitura.from("frota_veiculos").select("placa").eq("ativo", true);
+  if (error) throw new Error(`frota_veiculos: ${error.message}`);
+  const placas = new Set(data.map((r) => normalizarPlaca(r.placa)));
+  if (!placas.size) throw new Error("nenhum veículo ativo em frota_veiculos");
+  return placas;
+}
 
 async function rpc(fn, payload, campo) {
   if (!payload.length) return 0;
@@ -77,7 +89,8 @@ async function marcarJanela(veiculoId, inicioDia) {
 }
 
 async function cicloPosicoes() {
-  const leituras = leiturasRecentes(await posicoes());
+  const [frota, todas] = await Promise.all([placasDaFrota(), posicoes()]);
+  const leituras = leiturasRecentes(soDaFrota(todas, frota));
   const n = await gravarHodometro(leituras);
   log(`posições: ${leituras.length} leituras de hodômetro${SECO ? " (seco)" : ` gravadas (${n} dias)`}`);
 }
@@ -85,7 +98,8 @@ async function cicloPosicoes() {
 async function cicloHistorico() {
   const agora = new Date();
   const hoje = new Date(agora.getTime() - (agora.getTime() - 3 * 3600_000) % 86400_000); // 00:00 de hoje em Recife (UTC−3)
-  const lista = (await veiculos()).filter((v) => v.ras_vei_id);
+  const frota = await placasDaFrota();
+  const lista = soDaFrota((await veiculos()).filter((v) => v.ras_vei_id), frota);
   const feitas = await janelasBaixadas();
   const pendentes = lista
     .flatMap((v) =>

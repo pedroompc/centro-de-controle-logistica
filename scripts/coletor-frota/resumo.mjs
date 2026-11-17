@@ -19,6 +19,13 @@ export const diaRecife = (d) => fmtDia.format(d);
 
 export const normalizarPlaca = (p) => String(p ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/**
+ * Só os rastreadores da frota (placas ativas de frota_veiculos). A conta da
+ * Fulltrack também tem carro de vendedor e rastreador extra (placa com "B"),
+ * que não são caminhão de entrega. Lista vazia = ninguém (nunca "todos").
+ */
+export const soDaFrota = (itens, placas) => itens.filter((e) => placas.has(normalizarPlaca(e.ras_vei_placa)));
+
 const int = (v) => {
   const n = Number.parseInt(String(v ?? ""), 10);
   return Number.isFinite(n) ? n : 0;

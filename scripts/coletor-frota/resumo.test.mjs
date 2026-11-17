@@ -7,6 +7,7 @@ import {
   resumirHodometroPorDia,
   kmGpsPorDia,
   janelasHistorico,
+  soDaFrota,
 } from "./resumo.mjs";
 
 const ev = (over) => ({
@@ -92,5 +93,16 @@ describe("janelasHistorico", () => {
     expect(j.map((x) => x.inicioDia)).toEqual(["2026-07-01", "2026-07-16"]);
     expect(j[1].fim.toISOString()).toBe("2026-07-20T12:00:00.000Z");
     expect(j[0].fim.getTime() - j[0].inicio.getTime()).toBe(15 * 86400000 - 1000);
+  });
+});
+
+describe("soDaFrota", () => {
+  it("mantém só os rastreadores com placa da frota (ignora carro de vendedor e rastreador extra)", () => {
+    const frota = new Set(["PDO8543", "QYD7253"]);
+    const vs = [{ ras_vei_placa: "PDO-8543" }, { ras_vei_placa: "RZP-3A43" }, { ras_vei_placa: "QYD7253B" }, { ras_vei_placa: "qyd-7253" }];
+    expect(soDaFrota(vs, frota).map((v) => v.ras_vei_placa)).toEqual(["PDO-8543", "qyd-7253"]);
+  });
+  it("lista vazia não libera ninguém", () => {
+    expect(soDaFrota([{ ras_vei_placa: "PDO-8543" }], new Set())).toEqual([]);
   });
 });
