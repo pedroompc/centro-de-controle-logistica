@@ -21,6 +21,14 @@ export interface RotaMotorista {
   pesoDev: number;
 }
 
+/** Atendimentos (cliente × dia) do período: entrega de caminhão × retira/balcão. */
+export interface EntregaRetira {
+  entregas: number; // saiu em carga com motorista (= Telemetria), inclui SR
+  retira: number; // venda sem carga ou na carga DIALOG (balcão)
+  soEntrega: number; // entregue mas sem venda no dia (simples remessa)
+  vendidos: number; // cliente × dia com nota de venda (= PDVs atendidos da 111)
+}
+
 export interface TotaisEntrega {
   entregas: number;
   clientes: number;

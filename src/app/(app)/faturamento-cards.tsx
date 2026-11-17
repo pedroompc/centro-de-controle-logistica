@@ -1,4 +1,6 @@
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
+import { lerEntregaRetira } from "@/data/telemetria";
+import type { EntregaRetira } from "@/domain/telemetria";
 import { rotuloCurto, type Periodo } from "@/domain/periodo";
 import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-periodos";
@@ -51,6 +53,44 @@ async function Chips({ atual, medida, cmp, maiorEhBom, taxa = false }: { atual: 
   return <ComparaPeriodos itens={itens} />;
 }
 
+/** Comparação do card de entregas (mesma regra da Telemetria nos dois períodos). */
+async function ChipsEntrega({ atual, cmp }: { atual: number; cmp: Periodo }) {
+  const b = await lerEntregaRetira(cmp.de, cmp.ate).catch(() => null);
+  const itens: ItemComparacao[] = [{ c: b ? compararPct(atual, b.entregas, true) : null, referencia: `vs ${rotuloCurto(cmp)}` }];
+  return <ComparaPeriodos itens={itens} />;
+}
+
+/**
+ * Entregas realizadas = cliente × dia que saiu de caminhão com motorista (bate
+ * com a Telemetria); embaixo, o que foi retira/balcão. Sem a leitura (Winthor
+ * fora), volta ao total de PDVs atendidos da 111.
+ */
+function CardEntregas({ er, atendimentos, comparar }: { er: EntregaRetira | null; atendimentos: number; comparar: Periodo | null }) {
+  if (!er) {
+    return <StatCard label="Entregas realizadas" value={`${atendimentos}`} hint="PDVs atendidos · sem separar retira" accent="navy" />;
+  }
+  const title = [
+    `PDVs atendidos (vendas): ${er.vendidos}`,
+    `Entrega (caminhão com motorista): ${er.entregas}`,
+    `Retira / balcão: ${er.retira}`,
+    er.soEntrega > 0 ? `${er.soEntrega} entrega(s) de simples remessa, sem venda` : null,
+  ].filter(Boolean).join("\n");
+  return (
+    <StatCard
+      label="Entregas realizadas"
+      value={`${er.entregas}`}
+      hint={`retira / balcão: ${er.retira}`}
+      title={title}
+      accent="navy"
+      extra={comparar ? (
+        <Suspense fallback={<ChipsEsperando />}>
+          <ChipsEntrega atual={er.entregas} cmp={comparar} />
+        </Suspense>
+      ) : undefined}
+    />
+  );
+}
+
 function ChipsEsperando() {
   return <span className="inline-block h-3 w-32 animate-pulse rounded bg-slate-100" />;
 }
@@ -81,8 +121,14 @@ export async function FaturamentoCards({
   comparar: Periodo | null;
 }) {
   // Dispara a comparação já (memoizada), sem esperar por ela.
-  if (comparar) void getResumoFaturamentoPeriodo(comparar.de, comparar.ate).catch(() => null);
-  const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate);
+  if (comparar) {
+    void getResumoFaturamentoPeriodo(comparar.de, comparar.ate).catch(() => null);
+    void lerEntregaRetira(comparar.de, comparar.ate).catch(() => null);
+  }
+  const [r, er] = await Promise.all([
+    getResumoFaturamentoPeriodo(periodo.de, periodo.ate),
+    lerEntregaRetira(periodo.de, periodo.ate).catch(() => null),
+  ]);
 
   if (!r) {
     return (
@@ -100,7 +146,7 @@ export async function FaturamentoCards({
 
   const taxaDevol = taxaDevolucao(r);
   const pctCusto = custoTotal === null ? null : percentualCustoLogistico(custoTotal, r.vendaLiquida);
-  const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "atendimentos" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
+  const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
     comparacoes(r[campo], (x) => x[campo], comparar, maiorEhBom);
 
   return (
@@ -122,7 +168,7 @@ export async function FaturamentoCards({
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução − avulsa" accent="navy" extra={cmp("vendaLiquida", true)} />
-        <StatCard label="Entregas realizadas" value={`${r.atendimentos}`} hint="clientes atendidos no período" accent="navy" extra={cmp("atendimentos", true)} />
+        <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} comparar={comparar} />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" extra={cmp("pesoFaturado", true)} />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" extra={cmp("emitidas", true)} />
         <StatCard

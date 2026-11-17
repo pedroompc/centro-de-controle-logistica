@@ -1,8 +1,8 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
-import { notaExpedida, motoristaDeEntrega } from "./regras-winthor";
-import type { RotaMotorista, TotaisEntrega, DiaSemanaFrota } from "@/domain/telemetria";
+import { notaExpedida, notaDeVenda, motoristaDeEntrega } from "./regras-winthor";
+import type { RotaMotorista, TotaisEntrega, DiaSemanaFrota, EntregaRetira } from "@/domain/telemetria";
 
 // Aba Telemetria & Frota (portada do app Flask, "Análise do Motorista"). Universo
 // das entregas = notas EXPEDIDAS em carga com motorista de verdade, saídas no
@@ -111,6 +111,33 @@ export async function lerTotaisEntrega(ini: string, fim: string, motorista: numb
     valor: n(r?.VALOR), devolvido: n(r?.DEVOLVIDO),
   };
 }
+
+// Card "Entregas realizadas" do dashboard: separa o atendimento (cliente × dia)
+// em ENTREGA (saiu de caminhão com motorista — a mesma regra desta aba, então o
+// número bate com a Telemetria) e RETIRA (venda sem carga ou na carga DIALOG do
+// balcão). SR em carga é entrega mas não é venda: por isso entrega + retira
+// passa do total vendido por essa diferença (SO_ENTREGA).
+const SQL_ENTREGA_RETIRA = `WITH nf AS (
+  SELECT n.CODCLI || '|' || TO_CHAR(n.DTSAIDA, 'YYYYMMDD') K,
+         CASE WHEN ${notaDeVenda("n")} THEN 1 ELSE 0 END VENDA,
+         CASE WHEN ${notaExpedida("n")} AND NVL(n.NUMCAR, 0) != 0
+               AND ${motoristaDeEntrega("car.CODMOTORISTA")} THEN 1 ELSE 0 END ENTREGA
+  FROM PCNFSAID n
+  LEFT JOIN PCCARREG car ON car.NUMCAR = n.NUMCAR
+  WHERE ${filialIn("n.CODFILIAL")} AND ${faixa("n.DTSAIDA")} AND n.DTCANCEL IS NULL
+),
+k AS (SELECT K, MAX(VENDA) V, MAX(ENTREGA) E FROM nf GROUP BY K)
+SELECT NVL(SUM(E), 0) ENTREGAS,
+       NVL(SUM(CASE WHEN V = 1 AND E = 0 THEN 1 ELSE 0 END), 0) RETIRA,
+       NVL(SUM(CASE WHEN V = 0 AND E = 1 THEN 1 ELSE 0 END), 0) SO_ENTREGA,
+       NVL(SUM(V), 0) VENDIDOS
+FROM k`;
+
+/** Atendimentos do período separados em entrega (= Telemetria) e retira/balcão. */
+export const lerEntregaRetira = cache(async (ini: string, fim: string): Promise<EntregaRetira> => {
+  const [r] = await queryWinthor<Record<string, unknown>>(SQL_ENTREGA_RETIRA, { ini, fim });
+  return { entregas: n(r?.ENTREGAS), retira: n(r?.RETIRA), soEntrega: n(r?.SO_ENTREGA), vendidos: n(r?.VENDIDOS) };
+});
 
 /** Devolução por dia da semana (0 = segunda) nas duas bases: dia faturado e entrada da devolução. */
 export async function lerDiaSemanaFrota(ini: string, fim: string, motorista: number | null): Promise<DiaSemanaFrota[]> {
