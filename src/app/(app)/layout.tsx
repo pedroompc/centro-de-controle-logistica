@@ -60,7 +60,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <SidebarNav admin={admin} />
           </div>
         </div>
-        <div className="border-t border-white/10 pt-4">
+        <div className="border-t border-white/10 pt-3">
+          <SidebarNav admin={admin} parte="rodape" />
           <div className="flex items-center gap-2 px-3 group-data-[recolhida=true]/app:justify-center group-data-[recolhida=true]/app:px-0">
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${

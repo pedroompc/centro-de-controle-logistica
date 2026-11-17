@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { comPeriodo } from "@/lib/url-periodo";
+import { agruparMenu, ordenarMenu, rodapeMenu } from "@/domain/menu";
 
 // `short` = rótulo curto para a barra inferior do celular; `primary` marca os
 // itens que ficam sempre à mão nessa barra (os demais vão para a folha "Mais").
@@ -206,12 +207,12 @@ export function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-/** Itens do menu que o papel enxerga (admin vê tudo). */
+/** Itens do menu que o papel enxerga (admin vê tudo), na ordem do menu (`@/domain/menu`). */
 export function itensVisiveis(admin: boolean): Item[] {
-  return items.filter((i) => admin || !i.adminOnly);
+  return ordenarMenu(items.filter((i) => admin || !i.adminOnly));
 }
 
-export function SidebarNav({ variant = "sidebar", admin }: { variant?: "sidebar" | "top"; admin: boolean }) {
+export function SidebarNav({ variant = "sidebar", admin, parte = "principal" }: { variant?: "sidebar" | "top"; admin: boolean; parte?: "principal" | "rodape" }) {
   const pathname = usePathname();
   const mes = useSearchParams();
   const visiveis = itensVisiveis(admin);
@@ -238,25 +239,42 @@ export function SidebarNav({ variant = "sidebar", admin }: { variant?: "sidebar"
     );
   }
 
+  const link = (it: Item) => {
+    const active = isActive(pathname, it.href);
+    return (
+      <Link
+        key={it.href}
+        href={comMes(it.href, mes)}
+        title={it.label}
+        className={`relative flex items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition group-data-[recolhida=true]/app:justify-center ${
+          active ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
+        }`}
+      >
+        {active && <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r bg-amber-400" />}
+        <span className={active ? "text-amber-300" : ""}>{it.icon}</span>
+        <span className="group-data-[recolhida=true]/app:hidden">{it.label}</span>
+      </Link>
+    );
+  };
+
+  // Rodapé (Painel TV, Auditoria): fica embaixo, junto do selo do perfil.
+  if (parte === "rodape") {
+    const rodape = rodapeMenu(visiveis);
+    return rodape.length ? <nav className="mb-3 flex flex-col gap-0.5">{rodape.map(link)}</nav> : null;
+  }
+
   return (
-    <nav className="flex flex-col gap-1">
-      {visiveis.map((it) => {
-        const active = isActive(pathname, it.href);
-        return (
-          <Link
-            key={it.href}
-            href={comMes(it.href, mes)}
-            title={it.label}
-            className={`relative flex items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-medium transition group-data-[recolhida=true]/app:justify-center ${
-              active ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            {active && <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r bg-amber-400" />}
-            <span className={active ? "text-amber-300" : ""}>{it.icon}</span>
-            <span className="group-data-[recolhida=true]/app:hidden">{it.label}</span>
-          </Link>
-        );
-      })}
+    <nav className="flex flex-col">
+      {agruparMenu(visiveis).map((g, i) => (
+        <div key={g.titulo} className={i > 0 ? "mt-4" : ""}>
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35 group-data-[recolhida=true]/app:hidden">
+            {g.titulo}
+          </p>
+          {/* Recolhida: sem título, um traço separa os grupos. */}
+          {i > 0 && <div className="mx-auto mb-2 hidden h-px w-6 bg-white/15 group-data-[recolhida=true]/app:block" />}
+          <div className="flex flex-col gap-0.5">{g.itens.map(link)}</div>
+        </div>
+      ))}
     </nav>
   );
 }
