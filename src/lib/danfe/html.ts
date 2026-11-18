@@ -53,7 +53,8 @@ function codigoDeBarras(chave: string): string {
   }
 }
 
-export function renderDanfeHtml(d: DanfeData, wt: DanfeWinthor): string {
+// Corpo de um DANFE (a folha), sem a página em volta.
+function montarDanfe(d: DanfeData, wt: DanfeWinthor): { titulo: string; serie: string; corpo: string } {
   const emit = d.emitente;
   const dest = d.destinatario;
   const tot = d.totais;
@@ -115,7 +116,7 @@ export function renderDanfeHtml(d: DanfeData, wt: DanfeWinthor): string {
   const titulo = `DANFE NF-e ${d.ide.numero ?? ""}`;
 
   const corpo = `
-  <div class="dnf" id="danfe-impressao">
+  <div class="dnf">
     <div class="dnf-canhoto">
       <div class="dnf-canhoto-esq">
         <div>RECEBEMOS DE <b>${esc(emit.nome)}</b><br>OS PRODUTOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO</div>
@@ -283,6 +284,11 @@ export function renderDanfeHtml(d: DanfeData, wt: DanfeWinthor): string {
     </div>
   </div>`;
 
+  return { titulo, serie: d.ide.serie ?? "", corpo };
+}
+
+function pagina(titulo: string, rotulo: string, corpos: string[], opcoes: { avisos?: string[]; imprimir?: boolean } = {}): string {
+  const avisos = opcoes.avisos ?? [];
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -293,16 +299,37 @@ export function renderDanfeHtml(d: DanfeData, wt: DanfeWinthor): string {
 </head>
 <body>
 <div class="barra" id="barra">
-  <span>${esc(titulo)} · Série ${esc(d.ide.serie)}</span>
+  <span>${esc(rotulo)}</span>
   <button type="button" onclick="window.print()">Imprimir / Salvar PDF</button>
 </div>
-<div class="folha">${corpo}</div>
+${avisos.length ? `<div class="avisos">${avisos.map((a) => `<p>${esc(a)}</p>`).join("")}</div>` : ""}
+<div class="folha">${corpos.join("")}</div>
 <script>
   // Dentro do modal (iframe) quem imprime é o botão do modal; a barra só aparece com a página aberta direto.
-  if (window.self !== window.top) document.getElementById("barra").style.display = "none";
+  if (window.self !== window.top) document.getElementById("barra").style.display = "none";${
+    opcoes.imprimir ? `
+  // Aberta pelo botão "Imprimir notas" da consulta: já chama a impressão.
+  window.addEventListener("load", function () { setTimeout(function () { window.print(); }, 300); });` : ""
+  }
 </script>
 </body>
 </html>`;
+}
+
+/** DANFE de uma nota, pronto para imprimir / salvar PDF em A4. */
+export function renderDanfeHtml(d: DanfeData, wt: DanfeWinthor): string {
+  const { titulo, serie, corpo } = montarDanfe(d, wt);
+  return pagina(titulo, `${titulo} · Série ${serie}`, [corpo]);
+}
+
+/**
+ * Vários DANFEs numa página só, um por folha A4 (imprimir as notas selecionadas
+ * na consulta de pedidos). `avisos` lista o que ficou de fora (só na tela).
+ */
+export function renderDanfesHtml(notas: { d: DanfeData; wt: DanfeWinthor }[], avisos: string[] = [], imprimir = false): string {
+  const corpos = notas.map(({ d, wt }) => montarDanfe(d, wt).corpo);
+  const qtd = `${notas.length} ${notas.length === 1 ? "nota" : "notas"}`;
+  return pagina(`DANFEs - ${qtd}`, `DANFEs · ${qtd}`, corpos, { avisos, imprimir: imprimir && notas.length > 0 });
 }
 
 const CSS = `
@@ -312,6 +339,10 @@ html, body { margin: 0; background: #f1f5f9; }
 .barra button { background: #181d55; color: #fff; border: 0; border-radius: 8px; padding: 7px 14px; font: 600 12px system-ui, sans-serif; cursor: pointer; }
 .barra button:hover { background: #10143f; }
 .folha { overflow-x: auto; padding: 12px 0; }
+.folha > .dnf + .dnf { margin-top: 12px; }
+.avisos { margin: 12px auto 0; max-width: 780px; padding: 8px 12px; border-radius: 8px; background: #fff7ed; color: #9a3412;
+  font: 13px system-ui, sans-serif; }
+.avisos p { margin: 2px 0; }
 
 .dnf { width: 780px; margin: 0 auto; padding: 14px 16px; background: #fff; color: #000;
   font-family: Arial, Helvetica, sans-serif; font-size: 11px; line-height: 1.2; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
@@ -391,9 +422,11 @@ html, body { margin: 0; background: #f1f5f9; }
 @page { size: A4 portrait; margin: 7mm; }
 @media print {
   html, body { background: #fff; }
-  .barra { display: none !important; }
+  .barra, .avisos { display: none !important; }
   .folha { padding: 0; overflow: visible; }
   .dnf { padding: 0; zoom: 0.95; box-shadow: none; }
+  .folha > .dnf { break-after: page; margin: 0; }
+  .folha > .dnf:last-child { break-after: auto; }
   .dnf-prod tbody tr.dnf-vazio td { height: max(0px, calc(var(--h) - 230px)); }
 }
 `;

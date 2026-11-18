@@ -9,7 +9,7 @@ import { estadoPedidoInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
 import { formatarFoneBR, linkWhatsApp } from "@/domain/whatsapp";
 import { carregarItensPedido } from "./actions";
-import { salvarDanfePdf } from "./salvar-danfe-pdf";
+import { salvarDanfePdf, salvarBoletosPdf } from "./salvar-pdf";
 
 function fmtData(iso: string | null): string {
   if (!iso) return "—";
@@ -76,31 +76,37 @@ const IconeNota = () => (
   </svg>
 );
 
-// Salva o DANFE em PDF (NF-<número>.pdf), como o botão "PDF" do app Flask.
-function BotaoPdf({ numped, notaFiscal, grande = false }: { numped: number; notaFiscal: number; grande?: boolean }) {
+// Salva o DANFE (NF-<número>.pdf) ou os boletos (Boletos-NF-<número>.pdf) em PDF,
+// como o botão "PDF" do app Flask.
+function BotaoPdf({ numped, notaFiscal, documento = "danfe", grande = false, grupo = false }: {
+  numped: number; notaFiscal: number; documento?: Documento; grande?: boolean; grupo?: boolean;
+}) {
   const [ocupado, setOcupado] = useState(false);
   const salvar = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (ocupado) return;
     setOcupado(true);
     try {
-      await salvarDanfePdf(numped, notaFiscal);
+      await (documento === "danfe" ? salvarDanfePdf : salvarBoletosPdf)(numped, notaFiscal);
     } catch (err) {
-      alert((err as Error).message || "Não foi possível gerar o PDF da nota.");
+      alert((err as Error).message || `Não foi possível gerar o PDF ${documento === "danfe" ? "da nota" : "dos boletos"}.`);
     } finally {
       setOcupado(false);
     }
   };
   const cls = grande
     ? "inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-rose-700 disabled:opacity-60"
-    : "inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:opacity-60";
+    : grupo
+      ? "inline-flex items-center gap-1 border-l border-black/10 px-1.5 py-0.5 text-[11px] font-semibold transition hover:bg-black/5 disabled:opacity-60"
+      : "inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:opacity-60";
+  const rotulo = documento === "danfe" ? `a NF ${notaFiscal}` : `os boletos da NF ${notaFiscal}`;
   return (
     <button type="button" onClick={salvar} onDoubleClick={(e) => e.stopPropagation()} disabled={ocupado}
-      title={`Salvar a NF ${notaFiscal} em PDF`} className={cls}>
+      title={`Salvar ${rotulo} em PDF`} className={cls}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={grande ? "h-4 w-4" : "h-3.5 w-3.5"} strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5" />
       </svg>
-      {ocupado ? "Gerando…" : grande ? "Salvar PDF da NF" : "PDF"}
+      {ocupado ? "Gerando…" : grande ? (documento === "danfe" ? "Salvar PDF da NF" : "Salvar PDF dos boletos") : "PDF"}
     </button>
   );
 }
@@ -146,7 +152,7 @@ function ModalDocumento({ documento, numped, notaFiscal, onTrocar, onFechar }: {
               </svg>
               Imprimir / Salvar PDF
             </button>
-            {documento === "danfe" && <BotaoPdf numped={numped} notaFiscal={notaFiscal} grande />}
+            <BotaoPdf key={documento} numped={numped} notaFiscal={notaFiscal} documento={documento} grande />
             <button
               type="button"
               onClick={() => onTrocar(outro)}
@@ -353,6 +359,7 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
             <IconeBoleto />
             Boletos
           </button>
+          <BotaoPdf numped={pedido.numped} notaFiscal={pedido.notaFiscal} documento="boletos" grande />
           {documento && (
             <ModalDocumento
               documento={documento}
@@ -459,6 +466,9 @@ function Marcar({ checked, indeterminado = false, onChange, label }: {
   );
 }
 
+// Mesmo limite da rota /pedidos/notas.
+const MAX_IMPRESSAO = 60;
+
 export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<number | null>(null);
@@ -480,12 +490,23 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
   // Autosoma dos selecionados (mesmo os que a busca esconde continuam somando).
   const soma = useMemo(() => {
     let valor = 0, peso = 0, qtd = 0;
+    const comNota: number[] = [];
     for (const p of pedidos) {
       if (!selecionados.has(p.numped)) continue;
       valor += p.valor; peso += p.peso; qtd += 1;
+      if (p.notaFiscal != null) comNota.push(p.numped);
     }
-    return { valor, peso, qtd };
+    return { valor, peso, qtd, comNota };
   }, [pedidos, selecionados]);
+
+  // DANFEs dos selecionados numa aba só, um por folha A4, já com a impressão aberta.
+  const imprimirNotas = () => {
+    if (soma.comNota.length > MAX_IMPRESSAO) {
+      alert(`Selecione no máximo ${MAX_IMPRESSAO} notas por impressão (marcadas: ${soma.comNota.length}).`);
+      return;
+    }
+    window.open(`/pedidos/notas?p=${soma.comNota.join(",")}&imprimir=1`, "_blank");
+  };
 
   const visiveisMarcados = lista.filter((p) => selecionados.has(p.numped)).length;
   const todosVisiveis = lista.length > 0 && visiveisMarcados === lista.length;
@@ -659,16 +680,21 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       <td className={`${td} text-right text-xs tabular-nums text-slate-600`}>{formatKg(p.peso)}</td>
                       <td className={`${td} text-center`}>
                         {p.notaFiscal != null ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <button type="button" onClick={(e) => abrirDoc(e, p, "danfe")} onDoubleClick={(e) => e.stopPropagation()} title={`Ver o DANFE da NF ${p.notaFiscal}`}
-                              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-200">
-                              <IconeNota /> NF {p.notaFiscal}
-                            </button>
-                            <BotaoPdf numped={p.numped} notaFiscal={p.notaFiscal} />
-                            <button type="button" onClick={(e) => abrirDoc(e, p, "boletos")} onDoubleClick={(e) => e.stopPropagation()} title={`Boletos da NF ${p.notaFiscal}`}
-                              className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200">
-                              <IconeBoleto /> Boletos
-                            </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="inline-flex overflow-hidden rounded bg-amber-100 text-amber-800">
+                              <button type="button" onClick={(e) => abrirDoc(e, p, "danfe")} onDoubleClick={(e) => e.stopPropagation()} title={`Ver o DANFE da NF ${p.notaFiscal}`}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold transition hover:bg-amber-200">
+                                <IconeNota /> NF {p.notaFiscal}
+                              </button>
+                              <BotaoPdf numped={p.numped} notaFiscal={p.notaFiscal} grupo />
+                            </span>
+                            <span className="inline-flex overflow-hidden rounded bg-slate-100 text-slate-700">
+                              <button type="button" onClick={(e) => abrirDoc(e, p, "boletos")} onDoubleClick={(e) => e.stopPropagation()} title={`Boletos da NF ${p.notaFiscal}`}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-semibold transition hover:bg-slate-200">
+                                <IconeBoleto /> Boletos
+                              </button>
+                              <BotaoPdf numped={p.numped} notaFiscal={p.notaFiscal} documento="boletos" grupo />
+                            </span>
                           </div>
                         ) : <span className="text-xs text-slate-400">Sem NF</span>}
                       </td>
@@ -782,6 +808,21 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
             </span>
             <span className="text-white/70">Valor <b className="tabular-nums text-white">{formatBRL(soma.valor)}</b></span>
             <span className="text-white/70">Peso <b className="tabular-nums text-white">{formatKg(soma.peso)}</b></span>
+            {soma.comNota.length > 0 && (
+              <button
+                type="button"
+                onClick={imprimirNotas}
+                title={soma.comNota.length < soma.qtd
+                  ? `${soma.qtd - soma.comNota.length} pedido(s) selecionado(s) ainda sem nota ficam de fora`
+                  : "Abre os DANFEs selecionados, um por folha, prontos para imprimir"}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1 text-xs font-bold text-white transition hover:bg-amber-600"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2" /><path d="M6 14h12v7H6z" />
+                </svg>
+                Imprimir {soma.comNota.length === 1 ? "nota" : `${soma.comNota.length} notas`}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setSelecionados(new Set())}

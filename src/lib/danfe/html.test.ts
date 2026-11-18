@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { renderDanfeHtml } from "./html";
+import { renderDanfeHtml, renderDanfesHtml } from "./html";
 import { parseNfe } from "@/domain/danfe/parse-nfe";
 import type { DanfeWinthor } from "@/data/danfe";
 
@@ -42,5 +42,27 @@ describe("renderDanfeHtml", () => {
     const h = renderDanfeHtml(parseNfe(sujo), wt);
     expect(h).not.toContain("<script>x</script>");
     expect(h).toContain("JOAO &lt;script&gt;x&lt;/script&gt; &amp; CIA");
+  });
+});
+
+describe("renderDanfesHtml", () => {
+  const nota = { d: parseNfe(XML), wt };
+
+  it("um DANFE por folha, com o total no título", () => {
+    const html = renderDanfesHtml([nota, nota]);
+    expect(html.match(/<div class="dnf">/g)).toHaveLength(2);
+    expect(html).toContain("<title>DANFEs - 2 notas</title>");
+    expect(html).toContain(".folha > .dnf { break-after: page;");
+    expect(html).not.toContain("window.print(); }, 300)");
+  });
+
+  it("lista o que ficou de fora (só na tela) e chama a impressão quando pedido", () => {
+    const html = renderDanfesHtml([nota], ["Pedido 9 sem NF-e"], true);
+    expect(html).toContain('<div class="avisos"><p>Pedido 9 sem NF-e</p></div>');
+    expect(html).toContain("window.print(); }, 300)");
+  });
+
+  it("sem nota nenhuma não chama a impressão", () => {
+    expect(renderDanfesHtml([], ["nada"], true)).not.toContain("window.print(); }, 300)");
   });
 });
