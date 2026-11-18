@@ -58,8 +58,8 @@ describe("resumoKm", () => {
     expect(r.km).toBe(250);
     expect(r.veiculos).toBe(2);
     expect(r.rastreados).toBe(1);
-    expect(r.kmEmViagem).toBe(150);
-    expect(r.kmPorEntrega).toBeCloseTo(150 / 20); // só entregas de veículo rastreado
+    expect(r.diasRodados).toBe(2);
+    expect(r.kmPorVeiculoDia).toBe(125);
     expect(r.porDia.get("2026-10-23")).toBe(100);
   });
 
@@ -67,6 +67,18 @@ describe("resumoKm", () => {
     const r = resumoKm(vs, mapaKmDia(linhas), "2026-10-22");
     expect(r.km).toBe(150);
     expect(r.porVeiculo[0]).toMatchObject({ placa: "PDO8543", km: 150, diasRodados: 1, entregas: 20 });
+  });
+
+  it("dia abaixo de 5 km (manobra no pátio) soma no km mas não conta como dia rodado", () => {
+    const comPatio = [...linhas, hod({ dia: "2026-10-24", hodometroMinM: 1_250_000, hodometroMaxM: 1_250_800 })];
+    const r = resumoKm(vs, mapaKmDia(comPatio), null);
+    expect(r.km).toBeCloseTo(250.8);
+    expect(r.diasRodados).toBe(2);
+    expect(r.kmPorVeiculoDia).toBeCloseTo(250.8 / 2);
+  });
+
+  it("sem dia rodado, km por veículo/dia é nulo", () => {
+    expect(resumoKm(vs, new Map(), null).kmPorVeiculoDia).toBeNull();
   });
 
   it("veículo sem rastreador aparece com km nulo", () => {

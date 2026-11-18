@@ -39,7 +39,6 @@ export interface MotoristaBI extends ResumoMotorista {
   devolucao: { expedidas: number; devolvidas: number; taxa: number | null; valorDevolvido: number } | null;
   /** km das viagens dele pela telemetria (null = nenhum veículo dele rastreado). */
   km: number | null;
-  kmPorEntrega: number | null;
   /** Cidades atendidas e clientes que devolveram (logística), pelo dia faturado; null = sem dado. */
   cidades: CidadesDoMotorista | null;
 }
@@ -203,17 +202,13 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     const funcPorId = new Map(ativos.map((f) => [f.id, f]));
     const devPorMot = new Map(listaDev.map((m) => [m.codMotorista, m]));
     const cidadesPorMot = cidadesMot ? cidadesPorMotorista(cidadesMot) : null;
-    // km de cada viagem pela telemetria, somado por motorista (entregas só das viagens com km).
-    const kmMot = new Map<number, { km: number; entregas: number }>();
+    // km de cada viagem pela telemetria, somado por motorista.
+    const kmMot = new Map<number, number>();
     if (hodometro) {
       const kms = kmDasViagens(viagens.viagens, mapaKmDia(hodometro));
       viagens.viagens.forEach((v, i) => {
         const km = kms[i];
-        if (km === null) return;
-        const t = kmMot.get(v.motorista) ?? { km: 0, entregas: 0 };
-        t.km += km;
-        t.entregas += v.entregas;
-        kmMot.set(v.motorista, t);
+        if (km !== null) kmMot.set(v.motorista, (kmMot.get(v.motorista) ?? 0) + km);
       });
     }
     motoristas = porMotorista(viagens.viagens).map((m) => {
@@ -227,12 +222,8 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
         custoPeriodo: custo,
         custoPorEntrega: custo !== null && m.entregas > 0 ? custo / m.entregas : null,
         devolucao: d ? { expedidas: d.expedidas, devolvidas: d.devolvidas, taxa: d.taxa, valorDevolvido: d.valorDevolvido } : null,
-        km: kmMot.get(m.motorista)?.km ?? null,
+        km: kmMot.get(m.motorista) ?? null,
         cidades: cidadesPorMot?.get(m.motorista) ?? null,
-        kmPorEntrega: (() => {
-          const t = kmMot.get(m.motorista);
-          return t && t.entregas > 0 ? t.km / t.entregas : null;
-        })(),
       };
     });
   }

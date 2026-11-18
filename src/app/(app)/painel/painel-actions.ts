@@ -535,13 +535,12 @@ export async function carregarFatosDescarregoPeriodo(de: string, ate: string): P
 
 export interface ResumoFrotaTV {
   km: number;
-  kmPorEntrega: number | null;
   rastreados: number;
   veiculos: number;
   kmPorVeiculoDia: number | null;
   porDia: { data: string; km: number }[];
-  top: { placa: string; descricao: string | null; km: number; diasRodados: number; kmPorEntrega: number | null }[];
-  anterior: { km: number; kmPorEntrega: number | null; kmPorVeiculoDia: number | null } | null;
+  top: { placa: string; descricao: string | null; km: number; diasRodados: number }[];
+  anterior: { km: number; kmPorVeiculoDia: number | null } | null;
   /** Custo ESTIMADO (Custos › Frota) — só admin; null para a conta de leitura da TV. */
   custo: { total: number; diesel: number; porKm: number | null; porEntrega: number | null } | null;
 }
@@ -554,11 +553,6 @@ async function kmDoMes(m: string): Promise<{ r: ResumoKm; entregas: number } | n
   return { r: resumoKm(vs, mapaKmDia(hod), null), entregas: totaisEntregas(vs).entregas };
 }
 
-function porVeiculoDia(r: ResumoKm): number | null {
-  const dias = r.porVeiculo.reduce((s, v) => s + (v.km !== null ? v.diasRodados : 0), 0);
-  return dias > 0 ? r.km / dias : null;
-}
-
 /** KM real da frota de entrega no mês, vs o mês anterior. `null` = sem telemetria. */
 export async function carregarFrotaTV(mes: string): Promise<ResumoFrotaTV | null> {
   const m = mesNorm(mes);
@@ -569,16 +563,15 @@ export async function carregarFrotaTV(mes: string): Promise<ResumoFrotaTV | null
   const c = cadastro ? custoFrota(r, cadastro, fracaoDoMes(m)) : null;
   return {
     km: r.km,
-    kmPorEntrega: r.kmPorEntrega,
     rastreados: r.rastreados,
     veiculos: r.veiculos,
-    kmPorVeiculoDia: porVeiculoDia(r),
+    kmPorVeiculoDia: r.kmPorVeiculoDia,
     porDia: [...r.porDia.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([data, km]) => ({ data, km })),
     top: r.porVeiculo
       .filter((v) => v.km !== null)
       .slice(0, 8)
-      .map((v) => ({ placa: v.placa, descricao: v.descricao, km: v.km!, diasRodados: v.diasRodados, kmPorEntrega: v.kmPorEntrega })),
-    anterior: ant && ant.r.rastreados > 0 ? { km: ant.r.km, kmPorEntrega: ant.r.kmPorEntrega, kmPorVeiculoDia: porVeiculoDia(ant.r) } : null,
+      .map((v) => ({ placa: v.placa, descricao: v.descricao, km: v.km!, diasRodados: v.diasRodados })),
+    anterior: ant && ant.r.rastreados > 0 ? { km: ant.r.km, kmPorVeiculoDia: ant.r.kmPorVeiculoDia } : null,
     custo: c ? { total: c.total, diesel: c.diesel, porKm: c.custoPorKm, porEntrega: entregas > 0 ? c.total / entregas : null } : null,
   };
 }

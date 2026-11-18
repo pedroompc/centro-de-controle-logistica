@@ -24,7 +24,7 @@ describe("visaoDoIndicador", () => {
     expect(visaoDoIndicador("abastecimento", "movimentacoes")).toBe("movimento");
     expect(visaoDoIndicador("abastecimento", "rupturas")).toBe("rupturas");
     expect(visaoDoIndicador("motoristas", "devolucao")).toBe("devolucao");
-    expect(visaoDoIndicador("motoristas", "kmPorEntrega")).toBe("km");
+    expect(visaoDoIndicador("motoristas", "kmPorVeiculoDia")).toBe("km");
     expect(visaoDoIndicador("motoristas", "desconhecido")).toBeNull();
   });
 });

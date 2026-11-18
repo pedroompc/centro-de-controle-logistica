@@ -84,7 +84,7 @@ export function resumoAbastecimento(d: DadosBIAbastecimento): ResumoSetorGeral {
 }
 
 /**
- * Entregas, peso, clientes atendidos, devolução logística e km por entrega.
+ * Entregas, peso, clientes atendidos, devolução logística e km por veículo/dia.
  * `clientesAtendidos` = cliente distinto por dia (o mesmo do Início), vem de fora.
  */
 export function resumoMotoristas(d: DadosBIMotoristas, clientesAtendidos: number | null): ResumoSetorGeral {
@@ -100,7 +100,7 @@ export function resumoMotoristas(d: DadosBIMotoristas, clientesAtendidos: number
       ind("peso", "Peso entregue", i.tot?.kg ?? null, "kg", true),
       ind("clientes", "Clientes atendidos", erro ? null : clientesAtendidos, "int", true),
       ind("devolucao", "Devolução logística", erro ? null : dev?.taxa ?? null, "pct", false),
-      ind("kmPorEntrega", "Km por entrega", km?.kmPorEntrega ?? null, "km", false),
+      ind("kmPorVeiculoDia", "Km por veículo/dia", km?.kmPorVeiculoDia ?? null, "km", false),
     ],
   };
 }

@@ -105,7 +105,7 @@ export function BIMotoristas({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial
         rotulo={sufixo("KM rodado")}
         valor={km && km.rastreados > 0 ? `${n0(km.km)} km` : "—"}
         sub={
-          !vs ? "sem acesso ao Winthor" : !km ? "sem telemetria" : `${km.rastreados} de ${km.veiculos} veículos rastreados · ${ou(km.kmPorEntrega, n1)} km/entrega`
+          !vs ? "sem acesso ao Winthor" : !km ? "sem telemetria" : `${km.rastreados} de ${km.veiculos} veículos rastreados · ${ou(km.kmPorVeiculoDia, n0)} km/veículo/dia`
         }
         variacao={vq("km")}
       />
@@ -510,13 +510,11 @@ function VisaoKm({
 }) {
   if (km.veiculos === 0) return <Vazio>Nenhuma viagem no recorte.</Vazio>;
   const rastreados = km.porVeiculo.filter((v) => v.km !== null);
-  const diasFrota = rastreados.reduce((s, v) => s + v.diasRodados, 0);
   return (
     <div className={`${VISAO} xl:grid-rows-[auto_minmax(24rem,1fr)]`}>
       <div className={GRADE_CARDS}>
         <Mini rotulo="KM rodado" valor={`${n0(km.km)} km`} sub="frota de entrega rastreada" />
-        <Mini rotulo="KM por entrega" valor={ou(km.kmPorEntrega, n1)} sub="nos dias com viagem" />
-        <Mini rotulo="KM por veículo/dia" valor={diasFrota ? n0(km.km / diasFrota) : "—"} sub={`${n0(diasFrota)} dias rodados`} />
+        <Mini rotulo="KM por veículo/dia" valor={ou(km.kmPorVeiculoDia, n0)} sub={`${n0(km.diasRodados)} dias rodados`} />
         <Mini rotulo="Rastreados" valor={`${km.rastreados} de ${km.veiculos}`} sub="veículos com viagem" />
         {custo && (
           <>
@@ -534,8 +532,8 @@ function VisaoKm({
         <Bloco titulo="Por veículo" direita={<Dica>{rastreados.length} com telemetria</Dica>}>
           <div className="h-full overflow-auto pr-1">
             <Tabela
-              cab={["Veículo", "KM", "Dias rodados", "KM/dia", "Viagens", "Entregas", "KM/entrega", ...(custo ? ["Diesel est."] : [])]}
-              alinhar={["l", "r", "r", "r", "r", "r", "r", "r"]}
+              cab={["Veículo", "KM", "Dias rodados", "KM/dia", "Viagens", "Entregas", ...(custo ? ["Diesel est."] : [])]}
+              alinhar={["l", "r", "r", "r", "r", "r", "r"]}
               linhas={km.porVeiculo.map((v) => [
                 <span key="v" className="block max-w-[18rem] truncate" title={v.descricao ?? undefined}>
                   {v.placa} <span className="text-white/40">{(v.descricao ?? "").replace(v.placa, "").replace(/^\s*-\s*/, "").trim()}</span>
@@ -545,7 +543,6 @@ function VisaoKm({
                 v.km !== null && v.diasRodados ? n0(v.km / v.diasRodados) : "—",
                 n0(v.viagens),
                 n0(v.entregas),
-                ou(v.kmPorEntrega, n1),
                 ...(custo ? [dieselVeiculo(custo, v.placa, v.km)] : []),
               ])}
             />
@@ -619,8 +616,8 @@ function VisaoMotoristas({ lista, periodo }: { lista: MotoristaBI[]; periodo: Pe
         <div className="h-full overflow-auto pr-1">
           {aberto && <CidadesMotorista m={aberto} onFechar={() => setSel(null)} />}
           <Tabela
-            cab={["Motorista", "Tipo", "Dias", "Viagens", "Entregas", "Entregas/dia", "Peso", "Ocupação", "KM", "KM/entrega", "Devolução", "Cidades", "Clientes c/ dev.", "Custo/entrega"]}
-            alinhar={["l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]}
+            cab={["Motorista", "Tipo", "Dias", "Viagens", "Entregas", "Entregas/dia", "Peso", "Ocupação", "KM", "Devolução", "Cidades", "Clientes c/ dev.", "Custo/entrega"]}
+            alinhar={["l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]}
             linhas={itens.map((m) => [
               <button
                 key="n"
@@ -639,7 +636,6 @@ function VisaoMotoristas({ lista, periodo }: { lista: MotoristaBI[]; periodo: Pe
               t1(m.kg),
               pct(m.ocupacao, 0),
               m.km === null ? "—" : n0(m.km),
-              ou(m.kmPorEntrega, n1),
               m.devolucao ? <span key="d" title={`${m.devolucao.devolvidas} de ${m.devolucao.expedidas} notas`}>{pct(m.devolucao.taxa, 2)}</span> : "—",
               m.cidades ? (
                 <span key="c" title={m.cidades.cidades.slice(0, 5).map((c) => `${c.cidade}: ${c.notas} notas`).join("\n")}>

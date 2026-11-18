@@ -10,7 +10,6 @@ import { lerSaudeTelemetria } from "@/data/frota-km";
 import { haQuanto, type SaudeTelemetria } from "@/domain/frota-saude";
 
 const inteiro = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
-const km1 = (v: number | null) => (v === null ? "—" : v.toLocaleString("pt-BR", { maximumFractionDigits: 1 }));
 
 // "+4,2% vs mês anterior" — vazio quando não há mês anterior para comparar.
 function delta(atual: number | null, ant: number | null | undefined, ref = "mês anterior"): string {
@@ -106,7 +105,7 @@ export async function FrotaCards({
   return (
     <div>
       <Heading href={hrefBi} saude={saude} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="KM rodado"
           value={`${inteiro.format(Math.round(d.km))} km`}
@@ -115,16 +114,9 @@ export async function FrotaCards({
           href={hrefBi}
         />
         <StatCard
-          label="KM por entrega"
-          value={km1(d.kmPorEntrega)}
-          hint={delta(d.kmPorEntrega, a?.kmPorEntrega, ref) || "km rodado ÷ entregas"}
-          accent="gold"
-          href={hrefBi}
-        />
-        <StatCard
           label="KM por veículo/dia"
           value={kmDia === null ? "—" : inteiro.format(kmDia)}
-          hint={delta(d.kmPorVeiculoDia, a?.kmPorVeiculoDia, ref) || "média por carro, nos dias em que rodou"}
+          hint={delta(d.kmPorVeiculoDia, a?.kmPorVeiculoDia, ref) || "média por carro, nos dias em que rodou (≥ 5 km)"}
           accent="gold"
           href={hrefBi}
         />
@@ -154,8 +146,8 @@ export function FrotaSkeleton() {
   return (
     <div>
       <Heading />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
           <div key={i} className="h-[108px] animate-pulse rounded-2xl border border-slate-200/80 bg-white" />
         ))}
       </div>

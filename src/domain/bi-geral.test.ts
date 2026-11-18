@@ -74,7 +74,7 @@ describe("resumoMotoristas", () => {
 
   it("entregas, peso, clientes, devolução e km (sem telemetria = null)", () => {
     const r = resumoMotoristas(base as unknown as DadosBIMotoristas, 9);
-    expect(r.indicadores.map((i) => i.chave)).toEqual(["entregas", "peso", "clientes", "devolucao", "kmPorEntrega"]);
+    expect(r.indicadores.map((i) => i.chave)).toEqual(["entregas", "peso", "clientes", "devolucao", "kmPorVeiculoDia"]);
     expect(valores(r)).toEqual([12, 150, 9, 0.05, null]);
   });
 

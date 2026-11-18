@@ -3,13 +3,13 @@ import { custoFrota, rotuloTipo, type CadastroFrota } from "./frota-custo";
 import type { ResumoKm, KmVeiculo } from "./frota";
 
 const veiculo = (over: Partial<KmVeiculo>): KmVeiculo => ({
-  placa: "PDO8543", descricao: null, km: 510, diasRodados: 3, viagens: 3, entregas: 30, kmPorEntrega: 17, ...over,
+  placa: "PDO8543", descricao: null, km: 510, diasRodados: 3, viagens: 3, entregas: 30, ...over,
 });
 
 const resumo = (porVeiculo: KmVeiculo[]): ResumoKm => ({
   km: porVeiculo.reduce((s, v) => s + (v.km ?? 0), 0),
-  kmEmViagem: 0, veiculos: porVeiculo.length, rastreados: porVeiculo.filter((v) => v.km !== null).length,
-  entregasRastreadas: 0, kmPorEntrega: null, porDia: new Map(), porVeiculo,
+  veiculos: porVeiculo.length, rastreados: porVeiculo.filter((v) => v.km !== null).length,
+  diasRodados: 0, kmPorVeiculoDia: null, porDia: new Map(), porVeiculo,
 });
 
 const cadastro: CadastroFrota = {

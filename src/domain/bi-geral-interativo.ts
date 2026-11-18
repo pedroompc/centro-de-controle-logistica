@@ -17,7 +17,7 @@ const QUADRO: Record<SetorGeral, Record<string, string>> = {
   separacao: { pedidos: "producao", peso: "producao", custoPorCaixa: "custo" },
   recebimento: { peso: "descarrego", carros: "descarrego", receita: "receita" },
   abastecimento: { movimentacoes: "movimento", reabastecimentos: "volume", rupturas: "rupturas" },
-  motoristas: { entregas: "entregas", peso: "entregas", clientes: "entregas", devolucao: "devolucao", kmPorEntrega: "km" },
+  motoristas: { entregas: "entregas", peso: "entregas", clientes: "entregas", devolucao: "devolucao", kmPorVeiculoDia: "km" },
 };
 
 export function visaoDoIndicador(setor: SetorGeral, chave: string): string | null {

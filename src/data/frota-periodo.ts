@@ -15,11 +15,6 @@ async function kmDoPeriodo(p: Periodo): Promise<{ r: ResumoKm; entregas: number 
   return { r: resumoKm(vs, mapaKmDia(hod), null), entregas: totaisEntregas(vs).entregas };
 }
 
-function porVeiculoDia(r: ResumoKm): number | null {
-  const dias = r.porVeiculo.reduce((s, v) => s + (v.km !== null ? v.diasRodados : 0), 0);
-  return dias > 0 ? r.km / dias : null;
-}
-
 /**
  * KM real da frota num período qualquer, vs o período `comparar` (o anterior).
  * Mesmo formato do slide da TV; custo fixo mensal proporcional aos meses
@@ -37,16 +32,15 @@ export async function carregarFrotaPeriodo(p: Periodo, comparar: Periodo | null)
   const c = cadastro ? custoFrota(r, cadastro, mesesEquivalentes(p)) : null;
   return {
     km: r.km,
-    kmPorEntrega: r.kmPorEntrega,
     rastreados: r.rastreados,
     veiculos: r.veiculos,
-    kmPorVeiculoDia: porVeiculoDia(r),
+    kmPorVeiculoDia: r.kmPorVeiculoDia,
     porDia: [...r.porDia.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([data, km]) => ({ data, km })),
     top: r.porVeiculo
       .filter((v) => v.km !== null)
       .slice(0, 8)
-      .map((v) => ({ placa: v.placa, descricao: v.descricao, km: v.km!, diasRodados: v.diasRodados, kmPorEntrega: v.kmPorEntrega })),
-    anterior: ant && ant.r.rastreados > 0 ? { km: ant.r.km, kmPorEntrega: ant.r.kmPorEntrega, kmPorVeiculoDia: porVeiculoDia(ant.r) } : null,
+      .map((v) => ({ placa: v.placa, descricao: v.descricao, km: v.km!, diasRodados: v.diasRodados })),
+    anterior: ant && ant.r.rastreados > 0 ? { km: ant.r.km, kmPorVeiculoDia: ant.r.kmPorVeiculoDia } : null,
     custo: c ? { total: c.total, diesel: c.diesel, porKm: c.custoPorKm, porEntrega: entregas > 0 ? c.total / entregas : null } : null,
   };
 }
