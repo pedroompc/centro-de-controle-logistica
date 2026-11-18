@@ -1,11 +1,13 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { lerCortes, lerEstoqueDosCortados } from "@/data/cortes";
+import { lerFaltasDigitacao } from "@/data/falta-digitacao";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import {
   resumoCortes, taxaCorte, filtrarCortes, rotuloFiltro, porProdutoDetalhado, serieSemanal, variacaoPct,
   DIMENSOES_CORTE, type DimensaoCorte, type FiltrosCorte, type GrupoCorte, type ResumoCortes, type ProdutoCortado,
 } from "@/domain/cortes";
+import { filtrarFaltas, resumoFaltas, FILTROS_FALTA, type GrupoFalta } from "@/domain/falta-digitacao";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { lerPeriodo, mesDoPeriodo, paramsDoPeriodo, periodoAberto, periodoAnterior, rotuloCurto, rotuloPeriodo, type Periodo } from "@/domain/periodo";
 import { PageHeader, Card, BarList } from "@/components/ui";
@@ -197,7 +199,137 @@ export default async function CortesPage({ searchParams }: { searchParams: Promi
           </section>
         </>
       )}
+
+      <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
+        <FaltaDigitacao periodo={periodo} periodoAnt={pAnt} filtros={filtros} exportar={url({}).replace(/^\/cortes\??/, "/cortes/export?tipo=faltas&")} />
+      </Suspense>
     </div>
+  );
+}
+
+/**
+ * Falta na digitação (PCFALTA): o item que o vendedor pediu e o Winthor tirou do
+ * pedido por falta de estoque. Bloco à parte — não soma nos cortes da logística —,
+ * com o período e os filtros de produto, fornecedor, comprador e cliente da tela.
+ */
+async function FaltaDigitacao({ periodo, periodoAnt, filtros, exportar }: { periodo: Periodo; periodoAnt: Periodo; filtros: FiltrosCorte; exportar: string }) {
+  let linhas;
+  let linhasAnt;
+  try {
+    [linhas, linhasAnt] = await Promise.all([lerFaltasDigitacao(periodo.de, periodo.ate), lerFaltasDigitacao(periodoAnt.de, periodoAnt.ate)]);
+  } catch (e) {
+    console.error("[cortes/faltas]", e);
+    return <Card className="p-6 text-sm text-slate-500">Falta na digitação: sem acesso ao Winthor agora.</Card>;
+  }
+  const filtradas = filtrarFaltas(linhas, filtros);
+  const r = resumoFaltas(filtradas);
+  const rAnt = resumoFaltas(filtrarFaltas(linhasAnt, filtros));
+  const vs = `vs ${rotuloCurto(periodoAnt)}`;
+  const comVariacao = (base: string, atual: number, anterior: number) => {
+    const v = variacaoPct(atual, anterior);
+    return v === null ? base : `${base} · ${pct(v)} ${vs}`;
+  };
+  const ignorados = DIMENSOES_CORTE.filter((d) => filtros[d] && !(FILTROS_FALTA as readonly string[]).includes(d));
+  const semPedido = new Set(filtradas.filter((l) => !l.temPedido).map((l) => l.numped)).size;
+  const barras = (gs: GrupoFalta[], top = 10) => gs.slice(0, top).map((g) => ({ label: g.rotulo, value: g.valor, display: brl0(g.valor) }));
+  const dataBR = (iso: string) => iso.split("-").reverse().join("/");
+
+  return (
+    <section id="falta-digitacao" className="flex min-w-0 flex-col gap-4 border-t border-slate-200 pt-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-[#141a4d]">Falta na digitação</h2>
+          <p className="text-sm text-slate-500" title="PCFALTA do Winthor. A mercadoria nunca chegou à separação, então não soma nos cortes acima.">
+            Itens que o vendedor pediu e o Winthor tirou do pedido por falta de estoque · não soma nos cortes acima
+          </p>
+          {ignorados.length > 0 && (
+            <p className="mt-1 text-xs text-amber-700">Filtros de {ignorados.map((d) => NOME_DIM[d].toLowerCase()).join(", ")} não se aplicam às faltas.</p>
+          )}
+        </div>
+        <a
+          href={exportar}
+          className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-[#F4F7FA]"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+          </svg>
+          Exportar planilha de faltas
+        </a>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <Kpi titulo="Valor em falta (venda)" valor={brl0(r.valor)} legenda="venda não atendida na digitação" cor="text-amber-600" borda="border-t-amber-500"
+          title={comVariacao("Quantidade em falta × preço de venda do item no pedido", r.valor, rAnt.valor)} />
+        <Kpi titulo="Pedidos afetados" valor={inteiro.format(r.pedidos)} legenda={`${inteiro.format(r.clientes)} clientes · ${inteiro.format(r.rcas)} vendedores`} cor="text-[#1b2168]" borda="border-t-[#2a327f]"
+          title={comVariacao(`${inteiro.format(semPedido)} pedido(s) nem foram gravados: todos os itens faltaram`, r.pedidos, rAnt.pedidos)} />
+        <Kpi titulo="SKUs em falta" valor={`${inteiro.format(r.skus)} SKUs`} legenda="produtos distintos" cor="text-[#1b2168]" borda="border-t-[#2a327f]"
+          title={comVariacao(`${inteiro.format(r.itens)} itens de pedido em falta`, r.skus, rAnt.skus)} />
+        <Kpi titulo="Volume em falta" valor={`${inteiro.format(r.qt)} un`} legenda="unidades pedidas sem estoque" cor="text-[#3d47a8]" borda="border-t-[#3d47a8]"
+          title={comVariacao("Soma das quantidades em falta", r.qt, rAnt.qt)} />
+      </div>
+
+      {r.itens === 0 ? (
+        <Card className="p-8 text-center text-sm text-slate-400">Nenhuma falta na digitação com esses filtros neste período.</Card>
+      ) : (
+        <>
+          <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
+            <Painel titulo="Top 10 produtos em falta"><BarList items={barras(r.porProduto)} /></Painel>
+            <Painel titulo="Compradores afetados"><BarList items={barras(r.porComprador)} /></Painel>
+            <Painel titulo="Top 10 vendedores (RCA)"><BarList tone="navy" items={barras(r.porRca)} /></Painel>
+            <Painel titulo="Top 10 clientes afetados"><BarList tone="navy" items={barras(r.porCliente)} /></Painel>
+          </div>
+
+          <div>
+            <h3 className={tituloCard}>Produtos em falta no período ({inteiro.format(r.produtos.length)})</h3>
+            {/* Desktop */}
+            <div className="hidden max-h-[480px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+              <table className="w-full whitespace-nowrap text-left text-sm text-slate-600">
+                <thead className="sticky top-0 bg-[#F4F7FA] text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="p-3">Produto</th>
+                    <th className="p-3">Fornecedor</th>
+                    <th className="p-3">Comprador</th>
+                    <th className="p-3 text-right">Qtd</th>
+                    <th className="p-3 text-right">Pedidos</th>
+                    <th className="p-3 text-right">Clientes</th>
+                    <th className="p-3 text-right">Valor</th>
+                    <th className="p-3">Última falta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {r.produtos.map((p) => (
+                    <tr key={p.codprod} className="hover:bg-[#F4F7FA]">
+                      <td className="max-w-[320px] truncate p-3 font-medium text-[#141a4d]" title={`${p.codprod} - ${p.produto}`}>{p.codprod} - {p.produto}</td>
+                      <td className="max-w-[220px] truncate p-3" title={p.fornecedor ?? ""}>{p.fornecedor ?? "Sem fornecedor"}</td>
+                      <td className="p-3">{p.comprador ?? "Sem comprador"}</td>
+                      <td className="p-3 text-right tabular-nums">{inteiro.format(p.qt)}</td>
+                      <td className="p-3 text-right tabular-nums">{inteiro.format(p.pedidos)}</td>
+                      <td className="p-3 text-right tabular-nums">{inteiro.format(p.clientes)}</td>
+                      <td className="p-3 text-right font-semibold tabular-nums text-[#141a4d]">{brl0(p.valor)}</td>
+                      <td className="p-3 tabular-nums">{dataBR(p.ultimoDia)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile */}
+            <ul className="max-h-[480px] divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm md:hidden">
+              {r.produtos.map((p) => (
+                <li key={p.codprod} className="px-4 py-3 text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate font-medium text-[#141a4d]">{p.codprod} - {p.produto}</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-[#141a4d]">{brl0(p.valor)}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {inteiro.format(p.qt)} un · {inteiro.format(p.pedidos)} ped. · {inteiro.format(p.clientes)} cli. · {p.comprador ?? "Sem comprador"} · {dataBR(p.ultimoDia).slice(0, 5)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
