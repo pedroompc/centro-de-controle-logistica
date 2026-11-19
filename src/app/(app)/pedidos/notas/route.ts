@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getXmlNfePorPedido } from "@/data/danfe";
+import { getXmlsNfePorPedidos, lerListaPedidos } from "@/data/danfe";
 import { parseNfe, type DanfeData } from "@/domain/danfe/parse-nfe";
 import type { DanfeWinthor } from "@/data/danfe";
 import { renderDanfesHtml } from "@/lib/danfe/html";
@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 const HTML = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" };
 const MAXIMO = 60; // notas por impressão
-const SIMULTANEAS = 4; // consultas ao Oracle ao mesmo tempo
 
 function erro(status: number, msg: string): Response {
   const texto = msg.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -27,31 +26,23 @@ function erro(status: number, msg: string): Response {
 // Protegido pelo proxy.ts (redireciona ao /login sem sessão).
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const pedidos = [...new Set((sp.get("p") ?? "").split(",").map((v) => Number(v.trim())))].filter((n) => Number.isInteger(n) && n > 0);
+  const pedidos = lerListaPedidos(sp.get("p"));
   if (pedidos.length === 0) return erro(400, "Nenhum pedido informado.");
   if (pedidos.length > MAXIMO) return erro(400, `Selecione no máximo ${MAXIMO} notas por impressão (vieram ${pedidos.length}).`);
 
-  type Resultado = { ok: true; nota: { d: DanfeData; wt: DanfeWinthor } } | { ok: false; aviso: string };
-  const resultados: Resultado[] = new Array(pedidos.length);
-  let proximo = 0;
-  const trabalhador = async () => {
-    while (proximo < pedidos.length) {
-      const i = proximo++;
-      const numped = pedidos[i];
+  const notas: { d: DanfeData; wt: DanfeWinthor }[] = [];
+  const avisos: string[] = [];
+  for (const r of await getXmlsNfePorPedidos(pedidos)) {
+    if ("erro" in r) avisos.push(`Pedido ${r.numped}: ${r.erro}`);
+    else if (!r.nf) avisos.push(`Pedido ${r.numped}: sem NF-e com XML no banco.`);
+    else {
       try {
-        const nf = await getXmlNfePorPedido(numped);
-        resultados[i] = nf
-          ? { ok: true, nota: { d: parseNfe(nf.xml), wt: nf.winthor } }
-          : { ok: false, aviso: `Pedido ${numped}: sem NF-e com XML no banco.` };
+        notas.push({ d: parseNfe(r.nf.xml), wt: r.nf.winthor });
       } catch (e) {
-        resultados[i] = { ok: false, aviso: `Pedido ${numped}: ${(e as Error).message}` };
+        avisos.push(`Pedido ${r.numped}: ${(e as Error).message}`);
       }
     }
-  };
-  await Promise.all(Array.from({ length: Math.min(SIMULTANEAS, pedidos.length) }, trabalhador));
-
-  const notas = resultados.flatMap((r) => (r.ok ? [r.nota] : []));
-  const avisos = resultados.flatMap((r) => (r.ok ? [] : [r.aviso]));
+  }
   if (notas.length === 0) return erro(404, avisos.join(" "));
   try {
     return new Response(renderDanfesHtml(notas, avisos, sp.get("imprimir") === "1"), { status: 200, headers: HTML });

@@ -10,6 +10,7 @@ import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
 import { formatarFoneBR, linkWhatsApp } from "@/domain/whatsapp";
 import { carregarItensPedido } from "./actions";
 import { salvarDanfePdf, salvarBoletosPdf } from "./salvar-pdf";
+import { baixarXmls, MAX_XML } from "./baixar-xml";
 
 function fmtData(iso: string | null): string {
   if (!iso) return "—";
@@ -111,6 +112,43 @@ function BotaoPdf({ numped, notaFiscal, documento = "danfe", grande = false, gru
   );
 }
 
+// Baixa o XML autorizado da NF-e (NF-<número>.xml, com o protocolo da SEFAZ).
+function BotaoXml({ numped, notaFiscal, grande = false, grupo = false }: {
+  numped: number; notaFiscal: number; grande?: boolean; grupo?: boolean;
+}) {
+  const [ocupado, setOcupado] = useState(false);
+  const baixar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      await baixarXmls([numped]);
+    } catch (err) {
+      alert((err as Error).message || "Não foi possível baixar o XML da nota.");
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const cls = grande
+    ? "inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-[#141a4d] shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+    : grupo
+      ? "inline-flex items-center gap-1 border-l border-black/10 px-1.5 py-0.5 text-[11px] font-semibold transition hover:bg-black/5 disabled:opacity-60"
+      : "inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:opacity-60";
+  return (
+    <button type="button" onClick={baixar} onDoubleClick={(e) => e.stopPropagation()} disabled={ocupado}
+      title={`Baixar o XML da NF ${notaFiscal}`} className={cls}>
+      <IconeXml className={grande ? "h-4 w-4" : "h-3.5 w-3.5"} />
+      {ocupado ? "Baixando…" : grande ? "Baixar XML" : "XML"}
+    </button>
+  );
+}
+
+const IconeXml = ({ className }: { className: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={className} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13" />
+  </svg>
+);
+
 function ModalDocumento({ documento, numped, notaFiscal, onTrocar, onFechar }: {
   documento: Documento; numped: number; notaFiscal: number; onTrocar: (d: Documento) => void; onFechar: () => void;
 }) {
@@ -153,6 +191,7 @@ function ModalDocumento({ documento, numped, notaFiscal, onTrocar, onFechar }: {
               Imprimir / Salvar PDF
             </button>
             <BotaoPdf key={documento} numped={numped} notaFiscal={notaFiscal} documento={documento} grande />
+            {documento === "danfe" && <BotaoXml numped={numped} notaFiscal={notaFiscal} grande />}
             <button
               type="button"
               onClick={() => onTrocar(outro)}
@@ -350,6 +389,7 @@ function Detalhe({ pedido, itens, carregando, onCabecalho }: {
             Ver DANFE
           </button>
           <BotaoPdf numped={pedido.numped} notaFiscal={pedido.notaFiscal} grande />
+          <BotaoXml numped={pedido.numped} notaFiscal={pedido.notaFiscal} grande />
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setDocumento("boletos"); }}
@@ -466,6 +506,12 @@ function Marcar({ checked, indeterminado = false, onChange, label }: {
   );
 }
 
+// Nome fantasia só quando diz algo além da razão social.
+function fantasiaDe(p: PedidoConsulta): string | null {
+  const f = p.fantasia?.trim();
+  return f && f.toUpperCase() !== p.cliente.trim().toUpperCase() ? f : null;
+}
+
 // Mesmo limite da rota /pedidos/notas.
 const MAX_IMPRESSAO = 60;
 
@@ -478,7 +524,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
 
   const lista = useMemo(
     () => filtrarPorBusca(pedidos, busca, (p) => [
-      p.numped, p.cliente, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
+      p.numped, p.cliente, p.fantasia ?? "", p.codcli, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
       p.nfOrigemDevolucao ?? "", p.nfDevolucao ?? "", p.codRca ?? "", p.obsPedido ?? "", p.obsEntrega ?? "",
     ]),
     [pedidos, busca],
@@ -506,6 +552,23 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
       return;
     }
     window.open(`/pedidos/notas?p=${soma.comNota.join(",")}&imprimir=1`, "_blank");
+  };
+
+  // XML das notas selecionadas: uma → .xml; várias → .zip.
+  const [baixandoXml, setBaixandoXml] = useState(false);
+  const baixarXmlSelecionadas = async () => {
+    if (soma.comNota.length > MAX_XML) {
+      alert(`Selecione no máximo ${MAX_XML} notas por exportação (marcadas: ${soma.comNota.length}).`);
+      return;
+    }
+    setBaixandoXml(true);
+    try {
+      await baixarXmls(soma.comNota);
+    } catch (err) {
+      alert((err as Error).message || "Não foi possível baixar os XMLs.");
+    } finally {
+      setBaixandoXml(false);
+    }
   };
 
   const visiveisMarcados = lista.filter((p) => selecionados.has(p.numped)).length;
@@ -656,7 +719,10 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       <td className={`${td} text-center text-xs tabular-nums ${corDias(p)}`}>{p.diasNoSistema}d</td>
                       <td className={`${td} text-xs tabular-nums text-slate-600`} title={p.liberadoPor ? `Liberado por ${p.liberadoPor}` : undefined}>{fmtDataHoraCurta(p.liberadoEm)}</td>
                       <td className={td}>
-                        <div className="max-w-[220px] truncate text-xs font-semibold text-slate-800" title={`${p.cliente} · Cód. ${p.codcli}`}>{p.cliente}</div>
+                        <div className="max-w-[220px] truncate text-xs font-semibold text-slate-800" title={p.cliente}>{p.cliente}</div>
+                        <div className="max-w-[220px] truncate text-[10px] text-slate-500" title={`${fantasiaDe(p) ? `Fantasia: ${fantasiaDe(p)} · ` : ""}Código do cliente: ${p.codcli}`}>
+                          {fantasiaDe(p) && <>{fantasiaDe(p)} · </>}Cód. <span className="tabular-nums">{p.codcli}</span>
+                        </div>
                         <div className="text-[10px] text-slate-400">{p.cidade ?? "—"}{p.uf ? ` / ${p.uf}` : ""}</div>
                       </td>
                       <td className={`${td} text-center text-xs tabular-nums text-slate-700`}>{p.codRca ?? "—"}</td>
@@ -687,6 +753,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                                 <IconeNota /> NF {p.notaFiscal}
                               </button>
                               <BotaoPdf numped={p.numped} notaFiscal={p.notaFiscal} grupo />
+                              <BotaoXml numped={p.numped} notaFiscal={p.notaFiscal} grupo />
                             </span>
                             <span className="inline-flex overflow-hidden rounded bg-slate-100 text-slate-700">
                               <button type="button" onClick={(e) => abrirDoc(e, p, "boletos")} onDoubleClick={(e) => e.stopPropagation()} title={`Boletos da NF ${p.notaFiscal}`}
@@ -756,6 +823,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {estaAberto ? <IconeCima className="h-4 w-4 text-slate-400" /> : <IconeBaixo className="h-4 w-4 text-slate-400" />}
                   </div>
                   <p className="mt-1 truncate text-sm text-[#141a4d]">{p.cliente}</p>
+                  <p className="truncate text-xs text-slate-500">{fantasiaDe(p) && <>{fantasiaDe(p)} · </>}Cód. <span className="tabular-nums">{p.codcli}</span></p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
                     <span>{p.cidade ?? "—"}{p.uf ? `/${p.uf}` : ""}</span>
                     <span className={corDias(p)}>{p.diasNoSistema} dias</span>
@@ -821,6 +889,19 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                   <path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2" /><path d="M6 14h12v7H6z" />
                 </svg>
                 Imprimir {soma.comNota.length === 1 ? "nota" : `${soma.comNota.length} notas`}
+              </button>
+            )}
+            {soma.comNota.length > 0 && (
+              <button
+                type="button"
+                onClick={baixarXmlSelecionadas}
+                disabled={baixandoXml}
+                title={`${soma.comNota.length === 1 ? "Baixa o XML da nota" : "Baixa um .zip com o XML de cada nota"}${
+                  soma.comNota.length < soma.qtd ? ` (${soma.qtd - soma.comNota.length} pedido(s) sem nota ficam de fora)` : ""}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1 text-xs font-bold text-[#141a4d] transition hover:bg-slate-100 disabled:opacity-60"
+              >
+                <IconeXml className="h-4 w-4" />
+                {baixandoXml ? "Baixando…" : soma.comNota.length === 1 ? "Baixar XML" : `XML de ${soma.comNota.length} notas`}
               </button>
             )}
             <button

@@ -14,6 +14,7 @@ export interface PedidoConsulta {
   diasNoSistema: number;
   codcli: number;
   cliente: string;
+  fantasia: string | null; // nome fantasia (PCCLIENT.FANTASIA)
   endereco: string | null;
   bairro: string | null;
   cidade: string | null;

@@ -77,3 +77,32 @@ export async function getXmlNfePorPedido(numped: number): Promise<XmlNfe | null>
     },
   };
 }
+
+export type XmlDoPedido = { numped: number; nf: XmlNfe | null } | { numped: number; erro: string };
+
+/**
+ * XML da NF-e de vários pedidos, na ordem dada, com no máximo `simultaneas`
+ * consultas ao Oracle ao mesmo tempo. Erro num pedido não derruba os outros.
+ */
+export async function getXmlsNfePorPedidos(pedidos: number[], simultaneas = 4): Promise<XmlDoPedido[]> {
+  const resultados: XmlDoPedido[] = new Array(pedidos.length);
+  let proximo = 0;
+  const trabalhador = async () => {
+    while (proximo < pedidos.length) {
+      const i = proximo++;
+      const numped = pedidos[i];
+      try {
+        resultados[i] = { numped, nf: await getXmlNfePorPedido(numped) };
+      } catch (e) {
+        resultados[i] = { numped, erro: (e as Error).message };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(simultaneas, pedidos.length) }, trabalhador));
+  return resultados;
+}
+
+/** "123, 456" → [123, 456] sem repetidos nem valores inválidos (parâmetro ?p= das rotas). */
+export function lerListaPedidos(valor: string | null): number[] {
+  return [...new Set((valor ?? "").split(",").map((v) => Number(v.trim())))].filter((n) => Number.isInteger(n) && n > 0);
+}

@@ -145,6 +145,7 @@ SELECT
   TRUNC(SYSDATE) - TRUNC(ped.DATA) AS DIAS,
   ped.CODCLI                       AS CODCLI,
   cli.CLIENTE                      AS CLIENTE,
+  cli.FANTASIA                     AS FANTASIA,
   cli.ENDERENT                     AS ENDERECO,
   cli.BAIRROENT                    AS BAIRRO,
   cli.MUNICENT                     AS CIDADE,
@@ -199,7 +200,7 @@ LEFT JOIN devmot   ON devmot.NUMPED       = ped.NUMPED
 ORDER BY ped.DATA DESC, ped.NUMPED DESC`;
 
 interface LinhaPedido {
-  NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null;
+  NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null; FANTASIA: string | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
   CODRCA: number | null; RCA: string | null; FONE1: string | null; FONE2: string | null;
   OBS_PEDIDO: string | null; OBS_ENTREGA: string | null;
@@ -239,6 +240,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       diasNoSistema: num(r.DIAS),
       codcli: num(r.CODCLI),
       cliente: r.CLIENTE ?? `Cliente ${r.CODCLI}`,
+      fantasia: str(r.FANTASIA),
       endereco: str(r.ENDERECO),
       bairro: str(r.BAIRRO),
       cidade: str(r.CIDADE),
