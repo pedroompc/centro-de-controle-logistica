@@ -2,6 +2,7 @@ import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
 import { notaExpedida, motoristaDeEntrega } from "./regras-winthor";
+import type { DevolucaoRetira } from "@/domain/devolucoes-retira";
 import { agregarPorSetor } from "@/domain/devolucoes";
 import { classificarRegiao } from "@/domain/pe-regioes";
 import geoRaw from "@/data/geo/pe-municipios.json";
@@ -432,6 +433,49 @@ export const getMotoristasDevolucao = cache(async (
     })),
     motivos,
   };
+});
+
+// Aba RETIRA: devoluções cuja venda de origem NÃO saiu em carga com motorista
+// de verdade (sem carga, ou na carga DIALOG do balcão) — o mesmo corte do card
+// "Valor devolução · Retira" do Dashboard. Uma linha por NF de devolução, com a
+// NF de origem, cliente, motivo e RCA. Lê de `edf`: respeita base/motivo/setor/cidade.
+const sqlRetira = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
+  SELECT edf.NUMTRANSENT, MAX(e.NUMNOTA) NF_DEV, TO_CHAR(MAX(edf.DTENT), 'YYYY-MM-DD') DT_DEV,
+         s.NUMTRANSVENDA, s.NUMNOTA NF_ORIGEM, TO_CHAR(s.DTSAIDA, 'YYYY-MM-DD') DT_VENDA,
+         s.VLTOTAL VL_ORIGEM, s.CODCLI, MAX(cli.CLIENTE) CLIENTE, MAX(edf.MOTIVO) MOTIVO, MAX(edf.SETOR) SETOR,
+         MAX(usu.NOME) RCA, NVL(car.CODMOTORISTA, 0) MOT, ROUND(SUM(edf.VL), 2) VALOR
+  FROM edf
+  JOIN PCNFSAID s ON s.NUMTRANSVENDA = edf.NUMTRANSVENDA
+  LEFT JOIN PCCARREG car ON car.NUMCAR = s.NUMCAR
+  LEFT JOIN PCNFENT e ON e.NUMTRANSENT = edf.NUMTRANSENT
+  LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
+  LEFT JOIN PCUSUARI usu ON usu.CODUSUR = s.CODUSUR
+  WHERE edf.NUMTRANSVENDA > 0 AND NOT (${motoristaDeEntrega("car.CODMOTORISTA")})
+  GROUP BY edf.NUMTRANSENT, s.NUMTRANSVENDA, s.NUMNOTA, s.DTSAIDA, s.VLTOTAL, s.CODCLI, car.CODMOTORISTA
+  ORDER BY VALOR DESC`;
+
+/** Aba RETIRA (sob demanda): devoluções de venda sem carga / balcão, com a NF de origem. */
+export const getDevolucoesRetira = cache(async (
+  ini: string, fim: string, motivo?: string, setor?: string, ibge?: string, base?: BaseDevolucao,
+): Promise<DevolucaoRetira[]> => {
+  const f: FiltrosDevolucao = { motivo, setor, ibge, base };
+  const rows = await queryWinthor<Record<string, unknown>>(sqlRetira(f), bindsDe(ini, fim, f));
+  return rows.map((r) => ({
+    numTransEnt: n(r.NUMTRANSENT),
+    nfDevolucao: n(r.NF_DEV),
+    dataDevolucao: String(r.DT_DEV ?? ""),
+    numTransVenda: n(r.NUMTRANSVENDA),
+    nfOrigem: n(r.NF_ORIGEM),
+    dataVenda: String(r.DT_VENDA ?? ""),
+    valorNfOrigem: n(r.VL_ORIGEM),
+    codcli: n(r.CODCLI),
+    cliente: String(r.CLIENTE ?? `Cliente ${r.CODCLI}`).trim(),
+    motivo: String(r.MOTIVO ?? "Não informado").trim(),
+    setor: String(r.SETOR ?? "Não classificado"),
+    rca: String(r.RCA ?? "—").trim(),
+    balcao: n(r.MOT) !== 0,
+    valor: n(r.VALOR),
+  }));
 });
 
 /** Aba DIA DA SEMANA (sob demanda): valor, peso e notas devolvidos por dia (seg → dom). */

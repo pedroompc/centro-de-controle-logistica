@@ -8,7 +8,9 @@ import {
   getDevolucaoPorBairro,
   getDevolucaoPorDiaSemana,
   getSupervisoresDevolucao,
+  getDevolucoesRetira,
 } from "@/data/devolucoes";
+import { marcarRetira, type LinhaRetira } from "@/domain/devolucoes-retira";
 import type { PastaDevolucao } from "@/domain/devolucoes-supervisor";
 import { getProtocolosDevolucao } from "@/data/devolucoes-protocolos";
 import { montarRelatorio, type RelatorioProtocolos } from "@/domain/devolucoes-protocolos";
@@ -83,6 +85,12 @@ export async function carregarMapa(c: ContextoDevolucao): Promise<CidadeDevoluca
 export async function carregarBairros(c: ContextoDevolucao): Promise<BairroDevolucao[]> {
   const x = contexto(c);
   return getDevolucaoPorBairro(x.inicio, x.fim, x.base, x.ibge);
+}
+
+/** Devoluções de retira (venda sem carga / balcão), com NF de origem e duplicidade marcada. */
+export async function carregarRetira(c: ContextoDevolucao): Promise<LinhaRetira[]> {
+  const x = contexto(c);
+  return marcarRetira(await getDevolucoesRetira(x.inicio, x.fim, x.motivo, x.setor, x.ibge, x.base));
 }
 
 /** Retorno ao estoque (protocolos do Harpia): em aberto agora + criados no período. */

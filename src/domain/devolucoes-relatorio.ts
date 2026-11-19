@@ -14,6 +14,7 @@ import type {
 import type { CidadeDevolucao, BairroDevolucao } from "./devolucoes-mapa";
 import type { DevolucaoDiaSemana } from "./devolucoes-dia-semana";
 import type { PastaDevolucao } from "./devolucoes-supervisor";
+import { resumirRetira, type LinhaRetira } from "./devolucoes-retira";
 import { taxaSobreLiquido } from "./devolucoes-supervisor";
 import { ETAPAS, formatHoras, type RelatorioProtocolos } from "./devolucoes-protocolos";
 
@@ -195,6 +196,28 @@ ${top
     (x) => `<section class="ficha"><div class="ficha-cab"><div><b>${esc(x.nome)}</b> <span class="cod">Cód. ${x.cod}</span></div><div class="ficha-num"><span>Notas <b>${num(x.notas)}</b></span><span>Devolvido <b>${formatBRL(x.valor)}</b></span></div></div>${tabelaMotivos(motivos[x.cod] ?? [])}</section>`,
   )
   .join("")}`;
+}
+
+// ---------------------------------------------------------------- retira
+
+const dataBR = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
+
+/** Devoluções de venda sem carga / balcão: cliente, motivo, NF de origem e de devolução. */
+export function relatorioRetira(linhas: LinhaRetira[]): string {
+  const r = resumirRetira(linhas);
+  const dup = [...new Set(linhas.filter((l) => l.duplicada).map((l) => l.nfOrigem))];
+  return `<p class="legenda">Venda sem carga ou no balcão (DIALOG) · uma linha por NF de devolução</p>${indicadores([
+    { rotulo: "Devolvido", valor: formatBRL(r.valor) },
+    { rotulo: "NFs de devolução", valor: num(r.notas) },
+    { rotulo: "Clientes", valor: num(r.clientes) },
+  ])}${dup.length ? `<p class="setores"><b>NF de origem devolvida mais de uma vez:</b> ${dup.join(", ")} — ${formatBRL(r.excessoDuplicado)} acima do valor da nota.</p>` : ""}
+<table><thead><tr><th>Cliente</th><th>Motivo</th><th>NF origem</th><th>Venda</th><th>NF devolução</th><th>Devolução</th><th>RCA</th><th class="n">Devolvido</th></tr></thead><tbody>
+${linhas
+  .map(
+    (l) => `<tr${l.duplicada ? ' class="alto"' : ""}><td><b>${esc(l.cliente)}</b> <span class="cod">${l.codcli}</span></td><td>${esc(l.motivo)} ${selo(l.setor)}</td><td>${l.nfOrigem}${l.duplicada ? ` <b>(${l.devolucoesDaOrigem}×)</b>` : ""}</td><td>${dataBR(l.dataVenda)}</td><td>${l.nfDevolucao}</td><td>${dataBR(l.dataDevolucao)}</td><td>${esc(l.rca)}</td><td class="n">${formatBRL(l.valor)}</td></tr>`,
+  )
+  .join("")}
+</tbody><tfoot><tr><td colspan="7">Total</td><td class="n">${formatBRL(r.valor)}</td></tr></tfoot></table>`;
 }
 
 // ---------------------------------------------------------------- supervisores

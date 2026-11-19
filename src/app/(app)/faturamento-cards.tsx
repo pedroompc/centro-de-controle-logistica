@@ -2,10 +2,11 @@ import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { getFaturadoEntregaRetira } from "@/data/faturamento";
 import { lerEntregaRetira } from "@/data/telemetria";
 import type { EntregaRetira } from "@/domain/telemetria";
-import { rotuloCurto, type Periodo } from "@/domain/periodo";
+import { rotuloCurto, paramsDoPeriodo, type Periodo } from "@/domain/periodo";
 import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-periodos";
 import { Suspense } from "react";
+import Link from "next/link";
 import {
   taxaDevolucao, percentualCustoLogistico, partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira,
   type ResumoFaturamento, type FaturadoEntregaRetira,
@@ -45,6 +46,12 @@ function Linha({ label, valor }: { label: string; valor: string }) {
 
 type Medida = (r: ResumoFaturamento) => number;
 
+/** Aba Retira da página de Devoluções, no mesmo período e pela data da devolução (= o card). */
+function hrefRetira(p: Periodo): string {
+  const q = new URLSearchParams({ ...paramsDoPeriodo(p), base: "devolucao", aba: "retira" });
+  return `/devolucoes?${q.toString()}`;
+}
+
 type LadoER = {
   lado: "entrega" | "retira";
   valor: number;
@@ -53,6 +60,8 @@ type LadoER = {
   /** Texto curto ao lado do selo (ex.: "do faturado entrega"). */
   seloTexto: string;
   detalhe?: string;
+  /** Bloco clicável: abre a lista detalhada. */
+  href?: string;
 };
 
 const ESTILO_LADO = {
@@ -67,8 +76,8 @@ function BlocosEntregaRetira({ lados, nota }: { lados: LadoER[]; nota?: string }
       <div className="grid grid-cols-2 gap-2.5">
         {lados.map((l) => {
           const e = ESTILO_LADO[l.lado];
-          return (
-            <div key={l.lado} className={`rounded-xl px-3.5 py-3 ring-1 ${e.caixa}`}>
+          const conteudo = (
+            <>
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 <span className={`h-2 w-2 rounded-full ${e.ponto}`} />
                 {e.rotulo}
@@ -81,7 +90,16 @@ function BlocosEntregaRetira({ lados, nota }: { lados: LadoER[]; nota?: string }
                 <span>{l.seloTexto}</span>
               </p>
               {l.detalhe && <p className="mt-1 text-xs tabular-nums text-slate-500">{l.detalhe}</p>}
-            </div>
+              {l.href && <p className="mt-1.5 text-xs font-semibold text-[#1b2168] group-hover:underline">Ver clientes e NFs →</p>}
+            </>
+          );
+          const cls = `rounded-xl px-3.5 py-3 ring-1 ${e.caixa}`;
+          return l.href ? (
+            <Link key={l.lado} href={l.href} className={`group block transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 ${cls}`}>
+              {conteudo}
+            </Link>
+          ) : (
+            <div key={l.lado} className={cls}>{conteudo}</div>
           );
         })}
       </div>
@@ -90,13 +108,13 @@ function BlocosEntregaRetira({ lados, nota }: { lados: LadoER[]; nota?: string }
   );
 }
 
-function DevolucaoEntregaRetira({ f }: { f: FaturadoEntregaRetira }) {
+function DevolucaoEntregaRetira({ f, hrefRetira }: { f: FaturadoEntregaRetira; hrefRetira: string }) {
   const t = taxaDevEntregaRetira(f);
   return (
     <BlocosEntregaRetira
       lados={[
         { lado: "entrega", valor: f.devEntrega, selo: formatPercent(t.entrega), seloTexto: "do faturado entrega", detalhe: `${f.notasDevEntrega.toLocaleString("pt-BR")} NFs devolvidas` },
-        { lado: "retira", valor: f.devRetira, selo: formatPercent(t.retira), seloTexto: "do faturado retira", detalhe: `${f.notasDevRetira.toLocaleString("pt-BR")} NFs devolvidas` },
+        { lado: "retira", valor: f.devRetira, selo: formatPercent(t.retira), seloTexto: "do faturado retira", detalhe: `${f.notasDevRetira.toLocaleString("pt-BR")} NFs devolvidas`, href: hrefRetira },
       ]}
     />
   );
@@ -284,7 +302,7 @@ export async function FaturamentoCards({
           value={formatBRL(r.valorDevolucao)}
           hint="líquido · rotina 111"
           accent="red"
-          extra={<>{cmp("valorDevolucao", false)}{fer && !r.foto && <DevolucaoEntregaRetira f={fer} />}</>}
+          extra={<>{cmp("valorDevolucao", false)}{fer && !r.foto && <DevolucaoEntregaRetira f={fer} hrefRetira={hrefRetira(periodo)} />}</>}
         />
       </div>
 

@@ -9,6 +9,7 @@ import type { SetorDevolucao } from "@/domain/devolucoes";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { PeriodoNav } from "@/components/periodo-nav";
 import SecoesDevolucao from "./secoes-devolucao";
+import { lerAba } from "./abas";
 
 const SETORES: SetorDevolucao[] = ["Logística", "Comercial", "Faturamento", "Não classificado"];
 
@@ -27,7 +28,7 @@ const CORES: Record<SetorDevolucao, { barra: string; pill: string }> = {
 export default async function DevolucoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; de?: string; ate?: string; motivo?: string; setor?: string; cidade?: string; base?: string }>;
+  searchParams: Promise<{ mes?: string; de?: string; ate?: string; motivo?: string; setor?: string; cidade?: string; base?: string; aba?: string }>;
 }) {
   const sp = await searchParams;
   // Período (mês por padrão). No período corrente não há devolução datada no
@@ -42,6 +43,7 @@ export default async function DevolucoesPage({
   const cidadeNome = sp.cidade && /^\d{7}$/.test(sp.cidade) ? nomeCidadePE(sp.cidade) : undefined;
   const ibge = cidadeNome ? sp.cidade : undefined;
   const base = baseDevolucao(sp.base);
+  const abaInicial = lerAba(sp.aba);
   const temFiltro = Boolean(motivo || setor || ibge);
 
   // SSR busca só o NÚCLEO (leve): total, por setor e a lista de motivos. As abas
@@ -283,6 +285,7 @@ export default async function DevolucoesPage({
         base={base}
         porMotivo={r.porMotivo}
         periodoLabel={rotuloPeriodo(periodo)}
+        abaInicial={abaInicial}
       />
 
       <p className="mt-4 text-xs text-slate-400">

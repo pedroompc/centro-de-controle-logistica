@@ -13,7 +13,9 @@ import type {
 } from "@/domain/devolucoes";
 import type { CidadeDevolucao, BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { setorPill } from "@/domain/devolucoes-ui";
-import { carregarClientes, carregarVendedores, carregarSupervisores, carregarMotoristas, carregarMapa, carregarBairros, carregarDiaSemana } from "./actions";
+import { carregarClientes, carregarVendedores, carregarSupervisores, carregarMotoristas, carregarMapa, carregarBairros, carregarDiaSemana, carregarRetira } from "./actions";
+import TabelaRetira from "./tabela-retira";
+import type { LinhaRetira } from "@/domain/devolucoes-retira";
 import type { BaseDevolucao, DevolucaoDiaSemana } from "@/domain/devolucoes-dia-semana";
 import PainelDiaSemana from "./painel-dia-semana";
 import TabelaMotoristas from "./tabela-motoristas";
@@ -35,11 +37,12 @@ import {
   relatorioCidades,
   relatorioBairros,
   relatorioProtocolos,
+  relatorioRetira,
 } from "@/domain/devolucoes-relatorio";
 import type { PastaDevolucao } from "@/domain/devolucoes-supervisor";
 import { IconeCaminhao, IconePredio, IconeUsuario, IconeEtiqueta } from "./icons";
 
-type Aba = "motoristas" | "clientes" | "vendedores" | "supervisores" | "motivos" | "dias" | "mapa" | "bairros" | "retorno";
+import type { Aba } from "./abas";
 
 /** Cache client-side das abas já carregadas (some ao trocar mês/filtro via `key`). */
 interface Cache {
@@ -47,6 +50,7 @@ interface Cache {
   vendedores?: SecaoRanking<DevolucaoPorVendedor>;
   supervisores?: PastaDevolucao[];
   motoristas?: SecaoRanking<DevolucaoPorMotorista>;
+  retira?: LinhaRetira[];
   dias?: DevolucaoDiaSemana[];
   mapa?: CidadeDevolucao[];
   bairros?: BairroDevolucao[];
@@ -104,6 +108,7 @@ export default function SecoesDevolucao({
   base,
   porMotivo,
   periodoLabel,
+  abaInicial = "motoristas",
 }: {
   de: string;
   ate: string;
@@ -114,9 +119,10 @@ export default function SecoesDevolucao({
   base: BaseDevolucao;
   porMotivo: DevolucaoPorMotivo[];
   periodoLabel: string;
+  abaInicial?: Aba;
 }) {
   const router = useRouter();
-  const [aba, setAba] = useState<Aba>("motoristas");
+  const [aba, setAba] = useState<Aba>(abaInicial);
   const [cache, setCache] = useState<Cache>({});
   const [carregando, setCarregando] = useState<Aba | null>(null);
   const [erro, setErro] = useState<Partial<Record<Aba, boolean>>>({});
@@ -150,6 +156,9 @@ export default function SecoesDevolucao({
       } else if (alvo === "motoristas") {
         const d = await carregarMotoristas(ctx);
         setCache((c) => ({ ...c, motoristas: d }));
+      } else if (alvo === "retira") {
+        const d = await carregarRetira(ctx);
+        setCache((c) => ({ ...c, retira: d }));
       } else if (alvo === "dias") {
         const d = await carregarDiaSemana(ctx);
         setCache((c) => ({ ...c, dias: d }));
@@ -180,6 +189,7 @@ export default function SecoesDevolucao({
 
   const abas: { id: Aba; label: string; icon: React.ReactNode }[] = [
     { id: "motoristas", label: "Motoristas", icon: <IconeCaminhao className="h-4 w-4" /> },
+    { id: "retira", label: "Retira", icon: <IconePredio className="h-4 w-4" /> },
     { id: "clientes", label: "Clientes", icon: <IconePredio className="h-4 w-4" /> },
     { id: "vendedores", label: "Vendedores", icon: <IconeUsuario className="h-4 w-4" /> },
     { id: "supervisores", label: "Supervisores", icon: <IconeUsuario className="h-4 w-4" /> },
@@ -217,6 +227,10 @@ export default function SecoesDevolucao({
       secao = nome ? `Motorista ${nome}` : "Motoristas";
       corpo = relatorioMotoristas(cache.motoristas.itens, cache.motoristas.motivos, so);
       comResumo = so == null;
+    } else if (alvo === "retira" && cache.retira) {
+      secao = "Devoluções de retira";
+      corpo = relatorioRetira(cache.retira);
+      comResumo = false;
     } else if (alvo === "clientes" && cache.clientes) {
       secao = "Clientes";
       corpo = relatorioRanking("Cliente", clientesItens, cache.clientes.motivos);
@@ -325,6 +339,8 @@ export default function SecoesDevolucao({
               onPdf={(cod) => exportar("motoristas", cod)}
             />
           )}
+
+          {aba === "retira" && <TabelaRetira linhas={cache.retira ?? []} />}
 
           {aba === "clientes" && (
             <PainelRanking
