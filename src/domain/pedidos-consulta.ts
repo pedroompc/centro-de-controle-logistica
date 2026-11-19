@@ -15,6 +15,7 @@ export interface PedidoConsulta {
   codcli: number;
   cliente: string;
   fantasia: string | null; // nome fantasia (PCCLIENT.FANTASIA)
+  condVenda: number | null; // tipo de venda (PCPEDC.CONDVENDA)
   endereco: string | null;
   bairro: string | null;
   cidade: string | null;
@@ -69,6 +70,22 @@ export function estadoPedidoInfo(posicao: string): { label: string; badge: strin
     case "F": return { label: "Faturado", badge: "bg-slate-100 text-slate-600 border border-slate-200" };
     case "C": return { label: "Cancelado", badge: "bg-slate-100 text-slate-400 border border-slate-200" };
     default: return { label: posicao || "—", badge: "bg-slate-100 text-slate-500 border border-slate-200" };
+  }
+}
+
+/**
+ * Tipo de venda do pedido (PCPEDC.CONDVENDA). Só os tipos que as filiais 1 e 11
+ * usam, conferidos no banco pelo CFOP da nota: 1 = venda (5.12), 5 = bonificação
+ * (5.99), 10 = transferência (o cliente é a outra filial). Outro código aparece
+ * como "Tipo N".
+ */
+export function tipoVendaInfo(cond: number | null): { label: string; badge: string } {
+  switch (cond) {
+    case 1: return { label: "Venda normal", badge: "bg-slate-100 text-slate-600" };
+    case 5: return { label: "Bonificação", badge: "bg-amber-100 text-amber-800" };
+    case 10: return { label: "Transferência", badge: "bg-[#eef0fb] text-[#1b2168]" };
+    case null: return { label: "—", badge: "bg-slate-100 text-slate-400" };
+    default: return { label: `Tipo ${cond}`, badge: "bg-slate-100 text-slate-600" };
   }
 }
 

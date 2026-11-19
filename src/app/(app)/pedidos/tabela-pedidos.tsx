@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Card, PanelHeader } from "@/components/ui";
 import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import { formatBRL, formatKg } from "@/domain/format";
-import { estadoPedidoInfo } from "@/domain/pedidos-consulta";
+import { estadoPedidoInfo, tipoVendaInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
 import { formatarFoneBR, linkWhatsApp } from "@/domain/whatsapp";
 import { carregarItensPedido } from "./actions";
@@ -506,6 +506,17 @@ function Marcar({ checked, indeterminado = false, onChange, label }: {
   );
 }
 
+// Tipo de venda (PCPEDC.CONDVENDA): venda normal, bonificação, transferência.
+function TipoVenda({ cond, className = "" }: { cond: number | null; className?: string }) {
+  const t = tipoVendaInfo(cond);
+  return (
+    <span className={`inline-block whitespace-nowrap rounded px-1.5 text-[9px] font-semibold leading-4 ${t.badge} ${className}`}
+      title={`Tipo de venda: ${t.label}${cond != null ? ` (código ${cond} no Winthor)` : ""}`}>
+      {t.label}
+    </span>
+  );
+}
+
 // Nome fantasia só quando diz algo além da razão social.
 function fantasiaDe(p: PedidoConsulta): string | null {
   const f = p.fantasia?.trim();
@@ -524,7 +535,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
 
   const lista = useMemo(
     () => filtrarPorBusca(pedidos, busca, (p) => [
-      p.numped, p.cliente, p.fantasia ?? "", p.codcli, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
+      p.numped, p.cliente, p.fantasia ?? "", p.codcli, tipoVendaInfo(p.condVenda).label, p.motorista ?? "", p.cidade ?? "", p.rca ?? "", p.notaFiscal ?? "", p.numcar ?? "",
       p.nfOrigemDevolucao ?? "", p.nfDevolucao ?? "", p.codRca ?? "", p.obsPedido ?? "", p.obsEntrega ?? "",
     ]),
     [pedidos, busca],
@@ -720,10 +731,13 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       <td className={`${td} text-xs tabular-nums text-slate-600`} title={p.liberadoPor ? `Liberado por ${p.liberadoPor}` : undefined}>{fmtDataHoraCurta(p.liberadoEm)}</td>
                       <td className={td}>
                         <div className="max-w-[220px] truncate text-xs font-semibold text-slate-800" title={p.cliente}>{p.cliente}</div>
-                        <div className="max-w-[220px] truncate text-[10px] text-slate-500" title={`${fantasiaDe(p) ? `Fantasia: ${fantasiaDe(p)} · ` : ""}Código do cliente: ${p.codcli}`}>
-                          {fantasiaDe(p) && <>{fantasiaDe(p)} · </>}Cód. <span className="tabular-nums">{p.codcli}</span>
+                        <div className="max-w-[220px] truncate text-[10px] text-slate-500" title={`Código do cliente: ${p.codcli}${fantasiaDe(p) ? ` · Fantasia: ${fantasiaDe(p)}` : ""}`}>
+                          Cód. <span className="tabular-nums">{p.codcli}</span>{fantasiaDe(p) && <> · {fantasiaDe(p)}</>}
                         </div>
-                        <div className="text-[10px] text-slate-400">{p.cidade ?? "—"}{p.uf ? ` / ${p.uf}` : ""}</div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                          <span>{p.cidade ?? "—"}{p.uf ? ` / ${p.uf}` : ""}</span>
+                          <TipoVenda cond={p.condVenda} />
+                        </div>
                       </td>
                       <td className={`${td} text-center text-xs tabular-nums text-slate-700`}>{p.codRca ?? "—"}</td>
                       <td className={`${td} text-xs text-slate-700`}>
@@ -823,7 +837,10 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {estaAberto ? <IconeCima className="h-4 w-4 text-slate-400" /> : <IconeBaixo className="h-4 w-4 text-slate-400" />}
                   </div>
                   <p className="mt-1 truncate text-sm text-[#141a4d]">{p.cliente}</p>
-                  <p className="truncate text-xs text-slate-500">{fantasiaDe(p) && <>{fantasiaDe(p)} · </>}Cód. <span className="tabular-nums">{p.codcli}</span></p>
+                  <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span className="min-w-0 truncate">Cód. <span className="tabular-nums">{p.codcli}</span>{fantasiaDe(p) && <> · {fantasiaDe(p)}</>}</span>
+                    <TipoVenda cond={p.condVenda} className="shrink-0" />
+                  </p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
                     <span>{p.cidade ?? "—"}{p.uf ? `/${p.uf}` : ""}</span>
                     <span className={corDias(p)}>{p.diasNoSistema} dias</span>

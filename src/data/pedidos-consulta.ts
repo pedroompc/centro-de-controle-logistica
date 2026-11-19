@@ -87,7 +87,7 @@ function whereClause(f: FiltrosPedidos): string {
 // para todos os pedidos do período antes do corte (~2x mais lento).
 const sqlPedidos = (f: FiltrosPedidos) => `WITH base AS (
   SELECT * FROM (
-    SELECT ped.NUMPED, ped.DATA, ped.CODCLI, ped.CODUSUR, ped.POSICAO, ped.NUMCAR, ped.DTFAT,
+    SELECT ped.NUMPED, ped.DATA, ped.CODCLI, ped.CODUSUR, ped.POSICAO, ped.NUMCAR, ped.DTFAT, ped.CONDVENDA,
            ped.VLTOTAL, ped.TOTPESO, ped.OBS, ped.OBS1, ped.OBS2,
            ped.OBSENTREGA1, ped.OBSENTREGA2, ped.OBSENTREGA3, ped.OBSENTREGA4,
            ped.CODEMITENTE, ped.HORA, ped.MINUTO, ped.CODFUNCLIBERA, ped.DTLIBERA,
@@ -146,6 +146,7 @@ SELECT
   ped.CODCLI                       AS CODCLI,
   cli.CLIENTE                      AS CLIENTE,
   cli.FANTASIA                     AS FANTASIA,
+  ped.CONDVENDA                    AS CONDVENDA,
   cli.ENDERENT                     AS ENDERECO,
   cli.BAIRROENT                    AS BAIRRO,
   cli.MUNICENT                     AS CIDADE,
@@ -200,7 +201,7 @@ LEFT JOIN devmot   ON devmot.NUMPED       = ped.NUMPED
 ORDER BY ped.DATA DESC, ped.NUMPED DESC`;
 
 interface LinhaPedido {
-  NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null; FANTASIA: string | null;
+  NUMPED: number; DATA_PEDIDO: unknown; DIAS: number; CODCLI: number; CLIENTE: string | null; FANTASIA: string | null; CONDVENDA: number | null;
   ENDERECO: string | null; BAIRRO: string | null; CIDADE: string | null; UF: string | null;
   CODRCA: number | null; RCA: string | null; FONE1: string | null; FONE2: string | null;
   OBS_PEDIDO: string | null; OBS_ENTREGA: string | null;
@@ -241,6 +242,7 @@ export const getPedidos = cache(async (f: FiltrosPedidos): Promise<ResultadoPedi
       codcli: num(r.CODCLI),
       cliente: r.CLIENTE ?? `Cliente ${r.CODCLI}`,
       fantasia: str(r.FANTASIA),
+      condVenda: r.CONDVENDA == null ? null : Number(r.CONDVENDA),
       endereco: str(r.ENDERECO),
       bairro: str(r.BAIRRO),
       cidade: str(r.CIDADE),
