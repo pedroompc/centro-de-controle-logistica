@@ -120,7 +120,7 @@ function DevolucaoEntregaRetira({ f, hrefRetira }: { f: FaturadoEntregaRetira; h
   );
 }
 
-function LiquidoEntregaRetira({ f, avulsa }: { f: FaturadoEntregaRetira; avulsa: number }) {
+function LiquidoEntregaRetira({ f }: { f: FaturadoEntregaRetira }) {
   const l = liquidoEntregaRetira(f);
   const total = l.entrega + l.retira;
   const pct = (v: number) => (total > 0 ? formatPercent(v / total) : "—");
@@ -130,7 +130,6 @@ function LiquidoEntregaRetira({ f, avulsa }: { f: FaturadoEntregaRetira; avulsa:
         { lado: "entrega", valor: l.entrega, selo: pct(l.entrega), seloTexto: "da venda líquida" },
         { lado: "retira", valor: l.retira, selo: pct(l.retira), seloTexto: "da venda líquida" },
       ]}
-      nota={avulsa > 0 ? `Devolução avulsa (sem nota de origem): ${formatBRL(avulsa)}` : undefined}
     />
   );
 }
@@ -312,7 +311,7 @@ export async function FaturamentoCards({
           value={formatBRL(r.vendaLiquida)}
           hint="faturada − devolução − avulsa"
           accent="navy"
-          extra={<>{cmp("vendaLiquida", true)}{fer && !r.foto && <LiquidoEntregaRetira f={fer} avulsa={r.valorDevolucaoAvulsa} />}</>}
+          extra={<>{cmp("vendaLiquida", true)}{fer && !r.foto && <LiquidoEntregaRetira f={fer} />}</>}
         />
         </div>
         <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} comparar={comparar} />
