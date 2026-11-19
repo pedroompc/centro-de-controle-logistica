@@ -82,14 +82,23 @@ export function conexaoSuspeita(erro: unknown): boolean {
   return !ERRO_DE_SQL.test(msg);
 }
 
+// Teto de tempo estourado (consulta ou fila do pool): o banco está lento ou
+// travado — repetir só dobraria a espera de quem está na tela.
+const ERRO_DE_TEMPO = /NJS-123|NJS-040|DPI-1067|ORA-01013|ORA-12170|call timeout/i;
+
 /**
- * Executa uma query de leitura no banco Oracle do Winthor, com uma conexão
- * do pool. Usa as credenciais de DB_* do ambiente.
+ * Vale repetir a consulta numa conexão nova? Só quando a conexão morreu na
+ * rede (ociosa derrubada no NAT → "buffer bounds", NJS-5xx, ORA de canal
+ * perdido): o pool velho já foi descartado e a segunda tentativa abre outra.
+ * Erro de SQL e estouro de tempo não repetem.
  */
-export async function queryWinthor<T = Record<string, unknown>>(
-  sql: string,
-  binds: oracledb.BindParameters = {},
-): Promise<T[]> {
+export function podeRepetir(erro: unknown): boolean {
+  const msg = erro instanceof Error ? erro.message : String(erro);
+  return conexaoSuspeita(erro) && !ERRO_DE_TEMPO.test(msg);
+}
+
+/** Uma tentativa: pega conexão do pool, executa e devolve a conexão (ou a descarta). */
+async function tentar<T>(sql: string, binds: oracledb.BindParameters): Promise<T[]> {
   const t0 = Date.now();
   let connection: oracledb.Connection;
   let p: oracledb.Pool | undefined;
@@ -122,5 +131,25 @@ export async function queryWinthor<T = Record<string, unknown>>(
     // Se uma conexão se corrompeu, as irmãs abertas junto podem estar iguais:
     // recomeça o pool do zero na próxima consulta.
     if (suspeita) descartarPool(p);
+  }
+}
+
+/**
+ * Executa uma query de leitura no banco Oracle do Winthor, com uma conexão
+ * do pool. Usa as credenciais de DB_* do ambiente. Se a conexão estava morta
+ * (ociosa derrubada na rede), repete UMA vez numa conexão nova — a tela não
+ * precisa mais de um F5 para aparecer. Só leitura passa por aqui, então
+ * repetir é seguro.
+ */
+export async function queryWinthor<T = Record<string, unknown>>(
+  sql: string,
+  binds: oracledb.BindParameters = {},
+): Promise<T[]> {
+  try {
+    return await tentar<T>(sql, binds);
+  } catch (e) {
+    if (!podeRepetir(e)) throw e;
+    console.warn(`[oracle] conexão morta (${e instanceof Error ? e.message : String(e)}); repetindo numa nova`);
+    return tentar<T>(sql, binds);
   }
 }
