@@ -45,23 +45,47 @@ function Linha({ label, valor }: { label: string; valor: string }) {
 
 type Medida = (r: ResumoFaturamento) => number;
 
-/** Duas linhas "Entrega / Retira" dentro de um card branco (devolução, venda líquida). */
-function LinhasEntregaRetira({ linhas, nota }: { linhas: { rotulo: string; valor: number; sub: string; cor: string }[]; nota?: string }) {
+type LadoER = {
+  lado: "entrega" | "retira";
+  valor: number;
+  /** Número em destaque no selo (ex.: "4,9%"). */
+  selo: string;
+  /** Texto curto ao lado do selo (ex.: "do faturado entrega"). */
+  seloTexto: string;
+  detalhe?: string;
+};
+
+const ESTILO_LADO = {
+  entrega: { rotulo: "Entrega", caixa: "bg-amber-50 ring-amber-200/70", ponto: "bg-amber-400", selo: "bg-amber-400/90 text-[#141a4d]" },
+  retira: { rotulo: "Retira", caixa: "bg-[#eef0fb] ring-[#1b2168]/10", ponto: "bg-[#1b2168]", selo: "bg-[#1b2168] text-white" },
+} as const;
+
+/** Dois blocos "Entrega | Retira" dentro de um card branco (devolução, venda líquida). */
+function BlocosEntregaRetira({ lados, nota }: { lados: LadoER[]; nota?: string }) {
   return (
-    <div className="mt-3 border-t border-slate-100 pt-2.5">
-      {linhas.map((l) => (
-        <div key={l.rotulo} className="flex items-baseline justify-between gap-3 py-1">
-          <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${l.cor}`} />
-            {l.rotulo}
-          </span>
-          <span className="text-right">
-            <span className="text-sm font-semibold tabular-nums text-[#141a4d]">{formatBRL(l.valor)}</span>
-            <span className="ml-2 text-[11px] tabular-nums text-slate-400">{l.sub}</span>
-          </span>
-        </div>
-      ))}
-      {nota && <p className="mt-1 text-[11px] text-slate-400">{nota}</p>}
+    <div className="mt-4">
+      <div className="grid grid-cols-2 gap-2.5">
+        {lados.map((l) => {
+          const e = ESTILO_LADO[l.lado];
+          return (
+            <div key={l.lado} className={`rounded-xl px-3.5 py-3 ring-1 ${e.caixa}`}>
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                <span className={`h-2 w-2 rounded-full ${e.ponto}`} />
+                {e.rotulo}
+              </p>
+              <p className="mt-1.5 font-[family-name:var(--font-sora)] text-[clamp(0.95rem,5.2cqi,1.4rem)] font-extrabold leading-tight tracking-tight tabular-nums whitespace-nowrap text-[#141a4d]">
+                {formatBRL(l.valor)}
+              </p>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-600">
+                <span className={`rounded-md px-1.5 py-0.5 text-xs font-bold tabular-nums ${e.selo}`}>{l.selo}</span>
+                <span>{l.seloTexto}</span>
+              </p>
+              {l.detalhe && <p className="mt-1 text-xs tabular-nums text-slate-500">{l.detalhe}</p>}
+            </div>
+          );
+        })}
+      </div>
+      {nota && <p className="mt-2 text-xs text-slate-500">{nota}</p>}
     </div>
   );
 }
@@ -69,10 +93,10 @@ function LinhasEntregaRetira({ linhas, nota }: { linhas: { rotulo: string; valor
 function DevolucaoEntregaRetira({ f }: { f: FaturadoEntregaRetira }) {
   const t = taxaDevEntregaRetira(f);
   return (
-    <LinhasEntregaRetira
-      linhas={[
-        { rotulo: "Entrega", valor: f.devEntrega, sub: `${formatPercent(t.entrega)} do faturado entrega · ${f.notasDevEntrega} NFs`, cor: "bg-amber-400" },
-        { rotulo: "Retira", valor: f.devRetira, sub: `${formatPercent(t.retira)} do faturado retira · ${f.notasDevRetira} NFs`, cor: "bg-slate-300" },
+    <BlocosEntregaRetira
+      lados={[
+        { lado: "entrega", valor: f.devEntrega, selo: formatPercent(t.entrega), seloTexto: "do faturado entrega", detalhe: `${f.notasDevEntrega.toLocaleString("pt-BR")} NFs devolvidas` },
+        { lado: "retira", valor: f.devRetira, selo: formatPercent(t.retira), seloTexto: "do faturado retira", detalhe: `${f.notasDevRetira.toLocaleString("pt-BR")} NFs devolvidas` },
       ]}
     />
   );
@@ -83,12 +107,12 @@ function LiquidoEntregaRetira({ f, avulsa }: { f: FaturadoEntregaRetira; avulsa:
   const total = l.entrega + l.retira;
   const pct = (v: number) => (total > 0 ? formatPercent(v / total) : "—");
   return (
-    <LinhasEntregaRetira
-      linhas={[
-        { rotulo: "Entrega", valor: l.entrega, sub: pct(l.entrega), cor: "bg-amber-400" },
-        { rotulo: "Retira", valor: l.retira, sub: pct(l.retira), cor: "bg-slate-300" },
+    <BlocosEntregaRetira
+      lados={[
+        { lado: "entrega", valor: l.entrega, selo: pct(l.entrega), seloTexto: "da venda líquida" },
+        { lado: "retira", valor: l.retira, selo: pct(l.retira), seloTexto: "da venda líquida" },
       ]}
-      nota={avulsa > 0 ? `devolução avulsa (sem nota de origem): ${formatBRL(avulsa)}` : undefined}
+      nota={avulsa > 0 ? `Devolução avulsa (sem nota de origem): ${formatBRL(avulsa)}` : undefined}
     />
   );
 }
