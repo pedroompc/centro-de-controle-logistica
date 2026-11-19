@@ -2,8 +2,8 @@ import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import { filialIn } from "./filiais";
-import { notaDeVenda } from "./regras-winthor";
-import type { ResumoFaturamento } from "@/domain/faturamento";
+import { notaDeVenda, motoristaDeEntrega } from "./regras-winthor";
+import type { ResumoFaturamento, FaturadoEntregaRetira } from "@/domain/faturamento";
 import type { FaturamentoDia } from "@/domain/bi-geral-interativo";
 
 // Faixa de data indexável: `col >= :ini AND col < :fim + 1` (inclui o dia :fim
@@ -133,6 +133,47 @@ export async function getResumoFaturamento(
     return null;
   }
 }
+
+// Venda faturada por nota, na MESMA base da VIEW_BI_FATURAMENTO (ela soma a
+// VIEW_VENDAS_RESUMO_FATURAMENTO com esses filtros e essa conta de VENDAS — a
+// VIEW_BI não tem nº de nota, a base tem). Cada nota vai para ENTREGA se saiu
+// em carga com motorista de verdade, senão RETIRA (sem carga / DIALOG do
+// balcão). Conferido: 01–19/11/2026 entrega + retira = VIEW_BI no centavo.
+const SQL_ENTREGA_RETIRA = `
+WITH v AS (
+  SELECT a.NUMTRANSVENDA,
+         SUM(NVL(a.VLVENDA, 0) - NVL(a.ICMSRETIDO, 0) - NVL(a.VLIPI, 0) - NVL(a.VLDEVOLCLI, 0)) VL
+    FROM VIEW_VENDAS_RESUMO_FATURAMENTO a
+   WHERE a.CONDVENDA IN (0, 1, 5, 7, 9, 11, 14)
+     AND a.CODFISCAL NOT IN (522, 622, 722, 532, 632, 732)
+     AND ${filialIn("a.CODFILIAL")} AND ${faixa("a.DTSAIDA")}
+   GROUP BY a.NUMTRANSVENDA
+),
+g AS (
+  SELECT CASE WHEN ${motoristaDeEntrega("car.CODMOTORISTA")} THEN 1 ELSE 0 END ENTREGA, v.VL
+    FROM v
+    LEFT JOIN PCNFSAID nf ON nf.NUMTRANSVENDA = v.NUMTRANSVENDA
+    LEFT JOIN PCCARREG car ON car.NUMCAR = nf.NUMCAR
+)
+SELECT NVL(SUM(CASE WHEN ENTREGA = 1 THEN VL END), 0) ENTREGA,
+       NVL(SUM(CASE WHEN ENTREGA = 0 THEN VL END), 0) RETIRA,
+       COUNT(CASE WHEN ENTREGA = 1 THEN 1 END) NOTAS_ENTREGA,
+       COUNT(CASE WHEN ENTREGA = 0 THEN 1 END) NOTAS_RETIRA
+  FROM g`;
+
+/** Venda faturada do período separada em entrega × retira; `null` se o Winthor cair. */
+export const getFaturadoEntregaRetira = cache(async (ini: string, fim: string): Promise<FaturadoEntregaRetira | null> => {
+  try {
+    const [r] = await queryWinthor<Record<string, unknown>>(SQL_ENTREGA_RETIRA, { ini, fim });
+    return {
+      entrega: n(r?.ENTREGA), retira: n(r?.RETIRA),
+      notasEntrega: n(r?.NOTAS_ENTREGA), notasRetira: n(r?.NOTAS_RETIRA),
+    };
+  } catch (erro) {
+    console.error("[faturamento] entrega × retira indisponível:", (erro as Error).message);
+    return null;
+  }
+});
 
 /** Resumo do mês corrente (1º dia → hoje), memoizado por request. */
 export const getResumoFaturamentoMesAtual = cache(

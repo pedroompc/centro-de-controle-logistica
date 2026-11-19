@@ -96,7 +96,7 @@ export function StatCard({
  * Indicador principal — o único cartão escuro da tela. Ancora a leitura do
  * dashboard e carrega a identidade da marca (navy + dourado).
  */
-export function HeroStat({ label, value }: { label: string; value: string }) {
+export function HeroStat({ label, value, children }: { label: string; value: string; children?: ReactNode }) {
   return (
     <div
       className="entrar @container relative h-full overflow-hidden rounded-2xl p-6 shadow-lg sm:p-7"
@@ -116,6 +116,7 @@ export function HeroStat({ label, value }: { label: string; value: string }) {
       <p className="mt-2 font-[family-name:var(--font-sora)] text-[clamp(1.375rem,12cqi,3rem)] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap text-white">
         <NumeroAnimado texto={value} />
       </p>
+      {children}
     </div>
   );
 }

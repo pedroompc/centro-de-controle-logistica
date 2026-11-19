@@ -1,11 +1,12 @@
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
+import { getFaturadoEntregaRetira } from "@/data/faturamento";
 import { lerEntregaRetira } from "@/data/telemetria";
 import type { EntregaRetira } from "@/domain/telemetria";
 import { rotuloCurto, type Periodo } from "@/domain/periodo";
 import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-periodos";
 import { Suspense } from "react";
-import { taxaDevolucao, percentualCustoLogistico, type ResumoFaturamento } from "@/domain/faturamento";
+import { taxaDevolucao, percentualCustoLogistico, partesEntregaRetira, type ResumoFaturamento, type FaturadoEntregaRetira } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { StatCard, HeroStat, Card, SectionTitle } from "@/components/ui";
 
@@ -40,6 +41,43 @@ function Linha({ label, valor }: { label: string; valor: string }) {
 }
 
 type Medida = (r: ResumoFaturamento) => number;
+
+/**
+ * Dentro do card "Venda faturada": quanto saiu em ENTREGA (carga com motorista)
+ * e quanto foi RETIRA (balcão). Barra proporcional + valor e % de cada lado.
+ */
+function EntregaRetiraFaixa({ f }: { f: FaturadoEntregaRetira }) {
+  const p = partesEntregaRetira(f);
+  if (f.entrega + f.retira <= 0) return null;
+  const lados = [
+    { rotulo: "Faturado entrega", valor: f.entrega, pct: p.entrega, notas: f.notasEntrega, cor: "bg-amber-400" },
+    { rotulo: "Faturado retira", valor: f.retira, pct: p.retira, notas: f.notasRetira, cor: "bg-white/45" },
+  ];
+  return (
+    <div className="mt-5">
+      <div className="flex h-2 overflow-hidden rounded-full bg-white/10" aria-hidden>
+        <span className="h-full bg-amber-400" style={{ width: `${p.entrega * 100}%` }} />
+        <span className="h-full bg-white/45" style={{ width: `${p.retira * 100}%` }} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-4">
+        {lados.map((l, i) => (
+          <div key={l.rotulo} className={i === 1 ? "text-right" : ""}>
+            <p className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55 ${i === 1 ? "justify-end" : ""}`}>
+              <span className={`h-2 w-2 rounded-full ${l.cor}`} />
+              {l.rotulo}
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums text-white sm:text-xl">
+              {formatBRL(l.valor)}
+            </p>
+            <p className="text-xs tabular-nums text-white/60">
+              {formatPercent(l.pct)} · {l.notas.toLocaleString("pt-BR")} NFs
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Comparações de um card. Assíncrono e em Suspense próprio: o número do
@@ -125,9 +163,10 @@ export async function FaturamentoCards({
     void getResumoFaturamentoPeriodo(comparar.de, comparar.ate).catch(() => null);
     void lerEntregaRetira(comparar.de, comparar.ate).catch(() => null);
   }
-  const [r, er] = await Promise.all([
+  const [r, er, fer] = await Promise.all([
     getResumoFaturamentoPeriodo(periodo.de, periodo.ate),
     lerEntregaRetira(periodo.de, periodo.ate).catch(() => null),
+    getFaturadoEntregaRetira(periodo.de, periodo.ate),
   ]);
 
   if (!r) {
@@ -159,7 +198,9 @@ export async function FaturamentoCards({
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="flex flex-col lg:col-span-2">
           <div className="flex-1">
-            <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)} />
+            <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)}>
+              {fer && !r.foto && <EntregaRetiraFaixa f={fer} />}
+            </HeroStat>
           </div>
           {comparar && <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>}
         </div>

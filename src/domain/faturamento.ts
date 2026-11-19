@@ -23,6 +23,25 @@ export interface ResumoFaturamento {
   pesoDevolucao: number; // kg devolvido
 }
 
+/**
+ * Venda faturada separada pelo jeito que saiu: ENTREGA (carga com motorista de
+ * verdade) × RETIRA (sem carga ou na carga DIALOG do balcão). Mesma base de
+ * valor da VIEW_BI_FATURAMENTO — entrega + retira = venda faturada do card.
+ */
+export interface FaturadoEntregaRetira {
+  entrega: number;
+  retira: number;
+  notasEntrega: number;
+  notasRetira: number;
+}
+
+/** Participação (0..1) de cada parte no total; zeros quando não houve venda. */
+export function partesEntregaRetira(f: FaturadoEntregaRetira): { entrega: number; retira: number } {
+  const total = f.entrega + f.retira;
+  if (total <= 0) return { entrega: 0, retira: 0 };
+  return { entrega: f.entrega / total, retira: f.retira / total };
+}
+
 /** Taxa de devolução (0..1) = valor devolvido / venda faturada. 0 se não houve venda. */
 export function taxaDevolucao(
   r: Pick<ResumoFaturamento, "valorDevolucao" | "vendaFaturada">,

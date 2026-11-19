@@ -48,3 +48,16 @@ describe("somarResumos", () => {
     expect(t.positivados).toBe(4);
   });
 });
+
+import { partesEntregaRetira } from "./faturamento";
+
+describe("partesEntregaRetira", () => {
+  it("divide o faturado entre entrega e retira (somam 100%)", () => {
+    const p = partesEntregaRetira({ entrega: 33_085_227.88, retira: 3_983_984.84, notasEntrega: 17283, notasRetira: 629 });
+    expect(p.entrega).toBeCloseTo(0.8925, 4);
+    expect(p.entrega + p.retira).toBeCloseTo(1, 10);
+  });
+  it("sem venda → zeros", () => {
+    expect(partesEntregaRetira({ entrega: 0, retira: 0, notasEntrega: 0, notasRetira: 0 })).toEqual({ entrega: 0, retira: 0 });
+  });
+});
