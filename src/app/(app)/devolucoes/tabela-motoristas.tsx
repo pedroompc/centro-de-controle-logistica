@@ -109,6 +109,10 @@ export default function TabelaMotoristas({
   );
   const lista = useMemo(() => ordenarMotoristas(filtrados, sort.col, sort.dir), [filtrados, sort]);
   const pior = useMemo(() => piorMotorista(filtrados), [filtrados]);
+  // Faturado de TODOS os motoristas do período (os filtros da página valem; busca/vínculo não).
+  const totalFaturado = useMemo(() => motoristas.reduce((t, m) => t + m.valorExpedido, 0), [motoristas]);
+  const share = (m: DevolucaoPorMotorista) => (totalFaturado > 0 ? m.valorExpedido / totalFaturado : 0);
+  const pctDevolvido = (m: DevolucaoPorMotorista) => (m.valorExpedido > 0 ? m.valorDevolvido / m.valorExpedido : 0);
 
   const segTipo = (
     <div
@@ -168,7 +172,7 @@ export default function TabelaMotoristas({
       <PanelHeader
         icon={<IconeCaminhao />}
         title="Taxa de devolução por motorista"
-        context={`${lista.length} motoristas · clique para ver os motivos`}
+        context={`${lista.length} motoristas · faturado em carga ${formatBRL(totalFaturado)} · clique para ver os motivos`}
         right={controles}
       />
       {pior && (
@@ -187,9 +191,11 @@ export default function TabelaMotoristas({
           className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50"
         >
           <option value="taxa">Taxa de devolução</option>
+          <option value="valorExpedido">Faturado</option>
           <option value="valorDevolvido">Valor devolvido</option>
           <option value="expedidas">Entregas</option>
-          <option value="devolvidas">Devolvidas</option>
+          <option value="devolvidas">Notas devolvidas</option>
+          <option value="pdvsDevolvidos">PDVs devolvidos</option>
         </select>
       </div>
 
@@ -200,8 +206,10 @@ export default function TabelaMotoristas({
             <tr>
               <th className="w-10 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">#</th>
               <th className="min-w-[180px] px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Motorista</th>
+              <Th col="valorExpedido" rotulo="Faturado" sort={sort} onSort={onSort} />
               <Th col="expedidas" rotulo="Entregas" sort={sort} onSort={onSort} />
-              <Th col="devolvidas" rotulo="Devolvidas" sort={sort} onSort={onSort} />
+              <Th col="devolvidas" rotulo="Notas dev." sort={sort} onSort={onSort} />
+              <Th col="pdvsDevolvidos" rotulo="PDVs dev." sort={sort} onSort={onSort} />
               <Th col="taxa" rotulo="Taxa" sort={sort} onSort={onSort} />
               <Th col="valorDevolvido" rotulo="Valor devolvido" sort={sort} onSort={onSort} />
               <th className="w-10 px-3 py-3" aria-label="Motivos" />
@@ -210,7 +218,7 @@ export default function TabelaMotoristas({
           <tbody>
             {lista.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
+                <td colSpan={9} className="py-12 text-center text-sm text-slate-400">
                   {msgVazio}
                 </td>
               </tr>
@@ -240,12 +248,23 @@ export default function TabelaMotoristas({
                           </div>
                         </div>
                       </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        <p className="font-semibold text-[#141a4d]">{formatBRL(m.valorExpedido)}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{formatPercent(share(m), 1)} do total</p>
+                      </td>
                       <td className="px-3 py-3 text-right tabular-nums text-slate-500">{m.expedidas}</td>
                       <td className="px-3 py-3 text-right font-medium tabular-nums text-slate-600">{m.devolvidas}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        <p className="font-medium text-slate-600">{m.pdvsDevolvidos}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">de {m.pdvs}</p>
+                      </td>
                       <td className={`px-3 py-3 text-right text-base font-bold tabular-nums ${corTaxa(m.taxa)}`}>
                         {formatPercent(m.taxa / 100)}
                       </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#141a4d]">{formatBRL(m.valorDevolvido)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        <p className="font-semibold text-[#141a4d]">{formatBRL(m.valorDevolvido)}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{formatPercent(pctDevolvido(m), 1)} do faturado</p>
+                      </td>
                       <td className="px-3 py-3 text-center text-slate-400">
                         {expansivel ? (
                           estaAberto ? <IconeChevronCima className="mx-auto h-4 w-4" /> : <IconeChevronBaixo className="mx-auto h-4 w-4" />
@@ -256,7 +275,7 @@ export default function TabelaMotoristas({
                     </tr>
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
-                        <td colSpan={7} className="p-0">
+                        <td colSpan={9} className="p-0">
                           <DetalheMotivos motivos={motivos[m.codMotorista] ?? []} />
                           {onPdf && <BotaoPdfMotorista onClick={() => onPdf(m.codMotorista)} />}
                         </td>
@@ -310,12 +329,21 @@ export default function TabelaMotoristas({
                         : <IconeChevronBaixo className="h-4 w-4 shrink-0 text-slate-400" />
                     )}
                   </div>
-                  <div className="mt-2 flex items-center gap-4 pl-[3.25rem] text-xs text-slate-500">
+                  <div className="mt-2 flex items-baseline justify-between gap-3 pl-[3.25rem] text-xs text-slate-500">
+                    <span>
+                      Faturou <b className="tabular-nums text-[#141a4d]">{formatBRL(m.valorExpedido)}</b>
+                    </span>
+                    <span className="tabular-nums">{formatPercent(share(m), 1)} do total</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 pl-[3.25rem] text-xs text-slate-500">
                     <span>
                       Entregas <b className="tabular-nums text-slate-700">{m.expedidas}</b>
                     </span>
                     <span>
-                      Devolvidas <b className="tabular-nums text-slate-700">{m.devolvidas}</b>
+                      Notas dev. <b className="tabular-nums text-slate-700">{m.devolvidas}</b>
+                    </span>
+                    <span>
+                      PDVs dev. <b className="tabular-nums text-slate-700">{m.pdvsDevolvidos}</b> de {m.pdvs}
                     </span>
                     <span className="ml-auto tabular-nums font-semibold text-[#141a4d]">
                       {formatBRL(m.valorDevolvido)}

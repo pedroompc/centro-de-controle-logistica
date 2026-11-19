@@ -172,7 +172,7 @@ const sqlVendedor = (f: FiltrosDevolucao) => `SELECT * FROM (WITH ${ctes(f)}
 const sqlMotorista = (f: FiltrosDevolucao) => `
 WITH ${ctes(f)},
 vendas AS (
-  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, NVL(nf.VLTOTAL, 0) VLVENDA
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, nf.CODCLI, NVL(nf.VLTOTAL, 0) VLVENDA
   FROM PCNFSAID nf
   WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
@@ -190,7 +190,9 @@ SELECT car.CODMOTORISTA,
        ROUND(COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.NUMTRANSVENDA END) * 100
              / NULLIF(COUNT(DISTINCT v.NUMTRANSVENDA), 0), 2) TAXA,
        ROUND(SUM(NVL(v.VLVENDA, 0)), 2) VALOR_EXPEDIDO,
-       ROUND(SUM(NVL(devv.VL_DEVOLVIDO, 0)), 2) VALOR_DEVOLVIDO
+       ROUND(SUM(NVL(devv.VL_DEVOLVIDO, 0)), 2) VALOR_DEVOLVIDO,
+       COUNT(DISTINCT v.CODCLI) PDVS, -- clientes distintos atendidos no período
+       COUNT(DISTINCT CASE WHEN devv.NUMTRANSVENDA IS NOT NULL THEN v.CODCLI END) PDVS_DEVOLVIDOS
 FROM vendas v
 JOIN PCCARREG car ON car.NUMCAR = v.NUMCAR
 LEFT JOIN PCEMPR emp ON emp.MATRICULA = car.CODMOTORISTA
@@ -248,7 +250,7 @@ const sqlVendedorMotivo = (f: FiltrosDevolucao) => `WITH ${ctes(f)}
 interface LinhaMotivo { MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number; PESO: number }
 interface LinhaCliente { CODCLI: number; NOME: string | null; NOTAS: number; VALOR: number }
 interface LinhaVendedor { CODUSUR: number; NOME: string | null; NOTAS: number; VALOR: number }
-interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_EXPEDIDO: number; VALOR_DEVOLVIDO: number }
+interface LinhaMotorista { CODMOTORISTA: number; NOME: string | null; TIPO_MOTORISTA: string | null; EXPEDIDAS: number; DEVOLVIDAS: number; TAXA: number; VALOR_EXPEDIDO: number; VALOR_DEVOLVIDO: number; PDVS: number; PDVS_DEVOLVIDOS: number }
 interface LinhaMotoristaMotivo { CODMOTORISTA: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
 // Motivo por entidade genérica (cliente/vendedor): COD é o código da entidade.
 interface LinhaEntidadeMotivo { COD: number; MOTIVO: string; SETOR: string; NOTAS: number; VALOR: number }
@@ -426,6 +428,7 @@ export const getMotoristasDevolucao = cache(async (
       tipo: r.TIPO_MOTORISTA === "F" || r.TIPO_MOTORISTA === "T" ? r.TIPO_MOTORISTA : null,
       expedidas: n(r.EXPEDIDAS), devolvidas: n(r.DEVOLVIDAS), taxa: n(r.TAXA),
       valorExpedido: n(r.VALOR_EXPEDIDO), valorDevolvido: n(r.VALOR_DEVOLVIDO),
+      pdvs: n(r.PDVS), pdvsDevolvidos: n(r.PDVS_DEVOLVIDOS),
     })),
     motivos,
   };

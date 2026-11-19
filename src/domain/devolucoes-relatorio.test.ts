@@ -5,7 +5,7 @@ import { agruparPorPasta, setoresZerados } from "./devolucoes-supervisor";
 
 const mot = (over: Partial<DevolucaoPorMotorista>): DevolucaoPorMotorista => ({
   codMotorista: 1, nome: "JOAO", tipo: "F", expedidas: 100, devolvidas: 5, taxa: 5,
-  valorExpedido: 10000, valorDevolvido: 500, ...over,
+  valorExpedido: 10000, valorDevolvido: 500, pdvs: 0, pdvsDevolvidos: 0, ...over,
 });
 const motivos: Record<number, MotivoDetalhe[]> = {
   1: [
@@ -33,6 +33,15 @@ describe("relatorioMotoristas", () => {
     expect(h.match(/class="ficha"/g)).toHaveLength(2);
     // motivo de maior valor vem primeiro na ficha
     expect(h.indexOf("FORA DO HORARIO")).toBeLessThan(h.indexOf("CLIENTE FECHADO"));
+  });
+
+  it("mostra o faturado e a participação no total (mesmo no PDF de um só motorista)", () => {
+    const dois = [mot({ pdvs: 40, pdvsDevolvidos: 3 }), mot({ codMotorista: 2, nome: "MARIA", valorExpedido: 30000 })];
+    const h = relatorioMotoristas(dois, motivos);
+    expect(h).toContain("25,0%"); // JOAO: 10 mil de 40 mil
+    expect(h).toContain("3/40");
+    const so = relatorioMotoristas(dois, motivos, 2);
+    expect(so).toContain("75,0% do total");
   });
 
   it("com `so` imprime só aquele motorista, sem ranking", () => {

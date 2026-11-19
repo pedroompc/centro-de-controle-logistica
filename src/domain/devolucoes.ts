@@ -54,6 +54,8 @@ export interface DevolucaoPorMotorista {
   taxa: number; // % = devolvidas / expedidas (por NOTA)
   valorExpedido: number; // R$ das vendas em carga (expedidas) no período
   valorDevolvido: number;
+  pdvs: number; // clientes distintos atendidos (em carga) no período
+  pdvsDevolvidos: number; // desses, quantos tiveram alguma devolução
 }
 
 /** Núcleo buscado no SSR: total, por setor e a lista de motivos (leve). */

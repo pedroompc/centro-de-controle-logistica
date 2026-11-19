@@ -38,7 +38,7 @@ describe("motivoPredominante", () => {
 });
 
 const m = (over: Partial<DevolucaoPorMotorista>): DevolucaoPorMotorista => ({
-  codMotorista: 1, nome: "Fulano", tipo: null, expedidas: 100, devolvidas: 5, taxa: 5, valorExpedido: 20000, valorDevolvido: 1000, ...over,
+  codMotorista: 1, nome: "Fulano", tipo: null, expedidas: 100, devolvidas: 5, taxa: 5, valorExpedido: 20000, valorDevolvido: 1000, pdvs: 0, pdvsDevolvidos: 0, ...over,
 });
 
 describe("filtrarPorBusca", () => {

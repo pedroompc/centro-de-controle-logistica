@@ -63,7 +63,7 @@ export function filtrarPorBusca<T>(
   );
 }
 
-export type ColunaMotorista = "expedidas" | "devolvidas" | "taxa" | "valorDevolvido";
+export type ColunaMotorista = "valorExpedido" | "expedidas" | "devolvidas" | "pdvsDevolvidos" | "taxa" | "valorDevolvido";
 export type Direcao = "asc" | "desc";
 
 /** Ordena por coluna numérica sem mutar a lista original. */
