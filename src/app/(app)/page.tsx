@@ -41,6 +41,7 @@ import {
   FaturamentoSkeleton,
   FaturamentoDetalhe,
   FaturamentoDetalheSkeleton,
+  CardCustoLogistico,
 } from "./faturamento-cards";
 import { FrotaCards, FrotaSkeleton } from "./frota-cards";
 import { ehSetorMotoristas } from "@/domain/motoristas";
@@ -285,10 +286,10 @@ export default async function Dashboard({
       </PageHeader>
 
       <Suspense fallback={<FaturamentoSkeleton />}>
-        <FaturamentoCards periodo={periodo} custoTotal={custoTotalMes} comparar={pCmp} />
+        <FaturamentoCards periodo={periodo} comparar={pCmp} />
       </Suspense>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
         <StatCard
           label={mesUnico ? "Custo bruto do mês" : "Custo bruto do período"}
@@ -306,6 +307,9 @@ export default async function Dashboard({
           href={hrefPeriodo("/receitas")}
           extra={chips(custoLiquidoMes, liquidoDe(custoCmp, receitasCmp), false)}
         />
+        <Suspense fallback={<div className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
+          <CardCustoLogistico periodo={periodo} custoTotal={custoTotalMes} />
+        </Suspense>
         <StatCard
           label={mesUnico ? "Faltas no mês" : "Faltas no período"}
           value={faltasMes === null ? semDado : `${faltasMes}`}

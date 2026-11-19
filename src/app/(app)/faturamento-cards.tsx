@@ -243,11 +243,9 @@ function comparacoes(atual: number, medida: Medida, cmp: Periodo | null, maiorEh
  */
 export async function FaturamentoCards({
   periodo,
-  custoTotal,
   comparar,
 }: {
   periodo: Periodo;
-  custoTotal: number | null;
   /** Período escolhido em "Comparar"; null = cards só com o número. */
   comparar: Periodo | null;
 }) {
@@ -277,7 +275,6 @@ export async function FaturamentoCards({
   }
 
   const taxaDevol = taxaDevolucao(r);
-  const pctCusto = custoTotal === null ? null : percentualCustoLogistico(custoTotal, r.vendaLiquida);
   const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
     comparacoes(r[campo], (x) => x[campo], comparar, maiorEhBom);
 
@@ -306,7 +303,10 @@ export async function FaturamentoCards({
         />
       </div>
 
+      {/* Venda líquida (com entrega × retira) ocupa duas linhas; os 4 cards
+          curtos ficam num 2×2 ao lado, sem esticar para a altura dela. */}
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="sm:row-span-2 [&>*]:h-full">
         <StatCard
           label="Venda líquida"
           value={formatBRL(r.vendaLiquida)}
@@ -314,6 +314,7 @@ export async function FaturamentoCards({
           accent="navy"
           extra={<>{cmp("vendaLiquida", true)}{fer && !r.foto && <LiquidoEntregaRetira f={fer} avulsa={r.valorDevolucaoAvulsa} />}</>}
         />
+        </div>
         <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} comparar={comparar} />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" extra={cmp("pesoFaturado", true)} />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" extra={cmp("emitidas", true)} />
@@ -323,10 +324,19 @@ export async function FaturamentoCards({
           accent="red"
           extra={comparacoes(taxaDevol, taxaDevolucao, comparar, false, true)}
         />
-        <StatCard label="Custo logístico" value={pctCusto === null ? "sem dado" : formatPercent(pctCusto)} accent="gold" />
       </div>
     </div>
   );
+}
+
+/**
+ * Custo logístico (% da venda líquida) — fica na linha de custos do dashboard.
+ * Reusa a leitura memoizada do faturamento; em Suspense próprio.
+ */
+export async function CardCustoLogistico({ periodo, custoTotal }: { periodo: Periodo; custoTotal: number | null }) {
+  const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null);
+  const pct = custoTotal === null || !r ? null : percentualCustoLogistico(custoTotal, r.vendaLiquida);
+  return <StatCard label="Custo logístico" value={pct === null ? "sem dado" : formatPercent(pct)} hint="custo bruto ÷ venda líquida" accent="gold" />;
 }
 
 /** Fallback do <Suspense> dos cards, enquanto o Oracle responde. */
