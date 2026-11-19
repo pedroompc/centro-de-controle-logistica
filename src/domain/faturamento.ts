@@ -33,6 +33,25 @@ export interface FaturadoEntregaRetira {
   retira: number;
   notasEntrega: number;
   notasRetira: number;
+  // Devolução (com venda de origem) pelo lado em que a venda saiu — mesma base
+  // da VIEW_BI (DEVOLUCAO, pela data da entrada). A avulsa não tem origem e fica fora.
+  devEntrega: number;
+  devRetira: number;
+  notasDevEntrega: number;
+  notasDevRetira: number;
+}
+
+/** Venda líquida de cada lado = faturado − devolução daquele lado (sem a avulsa). */
+export function liquidoEntregaRetira(f: FaturadoEntregaRetira): { entrega: number; retira: number } {
+  return { entrega: f.entrega - f.devEntrega, retira: f.retira - f.devRetira };
+}
+
+/** Taxa de devolução (0..1) de cada lado sobre o próprio faturado. */
+export function taxaDevEntregaRetira(f: FaturadoEntregaRetira): { entrega: number; retira: number } {
+  return {
+    entrega: f.entrega > 0 ? f.devEntrega / f.entrega : 0,
+    retira: f.retira > 0 ? f.devRetira / f.retira : 0,
+  };
 }
 
 /** Participação (0..1) de cada parte no total; zeros quando não houve venda. */

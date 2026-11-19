@@ -161,13 +161,42 @@ SELECT NVL(SUM(CASE WHEN ENTREGA = 1 THEN VL END), 0) ENTREGA,
        COUNT(CASE WHEN ENTREGA = 0 THEN 1 END) NOTAS_RETIRA
   FROM g`;
 
-/** Venda faturada do período separada em entrega × retira; `null` se o Winthor cair. */
+// Devolução com venda de origem, na base da VIEW_BI (parte DEVOLUCAO: a view de
+// devolução pela data de entrada, líquida de IPI e ST), separada pelo lado em
+// que a VENDA de origem saiu. Conferido 01–19/11/2026: entrega + retira =
+// VIEW_BI.DEVOLUCAO (difere em centavos — a view arredonda por grupo).
+const SQL_DEV_ENTREGA_RETIRA = `
+WITH d AS (
+  SELECT v.NUMTRANSVENDA, SUM(v.VLDEVOLUCAO - (v.VLIPI + v.VLST)) VL, COUNT(DISTINCT v.NUMTRANSENT) NFS
+    FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
+   WHERE v.DTCANCEL IS NULL AND ${filialIn("v.CODFILIAL")} AND ${faixa("v.DTENT")}
+     AND NVL(v.NUMTRANSVENDA, 0) > 0
+   GROUP BY v.NUMTRANSVENDA
+),
+g AS (
+  SELECT CASE WHEN ${motoristaDeEntrega("car.CODMOTORISTA")} THEN 1 ELSE 0 END ENTREGA, d.VL, d.NFS
+    FROM d
+    LEFT JOIN PCNFSAID nf ON nf.NUMTRANSVENDA = d.NUMTRANSVENDA
+    LEFT JOIN PCCARREG car ON car.NUMCAR = nf.NUMCAR
+)
+SELECT NVL(SUM(CASE WHEN ENTREGA = 1 THEN VL END), 0) DEV_ENTREGA,
+       NVL(SUM(CASE WHEN ENTREGA = 0 THEN VL END), 0) DEV_RETIRA,
+       NVL(SUM(CASE WHEN ENTREGA = 1 THEN NFS END), 0) NFS_ENTREGA,
+       NVL(SUM(CASE WHEN ENTREGA = 0 THEN NFS END), 0) NFS_RETIRA
+  FROM g`;
+
+/** Venda faturada e devolução do período separadas em entrega × retira; `null` se o Winthor cair. */
 export const getFaturadoEntregaRetira = cache(async (ini: string, fim: string): Promise<FaturadoEntregaRetira | null> => {
   try {
-    const [r] = await queryWinthor<Record<string, unknown>>(SQL_ENTREGA_RETIRA, { ini, fim });
+    const [[r], [d]] = await Promise.all([
+      queryWinthor<Record<string, unknown>>(SQL_ENTREGA_RETIRA, { ini, fim }),
+      queryWinthor<Record<string, unknown>>(SQL_DEV_ENTREGA_RETIRA, { ini, fim }),
+    ]);
     return {
       entrega: n(r?.ENTREGA), retira: n(r?.RETIRA),
       notasEntrega: n(r?.NOTAS_ENTREGA), notasRetira: n(r?.NOTAS_RETIRA),
+      devEntrega: n(d?.DEV_ENTREGA), devRetira: n(d?.DEV_RETIRA),
+      notasDevEntrega: n(d?.NFS_ENTREGA), notasDevRetira: n(d?.NFS_RETIRA),
     };
   } catch (erro) {
     console.error("[faturamento] entrega × retira indisponível:", (erro as Error).message);

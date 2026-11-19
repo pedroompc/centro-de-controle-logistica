@@ -49,15 +49,28 @@ describe("somarResumos", () => {
   });
 });
 
-import { partesEntregaRetira } from "./faturamento";
+import { partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira } from "./faturamento";
+
+const DEV0 = { devEntrega: 0, devRetira: 0, notasDevEntrega: 0, notasDevRetira: 0 };
 
 describe("partesEntregaRetira", () => {
   it("divide o faturado entre entrega e retira (somam 100%)", () => {
-    const p = partesEntregaRetira({ entrega: 33_085_227.88, retira: 3_983_984.84, notasEntrega: 17283, notasRetira: 629 });
+    const p = partesEntregaRetira({ entrega: 33_085_227.88, retira: 3_983_984.84, notasEntrega: 17283, notasRetira: 629, ...DEV0 });
     expect(p.entrega).toBeCloseTo(0.8925, 4);
     expect(p.entrega + p.retira).toBeCloseTo(1, 10);
   });
   it("sem venda → zeros", () => {
-    expect(partesEntregaRetira({ entrega: 0, retira: 0, notasEntrega: 0, notasRetira: 0 })).toEqual({ entrega: 0, retira: 0 });
+    expect(partesEntregaRetira({ entrega: 0, retira: 0, notasEntrega: 0, notasRetira: 0, ...DEV0 })).toEqual({ entrega: 0, retira: 0 });
+  });
+});
+
+describe("liquido/taxa entrega × retira", () => {
+  const f = { entrega: 1000, retira: 200, notasEntrega: 10, notasRetira: 2, devEntrega: 50, devRetira: 40, notasDevEntrega: 1, notasDevRetira: 1 };
+  it("líquido de cada lado = faturado − devolução do lado", () => {
+    expect(liquidoEntregaRetira(f)).toEqual({ entrega: 950, retira: 160 });
+  });
+  it("taxa de cada lado sobre o próprio faturado", () => {
+    expect(taxaDevEntregaRetira(f)).toEqual({ entrega: 0.05, retira: 0.2 });
+    expect(taxaDevEntregaRetira({ ...f, retira: 0 }).retira).toBe(0);
   });
 });

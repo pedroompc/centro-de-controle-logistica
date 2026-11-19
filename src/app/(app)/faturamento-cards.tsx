@@ -6,7 +6,10 @@ import { rotuloCurto, type Periodo } from "@/domain/periodo";
 import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-periodos";
 import { Suspense } from "react";
-import { taxaDevolucao, percentualCustoLogistico, partesEntregaRetira, type ResumoFaturamento, type FaturadoEntregaRetira } from "@/domain/faturamento";
+import {
+  taxaDevolucao, percentualCustoLogistico, partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira,
+  type ResumoFaturamento, type FaturadoEntregaRetira,
+} from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
 import { StatCard, HeroStat, Card, SectionTitle } from "@/components/ui";
 
@@ -41,6 +44,54 @@ function Linha({ label, valor }: { label: string; valor: string }) {
 }
 
 type Medida = (r: ResumoFaturamento) => number;
+
+/** Duas linhas "Entrega / Retira" dentro de um card branco (devolução, venda líquida). */
+function LinhasEntregaRetira({ linhas, nota }: { linhas: { rotulo: string; valor: number; sub: string; cor: string }[]; nota?: string }) {
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-2.5">
+      {linhas.map((l) => (
+        <div key={l.rotulo} className="flex items-baseline justify-between gap-3 py-1">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${l.cor}`} />
+            {l.rotulo}
+          </span>
+          <span className="text-right">
+            <span className="text-sm font-semibold tabular-nums text-[#141a4d]">{formatBRL(l.valor)}</span>
+            <span className="ml-2 text-[11px] tabular-nums text-slate-400">{l.sub}</span>
+          </span>
+        </div>
+      ))}
+      {nota && <p className="mt-1 text-[11px] text-slate-400">{nota}</p>}
+    </div>
+  );
+}
+
+function DevolucaoEntregaRetira({ f }: { f: FaturadoEntregaRetira }) {
+  const t = taxaDevEntregaRetira(f);
+  return (
+    <LinhasEntregaRetira
+      linhas={[
+        { rotulo: "Entrega", valor: f.devEntrega, sub: `${formatPercent(t.entrega)} do faturado entrega · ${f.notasDevEntrega} NFs`, cor: "bg-amber-400" },
+        { rotulo: "Retira", valor: f.devRetira, sub: `${formatPercent(t.retira)} do faturado retira · ${f.notasDevRetira} NFs`, cor: "bg-slate-300" },
+      ]}
+    />
+  );
+}
+
+function LiquidoEntregaRetira({ f, avulsa }: { f: FaturadoEntregaRetira; avulsa: number }) {
+  const l = liquidoEntregaRetira(f);
+  const total = l.entrega + l.retira;
+  const pct = (v: number) => (total > 0 ? formatPercent(v / total) : "—");
+  return (
+    <LinhasEntregaRetira
+      linhas={[
+        { rotulo: "Entrega", valor: l.entrega, sub: pct(l.entrega), cor: "bg-amber-400" },
+        { rotulo: "Retira", valor: l.retira, sub: pct(l.retira), cor: "bg-slate-300" },
+      ]}
+      nota={avulsa > 0 ? `devolução avulsa (sem nota de origem): ${formatBRL(avulsa)}` : undefined}
+    />
+  );
+}
 
 /**
  * Dentro do card "Venda faturada": quanto saiu em ENTREGA (carga com motorista)
@@ -204,11 +255,23 @@ export async function FaturamentoCards({
           </div>
           {comparar && <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>}
         </div>
-        <StatCard label="Valor devolução" value={formatBRL(r.valorDevolucao)} hint="líquido · rotina 111" accent="red" extra={cmp("valorDevolucao", false)} />
+        <StatCard
+          label="Valor devolução"
+          value={formatBRL(r.valorDevolucao)}
+          hint="líquido · rotina 111"
+          accent="red"
+          extra={<>{cmp("valorDevolucao", false)}{fer && !r.foto && <DevolucaoEntregaRetira f={fer} />}</>}
+        />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Venda líquida" value={formatBRL(r.vendaLiquida)} hint="faturada − devolução − avulsa" accent="navy" extra={cmp("vendaLiquida", true)} />
+        <StatCard
+          label="Venda líquida"
+          value={formatBRL(r.vendaLiquida)}
+          hint="faturada − devolução − avulsa"
+          accent="navy"
+          extra={<>{cmp("vendaLiquida", true)}{fer && !r.foto && <LiquidoEntregaRetira f={fer} avulsa={r.valorDevolucaoAvulsa} />}</>}
+        />
         <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} comparar={comparar} />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" extra={cmp("pesoFaturado", true)} />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" extra={cmp("emitidas", true)} />
