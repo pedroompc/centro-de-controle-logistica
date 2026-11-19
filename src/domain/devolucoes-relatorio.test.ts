@@ -41,7 +41,8 @@ describe("relatorioMotoristas", () => {
     expect(h).toContain("25,0%"); // JOAO: 10 mil de 40 mil
     expect(h).toContain("3/40");
     const so = relatorioMotoristas(dois, motivos, 2);
-    expect(so).toContain("75,0% do total");
+    expect(so).toContain("representa 75,0% do faturamento");
+    expect(so).toContain("50,0% da devolução"); // 500 de 1.000
   });
 
   it("com `so` imprime só aquele motorista, sem ranking", () => {

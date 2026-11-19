@@ -112,7 +112,9 @@ export default function TabelaMotoristas({
   // Faturado de TODOS os motoristas do período (os filtros da página valem; busca/vínculo não).
   const totalFaturado = useMemo(() => motoristas.reduce((t, m) => t + m.valorExpedido, 0), [motoristas]);
   const share = (m: DevolucaoPorMotorista) => (totalFaturado > 0 ? m.valorExpedido / totalFaturado : 0);
-  const pctDevolvido = (m: DevolucaoPorMotorista) => (m.valorExpedido > 0 ? m.valorDevolvido / m.valorExpedido : 0);
+  // Devolvido de TODOS os motoristas do período (mesma regra do faturado acima).
+  const totalDevolvido = useMemo(() => motoristas.reduce((t, m) => t + m.valorDevolvido, 0), [motoristas]);
+  const shareDev = (m: DevolucaoPorMotorista) => (totalDevolvido > 0 ? m.valorDevolvido / totalDevolvido : 0);
 
   const segTipo = (
     <div
@@ -250,7 +252,7 @@ export default function TabelaMotoristas({
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums">
                         <p className="font-semibold text-[#141a4d]">{formatBRL(m.valorExpedido)}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-400">{formatPercent(share(m), 1)} do total</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">Representa {formatPercent(share(m), 1)} do faturamento</p>
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums text-slate-500">{m.expedidas}</td>
                       <td className="px-3 py-3 text-right font-medium tabular-nums text-slate-600">{m.devolvidas}</td>
@@ -263,7 +265,7 @@ export default function TabelaMotoristas({
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums">
                         <p className="font-semibold text-[#141a4d]">{formatBRL(m.valorDevolvido)}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-400">{formatPercent(pctDevolvido(m), 1)} do faturado</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{formatPercent(shareDev(m), 1)} da devolução</p>
                       </td>
                       <td className="px-3 py-3 text-center text-slate-400">
                         {expansivel ? (
@@ -333,7 +335,7 @@ export default function TabelaMotoristas({
                     <span>
                       Faturou <b className="tabular-nums text-[#141a4d]">{formatBRL(m.valorExpedido)}</b>
                     </span>
-                    <span className="tabular-nums">{formatPercent(share(m), 1)} do total</span>
+                    <span className="tabular-nums">Representa {formatPercent(share(m), 1)} do faturamento</span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 pl-[3.25rem] text-xs text-slate-500">
                     <span>
@@ -345,8 +347,8 @@ export default function TabelaMotoristas({
                     <span>
                       PDVs dev. <b className="tabular-nums text-slate-700">{m.pdvsDevolvidos}</b> de {m.pdvs}
                     </span>
-                    <span className="ml-auto tabular-nums font-semibold text-[#141a4d]">
-                      {formatBRL(m.valorDevolvido)}
+                    <span className="ml-auto tabular-nums">
+                      <b className="font-semibold text-[#141a4d]">{formatBRL(m.valorDevolvido)}</b> · {formatPercent(shareDev(m), 1)} da devolução
                     </span>
                   </div>
                 </div>
