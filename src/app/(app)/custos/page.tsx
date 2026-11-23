@@ -33,6 +33,21 @@ import { CAMPO_VALOR, paraCampoBR } from "@/domain/formulario";
 
 const hrefCustos = (p: Record<string, string>) => (Object.keys(p).length ? `/custos?${new URLSearchParams(p)}` : "/custos");
 
+function BotaoRelatorio() {
+  return (
+    <Link
+      href="/custos/relatorio"
+      className="levantar mb-4 flex items-center justify-between gap-3 rounded-2xl border border-[#1b2168]/15 bg-[#eef0fb] px-5 py-4 text-[#141a4d] transition hover:bg-[#e4e7f8]"
+    >
+      <span>
+        <span className="block text-sm font-bold">Relatório geral</span>
+        <span className="block text-xs text-slate-500">Galpão × entrega · custo sobre o faturamento</span>
+      </span>
+      <span className="text-sm font-semibold text-amber-600">abrir →</span>
+    </Link>
+  );
+}
+
 export default async function CustosPage({ searchParams }: { searchParams: Promise<{ mes?: string; de?: string; ate?: string; cmp?: string }> }) {
   const sp = await searchParams;
   const periodo = lerPeriodo(sp);
@@ -67,6 +82,8 @@ export default async function CustosPage({ searchParams }: { searchParams: Promi
       <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
         <PeriodoNav periodo={periodo} hrefFor={hrefCustos} comparacao={comparacao} />
       </PageHeader>
+
+      <BotaoRelatorio />
 
       <Card className="p-6">
         <div className="grid gap-6 md:grid-cols-2">
@@ -312,6 +329,8 @@ async function CustosDoPeriodo({ periodo, cmp }: { periodo: Periodo; cmp?: strin
       <PageHeader title="Custos" subtitle="Custos da operação, mês a mês">
         <PeriodoNav periodo={periodo} hrefFor={hrefCustos} comparacao={comparacao} />
       </PageHeader>
+
+      <BotaoRelatorio />
 
       <Card className="p-6">
         <div className="grid gap-6 md:grid-cols-2">
