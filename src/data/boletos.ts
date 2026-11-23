@@ -8,7 +8,7 @@ import type { ParcelaBoleto } from "@/domain/boletos";
 // código de barras (341 Itaú, 237 Bradesco). Datas saem como texto para não
 // sofrer conversão de fuso no driver.
 // Consulta portada do app Flask (app_cortes/Backend/sql_queries.py → QUERY_PEDIDO_BOLETOS).
-const sql = `SELECT p.DUPLIC, p.PREST, p.VALOR, NVL(p.VLTXBOLETO, 0) AS VLTXBOLETO, p.SOMATXBOLETO,
+const sql = (filtroPedido: string) => `SELECT s.NUMPED, p.DUPLIC, p.PREST, p.VALOR, NVL(p.VLTXBOLETO, 0) AS VLTXBOLETO, p.SOMATXBOLETO,
        TO_CHAR(p.DTVENC, 'DD/MM/YYYY') AS DTVENC, TO_CHAR(p.DTEMISSAO, 'DD/MM/YYYY') AS DTEMISSAO,
        TO_CHAR(p.DTPAG, 'DD/MM/YYYY') AS DTPAG,
        p.NOSSONUMBCO, p.LINHADIG, p.CODBARRA, p.CODUSUR,
@@ -26,12 +26,12 @@ JOIN PCCOB cb ON cb.CODCOB = p.CODCOB AND cb.BOLETO = 'S'
 LEFT JOIN PCBANCO b ON b.CODBANCO = TO_NUMBER(SUBSTR(p.CODBARRA, 1, 3))
 LEFT JOIN PCCLIENT cli ON cli.CODCLI = s.CODCLI
 LEFT JOIN PCFILIAL f ON f.CODIGO = p.CODFILIAL
-WHERE ${filialIn("s.CODFILIAL")} AND s.NUMPED = :numped AND s.DTCANCEL IS NULL
+WHERE ${filialIn("s.CODFILIAL")} AND ${filtroPedido} AND s.DTCANCEL IS NULL
   AND p.CODBARRA IS NOT NULL AND LENGTH(p.CODBARRA) = 44
 ORDER BY s.NUMNOTA, p.PREST`;
 
 interface Row {
-  DUPLIC: number | null; PREST: string | number | null; VALOR: number | null;
+  NUMPED: number; DUPLIC: number | null; PREST: string | number | null; VALOR: number | null;
   VLTXBOLETO: number | null; SOMATXBOLETO: string | null;
   DTVENC: string | null; DTEMISSAO: string | null; DTPAG: string | null;
   NOSSONUMBCO: string | null; LINHADIG: string | null; CODBARRA: string; CODUSUR: number | null;
@@ -50,8 +50,27 @@ const numOuNull = (v: unknown): number | null => (v == null ? null : Number(v));
 
 /** Parcelas com boleto da NF do pedido (filiais 1 e 11). `[]` se não houver. */
 export async function getParcelasBoleto(numped: number): Promise<ParcelaBoleto[]> {
-  const rows = await queryWinthor<Row>(sql, { numped });
-  return rows.map((r) => ({
+  return (await queryWinthor<Row>(sql("s.NUMPED = :numped"), { numped })).map(paraParcela);
+}
+
+/**
+ * Parcelas com boleto das NFs de vários pedidos, numa consulta só, agrupadas por
+ * pedido na ordem pedida (pedido sem boleto fica de fora do mapa).
+ */
+export async function getParcelasBoletoPorPedidos(pedidos: number[]): Promise<Map<number, ParcelaBoleto[]>> {
+  const porPedido = new Map<number, ParcelaBoleto[]>();
+  if (pedidos.length === 0) return porPedido;
+  const binds = Object.fromEntries(pedidos.map((p, i) => [`p${i}`, p]));
+  const rows = await queryWinthor<Row>(sql(`s.NUMPED IN (${pedidos.map((_, i) => `:p${i}`).join(",")})`), binds);
+  for (const numped of pedidos) {
+    const doPedido = rows.filter((r) => Number(r.NUMPED) === numped);
+    if (doPedido.length) porPedido.set(numped, doPedido.map(paraParcela));
+  }
+  return porPedido;
+}
+
+function paraParcela(r: Row): ParcelaBoleto {
+  return {
     duplicata: numOuNull(r.DUPLIC),
     prestacao: txt(r.PREST),
     numnota: numOuNull(r.NUMNOTA),
@@ -78,5 +97,5 @@ export async function getParcelasBoleto(numped: number): Promise<ParcelaBoleto[]
       endereco: txt(r.ENDERECO_CLI), numero: txt(r.NUMERO_CLI), bairro: txt(r.BAIRRO_CLI),
       cidade: txt(r.CIDADE_CLI), uf: txt(r.UF_CLI), cep: txt(r.CEP_CLI),
     },
-  }));
+  };
 }

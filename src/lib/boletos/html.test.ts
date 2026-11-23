@@ -43,3 +43,25 @@ describe("renderBoletosHtml", () => {
     expect(html).not.toContain("MERCADO <X>");
   });
 });
+
+describe("renderBoletosHtml com várias notas", () => {
+  const html = renderBoletosHtml(
+    [
+      montarBoleto(parcela(), hoje),
+      montarBoleto(parcela({ prestacao: "2" }), hoje),
+      montarBoleto(parcela({ duplicata: 2560200, numnota: 2560200 }), hoje),
+    ],
+    ["Pedido 99: nenhum boleto no Winthor."],
+  );
+
+  it("título conta as notas e cada parcela tem a sua folha", () => {
+    expect(html).toContain("<title>Boletos-2-notas</title>");
+    expect(html).toContain("Boletos · 2 notas · 3 parcelas");
+    expect(html.match(/class="bol"/g)).toHaveLength(3);
+  });
+
+  it("avisos aparecem na tela e somem na impressão", () => {
+    expect(html).toContain('<div class="avisos"><p>Pedido 99: nenhum boleto no Winthor.</p></div>');
+    expect(html).toContain(".barra, .avisos { display: none !important; }");
+  });
+});

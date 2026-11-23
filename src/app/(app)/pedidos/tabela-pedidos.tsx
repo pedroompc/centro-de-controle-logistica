@@ -9,7 +9,7 @@ import { estadoPedidoInfo, tipoVendaInfo } from "@/domain/pedidos-consulta";
 import type { PedidoConsulta, ItemPedido } from "@/domain/pedidos-consulta";
 import { formatarFoneBR, linkWhatsApp } from "@/domain/whatsapp";
 import { carregarItensPedido } from "./actions";
-import { salvarDanfePdf, salvarBoletosPdf } from "./salvar-pdf";
+import { salvarDanfePdf, salvarBoletosPdf, salvarBoletosPdfPedidos } from "./salvar-pdf";
 import { baixarXmls, MAX_XML } from "./baixar-xml";
 
 function fmtData(iso: string | null): string {
@@ -582,6 +582,26 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
     }
   };
 
+  // Boletos das notas selecionadas num PDF só (uma parcela por folha A4).
+  const [gerandoBoletos, setGerandoBoletos] = useState(false);
+  const salvarBoletosSelecionados = async () => {
+    if (soma.comNota.length > MAX_IMPRESSAO) {
+      alert(`Selecione no máximo ${MAX_IMPRESSAO} notas por vez (marcadas: ${soma.comNota.length}).`);
+      return;
+    }
+    const nfs = pedidos.filter((p) => soma.comNota.includes(p.numped)).map((p) => p.notaFiscal);
+    const arquivo = nfs.length === 1 ? `Boletos-NF-${nfs[0]}.pdf` : `Boletos-${nfs.length}-notas.pdf`;
+    setGerandoBoletos(true);
+    try {
+      const avisos = await salvarBoletosPdfPedidos(soma.comNota, arquivo);
+      if (avisos.length) alert(`PDF salvo. Ficaram de fora:\n${avisos.join("\n")}`);
+    } catch (err) {
+      alert((err as Error).message || "Não foi possível gerar o PDF dos boletos.");
+    } finally {
+      setGerandoBoletos(false);
+    }
+  };
+
   const visiveisMarcados = lista.filter((p) => selecionados.has(p.numped)).length;
   const todosVisiveis = lista.length > 0 && visiveisMarcados === lista.length;
 
@@ -919,6 +939,19 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
               >
                 <IconeXml className="h-4 w-4" />
                 {baixandoXml ? "Baixando…" : soma.comNota.length === 1 ? "Baixar XML" : `XML de ${soma.comNota.length} notas`}
+              </button>
+            )}
+            {soma.comNota.length > 1 && (
+              <button
+                type="button"
+                onClick={salvarBoletosSelecionados}
+                disabled={gerandoBoletos}
+                title={`Salva os boletos das ${soma.comNota.length} notas num PDF só, uma parcela por folha A4${
+                  soma.comNota.length < soma.qtd ? ` (${soma.qtd - soma.comNota.length} pedido(s) sem nota ficam de fora)` : ""}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1 text-xs font-bold text-[#141a4d] transition hover:bg-slate-100 disabled:opacity-60"
+              >
+                <IconeBoleto />
+                {gerandoBoletos ? "Gerando PDF…" : `Boletos de ${soma.comNota.length} notas`}
               </button>
             )}
             <button

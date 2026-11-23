@@ -77,11 +77,12 @@ function encolherDanfe(folha: HTMLElement) {
 /**
  * Gera o PDF das folhas (`seletor`) da página `url` — uma folha do documento por
  * página A4 — e baixa como `arquivo`. Se a página não tiver folhas, o texto dela
- * (a mensagem de erro da rota) vira o erro.
+ * (a mensagem de erro da rota) vira o erro. Devolve os avisos da página (o que
+ * ficou de fora), que não saem no PDF.
  */
 async function salvarPdf({ url, seletor, arquivo, preparar }: {
   url: string; seletor: string; arquivo: string; preparar?: (folha: HTMLElement) => void;
-}): Promise<void> {
+}): Promise<string[]> {
   const iframe = await carregarIframe(url);
   try {
     const win = iframe.contentWindow as (Window & { html2pdf?: Html2Pdf }) | null;
@@ -150,17 +151,23 @@ async function salvarPdf({ url, seletor, arquivo, preparar }: {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(link), 10_000);
+    return [...doc.querySelectorAll(".avisos p")].map((p) => p.textContent?.trim() ?? "").filter(Boolean);
   } finally {
     iframe.remove();
   }
 }
 
 /** DANFE do pedido em NF-<número>.pdf, numa folha A4. */
-export function salvarDanfePdf(numped: number, notaFiscal: number): Promise<void> {
-  return salvarPdf({ url: `/pedidos/${numped}/danfe`, seletor: ".dnf", arquivo: `NF-${notaFiscal}.pdf`, preparar: encolherDanfe });
+export async function salvarDanfePdf(numped: number, notaFiscal: number): Promise<void> {
+  await salvarPdf({ url: `/pedidos/${numped}/danfe`, seletor: ".dnf", arquivo: `NF-${notaFiscal}.pdf`, preparar: encolherDanfe });
 }
 
 /** Boletos da NF do pedido em Boletos-NF-<número>.pdf, uma parcela por folha A4. */
-export function salvarBoletosPdf(numped: number, notaFiscal: number): Promise<void> {
-  return salvarPdf({ url: `/pedidos/${numped}/boletos`, seletor: ".bol", arquivo: `Boletos-NF-${notaFiscal}.pdf` });
+export async function salvarBoletosPdf(numped: number, notaFiscal: number): Promise<void> {
+  await salvarPdf({ url: `/pedidos/${numped}/boletos`, seletor: ".bol", arquivo: `Boletos-NF-${notaFiscal}.pdf` });
+}
+
+/** Boletos das NFs de vários pedidos num PDF só, uma parcela por folha. Devolve o que ficou de fora. */
+export function salvarBoletosPdfPedidos(pedidos: number[], arquivo: string): Promise<string[]> {
+  return salvarPdf({ url: `/pedidos/boletos?p=${pedidos.join(",")}`, seletor: ".bol", arquivo });
 }

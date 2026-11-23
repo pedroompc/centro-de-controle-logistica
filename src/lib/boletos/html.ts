@@ -122,17 +122,23 @@ function montarBoleto(b: Boleto): string {
   </div>`;
 }
 
-/** Página com um boleto por parcela, pronta para imprimir / salvar PDF em A4. */
-export function renderBoletosHtml(boletos: Boleto[]): string {
-  const nf = boletos[0]?.numNf ?? "";
-  const titulo = `Boletos · NF ${nf}`;
+/**
+ * Página com um boleto por parcela, pronta para imprimir / salvar PDF em A4.
+ * Serve uma NF (modal do pedido) ou várias (pedidos selecionados); `avisos` lista
+ * o que ficou de fora (só na tela, não sai na impressão nem no PDF).
+ */
+export function renderBoletosHtml(boletos: Boleto[], avisos: string[] = []): string {
+  const nfs = [...new Set(boletos.map((b) => b.numNf))];
+  const nf = nfs[0] ?? "";
+  const titulo = nfs.length > 1 ? `Boletos · ${nfs.length} notas` : `Boletos · NF ${nf}`;
+  const arquivo = nfs.length > 1 ? `Boletos-${nfs.length}-notas` : `Boletos-NF-${nf}`;
   const qtd = `${boletos.length} ${boletos.length === 1 ? "parcela" : "parcelas"}`;
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(`Boletos-NF-${nf}`)}</title>
+<title>${esc(arquivo)}</title>
 <style>${CSS}</style>
 </head>
 <body>
@@ -140,6 +146,7 @@ export function renderBoletosHtml(boletos: Boleto[]): string {
   <span>${esc(titulo)} · ${qtd}</span>
   <button type="button" onclick="window.print()">Imprimir / Salvar PDF</button>
 </div>
+${avisos.length ? `<div class="avisos">${avisos.map((a) => `<p>${esc(a)}</p>`).join("")}</div>` : ""}
 <div class="folha">${boletos.map((b) => `<div class="bol">${montarBoleto(b)}</div>`).join("")}</div>
 <script>
   // Dentro do modal (iframe) quem imprime é o botão do modal; a barra só aparece com a página aberta direto.
@@ -156,6 +163,9 @@ html, body { margin: 0; background: #f1f5f9; }
 .barra button { background: #181d55; color: #fff; border: 0; border-radius: 8px; padding: 7px 14px; font: 600 12px system-ui, sans-serif; cursor: pointer; }
 .barra button:hover { background: #10143f; }
 .folha { overflow-x: auto; padding: 12px 0; }
+.avisos { margin: 12px auto 0; max-width: 740px; padding: 8px 12px; border-radius: 8px; background: #fff7ed; color: #9a3412;
+  font: 13px system-ui, sans-serif; }
+.avisos p { margin: 2px 0; }
 
 /* 740 px = largura útil do A4 com margem de 7 mm (196 mm a 96 dpi) */
 .bol { width: 740px; margin: 0 auto 12px; box-sizing: border-box; background: #fff; color: #000;
@@ -219,7 +229,7 @@ html, body { margin: 0; background: #f1f5f9; }
 @page { size: A4 portrait; margin: 7mm; }
 @media print {
   html, body { background: #fff; }
-  .barra { display: none !important; }
+  .barra, .avisos { display: none !important; }
   .folha { padding: 0; overflow: visible; }
   .bol { margin: 0; box-shadow: none; break-after: page; zoom: 0.93; }
   .bol:last-child { break-after: auto; }
