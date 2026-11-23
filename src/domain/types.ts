@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "viewer";
+export type UserRole = "admin" | "viewer" | "equipe" | "rh";
 
 export type StatusFuncionario = "ativo" | "afastado" | "desligado";
 

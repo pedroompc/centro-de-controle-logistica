@@ -1101,7 +1101,7 @@ export type Database = {
       receita_categoria: "reciclagem"
       status_funcionario: "ativo" | "afastado" | "desligado"
       tipo_falta: "justificada" | "injustificada" | "atestado" | "folga" | "ferias"
-      user_role: "admin" | "viewer" | "rh"
+      user_role: "admin" | "viewer" | "rh" | "equipe"
     }
     CompositeTypes: {
       [_ in never]: never

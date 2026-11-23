@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { INICIO_EQUIPE, lerPapel, rotaLiberadaParaEquipe } from "@/domain/papeis";
 
 // O refresh token do Supabase não expira sozinho — quem loga uma vez fica logado
 // para sempre. As configurações prontas de "Inactivity timeout" e "Time-box user
@@ -109,9 +110,23 @@ export async function updateSession(request: NextRequest) {
     return saida;
   }
 
+  // Papel "equipe" só abre Consulta de Pedidos e Devoluções. Tem que ser aqui
+  // (e não no layout): o layout não roda de novo na navegação pelo app. O papel
+  // vem do app_metadata, espelhado de `profiles` por trigger (migration 0031) —
+  // o getUser acima já traz, sem consulta extra. O usuário não edita app_metadata.
+  const equipe = lerPapel(user.app_metadata?.papel) === "equipe";
+  if (equipe && !isLogin && !rotaLiberadaParaEquipe(request.nextUrl.pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = INICIO_EQUIPE;
+    url.search = "";
+    const saida = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => saida.cookies.set(cookie));
+    return saida;
+  }
+
   if (isLogin) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = equipe ? INICIO_EQUIPE : "/";
     url.search = "";
     const saida = NextResponse.redirect(url);
     response.cookies.getAll().forEach((cookie) => saida.cookies.set(cookie));

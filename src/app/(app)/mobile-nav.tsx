@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { itensVisiveis, comMes, isActive } from "./sidebar-nav";
+import { rotuloPapel } from "@/domain/papeis";
+import type { UserRole } from "@/domain/types";
 
 /**
  * Navegação mobile no estilo aplicativo: barra inferior fixa com as 4 seções
@@ -11,14 +13,15 @@ import { itensVisiveis, comMes, isActive } from "./sidebar-nav";
  * secundárias e a conta/sair. Só aparece no celular (`md:hidden`); no desktop a
  * `<SidebarNav>` lateral continua mandando.
  */
-export function MobileNav({ userEmail, admin }: { userEmail?: string | null; admin: boolean }) {
+export function MobileNav({ userEmail, papel }: { userEmail?: string | null; papel: UserRole | null }) {
+  const admin = papel === "admin";
   const pathname = usePathname();
   const mes = useSearchParams();
   const [maisAberto, setMaisAberto] = useState(false);
 
   // Ordem escolhida para a barra inferior (independente da ordem da lateral).
   const ORDEM_BARRA = ["/", "/pedidos", "/devolucoes", "/receitas"];
-  const items = itensVisiveis(admin);
+  const items = itensVisiveis(papel);
   const primarios = items
     .filter((i) => i.primary)
     .sort((a, b) => ORDEM_BARRA.indexOf(a.href) - ORDEM_BARRA.indexOf(b.href));
@@ -47,7 +50,8 @@ export function MobileNav({ userEmail, admin }: { userEmail?: string | null; adm
           />
           <div className="animate-sheet-up pb-safe absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-2xl">
             <div className="mx-auto mt-3 h-1.5 w-10 rounded-full bg-slate-200" />
-            <div className="px-4 pt-4">
+            {/* Equipe não tem seção secundária: a folha fica só com conta/sair. */}
+            <div className={`px-4 pt-4 ${secundarios.length ? "" : "hidden"}`}>
               <p className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Mais seções</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {secundarios.map((it) => {
@@ -79,7 +83,7 @@ export function MobileNav({ userEmail, admin }: { userEmail?: string | null; adm
                       admin ? "bg-amber-400/90 text-[#141a4d]" : "bg-slate-100 text-slate-500"
                     }`}
                   >
-                    {admin ? "Admin" : "Somente leitura"}
+                    {rotuloPapel(papel)}
                   </span>
                   <p className="mt-1 truncate text-xs text-slate-500" title={userEmail ?? undefined}>
                     {userEmail}

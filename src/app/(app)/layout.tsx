@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/data/auth";
+import { rotuloPapel } from "@/domain/papeis";
 import { SidebarNav } from "./sidebar-nav";
 import { MobileNav } from "./mobile-nav";
 import { BarraNavegacao } from "@/components/barra-navegacao";
@@ -36,7 +37,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const perfil = await getPerfil();
-  const admin = perfil?.role === "admin";
+  const papel = perfil?.role ?? null;
+  const admin = papel === "admin";
 
   // Barra lateral recolhida? (escolha guardada por computador)
   const recolhida = (await cookies()).get(COOKIE_SIDEBAR)?.value === "recolhida";
@@ -57,19 +59,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Marca />
           </div>
           <div className="mt-8">
-            <SidebarNav admin={admin} />
+            <SidebarNav papel={papel} />
           </div>
         </div>
         <div className="border-t border-white/10 pt-3">
-          <SidebarNav admin={admin} parte="rodape" />
+          <SidebarNav papel={papel} parte="rodape" />
           <div className="flex items-center gap-2 px-3 group-data-[recolhida=true]/app:justify-center group-data-[recolhida=true]/app:px-0">
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                 admin ? "bg-amber-400/90 text-[#141a4d]" : "bg-white/10 text-white/70"
               }`}
             >
-              <span className="group-data-[recolhida=true]/app:hidden">{admin ? "Admin" : "Somente leitura"}</span>
-              <span className="hidden group-data-[recolhida=true]/app:inline" title={admin ? "Admin" : "Somente leitura"}>●</span>
+              <span className="group-data-[recolhida=true]/app:hidden">{rotuloPapel(papel)}</span>
+              <span className="hidden group-data-[recolhida=true]/app:inline" title={rotuloPapel(papel)}>●</span>
             </span>
           </div>
           <p className="mt-1.5 truncate px-3 text-xs text-white/50 group-data-[recolhida=true]/app:hidden" title={user.email ?? undefined}>
@@ -97,7 +99,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               admin ? "bg-amber-400/90 text-[#141a4d]" : "bg-white/10 text-white/70"
             }`}
           >
-            {admin ? "Admin" : "Leitura"}
+            {rotuloPapel(papel, true)}
           </span>
         </div>
       </header>
@@ -110,7 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* Navegação inferior — mobile */}
-      <MobileNav userEmail={user.email} admin={admin} />
+      <MobileNav userEmail={user.email} papel={papel} />
     </div>
   );
 }

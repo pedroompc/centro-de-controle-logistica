@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { comPeriodo } from "@/lib/url-periodo";
 import { agruparMenu, ordenarMenu, rodapeMenu, itemAtivo } from "@/domain/menu";
+import { rotaLiberadaParaEquipe } from "@/domain/papeis";
+import type { UserRole } from "@/domain/types";
 
 // `short` = rótulo curto para a barra inferior do celular; `primary` marca os
 // itens que ficam sempre à mão nessa barra (os demais vão para a folha "Mais").
@@ -205,15 +207,16 @@ export const items: Item[] = [
 
 export const isActive = itemAtivo;
 
-/** Itens do menu que o papel enxerga (admin vê tudo), na ordem do menu (`@/domain/menu`). */
-export function itensVisiveis(admin: boolean): Item[] {
-  return ordenarMenu(items.filter((i) => admin || !i.adminOnly));
+/** Itens do menu que o papel enxerga (admin vê tudo; equipe só Pedidos e Devoluções), na ordem do menu (`@/domain/menu`). */
+export function itensVisiveis(papel: UserRole | null): Item[] {
+  if (papel === "equipe") return ordenarMenu(items.filter((i) => rotaLiberadaParaEquipe(i.href)));
+  return ordenarMenu(items.filter((i) => papel === "admin" || !i.adminOnly));
 }
 
-export function SidebarNav({ variant = "sidebar", admin, parte = "principal" }: { variant?: "sidebar" | "top"; admin: boolean; parte?: "principal" | "rodape" }) {
+export function SidebarNav({ variant = "sidebar", papel, parte = "principal" }: { variant?: "sidebar" | "top"; papel: UserRole | null; parte?: "principal" | "rodape" }) {
   const pathname = usePathname();
   const mes = useSearchParams();
-  const visiveis = itensVisiveis(admin);
+  const visiveis = itensVisiveis(papel);
 
   if (variant === "top") {
     return (
