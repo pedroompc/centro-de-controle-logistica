@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { Card, PanelHeader } from "@/components/ui";
+import { useRolagemLateral, BotoesRolagem } from "@/components/rolagem-lateral";
 import { filtrarPorBusca } from "@/domain/devolucoes-ui";
 import { formatBRL, formatKg } from "@/domain/format";
 import { estadoPedidoInfo, tipoVendaInfo } from "@/domain/pedidos-consulta";
@@ -653,6 +654,10 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
   const [doc, setDoc] = useState<{ pedido: PedidoConsulta; tipo: Documento } | null>(null);
   const abrirDoc = (e: React.MouseEvent, pedido: PedidoConsulta, tipo: Documento) => { e.stopPropagation(); setDoc({ pedido, tipo }); };
 
+  // Rolagem lateral para quem usa mouse (ver `@/components/rolagem-lateral`):
+  // seleção + Pedido + Cliente ficam fixos à esquerda (~400px).
+  const { ref: refRolagem, largura: larguraVisivel, ...rolagem } = useRolagemLateral(400);
+
   const campoBusca = (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><IconeBusca /></span>
@@ -668,6 +673,11 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
 
   const th = "px-3 py-3 font-semibold";
   const td = "px-3 py-2.5";
+  // Colunas fixas: larguras travadas para o deslocamento do Cliente bater
+  // (seleção 2.5rem + Pedido 8rem = Cliente em 10.5rem).
+  const fixoSel = "sticky left-0 w-10 min-w-10";
+  const fixoPed = "sticky left-10 w-32 min-w-32";
+  const fixoCli = "sticky left-[10.5rem] shadow-[6px_0_6px_-6px_rgba(15,23,42,0.25)]";
 
   return (
     <Card className="overflow-hidden">
@@ -675,15 +685,22 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
         icon={<IconeCarrinho />}
         title="Pedidos"
         context={`${lista.length} pedidos · ${formatBRL(totalValor)}${comDev ? ` · ${comDev} com devolução` : ""}`}
-        right={campoBusca}
+        right={
+          <div className="flex items-center gap-2">
+            <BotoesRolagem {...rolagem} />
+            {campoBusca}
+          </div>
+        }
       />
 
       {/* Desktop: tabela no layout do app Flask (rola para o lado em telas menores). */}
-      <div className="hidden overflow-x-auto md:block">
+      {/* Altura máxima = tela: a barra horizontal fica sempre à vista (não só
+          depois da última linha) e o cabeçalho fica preso no topo. */}
+      <div ref={refRolagem} className="hidden max-h-[calc(100dvh-8rem)] overflow-auto overscroll-x-contain md:block">
         <table className="w-full whitespace-nowrap text-sm">
-          <thead className="border-b border-slate-200 bg-[#F4F7FA] text-[11px] uppercase tracking-wider text-slate-600">
+          <thead className="text-[11px] uppercase tracking-wider text-slate-600 [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-[#F4F7FA] [&_th]:shadow-[inset_0_-1px_0_#e2e8f0]">
             <tr>
-              <th className="w-8 py-3 pl-4 pr-1 text-left">
+              <th className={`${fixoSel} !z-30 py-3 pl-4 pr-1 text-left`}>
                 <Marcar
                   checked={todosVisiveis}
                   indeterminado={visiveisMarcados > 0 && !todosVisiveis}
@@ -691,11 +708,11 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                   label="Selecionar todos os pedidos"
                 />
               </th>
-              <th className={`${th} text-left`}>Pedido</th>
+              <th className={`${th} ${fixoPed} !z-30 text-left`}>Pedido</th>
               <th className={`${th} text-left`}>Data</th>
               <th className={`${th} text-center`}>Dias</th>
               <th className={`${th} text-left`}>Liberação</th>
-              <th className={`${th} text-left`}>Cliente</th>
+              <th className={`${th} ${fixoCli} !z-30 text-left`}>Cliente</th>
               <th className={`${th} text-center`}>Cód. RCA</th>
               <th className={`${th} text-left`}>RCA</th>
               <th className={`${th} text-left`}>Telefone RCA</th>
@@ -721,6 +738,8 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
               lista.map((p) => {
                 const estaAberto = aberto === p.numped;
                 const marcado = selecionados.has(p.numped);
+                // Célula fixa precisa de fundo opaco (a linha usa cores translúcidas).
+                const fundoFixo = `z-10 ${marcado ? "bg-[#f7f9ff]" : estaAberto ? "bg-[#fffdf7]" : "bg-white group-hover:bg-[#f9fbfd]"}`;
                 const obs = [
                   ...(p.obsPedido ? [{ r: "Pedido", t: p.obsPedido }] : []),
                   ...(p.obsEntrega ? [{ r: "Entrega", t: p.obsEntrega }] : []),
@@ -732,12 +751,12 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       onDoubleClick={() => duploClique(p)}
                       title="Clique: itens e endereço · duplo clique: emitente e liberação"
                       aria-expanded={estaAberto}
-                      className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50/70 ${marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}`}
+                      className={`group cursor-pointer border-b border-slate-100 hover:bg-slate-50/70 ${marcado ? "bg-indigo-50/50" : estaAberto ? "bg-amber-50/40" : ""}`}
                     >
-                      <td className="py-2.5 pl-4 pr-1">
+                      <td className={`${fixoSel} ${fundoFixo} py-2.5 pl-4 pr-1`}>
                         <Marcar checked={marcado} onChange={() => alternar(p.numped)} label={`Selecionar pedido ${p.numped}`} />
                       </td>
-                      <td className={td}>
+                      <td className={`${td} ${fixoPed} ${fundoFixo}`}>
                         <span className="inline-flex items-center gap-1 font-bold tabular-nums text-[#2a327f]">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-3.5 w-3.5" strokeLinejoin="round"><path d="M3 8 12 3l9 5v8l-9 5-9-5Z" /><path d="m3 8 9 5 9-5M12 13v8" /></svg>
                           {p.numped}
@@ -749,7 +768,7 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                       </td>
                       <td className={`${td} text-center text-xs tabular-nums ${corDias(p)}`}>{p.diasNoSistema}d</td>
                       <td className={`${td} text-xs tabular-nums text-slate-600`} title={p.liberadoPor ? `Liberado por ${p.liberadoPor}` : undefined}>{fmtDataHoraCurta(p.liberadoEm)}</td>
-                      <td className={td}>
+                      <td className={`${td} ${fixoCli} ${fundoFixo}`}>
                         <div className="max-w-[220px] truncate text-xs font-semibold text-slate-800" title={p.cliente}>{p.cliente}</div>
                         <div className="max-w-[220px] truncate text-[10px] text-slate-500" title={`Código do cliente: ${p.codcli}${fantasiaDe(p) ? ` · Fantasia: ${fantasiaDe(p)}` : ""}`}>
                           Cód. <span className="tabular-nums">{p.codcli}</span>{fantasiaDe(p) && <> · {fantasiaDe(p)}</>}
@@ -823,7 +842,10 @@ export default function TabelaPedidos({ pedidos }: { pedidos: PedidoConsulta[] }
                     {estaAberto && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
                         <td colSpan={18} className="whitespace-normal p-0">
-                          <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />
+                          {/* Detalhe acompanha a área visível, mesmo com a tabela rolada para o lado. */}
+                          <div className="sticky left-0" style={larguraVisivel ? { width: larguraVisivel } : undefined}>
+                            <Detalhe pedido={p} itens={itens[p.numped]} carregando={carregando === p.numped} onCabecalho={() => setCabecalho(p)} />
+                          </div>
                         </td>
                       </tr>
                     )}
