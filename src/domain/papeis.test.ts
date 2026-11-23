@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { rotaLiberadaParaEquipe, lerPapel, rotuloPapel, INICIO_EQUIPE } from "./papeis";
 
 describe("papel equipe", () => {
-  it("libera Consulta de Pedidos e Devoluções, com subtelas e rotas de download", () => {
-    for (const p of ["/pedidos", "/pedidos/123456", "/pedidos/123/danfe", "/pedidos/notas/xml", "/devolucoes", "/devolucoes/qualquer"]) {
+  it("libera as telas de monitoramento de entrega, com subtelas e rotas de download", () => {
+    for (const p of ["/pedidos", "/pedidos/123456", "/pedidos/123/danfe", "/pedidos/notas/xml", "/devolucoes", "/devolucoes/qualquer", "/pedidos-a-faturar", "/cortes", "/cortes/export", "/frota"]) {
       expect(rotaLiberadaParaEquipe(p), p).toBe(true);
     }
   });
@@ -12,8 +12,8 @@ describe("papel equipe", () => {
     expect(rotaLiberadaParaEquipe("/auth/signout")).toBe(true);
   });
 
-  it("bloqueia o resto, inclusive Pedidos a Faturar e o Dashboard", () => {
-    for (const p of ["/", "/pedidos-a-faturar", "/devolucoes-x", "/bi", "/setores/3", "/custos", "/receitas/export", "/cortes/export", "/painel", "/api/saude"]) {
+  it("bloqueia o resto, inclusive o Dashboard e o cadastro de custos da frota", () => {
+    for (const p of ["/", "/devolucoes-x", "/frotas", "/bi", "/setores/3", "/custos", "/custos/frota", "/receitas/export", "/estoque/export", "/painel", "/api/saude"]) {
       expect(rotaLiberadaParaEquipe(p), p).toBe(false);
     }
   });

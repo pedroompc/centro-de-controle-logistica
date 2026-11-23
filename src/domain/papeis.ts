@@ -1,11 +1,12 @@
 import type { UserRole } from "./types";
 
-// Papel "equipe": conta da operação que só enxerga a Consulta de Pedidos e a
-// tela de Devoluções (todas as abas e PDFs). O resto do app redireciona para
+// Papel "equipe": quem monitora as entregas. Enxerga Consulta de Pedidos,
+// Pedidos a Faturar, Devoluções (todas as abas e PDFs), Cortes e Telemetria &
+// Frota (sem os custos, que são só de admin). O resto do app redireciona para
 // a Consulta de Pedidos (proxy) e some do menu.
 
 /** Telas (e subtelas) liberadas para a equipe. */
-export const ROTAS_EQUIPE = ["/pedidos", "/devolucoes"] as const;
+export const ROTAS_EQUIPE = ["/pedidos", "/pedidos-a-faturar", "/devolucoes", "/cortes", "/frota"] as const;
 
 /** Para onde a equipe cai ao entrar ou ao tentar abrir uma tela fora do alcance. */
 export const INICIO_EQUIPE = "/pedidos";

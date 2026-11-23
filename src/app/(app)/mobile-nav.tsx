@@ -50,7 +50,7 @@ export function MobileNav({ userEmail, papel }: { userEmail?: string | null; pap
           />
           <div className="animate-sheet-up pb-safe absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-2xl">
             <div className="mx-auto mt-3 h-1.5 w-10 rounded-full bg-slate-200" />
-            {/* Equipe não tem seção secundária: a folha fica só com conta/sair. */}
+            {/* Sem seção secundária, a folha fica só com conta/sair. */}
             <div className={`px-4 pt-4 ${secundarios.length ? "" : "hidden"}`}>
               <p className="px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Mais seções</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
