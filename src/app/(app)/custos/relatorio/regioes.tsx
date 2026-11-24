@@ -40,7 +40,7 @@ export function CustoPorRegiao({
     <section className="mt-8">
       <SectionTitle>Quanto custa atender cada região · {formatMesAno(mes)}</SectionTitle>
       <p className="-mt-1 mb-4 max-w-4xl text-sm text-slate-500">
-        O custo logístico do mês dividido entre as regiões. A <b className="font-semibold text-slate-700">entrega</b> (motoristas,
+        O custo das equipes no mês (sem o aluguel do galpão) dividido entre as regiões. A <b className="font-semibold text-slate-700">entrega</b> (motoristas,
         ajudantes e frota) vai pelo km que os caminhões rodaram em cada região. O{" "}
         <b className="font-semibold text-slate-700">galpão</b> (galpão + galpão administrativo) vai pelo número de notas separadas.
       </p>

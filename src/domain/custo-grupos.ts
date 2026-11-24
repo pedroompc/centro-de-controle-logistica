@@ -5,6 +5,10 @@
 //   Galpão         — quem trabalha dentro do galpão + equipamentos + casa
 //   Entrega        — motoristas, ajudantes de entrega e toda a frota
 //   Galpão Administrativo — monitoramento (roteiristas) e ADM (gerência/escritório)
+//
+// O aluguel do galpão (lançamento "Galpão") fica FORA dos três grupos: é a
+// estrutura, mostrado à parte no topo. Ele entra no custo logístico total (e no
+// custo ÷ faturamento), mas não pesa na equipe do galpão nem na entrega.
 
 export type GrupoCusto = "galpao" | "entrega" | "administrativo";
 
@@ -30,6 +34,12 @@ export function grupoDoSetor(nome: string): GrupoCusto | null {
   return "galpao";
 }
 
+/** Lançamento do aluguel do galpão (nome "Galpão" ou "Aluguel …"). */
+export function ehAluguelGalpao(nome: string): boolean {
+  const n = norm(nome);
+  return n === "galpao" || n.startsWith("aluguel");
+}
+
 /** Grupo de um lançamento de custos_mensais: frota/agregado/combustível = entrega; o resto é do galpão. */
 export function grupoDoLancamento(nome: string): GrupoCusto {
   const n = norm(nome);
@@ -45,10 +55,24 @@ export interface ParteGrupo {
   pessoas: number; // ativos na folha do grupo
 }
 
+export interface LancamentoGrupo {
+  nome: string;
+  tipo: "fixo" | "variavel";
+  valor: number;
+  grupo: GrupoCusto;
+}
+
 export interface CustoGruposMes {
   mes: string; // "yyyy-mm-01"
   grupos: Record<GrupoCusto, ParteGrupo>;
+  /** Soma dos três grupos (sem o aluguel do galpão). */
   total: number;
+  /** Aluguel do galpão, à parte dos grupos. */
+  aluguel: number;
+  /** Custo logístico total = grupos + aluguel. */
+  totalComAluguel: number;
+  /** Lançamentos fixos/variáveis de cada grupo (sem o aluguel), maior primeiro. */
+  lancamentos: LancamentoGrupo[];
   /** Folha por setor (só os que contam), para o detalhamento. */
   setores: { setor: string; grupo: GrupoCusto; folha: number; pessoas: number }[];
 }
@@ -63,6 +87,8 @@ export function custoGruposDoMes(
 ): CustoGruposMes {
   const grupos: Record<GrupoCusto, ParteGrupo> = { galpao: vazio(), entrega: vazio(), administrativo: vazio() };
   const setores: CustoGruposMes["setores"] = [];
+  const itens: LancamentoGrupo[] = [];
+  let aluguel = 0;
   for (const s of folhaPorSetor) {
     const g = grupoDoSetor(s.setor);
     if (!g || s.custo <= 0) continue;
@@ -71,7 +97,12 @@ export function custoGruposDoMes(
     setores.push({ setor: s.setor, grupo: g, folha: s.custo, pessoas: s.ativos ?? 0 });
   }
   for (const l of lancamentos) {
+    if (ehAluguelGalpao(l.nome)) {
+      aluguel += l.valor;
+      continue;
+    }
     const g = grupoDoLancamento(l.nome);
+    itens.push({ nome: l.nome, tipo: l.tipo, valor: l.valor, grupo: g });
     if (l.tipo === "fixo") grupos[g].fixos += l.valor;
     else grupos[g].variaveis += l.valor;
   }
@@ -82,7 +113,8 @@ export function custoGruposDoMes(
     total += p.total;
   }
   setores.sort((a, b) => b.folha - a.folha);
-  return { mes, grupos, total, setores };
+  itens.sort((a, b) => b.valor - a.valor);
+  return { mes, grupos, total, aluguel, totalComAluguel: total + aluguel, lancamentos: itens, setores };
 }
 
 /** Fração 0..1; `null` quando o denominador não existe ou é zero. */
@@ -92,10 +124,12 @@ export function fracao(parte: number | null, todo: number | null): number | null
 }
 
 /** Soma vários meses num só (para o acumulado). */
-export function somarMeses(meses: CustoGruposMes[]): Omit<CustoGruposMes, "mes" | "setores"> {
+export function somarMeses(meses: CustoGruposMes[]): Pick<CustoGruposMes, "grupos" | "total" | "aluguel" | "totalComAluguel"> {
   const grupos: Record<GrupoCusto, ParteGrupo> = { galpao: vazio(), entrega: vazio(), administrativo: vazio() };
   let total = 0;
+  let aluguel = 0;
   for (const m of meses) {
+    aluguel += m.aluguel;
     for (const { chave } of GRUPOS) {
       const p = m.grupos[chave];
       grupos[chave].folha += p.folha;
@@ -106,7 +140,7 @@ export function somarMeses(meses: CustoGruposMes[]): Omit<CustoGruposMes, "mes" 
     }
     total += m.total;
   }
-  return { grupos, total };
+  return { grupos, total, aluguel, totalComAluguel: total + aluguel };
 }
 
 /**

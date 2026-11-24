@@ -27,6 +27,8 @@ export interface RelatorioCustos {
   meses: MesRelatorio[]; // do início do histórico (ou janeiro) até o mês corrente
   /** Venda líquida do mês corrente que saiu em entrega (sem retira), até hoje. */
   vendaEntregaMesAtual: number | null;
+  /** Quem está na folha do mês corrente, por nome de setor (ativos, maior custo primeiro). */
+  pessoasPorSetor: Record<string, { nome: string; cargo: string; custo: number }[]>;
   /** Base por região do último mês fechado (`null` = Winthor fora). */
   regioes: { mes: string; base: BaseRegioesMes | null };
   /** Faturamento do mês corrente caiu (Winthor fora). */
@@ -54,6 +56,15 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
   ]);
 
   const folhaAtual = fotoSetorAtual(funcionarios, setores).map((l) => ({ setor: l.setor, custo: l.custoAtivos, ativos: l.ativos }));
+  const nomeSetor = new Map(setores.map((s) => [s.id, s.nome]));
+  const pessoasPorSetor: RelatorioCustos["pessoasPorSetor"] = {};
+  for (const f of funcionarios) {
+    if (f.status !== "ativo") continue;
+    const setor = nomeSetor.get(f.setorId);
+    if (!setor) continue;
+    (pessoasPorSetor[setor] ??= []).push({ nome: f.nome, cargo: f.cargo, custo: f.custoMensal });
+  }
+  for (const l of Object.values(pessoasPorSetor)) l.sort((a, b) => b.custo - a.custo);
   const fatPorMes = new Map(serieFat.map((p) => [p.mes, p]));
 
   const linhas: MesRelatorio[] = meses.map((mes) => {
@@ -77,6 +88,7 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
     ano,
     meses: linhas,
     vendaEntregaMesAtual: entregaRetira ? liquidoEntregaRetira(entregaRetira).entrega : null,
+    pessoasPorSetor,
     regioes: { mes: mesRegioes, base: baseRegioes },
     faturamentoMesAtualIndisponivel: fatAtual === null,
   };

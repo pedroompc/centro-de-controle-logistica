@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { custoGruposDoMes, fracao, grupoDoLancamento, grupoDoSetor, projetarMes, somarMeses } from "./custo-grupos";
+import { custoGruposDoMes, ehAluguelGalpao, fracao, grupoDoLancamento, grupoDoSetor, projetarMes, somarMeses } from "./custo-grupos";
 
 describe("grupoDoSetor", () => {
   it("separa entrega, administrativo e galpão", () => {
@@ -28,6 +28,15 @@ describe("grupoDoLancamento", () => {
   });
 });
 
+describe("ehAluguelGalpao", () => {
+  it("só o lançamento do aluguel, não os do galpão", () => {
+    expect(ehAluguelGalpao("Galpão")).toBe(true);
+    expect(ehAluguelGalpao("Aluguel galpão")).toBe(true);
+    expect(ehAluguelGalpao("Equipamento · Patinha")).toBe(false);
+    expect(ehAluguelGalpao("Casa (Moreno)")).toBe(false);
+  });
+});
+
 describe("custoGruposDoMes", () => {
   const m = custoGruposDoMes(
     "2026-11-01",
@@ -41,8 +50,15 @@ describe("custoGruposDoMes", () => {
     [
       { nome: "Frota · Diesel (estimado)", tipo: "variavel", valor: 50 },
       { nome: "Equipamento · Patinha", tipo: "fixo", valor: 20 },
+      { nome: "Galpão", tipo: "fixo", valor: 400 },
     ],
   );
+  it("aluguel do galpão fica fora dos grupos, mas entra no total logístico", () => {
+    expect(m.aluguel).toBe(400);
+    expect(m.totalComAluguel).toBe(1070);
+    expect(m.lancamentos.map((l) => l.nome)).toEqual(["Frota · Diesel (estimado)", "Equipamento · Patinha"]);
+    expect(somarMeses([m, m]).aluguel).toBe(800);
+  });
   it("soma folha e lançamentos por grupo", () => {
     expect(m.grupos.entrega).toEqual({ folha: 300, fixos: 0, variaveis: 50, total: 350, pessoas: 3 });
     expect(m.grupos.galpao).toEqual({ folha: 200, fixos: 20, variaveis: 0, total: 220, pessoas: 0 });
