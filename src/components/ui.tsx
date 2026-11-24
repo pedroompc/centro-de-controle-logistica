@@ -70,7 +70,7 @@ export function StatCard({
   }[accent];
 
   const inner = (
-    <div title={title} className="entrar levantar @container relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+    <div title={title} className="entrar levantar @container relative h-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
       {/* Fonte fluida: escala com a largura real do card (cqi) e nunca quebra
@@ -84,7 +84,7 @@ export function StatCard({
   );
 
   return href ? (
-    <Link href={href} className="block">
+    <Link href={href} className="block h-full">
       {inner}
     </Link>
   ) : (
