@@ -345,7 +345,7 @@ function TabelaCompleta({ serie }: { serie: IndicadoresRecebimento[] }) {
           </tbody>
         </table>
       </div>
-      <p className="px-5 pb-4 text-xs text-slate-400">Médias da equipe (peso ÷ pessoas do cargo), não por pessoa. No mês parcial o custo entra proporcional aos dias corridos.</p>
+      <p className="px-5 pb-4 text-xs text-slate-400">Médias da equipe (peso ÷ pessoas do cargo), não por pessoa. No mês em andamento o custo já entra cheio (custo do mês).</p>
     </details>
   );
 }

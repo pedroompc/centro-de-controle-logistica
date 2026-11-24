@@ -68,7 +68,7 @@ export function VisaoCusto(p: PropsVisao) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-        <Mini {...card("custo")} rotulo={x.criterioCusto ? "Custo no filtro" : p.dados.mensal ? "Custo do mês" : "Custo do período"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoMes % 1 !== 0 ? "proporcional aos dias corridos" : rotuloPeriodo(p.dados.periodo))} />
+        <Mini {...card("custo")} rotulo={x.criterioCusto ? "Custo no filtro" : p.dados.mensal ? "Custo do mês" : "Custo do período"} valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (r.fracaoCusto % 1 !== 0 ? "proporcional aos dias do período" : rotuloPeriodo(p.dados.periodo))} />
         <Mini
           {...card("equipe")}
           rotulo="Equipe"
@@ -179,8 +179,8 @@ export function VisaoCusto(p: PropsVisao) {
           <ListaEquipamentos equipamentos={c.equipamentos} padrao={c.equipamentosPadrao} grande />
           <div className="grid grid-cols-2 content-start gap-3">
             <Mini rotulo="% do custo do recebimento" valor={folha + custoEquip > 0 ? formatPercent(custoEquip / (folha + custoEquip), 0) : "—"} />
-            <Mini rotulo={`Equipamentos por ${un}`} valor={carros > 0 ? formatBRL((custoEquip * (r.fracaoMes < 1 ? r.fracaoMes : 1)) / carros) : "—"} sub="custo dos equipamentos ÷ carros" />
-            <Mini rotulo="Equipamentos por tonelada" valor={sel.pesoKg > 0 ? formatBRL((custoEquip * (r.fracaoMes < 1 ? r.fracaoMes : 1)) / (sel.pesoKg / 1000)) : "—"} />
+            <Mini rotulo={`Equipamentos por ${un}`} valor={carros > 0 ? formatBRL((custoEquip * Math.min(1, r.fracaoCusto)) / carros) : "—"} sub="custo dos equipamentos ÷ carros" />
+            <Mini rotulo="Equipamentos por tonelada" valor={sel.pesoKg > 0 ? formatBRL((custoEquip * Math.min(1, r.fracaoCusto)) / (sel.pesoKg / 1000)) : "—"} />
             <Mini rotulo="Unidades" valor={inteiro.format(c.equipamentos.reduce((t, e) => t + e.quantidade, 0))} sub="cadastro em Custos › Equipamentos" />
           </div>
         </div>

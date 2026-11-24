@@ -1,9 +1,11 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
+import { filialIn } from "@/data/filiais";
 import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
 
-// Pedidos liberados (L) e montados (M) sem faturamento, últimos 30 dias.
-// Sem ';' final (exigência do queryWinthor). Binds: status_liberado, status_montado.
+// Carteira: pedidos liberados (L), montados (M) e bloqueados (B) sem
+// faturamento, últimos 30 dias, filiais 1 e 11. Bloqueado não tem DTLIBERA:
+// conta da data do pedido. Sem ';' final (exigência do queryWinthor).
 const SQL = `
 SELECT
     ped.NUMPED               AS numero_pedido,
@@ -30,7 +32,8 @@ LEFT JOIN PCCLIENT cli ON cli.CODCLI = ped.CODCLI
 LEFT JOIN PCUSUARI rca ON rca.CODUSUR = ped.CODUSUR
 LEFT JOIN PCSUPERV s   ON s.CODSUPERVISOR = rca.CODSUPERVISOR
 LEFT JOIN PCEMPR  emp  ON emp.MATRICULA   = ped.CODEMITENTE
-WHERE ped.POSICAO IN (:status_liberado, :status_montado)
+WHERE ped.POSICAO IN (:status_liberado, :status_montado, :status_bloqueado)
+  AND ${filialIn("ped.CODFILIAL")}
   AND ped.CODUSUR != 4
   AND NVL(ped.DTLIBERA, ped.DATA) >= SYSDATE - 30
   AND NOT EXISTS (SELECT 1 FROM PCNFSAID fat WHERE fat.NUMPED = ped.NUMPED)
@@ -76,6 +79,7 @@ export const getPedidosPendentes = cache(async (): Promise<PedidoPendente[] | nu
     const rows = await queryWinthor<Record<string, unknown>>(SQL, {
       status_liberado: "L",
       status_montado: "M",
+      status_bloqueado: "B",
     });
     return rows.map(mapRowToPedido);
   } catch (erro) {

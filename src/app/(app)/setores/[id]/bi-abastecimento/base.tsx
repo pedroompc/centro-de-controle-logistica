@@ -38,8 +38,7 @@ export const mesCurto = (m: string) => formatMesAno(m).slice(0, 3);
 
 /**
  * Custo do setor ÷ faturamento líquido do mês. No mês corrente o custo entra
- * proporcional ao que já correu (o faturamento também é parcial) — mesma
- * conta do BI do Recebimento.
+ * cheio (custo do mês, fixo) — mesma conta do BI do Recebimento.
  */
 export function custoSobreFaturamento(d: DadosBIAbastecimento): number | null {
   const c = d.custoPeriodo;

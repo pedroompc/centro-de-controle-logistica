@@ -38,7 +38,16 @@ describe("mesesEquivalentes", () => {
   });
 });
 
-import { custoDoRecorte } from "./custo-periodo";
+import { custoDoRecorte, fracaoCustoDoMes } from "./custo-periodo";
+
+describe("fracaoCustoDoMes", () => {
+  const hoje = new Date(2026, 10, 6); // 06/11/2026
+  it("mês corrente e passados = 1 (custo cheio); futuro = 0", () => {
+    expect(fracaoCustoDoMes("2026-11-01", hoje)).toBe(1);
+    expect(fracaoCustoDoMes("2026-10-01", hoje)).toBe(1);
+    expect(fracaoCustoDoMes("2026-12-01", hoje)).toBe(0);
+  });
+});
 
 describe("custoDoRecorte", () => {
   const hoje = new Date(2026, 10, 6); // 06/11/2026
@@ -52,10 +61,15 @@ describe("custoDoRecorte", () => {
   it("trimestre fechado = soma dos meses", () => {
     expect(custoDoRecorte({ de: "2026-07-01", ate: "2026-09-30" }, custos, hoje)).toEqual({ total: 600, fracao: 3, completo: true });
   });
-  it("mês corrente = proporcional aos dias decorridos", () => {
+  it("mês corrente = custo do mês cheio, fixo (não pelos dias corridos)", () => {
     const r = custoDoRecorte({ de: "2026-11-01", ate: "2026-11-30" }, custos, hoje);
-    expect(r.fracao).toBeCloseTo(6 / 30);
-    expect(r.total).toBeCloseTo(300 * (6 / 30));
+    expect(r.fracao).toBe(1);
+    expect(r.total).toBe(300);
+  });
+  it("mês futuro fica de fora do custo", () => {
+    const r = custoDoRecorte({ de: "2026-11-01", ate: "2026-12-31" }, custos, hoje);
+    expect(r.fracao).toBe(1);
+    expect(r.total).toBe(300);
   });
   it("intervalo livre pega a fração de cada mês", () => {
     const r = custoDoRecorte({ de: "2026-09-16", ate: "2026-10-31" }, custos, hoje);

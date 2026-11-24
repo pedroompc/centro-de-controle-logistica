@@ -240,7 +240,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | nu
           {...card("fat")}
           rotulo="Custo ÷ faturamento líquido"
           valor={ind.sobreFat === null ? "—" : formatPercent(ind.sobreFat, 2)}
-          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.ref?.parcial ? " · custo proporcional aos dias corridos" : ""}`}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.ref?.parcial ? " · custo do mês cheio" : ""}`}
         />
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -360,7 +360,7 @@ function VisaoCusto({ dados, dia }: { dados: DadosBIMotoristas; dia: string | nu
       )}
 
       {sub === "fat" && (
-        <Bloco titulo="Custo ÷ faturamento líquido · mês a mês" direita={<Dica>faturamento líquido da rotina 111 · mês corrente proporcional</Dica>}>
+        <Bloco titulo="Custo ÷ faturamento líquido · mês a mês" direita={<Dica>faturamento líquido da rotina 111 · mês corrente com o custo do mês cheio</Dica>}>
           {serie("fat", 240)}
         </Bloco>
       )}

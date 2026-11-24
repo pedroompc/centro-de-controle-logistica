@@ -51,7 +51,7 @@ export function VisaoCusto({ dados }: { dados: DadosBIAbastecimento }) {
         <Mini
           rotulo="Custo ÷ faturamento líquido"
           valor={sobreFat === null ? "—" : formatPercent(sobreFat, 2)}
-          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.custoPeriodo !== null && dados.fracaoMes % 1 !== 0 ? " · custo proporcional aos dias corridos" : ""}`}
+          sub={dados.faturamentoLiquido === null ? "faturamento indisponível" : `fat. líquido ${semCentavos(dados.faturamentoLiquido)}${dados.custoPeriodo !== null && dados.fracaoMes % 1 !== 0 ? " · custo proporcional aos dias do período" : ""}`}
         />
       </div>
       <div className="flex items-center gap-3 text-xs">

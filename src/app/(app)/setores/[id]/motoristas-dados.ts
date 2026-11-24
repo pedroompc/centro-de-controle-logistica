@@ -10,7 +10,7 @@ import { lerCadastroFrota } from "@/data/frota-custos";
 import type { CadastroFrota } from "@/domain/frota-custo";
 import { kmDasViagens, mapaKmDia, type LinhaHodometro } from "@/domain/frota";
 import { INICIO_HISTORICO, type Periodo, mesProximo, mesesDoPeriodo, periodoAberto, periodoAnterior, primeiroDiaDoMes, tipoPeriodo } from "@/domain/periodo";
-import { custoDoRecorte } from "@/domain/custo-periodo";
+import { custoDoRecorte, fracaoCustoDoMes, mesesEquivalentes } from "@/domain/custo-periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
 import { cidadesPorMotorista, papelMotoristas, porMotorista, resumoDevolucao, totaisEntregas, type CidadesDoMotorista, type DevolucaoMotDia, type ResumoMotorista, type ViagemEntrega } from "@/domain/motoristas";
@@ -22,7 +22,7 @@ import { lembrar, ttlDoPeriodo } from "@/lib/cache-memoria";
 export interface PontoHistoricoMot {
   mes: string;
   custo: number | null; // folha da foto do mês + equipamentos de hoje (mês cheio)
-  custoPeriodo: number | null; // custo × fração do mês (mês corrente proporcional)
+  custoPeriodo: number | null; // custo do mês (mês corrente cheio, fixo)
   faturamentoLiquido: number | null;
   viagens: number | null;
   entregas: number | null;
@@ -54,7 +54,8 @@ export interface DadosBIMotoristas {
   pessoas: PessoaBI[];
   equipamentos: Equipamento[];
   serie: PontoCustoSetor[];
-  fracaoMes: number;
+  fracaoMes: number; // meses de custo do recorte (mês corrente = 1: custo fixo do mês)
+  fracaoDecorrida: number; // parte do recorte já decorrida (base do custo de 1 dia)
   faturamentoLiquido: number | null;
   historico: PontoHistoricoMot[];
   ref: PontoHistoricoMot | null; // o recorte: custo = custo médio por mês (custo × fracaoMes = custo do recorte)
@@ -144,7 +145,9 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   const serie = serieCustoSetor(meses, fotos.filter((f) => mesmoSetor(f.setor, setor.nome)), atual, { pessoas: pessoas.length, folha: pessoas.reduce((t, y) => t + y.custo, 0) });
   const custoPorMes = new Map(serie.map((p) => [p.mes, p.folha === null ? null : p.folha + custoEquip]));
   const recorte = custoDoRecorte(periodo, custoPorMes, hoje);
-  const fracaoMes = mensal ? fracaoDoMes(mes, hoje) : recorte.fracao;
+  // Custo do mês corrente entra cheio (fixo); a fração decorrida só serve ao custo de 1 dia.
+  const fracaoMes = mensal ? fracaoCustoDoMes(mes, hoje) : recorte.fracao;
+  const fracaoDecorrida = mensal ? fracaoDoMes(mes, hoje) : mesesEquivalentes(periodo, hoje);
 
   const porMes = new Map((mesesW ?? []).map((m) => [m.mes, m]));
   const historico: PontoHistoricoMot[] = serie
@@ -155,7 +158,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
       return {
         mes: p.mes,
         custo,
-        custoPeriodo: custo === null ? null : custo * fracaoDoMes(p.mes, hoje),
+        custoPeriodo: custo === null ? null : custo * fracaoCustoDoMes(p.mes, hoje),
         faturamentoLiquido: mensal && p.mes === mes ? (fatMes?.vendaLiquida ?? null) : (fatFotos.get(p.mes) ?? null),
         viagens: w?.viagens ?? null,
         entregas: w?.entregas ?? null,
@@ -240,6 +243,7 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     equipamentos: equip,
     serie,
     fracaoMes,
+    fracaoDecorrida,
     faturamentoLiquido: fatMes?.vendaLiquida ?? null,
     historico,
     ref,

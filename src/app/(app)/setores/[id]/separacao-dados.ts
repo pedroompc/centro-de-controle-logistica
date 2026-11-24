@@ -9,7 +9,7 @@ import {
   INICIO_HISTORICO, type Periodo, eixoDoPeriodo, formatMesAno, mesAnterior, mesProximo, mesesDoPeriodo, periodoAberto, periodoAnterior, periodoDoMes,
   primeiroDiaDoMes, rotuloCurto, tipoPeriodo,
 } from "@/domain/periodo";
-import { custoDoRecorte } from "@/domain/custo-periodo";
+import { custoDoRecorte, fracaoCustoDoMes, mesesEquivalentes } from "@/domain/custo-periodo";
 import { fracaoDoMes } from "@/domain/recebimento";
 import {
   mesmoSetor, papelSeparacao, serieCustoSetor, resolverTurnos, skusPorTurnoDia, porSeparador, porConferente, linhasPorHoraDoGrupo, sinalOperador,
@@ -28,7 +28,7 @@ const INICIO_SEPARADOR = "2026-08-01";
 export interface PontoHistorico {
   mes: string;
   custo: number | null; // folha da foto do mês + equipamentos de hoje (mês cheio)
-  custoPeriodo: number | null; // custo × fração do mês (mês corrente proporcional)
+  custoPeriodo: number | null; // custo do mês (mês corrente cheio, fixo)
   faturamentoLiquido: number | null;
   linhas: number | null;
   kg: number | null;
@@ -89,7 +89,8 @@ export interface DadosBISeparacao {
   pessoas: PessoaBI[]; // cadastro ATUAL (não há histórico por pessoa)
   equipamentos: Equipamento[];
   serie: PontoCustoSetor[];
-  fracaoMes: number; // meses equivalentes do recorte (mês corrente = fração decorrida)
+  fracaoMes: number; // meses de custo do recorte (mês corrente = 1: custo fixo do mês)
+  fracaoDecorrida: number; // parte do recorte já decorrida (base do custo de 1 dia)
   faturamentoLiquido: number | null;
   historico: PontoHistorico[];
   ref: PontoHistorico | null; // o recorte: custo = custo médio por mês (custo × fracaoMes = custo do recorte)
@@ -186,7 +187,9 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   // Custo por mês (folha da foto + equipamentos de hoje) levado ao recorte.
   const custoPorMes = new Map(serie.map((p) => [p.mes, p.folha === null ? null : p.folha + custoEquip]));
   const recorte = custoDoRecorte(periodo, custoPorMes, hoje);
-  const fracaoMes = mensal ? fracaoDoMes(mes, hoje) : recorte.fracao;
+  // Custo do mês corrente entra cheio (fixo); a fração decorrida só serve ao custo de 1 dia.
+  const fracaoMes = mensal ? fracaoCustoDoMes(mes, hoje) : recorte.fracao;
+  const fracaoDecorrida = mensal ? fracaoDoMes(mes, hoje) : mesesEquivalentes(periodo, hoje);
 
   // Usuário do Harpia → funcionário → turno do cadastro (ligação manual vence; senão pelo nome).
   const usuarios = ok(harpia) ? harpia.usuarios : [];
@@ -281,7 +284,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     .filter((p) => p.mes <= mes)
     .map((p) => {
       const custo = p.folha === null ? null : p.folha + custoEquip;
-      const fr = fracaoDoMes(p.mes, hoje);
+      const fr = fracaoCustoDoMes(p.mes, hoje);
       const pm = prodMes.get(p.mes);
       return {
         mes: p.mes,
@@ -347,6 +350,7 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     equipamentos: equip,
     serie,
     fracaoMes,
+    fracaoDecorrida,
     faturamentoLiquido: fatMes?.vendaLiquida ?? null,
     historico,
     ref,

@@ -1,11 +1,10 @@
 import { listarEquipamentos } from "@/data/equipamentos";
 import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
-import { fracaoDoMes } from "@/domain/recebimento";
 import { lerAbastecimentoHarpia, type DadosHarpiaAbastecimento } from "@/data/harpia-abastecimento";
 import { isAdmin } from "@/data/auth";
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { INICIO_HISTORICO, type Periodo, mesProximo, mesesDoPeriodo, periodoAnterior, primeiroDiaDoMes, tipoPeriodo } from "@/domain/periodo";
-import { custoDoRecorte } from "@/domain/custo-periodo";
+import { custoDoRecorte, fracaoCustoDoMes } from "@/domain/custo-periodo";
 import { mesmoSetor, serieCustoSetor, type PontoCustoSetor } from "@/domain/separacao";
 import { papelAbastecimento } from "@/domain/abastecimento";
 import type { Equipamento, Funcionario } from "@/domain/types";
@@ -31,11 +30,11 @@ export interface DadosBIAbastecimento {
   admin: boolean;
   /** Venda líquida do mês (Winthor ao vivo, como o card do dashboard); null = indisponível. */
   faturamentoLiquido: number | null;
-  /** Meses equivalentes do recorte já decorridos (mês fechado = 1) — o custo entra proporcional. */
+  /** Meses de custo do recorte (mês corrente = 1: custo do mês fixo, não pelos dias corridos). */
   fracaoMes: number;
   /** Custo do card: mês = custo do mês cheio; período = soma proporcional dos meses. */
   custoRecorte: number | null;
-  /** Custo proporcional ao que já correu (base do custo ÷ faturamento); null se faltar foto em algum mês. */
+  /** Custo do recorte (base do custo ÷ faturamento); null se faltar foto em algum mês. */
   custoPeriodo: number | null;
   /** Custo médio por mês do recorte e do recorte anterior (variação). */
   custoMedio: number | null;
@@ -128,10 +127,10 @@ export async function carregarBIAbastecimento(setor: { id: string; nome: string 
     nomes: montarNomesHarpia(usuarios, ligacoes, funcionarios, setor.id, admin),
     admin,
     faturamentoLiquido: faturamento?.vendaLiquida ?? null,
-    fracaoMes: mensal ? fracaoDoMes(mes, hoje) : rec.fracao,
+    fracaoMes: mensal ? fracaoCustoDoMes(mes, hoje) : rec.fracao,
     serie,
     custoRecorte: mensal ? custoMes : rec.total,
-    custoPeriodo: mensal ? (custoMes === null ? null : custoMes * fracaoDoMes(mes, hoje)) : rec.completo ? rec.total : null,
+    custoPeriodo: mensal ? (custoMes === null ? null : custoMes * fracaoCustoDoMes(mes, hoje)) : rec.completo ? rec.total : null,
     custoMedio: mensal ? custoMes : media(rec),
     custoMedioAnterior: mensal ? custoMesAnt : media(recAnt),
     rotuloAnterior: mensal ? "mês anterior" : "período anterior",

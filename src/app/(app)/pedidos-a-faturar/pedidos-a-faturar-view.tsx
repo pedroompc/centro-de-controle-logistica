@@ -47,7 +47,12 @@ function tempoParado(horas: number): string {
 function statusLabel(status: string): string {
   if (status === "L") return "Liberado";
   if (status === "M") return "Montado";
+  if (status === "B") return "Bloqueado";
   return status;
+}
+
+function statusTom(status: string): "gold" | "navy" | "red" {
+  return status === "B" ? "red" : status === "M" ? "gold" : "navy";
 }
 
 /** Opções distintas ordenadas de uma chave string (ignora nulos/vazios). */
@@ -75,7 +80,7 @@ export function PedidosAFaturarView({
   const [regiao, setRegiao] = useState("");
   const [cidade, setCidade] = useState("");
   const [rca, setRca] = useState("");
-  const [status, setStatus] = useState(""); // "" = todos | "L" | "M"
+  const [status, setStatus] = useState(""); // "" = todos | "L" | "M" | "B"
   const [ordenarPor, setOrdenarPor] = useState<ColunaChave>("horasParado");
   const [direcao, setDirecao] = useState<Direcao>("desc");
   // "Mostrar mais" vale para o recorte atual: mudou filtro/ordem, volta a um lote.
@@ -237,6 +242,7 @@ export function PedidosAFaturarView({
               <option value="">Todos os status</option>
               <option value="L">Liberado</option>
               <option value="M">Montado</option>
+              <option value="B">Bloqueado</option>
             </select>
           </div>
         </div>
@@ -313,7 +319,7 @@ export function PedidosAFaturarView({
                     {tempoParado(p.horasParado)}
                   </td>
                   <td className="px-4 py-2.5">
-                    <Pill tone={p.statusWinthor === "M" ? "gold" : "navy"}>{statusLabel(p.statusWinthor)}</Pill>
+                    <Pill tone={statusTom(p.statusWinthor)}>{statusLabel(p.statusWinthor)}</Pill>
                   </td>
                 </tr>
               ))}
@@ -373,7 +379,7 @@ export function PedidosAFaturarView({
                       {" · "}Cód. <span className="tabular-nums text-slate-600">{p.codigoCliente}</span>
                     </p>
                   </div>
-                  <Pill tone={p.statusWinthor === "M" ? "gold" : "navy"}>{statusLabel(p.statusWinthor)}</Pill>
+                  <Pill tone={statusTom(p.statusWinthor)}>{statusLabel(p.statusWinthor)}</Pill>
                 </div>
                 <div className="mt-2.5 flex items-end justify-between gap-3">
                   <div className="min-w-0 text-xs text-slate-500">

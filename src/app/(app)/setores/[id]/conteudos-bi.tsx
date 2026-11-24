@@ -66,7 +66,7 @@ export async function carregarDadosRecebimento(periodo: Periodo): Promise<DadosB
     (mensal ? carregarFatosDescarrego(mes) : carregarFatosDescarregoPeriodo(periodo.de, periodo.ate)).catch(() => null),
     mensal ? Promise.resolve(null) : getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null),
   ]);
-  // Período: a linha de indicadores é montada dos fatos do período + custo proporcional dos meses.
+  // Período: a linha de indicadores é montada dos fatos do período + custo de cada mês na proporção dos dias do período (mês corrente cheio).
   const ref = mensal
     ? undefined
     : (indicadoresDoPeriodo({ periodo, mes, serie, fatos: resumir(fatos ?? []), faturamentoLiquido: fat?.vendaLiquida ?? null }) ?? undefined);

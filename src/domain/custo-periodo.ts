@@ -72,10 +72,23 @@ export interface CustoRecorte {
   completo: boolean;
 }
 
+/** Último dia do mês de `hoje`. */
+const fimDoMes = (hoje: Date) => new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+
+/**
+ * Parte do custo mensal que um mês carrega: até o mês corrente, o custo é o
+ * total do mês, FIXO (não cresce com os dias corridos); mês futuro = 0.
+ */
+export function fracaoCustoDoMes(mesISO: string, hoje: Date = new Date()): number {
+  const [ano, mes] = mesISO.split("-").map(Number);
+  return ano * 12 + (mes - 1) <= hoje.getFullYear() * 12 + hoje.getMonth() ? 1 : 0;
+}
+
 /**
  * Custo mensal (folha da foto do mês + equipamentos) levado a um período
- * qualquer: cada mês entra na proporção dos seus dias dentro do período, já
- * decorridos. Mês sem custo fica de fora e marca o recorte como incompleto.
+ * qualquer: cada mês entra na proporção dos seus dias dentro do período. O mês
+ * corrente conta como já fechado (custo do mês fixo, não pelos dias corridos);
+ * meses futuros ficam de fora. Mês sem custo marca o recorte como incompleto.
  */
 export function custoDoRecorte(
   p: { de: string; ate: string },
@@ -92,7 +105,7 @@ export function custoDoRecorte(
     const mes = `${a}-${String(m).padStart(2, "0")}-01`;
     const dias = new Date(Date.UTC(a, m, 0)).getUTCDate();
     const fimMes = `${mes.slice(0, 8)}${String(dias).padStart(2, "0")}`;
-    const fr = mesesEquivalentes({ de: p.de > mes ? p.de : mes, ate: p.ate < fimMes ? p.ate : fimMes }, hoje);
+    const fr = mesesEquivalentes({ de: p.de > mes ? p.de : mes, ate: p.ate < fimMes ? p.ate : fimMes }, fimDoMes(hoje));
     if (fr > 0) {
       fracao += fr;
       const c = custoPorMes.get(mes);

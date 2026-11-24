@@ -9,7 +9,7 @@
  * diferenciar maiúsculas ("Aj." não casa — o cadastro tem que dizer "Ajudante").
  */
 import type { Equipamento, Funcionario } from "./types";
-import { custoDoRecorte } from "./custo-periodo";
+import { custoDoRecorte, mesesEquivalentes } from "./custo-periodo";
 
 export type GrupoCargo = "ajudante" | "conferente" | "outros";
 
@@ -183,8 +183,9 @@ export interface IndicadoresRecebimento {
   pesoKg: number;
   receitaDescarrego: number; // só descarrego (fornecedor + total do dia), sem diversas
   faturamentoLiquido: number | null; // null = Winthor/foto indisponível
-  fracaoMes: number;
-  custoPeriodo: number; // folha proporcional ao que já correu do mês
+  fracaoMes: number; // parte do mês já decorrida (marca o mês como parcial)
+  fracaoCusto: number; // parte do custo mensal no recorte (mês corrente = 1: custo fixo)
+  custoPeriodo: number; // custo da equipe no recorte
   kgPorAjudante: number | null;
   kgPorAjudanteDia: number | null;
   carrosPorConferente: number | null;
@@ -210,8 +211,9 @@ export function calcularIndicadores(p: {
   receitaDescarrego: number;
   faturamentoLiquido: number | null;
   fracaoMes: number;
+  fracaoCusto: number;
 }): IndicadoresRecebimento {
-  const custoPeriodo = p.equipe.custo * p.fracaoMes;
+  const custoPeriodo = p.equipe.custo * p.fracaoCusto;
   const kgPorAjudante = div(p.pesoKg, p.equipe.ajudantes);
   return {
     ...p,
@@ -259,7 +261,8 @@ export function indicadoresDoPeriodo(p: {
     pesoKg: p.fatos.pesoKg,
     receitaDescarrego: p.fatos.receita,
     faturamentoLiquido: p.faturamentoLiquido,
-    fracaoMes: rec.fracao,
+    fracaoMes: mesesEquivalentes(p.periodo, p.hoje),
+    fracaoCusto: rec.fracao,
   });
 }
 

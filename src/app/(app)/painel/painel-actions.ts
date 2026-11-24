@@ -1,5 +1,6 @@
 "use server";
 
+import { fracaoCustoDoMes } from "@/domain/custo-periodo";
 import { assertAdmin, isAdmin } from "@/data/auth";
 import { lerViagensMes } from "@/data/winthor-entregas";
 import { lerHodometroPeriodo } from "@/data/frota-km";
@@ -447,6 +448,7 @@ export async function carregarRecebimento(): Promise<IndicadoresRecebimento[]> {
       receitaDescarrego: d?.receita ?? 0,
       faturamentoLiquido: vendas.get(x) ?? null,
       fracaoMes: fracaoDoMes(x),
+      fracaoCusto: fracaoCustoDoMes(x),
     });
   });
 }

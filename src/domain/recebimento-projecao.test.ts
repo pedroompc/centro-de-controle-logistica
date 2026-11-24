@@ -40,6 +40,7 @@ const mes = (m: string, carros: number, fr = 1) =>
     receitaDescarrego: carros * 1_000,
     faturamentoLiquido: 4_000_000,
     fracaoMes: fr,
+    fracaoCusto: fr,
   });
 const serie = [mes("2026-07-01", 140), mes("2026-08-01", 150), mes("2026-09-01", 160), mes("2026-10-01", 10, 0.1)];
 const base = baseDoRitmo(serie, { ajudante: 3000, conferente: 3500 })!;

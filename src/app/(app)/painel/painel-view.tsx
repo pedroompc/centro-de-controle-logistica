@@ -221,7 +221,7 @@ export function PlacarRecebimento({
       <Kpi
         label="Custo do recebimento"
         value={formatBRL(r.equipe.custo)}
-        hint={`${r.equipe.custoEquipamentos ? `folha + equipamentos ${formatBRL(r.equipe.custoEquipamentos)}` : "folha do mês"}${parcial ? ` · ${formatBRL(r.custoPeriodo)} até hoje` : ""}`}
+        hint={`${r.equipe.custoEquipamentos ? `folha + equipamentos ${formatBRL(r.equipe.custoEquipamentos)}` : "folha do mês"}`}
       />
       <Kpi
         label="Kg por ajudante"
@@ -239,7 +239,7 @@ export function PlacarRecebimento({
       <Kpi
         label="Custo / fat. líquido"
         value={r.custoSobreFaturamento === null ? "—" : formatPercent(r.custoSobreFaturamento, 2)}
-        hint={parcial ? "custo proporcional ao mês" : "custo ÷ faturamento líquido"}
+        hint="custo ÷ faturamento líquido"
         tone={tom("custoSobreFaturamento")}
       />
       <Kpi

@@ -107,6 +107,7 @@ describe("calcularIndicadores", () => {
       receitaDescarrego: 150_000,
       faturamentoLiquido: 3_000_000,
       fracaoMes: 1,
+      fracaoCusto: 1,
     });
     expect(r.kgPorAjudante).toBe(200_000);
     expect(r.kgPorAjudanteDia).toBe(10_000);
@@ -130,6 +131,7 @@ describe("calcularIndicadores", () => {
       receitaDescarrego: 0,
       faturamentoLiquido: null,
       fracaoMes: 0.5,
+      fracaoCusto: 0.5,
     });
     expect(r.custoPeriodo).toBe(15_000);
     expect(r.kgPorAjudante).toBeNull();
@@ -156,7 +158,7 @@ describe("indicesMelhores", () => {
 describe("ehMelhorDaJanela", () => {
   const base = { setor: "Recebimento", total: 3, ajudantes: 2, conferentes: 1, custo: 3000 };
   const mk = (mes: string, receita: number) =>
-    calcularIndicadores({ mes, equipe: base, equipeEstimada: false, diasDescarrego: 20, carros: 100, pesoKg: 1_000_000, receitaDescarrego: receita, faturamentoLiquido: null, fracaoMes: 1 });
+    calcularIndicadores({ mes, equipe: base, equipeEstimada: false, diasDescarrego: 20, carros: 100, pesoKg: 1_000_000, receitaDescarrego: receita, faturamentoLiquido: null, fracaoMes: 1, fracaoCusto: 1 });
   const serie = [mk("2026-07-01", 10_000), mk("2026-08-01", 20_000)];
   it("custo/descarrego menor vence; resultado maior vence", () => {
     expect(ehMelhorDaJanela(serie, "2026-08-01", "custoSobreDescarrego")).toBe(true);
@@ -242,7 +244,7 @@ import { indicadoresDoPeriodo, calcularIndicadores as calc } from "./recebimento
 describe("indicadoresDoPeriodo", () => {
   const eq = (custo: number) => ({ setor: "RECEBIMENTO", total: 10, ajudantes: 6, conferentes: 2, custo });
   const ponto = (mes: string, custo: number) =>
-    calc({ mes, equipe: eq(custo), equipeEstimada: false, diasDescarrego: 20, carros: 100, pesoKg: 1e6, receitaDescarrego: 50_000, faturamentoLiquido: 1e7, fracaoMes: 1 });
+    calc({ mes, equipe: eq(custo), equipeEstimada: false, diasDescarrego: 20, carros: 100, pesoKg: 1e6, receitaDescarrego: 50_000, faturamentoLiquido: 1e7, fracaoMes: 1, fracaoCusto: 1 });
   const serie = [ponto("2026-07-01", 30_000), ponto("2026-08-01", 30_000), ponto("2026-09-01", 36_000)];
   it("trimestre: custo soma os meses e as razões usam os fatos do período", () => {
     const r = indicadoresDoPeriodo({

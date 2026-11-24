@@ -14,13 +14,15 @@ export function indicadoresSeparacao(d: DadosBISeparacao, dia: string | null) {
   const h = d.ref;
   const totMes = p ? totaisProducao(p.linhas, p.dias) : null;
   const tot = p ? totaisProducao(p.linhas, p.dias, dia) : null;
-  const custo = custoDoPeriodo(h?.custo ?? null, d.fracaoMes, totMes?.dias ?? 0, !!dia);
+  // Mês/período: custo cheio (fixo). 1 dia: custo do que já correu ÷ dias com separação.
+  const fr = dia ? d.fracaoDecorrida : d.fracaoMes;
+  const custo = custoDoPeriodo(h?.custo ?? null, fr, totMes?.dias ?? 0, !!dia);
   const unit = tot ? custosUnitarios(custo, tot) : custosUnitarios(null, { pedidos: 0, linhas: 0, kg: 0, caixas: 0 });
   const sobreFat = custoSobreFaturamento(h?.custoPeriodo ?? null, d.faturamentoLiquido);
   const erros = p ? resumoErros(p.erros, dia) : null;
   const folha = d.folhaRef;
   const turnos = p
-    ? resumoPorTurno({ linhas: p.linhas, erros: p.erros, equipe: p.equipe, custoFolhaPeriodo: custoDoPeriodo(folha, d.fracaoMes, totMes?.dias ?? 0, !!dia), skus: p.skusTurno, dia })
+    ? resumoPorTurno({ linhas: p.linhas, erros: p.erros, equipe: p.equipe, custoFolhaPeriodo: custoDoPeriodo(folha, fr, totMes?.dias ?? 0, !!dia), skus: p.skusTurno, dia })
     : [];
   return { p, h, tot, totMes, custo, unit, sobreFat, erros, turnos, taxaErro: erros && tot ? porMilLinhas(erros.separador.itens, tot.linhas) : null };
 }

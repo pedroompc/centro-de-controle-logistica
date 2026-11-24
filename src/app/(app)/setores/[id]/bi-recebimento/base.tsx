@@ -43,7 +43,7 @@ export const PAPEIS: PapelBI[] = ORDEM_PAPEL.map((id) => ({ id, ...PAPEL[id] }))
 export interface DadosBI {
   periodo: Periodo; // recorte na tela
   mensal: boolean; // recorte = um mês inteiro
-  /** Período: indicadores do recorte (fatos do período + custo proporcional). Mês: vem da série. */
+  /** Período: indicadores do recorte (fatos do período + custo na proporção dos dias do período; mês corrente cheio). Mês: vem da série. */
   ref?: IndicadoresRecebimento;
   mes: string; // mês de referência "yyyy-mm-01" (último do recorte até o corrente)
   serie: IndicadoresRecebimento[]; // julho/2026 → mês corrente (o filtrado já com faturamento ao vivo)
