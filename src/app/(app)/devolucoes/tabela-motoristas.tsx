@@ -167,7 +167,7 @@ export default function TabelaMotoristas({
       ? "Nenhum motorista da casa no período."
       : tipo === "T"
         ? "Nenhum motorista terceirizado no período."
-        : "Sem entregas em carga no período.";
+        : "Sem notas entregues em carga no período.";
 
   return (
     <Card className="overflow-hidden">
@@ -179,7 +179,7 @@ export default function TabelaMotoristas({
       />
       {pior && (
         <p className="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
-          Maior taxa (com 50+ entregas):{" "}
+          Maior taxa (com 50+ notas entregues):{" "}
           <span className="font-semibold text-rose-600">{pior.nome}</span> —{" "}
           {formatPercent(pior.taxa / 100)} ({pior.devolvidas} de {pior.expedidas}).
         </p>
@@ -195,7 +195,7 @@ export default function TabelaMotoristas({
           <option value="taxa">Taxa de devolução</option>
           <option value="valorExpedido">Faturado</option>
           <option value="valorDevolvido">Valor devolvido</option>
-          <option value="expedidas">Entregas</option>
+          <option value="expedidas">Notas entregues</option>
           <option value="devolvidas">Notas devolvidas</option>
           <option value="pdvsDevolvidos">PDVs devolvidos</option>
         </select>
@@ -209,7 +209,7 @@ export default function TabelaMotoristas({
               <th className="w-10 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">#</th>
               <th className="min-w-[180px] px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Motorista</th>
               <Th col="valorExpedido" rotulo="Faturado" sort={sort} onSort={onSort} />
-              <Th col="expedidas" rotulo="Entregas" sort={sort} onSort={onSort} />
+              <Th col="expedidas" rotulo="Notas entregues" sort={sort} onSort={onSort} />
               <Th col="devolvidas" rotulo="Notas dev." sort={sort} onSort={onSort} />
               <Th col="pdvsDevolvidos" rotulo="PDVs dev." sort={sort} onSort={onSort} />
               <Th col="taxa" rotulo="Taxa" sort={sort} onSort={onSort} />
@@ -339,7 +339,7 @@ export default function TabelaMotoristas({
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 pl-[3.25rem] text-xs text-slate-500">
                     <span>
-                      Entregas <b className="tabular-nums text-slate-700">{m.expedidas}</b>
+                      Notas entregues <b className="tabular-nums text-slate-700">{m.expedidas}</b>
                     </span>
                     <span>
                       Notas dev. <b className="tabular-nums text-slate-700">{m.devolvidas}</b>

@@ -134,7 +134,7 @@ export function relatorioMotoristas(
   const kpis = `<p class="legenda">${so != null ? "Motorista" : "Motoristas — só notas entregues em carga"}</p>` + indicadores([
     { rotulo: so != null ? "Motorista" : "Motoristas", valor: so != null ? (lista[0]?.nome ?? "—") : num(lista.length) },
     { rotulo: "Faturado", valor: formatBRL(faturado), sub: so != null ? `representa ${share(faturado)} do faturamento` : undefined },
-    { rotulo: "Entregas", valor: num(entregas) },
+    { rotulo: "Notas entregues", valor: num(entregas) },
     { rotulo: "Notas devolvidas", valor: num(devolvidas), sub: entregas > 0 ? `taxa ${pct(devolvidas / entregas)}` : undefined },
     { rotulo: "PDVs devolvidos", valor: num(pdvsDev), sub: so != null && lista[0] ? `de ${num(lista[0].pdvs)} atendidos` : undefined },
     { rotulo: "Valor devolvido", valor: formatBRL(valor), sub: so != null ? `${shareDev(valor)} da devolução` : undefined },
@@ -144,7 +144,7 @@ export function relatorioMotoristas(
     so != null
       ? ""
       : `<h2>Ranking dos motoristas</h2>
-<table><thead><tr><th class="c">#</th><th>Motorista</th><th>Vínculo</th><th class="n">Faturado</th><th class="n">% do faturamento</th><th class="n">Entregas</th><th class="n">Notas dev.</th><th class="n">PDVs dev.</th><th class="n">Taxa</th><th class="n">Valor devolvido</th><th class="n">% da devolução</th></tr></thead><tbody>
+<table><thead><tr><th class="c">#</th><th>Motorista</th><th>Vínculo</th><th class="n">Faturado</th><th class="n">% do faturamento</th><th class="n">Notas entregues</th><th class="n">Notas dev.</th><th class="n">PDVs dev.</th><th class="n">Taxa</th><th class="n">Valor devolvido</th><th class="n">% da devolução</th></tr></thead><tbody>
 ${lista
   .map(
     (m, i) => `<tr><td class="c">${i + 1}</td><td><b>${esc(m.nome)}</b> <span class="cod">${m.codMotorista}</span></td><td>${vinculo(m.tipo)}</td><td class="n">${formatBRL(m.valorExpedido)}</td><td class="n">${share(m.valorExpedido)}</td><td class="n">${num(m.expedidas)}</td><td class="n">${num(m.devolvidas)}</td><td class="n">${num(m.pdvsDevolvidos)}/${num(m.pdvs)}</td><td class="n ${m.taxa >= 15 ? "alto" : m.taxa >= 8 ? "medio" : ""}">${pct(m.taxa / 100)}</td><td class="n">${formatBRL(m.valorDevolvido)}</td><td class="n">${shareDev(m.valorDevolvido)}</td></tr>`,
@@ -158,7 +158,7 @@ ${lista
       const mot = motivos[m.codMotorista] ?? [];
       return `<section class="ficha">
 <div class="ficha-cab"><div><b>${esc(m.nome)}</b> <span class="cod">Cód. ${m.codMotorista} · ${vinculo(m.tipo)}</span></div>
-<div class="ficha-num"><span>Faturado <b>${formatBRL(m.valorExpedido)}</b> (${share(m.valorExpedido)})</span><span>Entregas <b>${num(m.expedidas)}</b></span><span>Notas dev. <b>${num(m.devolvidas)}</b></span><span>PDVs dev. <b>${num(m.pdvsDevolvidos)}/${num(m.pdvs)}</b></span><span>Taxa <b>${pct(m.taxa / 100)}</b></span><span>Devolvido <b>${formatBRL(m.valorDevolvido)}</b> (${shareDev(m.valorDevolvido)} da devolução)</span></div></div>
+<div class="ficha-num"><span>Faturado <b>${formatBRL(m.valorExpedido)}</b> (${share(m.valorExpedido)})</span><span>Notas entregues <b>${num(m.expedidas)}</b></span><span>Notas dev. <b>${num(m.devolvidas)}</b></span><span>PDVs dev. <b>${num(m.pdvsDevolvidos)}/${num(m.pdvs)}</b></span><span>Taxa <b>${pct(m.taxa / 100)}</b></span><span>Devolvido <b>${formatBRL(m.valorDevolvido)}</b> (${shareDev(m.valorDevolvido)} da devolução)</span></div></div>
 ${mot.length ? `<p class="setores">${linhaSetores(mot)}</p>` : ""}
 ${tabelaMotivos(mot)}
 </section>`;
