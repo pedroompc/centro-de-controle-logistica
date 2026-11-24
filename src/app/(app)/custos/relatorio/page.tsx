@@ -59,9 +59,9 @@ export default async function RelatorioCustosPage() {
             sub={fatMesProjetado === null ? "Winthor indisponível" : `no ritmo, o mês fecha em ${formatBRL(fatMesProjetado)}`}
           />
           <Totalizador
-            rotulo="Custo a cada R$ 100 faturados"
-            valor={fatMesProjetado ? formatBRL((custoMes.totalComAluguel / fatMesProjetado) * 100) : "—"}
-            sub={`${pct(fracao(custoMes.totalComAluguel, fatMesProjetado))} do faturamento, no ritmo do mês`}
+            rotulo="Custo logístico"
+            valor={pct(fracao(custoMes.totalComAluguel, fatMesProjetado), 2)}
+            sub={fatMesProjetado ? `do faturamento · custo do mês ÷ ${formatBRL(fatMesProjetado)} (fechamento no ritmo)` : "Winthor indisponível"}
           />
           <Totalizador
             rotulo={`Média · ${n} ${n === 1 ? "mês fechado" : "meses fechados"}`}

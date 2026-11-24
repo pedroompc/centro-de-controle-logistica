@@ -2,9 +2,9 @@
 // dividido em três grupos que somam 100%, e o peso de cada um sobre o
 // faturamento (venda líquida, a mesma do Início).
 //
-//   Galpão         — quem trabalha dentro do galpão + equipamentos + casa
-//   Entrega        — motoristas, ajudantes de entrega e toda a frota
-//   Galpão Administrativo — monitoramento (roteiristas) e ADM (gerência/escritório)
+//   Logística Depósito       — quem trabalha dentro do galpão + equipamentos + casa
+//   Logística Entrega        — motoristas, ajudantes de entrega e toda a frota
+//   Logística Administrativo — monitoramento (roteiristas) e ADM (gerência/escritório)
 //
 // O aluguel do galpão (lançamento "Galpão") fica FORA dos três grupos: é a
 // estrutura, mostrado à parte no topo. Ele entra no custo logístico total (e no
@@ -13,9 +13,9 @@
 export type GrupoCusto = "galpao" | "entrega" | "administrativo";
 
 export const GRUPOS: { chave: GrupoCusto; label: string }[] = [
-  { chave: "galpao", label: "Galpão" },
-  { chave: "entrega", label: "Entrega" },
-  { chave: "administrativo", label: "Galpão Administrativo" },
+  { chave: "galpao", label: "Logística Depósito" },
+  { chave: "entrega", label: "Logística Entrega" },
+  { chave: "administrativo", label: "Logística Administrativo" },
 ];
 
 const norm = (s: string) =>
