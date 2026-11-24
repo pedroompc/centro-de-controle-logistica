@@ -48,7 +48,7 @@ export default async function RelatorioCustosPage() {
           {receitaMes !== null && (
             <>
               <span className="mx-3 text-white/25">·</span>
-              Receita: <span className="font-[family-name:var(--font-sora)] font-bold tabular-nums text-emerald-400">{formatBRL(receitaMes)}</span>
+              <span title="Recebido + abonado (FOB) ao preço praticado">Receita:</span> <span className="font-[family-name:var(--font-sora)] font-bold tabular-nums text-emerald-400">{formatBRL(receitaMes)}</span>
             </>
           )}
         </p>

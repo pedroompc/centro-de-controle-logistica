@@ -302,7 +302,7 @@ export default async function Dashboard({
         <StatCard
           label={mesUnico ? "Custo líquido do mês" : "Custo líquido do período"}
           value={custoLiquidoMes === null ? semDado : formatBRL(custoLiquidoMes)}
-          hint={receitasMes === null ? undefined : `Receitas: ${formatBRL(receitasMes)}`}
+          hint={receitasMes === null ? undefined : `Receitas (c/ abonado): ${formatBRL(receitasMes)}`}
           accent="green"
           href={hrefPeriodo("/receitas")}
           extra={chips(custoLiquidoMes, liquidoDe(custoCmp, receitasCmp), false)}

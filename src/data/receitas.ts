@@ -6,8 +6,8 @@ import type { Database } from "@/lib/supabase/database.types";
 import { mapReceita } from "./mappers";
 import { buscarTodas } from "./paginar";
 import { assertAdmin } from "./auth";
-import { liderDoCarro, valorDaNota } from "@/domain/receitas-metrics";
-import { inicioFimDoMes, primeiroDiaDoMes } from "@/domain/periodo";
+import { liderDoCarro, valorDaNota, precosPraticados, resumoAbonado } from "@/domain/receitas-metrics";
+import { inicioFimDoMes, primeiroDiaDoMes, somarDias } from "@/domain/periodo";
 import { lerConfig } from "./config-descarregamento";
 import { totalDiversasDoPeriodo, serieDiversasMensais } from "./receitas-diversas";
 import type { Receita, DescarregamentoTipo } from "@/domain/types";
@@ -49,8 +49,28 @@ export async function receitaTotalDoMes(mes: string): Promise<number> {
   return receitaTotalDoPeriodo(inicio, fim);
 }
 
-/** Receita total de um intervalo [inicio, fim] — mesmas três origens do mês. */
+/**
+ * Abonado (FOB) do intervalo: notas isentas valorizadas ao preço praticado nas
+ * notas cobradas dos 90 dias até o fim do intervalo (mesma regra da tela Receitas).
+ */
+export async function abonadoDoPeriodo(inicio: string, fim: string): Promise<number> {
+  const ini90 = somarDias(fim, -90);
+  const ref = await listarReceitasDoPeriodo(ini90 < inicio ? ini90 : inicio, fim);
+  const precos = precosPraticados(ref.filter((r) => r.data >= ini90));
+  return resumoAbonado(ref.filter((r) => r.data >= inicio), precos).valor;
+}
+
+/**
+ * Receita total do intervalo = recebida (três origens) + abonado (FOB) se cobrado.
+ * É a receita total usada no projeto inteiro (custo líquido, Painel, Relatório).
+ */
 export async function receitaTotalDoPeriodo(inicio: string, fim: string): Promise<number> {
+  const [recebida, abonado] = await Promise.all([receitaRecebidaDoPeriodo(inicio, fim), abonadoDoPeriodo(inicio, fim)]);
+  return recebida + abonado;
+}
+
+/** Só o que entrou de fato no intervalo [inicio, fim] — três origens, sem o abonado. */
+export async function receitaRecebidaDoPeriodo(inicio: string, fim: string): Promise<number> {
   const supabase = await createClient();
   const [descarregamento, diarios, diversas] = await Promise.all([
     supabase
@@ -76,18 +96,19 @@ export async function receitaTotalDoPeriodo(inicio: string, fim: string): Promis
  * Série mensal somando as três origens — precisa bater com o total exibido logo
  * acima do gráfico, senão o usuário vê dois números diferentes para a mesma coisa.
  */
-export async function serieReceitasMensais(qtd = 12): Promise<{ mes: string; valor: number }[]> {
+export async function serieReceitasMensais(qtd = 12): Promise<{ mes: string; valor: number; recebido: number; abonado: number }[]> {
   const supabase = await createClient();
   // Sem filtro de período: passa de 1000 linhas rápido, então pagina.
-  const [desc, diarios, diversas] = await Promise.all([
+  const [descRows, diarios, diversas] = await Promise.all([
     buscarTodas((de, ate) =>
-      supabase.from("receitas_descarregamento").select("data, receita").order("id").range(de, ate),
+      supabase.from("receitas_descarregamento").select(COLS).order("id").range(de, ate),
     ),
     buscarTodas((de, ate) =>
       supabase.from("receitas_descarregamento_diario").select("data, receita").order("id").range(de, ate),
     ),
     serieDiversasMensais(),
   ]);
+  const desc = descRows.map((row) => mapReceita(row as Parameters<typeof mapReceita>[0]));
   const porMes = new Map<string, number>();
   for (const r of desc) {
     const mes = primeiroDiaDoMes(String(r.data));
@@ -100,10 +121,20 @@ export async function serieReceitasMensais(qtd = 12): Promise<{ mes: string; val
   for (const d of diversas) {
     porMes.set(d.mes, (porMes.get(d.mes) ?? 0) + d.valor);
   }
+  // Abonado de cada mês: isentas do mês ao preço praticado dos 90 dias até o fim dele.
+  const abonadoDo = (mes: string) => {
+    const { fim } = inicioFimDoMes(mes);
+    const ini90 = somarDias(fim, -90);
+    const precos = precosPraticados(desc.filter((r) => r.data >= ini90 && r.data <= fim));
+    return resumoAbonado(desc.filter((r) => r.data >= mes && r.data <= fim), precos).valor;
+  };
   return [...porMes.entries()]
-    .map(([mes, valor]) => ({ mes, valor }))
-    .sort((a, b) => a.mes.localeCompare(b.mes))
-    .slice(-qtd);
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-qtd)
+    .map(([mes, recebido]) => {
+      const abonado = abonadoDo(mes);
+      return { mes, valor: recebido + abonado, recebido, abonado };
+    });
 }
 
 function parseForm(formData: FormData) {

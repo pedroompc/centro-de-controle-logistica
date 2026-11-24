@@ -258,7 +258,7 @@ export default async function ReceitasPage({
           {!filtrandoDescarregamento && comparacao && (
             <ComparaPeriodos
               className="mt-1.5 px-1"
-              itens={[{ c: compararPct(resumo.total, totalCmp, true), referencia: `vs ${rotuloCurto(comparacao.periodo)}` }]}
+              itens={[{ c: compararPct(resumo.total + abonado.valor, totalCmp, true), referencia: `vs ${rotuloCurto(comparacao.periodo)}` }]}
             />
           )}
         </div>

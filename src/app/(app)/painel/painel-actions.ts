@@ -13,7 +13,7 @@ import { getNucleoDevolucao, getResumoCoorteFaturamento, getDevolucaoPorBairro }
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
 import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
-import { listarReceitasDoMes, listarReceitasDoPeriodo, receitaTotalDoPeriodo, serieReceitasMensais } from "@/data/receitas";
+import { abonadoDoPeriodo, listarReceitasDoMes, listarReceitasDoPeriodo, receitaTotalDoPeriodo, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes, listarTotaisDiariosDoPeriodo } from "@/data/receitas-diario";
 import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
@@ -282,7 +282,9 @@ export interface ResumoReceitas {
   diarios: number; // origem: totais diários de descarregamento
   diversas: number; // origem: reciclagem etc.
   serie: { mes: string; valor: number }[]; // últimos meses (soma das 3 origens)
-  totalAnterior: number | null; // mês anterior comparável (aberto = até o mesmo dia)
+  totalAnterior: number | null; // mês anterior comparável (aberto = até o mesmo dia), com o abonado
+  recebido: number; // só o que entrou de fato (sem o abonado)
+  abonado: number; // isentas (FOB) ao preço praticado
 }
 
 /** Receitas do mês por origem + série mensal (mesmas fontes da página Receitas). */
@@ -290,17 +292,21 @@ export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
   await assertAdmin(); // R$ — fora da conta de leitura (TV)
   const m = mesNorm(mes);
   const ant = anteriorEquivalente(m);
-  const [descLista, diariosLista, diversas, serie, totalAnterior] = await Promise.all([
+  const { inicio, fim } = inicioFimDoMes(m);
+  const [descLista, diariosLista, diversas, serie, totalAnterior, abonado] = await Promise.all([
     listarReceitasDoMes(m),
     listarTotaisDiariosDoMes(m),
     totalDiversasDoMes(m),
     serieReceitasMensais(6),
     receitaTotalDoPeriodo(ant.inicio, ant.fim).catch(() => null),
+    abonadoDoPeriodo(inicio, fim).catch(() => 0),
   ]);
   const descarregamento = descLista.reduce((t, r) => t + r.receita, 0);
   const diarios = diariosLista.reduce((t, r) => t + r.receita, 0);
   return {
-    totalMes: descarregamento + diarios + diversas,
+    totalMes: descarregamento + diarios + diversas + abonado,
+    recebido: descarregamento + diarios + diversas,
+    abonado,
     descarregamento,
     diarios,
     diversas,

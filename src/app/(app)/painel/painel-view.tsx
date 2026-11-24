@@ -471,7 +471,7 @@ export default function PainelView({
             hintDestaque={dados.aFaturar?.disponivel}
             tone="amber"
           />
-          {admin && <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint="descarrego + diversas" delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />}
+          {admin && <Kpi label="Receita do mês" value={dados.receitas ? formatBRL(dados.receitas.totalMes) : "—"} hint={dados.receitas ? `recebido ${formatBRL(dados.receitas.recebido)} + abonado` : undefined} delta={dados.receitas ? deltaPct(dados.receitas.totalMes, receitaAnt, true, prevLabel) : undefined} tone="emerald" />}
         </div>
         )}
 

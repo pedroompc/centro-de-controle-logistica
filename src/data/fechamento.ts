@@ -2,26 +2,10 @@ import { getResumoFaturamento } from "./faturamento";
 import { listarFaltas } from "./faltas";
 import { listarFuncionarios } from "./funcionarios";
 import { listarSetores } from "./setores";
-import { createClient } from "@/lib/supabase/server";
+import { receitaTotalDoPeriodo } from "./receitas";
 import { primeiroDiaDoMes } from "@/domain/periodo";
 import { faltasNoPeriodo } from "@/domain/metrics";
 import { montarResumoFechamento, setoresComFaltas, type ResumoFechamento } from "@/domain/fechamento";
-
-/** Soma das três origens de receita logística no intervalo [ini, fim]. */
-async function receitaTotalDoPeriodo(ini: string, fim: string): Promise<number> {
-  const supabase = await createClient();
-  const [desc, diarios, diversas] = await Promise.all([
-    supabase.from("receitas_descarregamento").select("receita").gte("data", ini).lte("data", fim),
-    supabase.from("receitas_descarregamento_diario").select("receita").gte("data", ini).lte("data", fim),
-    supabase.from("receitas_diversas").select("valor").gte("data", ini).lte("data", fim),
-  ]);
-  if (desc.error) throw new Error(desc.error.message);
-  if (diarios.error) throw new Error(diarios.error.message);
-  if (diversas.error) throw new Error(diversas.error.message);
-  const soma = (rows: Array<Record<string, unknown>> | null, col: string) =>
-    (rows ?? []).reduce((t, r) => t + Number(r[col]), 0);
-  return soma(desc.data, "receita") + soma(diarios.data, "receita") + soma(diversas.data, "valor");
-}
 
 /**
  * Monta o resumo de fechamento para o intervalo [ini, fim]. O faturamento vem do
