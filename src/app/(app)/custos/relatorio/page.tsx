@@ -115,18 +115,18 @@ export default async function RelatorioCustosPage() {
             title="Custo do grupo Entrega sobre a venda líquida que saiu em carga com motorista (sem retira), até agora"
           />
           <StatCard
-            label="Custo por PDV atendido"
-            value={atual.atendimentos ? formatBRL(entregaMes / projetarMes(atual.atendimentos)) : "—"}
-            hint={atual.atendimentos ? `${atual.atendimentos.toLocaleString("pt-BR")} PDVs atendidos até hoje` : "sem dado"}
+            label="Custo por entrega"
+            value={atual.entregas ? formatBRL(entregaMes / projetarMes(atual.entregas)) : "—"}
+            hint={atual.entregas ? `${atual.entregas.toLocaleString("pt-BR")} entregas até hoje` : "Winthor indisponível"}
             accent="navy"
-            title="Custo do grupo Entrega ÷ PDVs atendidos (cliente distinto por dia), no ritmo do mês"
+            title="Custo da Logística Entrega (mês cheio) ÷ entregas do mês no ritmo de hoje. Entrega = cliente distinto por viagem (veículo + motorista + dia), sem a retira no balcão — mesma conta do BI Motoristas"
           />
           <StatCard
-            label="Custo por PDV · média do ano"
-            value={mediaPorPdv(fechados)}
+            label="Custo por entrega · média do ano"
+            value={mediaPorEntrega(fechados)}
             hint={n ? faixa : "sem mês fechado"}
             accent="navy"
-            title="Custo do grupo Entrega ÷ PDVs atendidos, somando os meses fechados"
+            title="Custo da Logística Entrega ÷ entregas, somando os meses fechados"
           />
         </div>
       </section>
@@ -387,10 +387,10 @@ function TabelaMesAMes({ meses, acum, fatAcum, n, faixa }: { meses: MesRelatorio
   );
 }
 
-function mediaPorPdv(fechados: MesRelatorio[]): string {
-  const comPdv = fechados.filter((m) => (m.atendimentos ?? 0) > 0);
-  const pdvs = comPdv.reduce((t, m) => t + (m.atendimentos ?? 0), 0);
-  if (pdvs === 0) return "—";
-  const custo = comPdv.reduce((t, m) => t + m.custo.grupos.entrega.total, 0);
-  return formatBRL(custo / pdvs);
+function mediaPorEntrega(fechados: MesRelatorio[]): string {
+  const comEntrega = fechados.filter((m) => (m.entregas ?? 0) > 0);
+  const entregas = comEntrega.reduce((t, m) => t + (m.entregas ?? 0), 0);
+  if (entregas === 0) return "—";
+  const custo = comEntrega.reduce((t, m) => t + m.custo.grupos.entrega.total, 0);
+  return formatBRL(custo / entregas);
 }

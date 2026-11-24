@@ -15,11 +15,13 @@ import { hojeISO } from "@/domain/fechamento";
 import { INICIO_HISTORICO, inicioFimDoMes, mesAnterior, mesesDoPeriodo, primeiroDiaDoMes } from "@/domain/periodo";
 import { lerBaseRegioes, type BaseRegioesMes } from "@/data/custo-regioes";
 import { serieReceitasMensais } from "@/data/receitas";
+import { lerEntregasMeses } from "@/data/winthor-entregas";
 
 export interface MesRelatorio {
   custo: CustoGruposMes;
   vendaLiquida: number | null;
   atendimentos: number | null; // PDVs atendidos (cliente distinto por dia)
+  entregas: number | null; // entregas do BI Motoristas (cliente distinto por viagem, sem retira); null = Winthor fora
   receita: number | null; // receitas logísticas do mês (descarrego + totais do dia + diversas); null = indisponível
   fechado: boolean;
 }
@@ -46,7 +48,7 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
 
   const mesRegioes = mesAnterior(mesAtual);
   const faixaRegioes = inicioFimDoMes(mesRegioes);
-  const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira, baseRegioes, serieReceitas] = await Promise.all([
+  const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira, baseRegioes, serieReceitas, entregasMeses] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarLancamentosDosMeses(meses),
@@ -56,7 +58,10 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
     getFaturadoEntregaRetira(mesAtual, hojeISO()),
     lerBaseRegioes(faixaRegioes.inicio, faixaRegioes.fim),
     serieReceitasMensais(24).catch(() => null),
+    lerEntregasMeses(meses[0], mesAtual).catch(() => null),
   ]);
+  const entregasPorMes = entregasMeses ? new Map(entregasMeses.map((e) => [e.mes, e.entregas])) : null;
+  const entregasDo = (mes: string) => (entregasPorMes ? (entregasPorMes.get(mes) ?? null) : null);
   const receitaPorMes = serieReceitas ? new Map(serieReceitas.map((r) => [r.mes, r.valor])) : null;
   const receitaDo = (mes: string) => (receitaPorMes ? (receitaPorMes.get(mes) ?? 0) : null);
 
@@ -83,10 +88,10 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
       lancamentos.filter((l) => l.mes === mes),
     );
     if (mes === mesAtual) {
-      return { custo, vendaLiquida: fatAtual?.vendaLiquida ?? null, atendimentos: fatAtual?.atendimentos ?? null, receita: receitaDo(mes), fechado: false };
+      return { custo, vendaLiquida: fatAtual?.vendaLiquida ?? null, atendimentos: fatAtual?.atendimentos ?? null, entregas: entregasDo(mes), receita: receitaDo(mes), fechado: false };
     }
     const f = fatPorMes.get(mes);
-    return { custo, vendaLiquida: f?.vendaLiquida ?? null, atendimentos: f?.atendimentos ?? null, receita: receitaDo(mes), fechado: true };
+    return { custo, vendaLiquida: f?.vendaLiquida ?? null, atendimentos: f?.atendimentos ?? null, entregas: entregasDo(mes), receita: receitaDo(mes), fechado: true };
   });
 
   return {
