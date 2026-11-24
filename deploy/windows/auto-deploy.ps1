@@ -4,8 +4,12 @@
 #   3. builda na pasta que NÃO está no ar (.next-a / .next-b) — o app segue rodando;
 #   4. build ok → troca logs\slot.txt e derruba o app; o iniciar.ps1 sobe na versão nova;
 #   5. confere se /login responde; se não responder, volta para o build anterior.
-# Build que falha fica marcado em logs\falhou.txt e não é tentado de novo até
-# chegar outro commit (ou apagar o arquivo). Tudo vai para logs\deploy.log.
+# Build que falha tenta de novo na hora (uma vez, depois de 30 s): o next/font/google
+# do Turbopack às vezes falha ao baixar as fontes, sem nada errado no código. Se
+# falhar de novo, o mesmo commit volta a ser tentado a cada 15 min (contagem em
+# logs\build-falhou.txt), até 4 rodadas; depois fica marcado em logs\falhou.txt e
+# só é tentado de novo quando chegar outro commit (ou com -Forcar). Versão que
+# builda mas não responde vai direto para o falhou.txt. Tudo vai para logs\deploy.log.
 #
 # Manual (PowerShell como Administrador), força o deploy do commit atual da main:
 #   powershell -ExecutionPolicy Bypass -File deploy\windows\auto-deploy.ps1 -Forcar
@@ -20,6 +24,9 @@ $log = "$logs\deploy.log"
 $arqSlot = "$logs\slot.txt"
 $arqDeployado = "$logs\deployado.txt"
 $arqFalhou = "$logs\falhou.txt"
+$arqBuildFalhou = "$logs\build-falhou.txt" # "<commit> <rodadas que falharam>"
+$rodadasMax = 4       # rodadas de build (2 tentativas cada) antes de desistir do commit
+$esperaRodada = 15    # minutos entre uma rodada que falhou e a próxima
 $arqPausado = "$logs\pausado"
 $git = "git -c safe.directory=*" # tarefa roda como SYSTEM; a pasta é de outro usuário
 
@@ -56,6 +63,14 @@ try {
     if ($novo -eq $atual) { exit 0 }
     if ($novo -eq (Ler $arqFalhou)) { exit 0 }
   }
+  # Rodadas que já falharam no build deste commit (outro commit zera a contagem).
+  $rodadas = 0
+  $bf = (Ler $arqBuildFalhou) -split " "
+  if ($bf[0] -eq $novo -and $bf.Count -ge 2) {
+    $rodadas = [int]$bf[1]
+    $minutos = ((Get-Date) - (Get-Item $arqBuildFalhou).LastWriteTime).TotalMinutes
+    if (-not $Forcar -and $minutos -lt $esperaRodada) { exit 0 }
+  }
 
   if (-not (Test-Path ".env.local") -or (Get-Item ".env.local").Length -lt 200) {
     Registrar "ERRO: .env.local ausente ou vazio - deploy cancelado"; exit 1
@@ -73,7 +88,7 @@ try {
   if (-not $slotAtivo) { $slotAtivo = ".next-b" } # primeira vez: builda na .next-a
   $slotNovo = if ($slotAtivo -eq ".next-a") { ".next-b" } else { ".next-a" }
 
-  Registrar "=== deploy $(if ($atual) { $atual.Substring(0,7) } else { '(primeiro)' }) -> $($novo.Substring(0,7)) em $slotNovo"
+  Registrar "=== deploy $(if ($atual) { $atual.Substring(0,7) } else { '(primeiro)' }) -> $($novo.Substring(0,7)) em $slotNovo$(if ($rodadas) { " (rodada $($rodadas + 1) de $rodadasMax)" })"
   if ((Rodar "$git reset --hard $novo") -ne 0) { throw "git reset falhou" }
 
   if ($depsMudaram) { Registrar "AVISO: package.json/package-lock mudou - se o build falhar, rode npm install na mao e -Forcar" }
@@ -84,7 +99,12 @@ try {
   if (Test-Path ".next") { Remove-Item -Recurse -Force ".next" -ErrorAction SilentlyContinue }
   if (Test-Path $slotNovo) { Remove-Item -Recurse -Force $slotNovo }
   $env:NEXT_DIST_DIR = $slotNovo
-  if ((Rodar "npm run build") -ne 0) { throw "build falhou" }
+  if ((Rodar "npm run build") -ne 0) {
+    Registrar "AVISO: build falhou - tentando de novo em 30 s"
+    Start-Sleep -Seconds 30
+    if (Test-Path $slotNovo) { Remove-Item -Recurse -Force $slotNovo }
+    if ((Rodar "npm run build") -ne 0) { throw "build falhou" }
+  }
   if (-not (Test-Path "$slotNovo\BUILD_ID")) { throw "build terminou sem BUILD_ID" }
 
   Set-Content -Path $arqSlot -Value $slotNovo -Encoding ascii
@@ -98,6 +118,7 @@ try {
   if ($ok) {
     Set-Content -Path $arqDeployado -Value $novo -Encoding ascii
     if (Test-Path $arqFalhou) { Remove-Item -Force $arqFalhou }
+    if (Test-Path $arqBuildFalhou) { Remove-Item -Force $arqBuildFalhou }
     Registrar "OK: no ar $(cmd /c "$git log --oneline -1")"
   } else {
     Registrar "ERRO: versao nova nao respondeu em 90 s - voltando para $slotAtivo"
@@ -106,7 +127,17 @@ try {
   }
 } catch {
   Registrar "ERRO: $($_.Exception.Message) - continua no ar o build anterior ($(Ler $arqSlot))"
-  if ($novo) { Set-Content -Path $arqFalhou -Value $novo -Encoding ascii }
+  if ($novo) {
+    $rodadas++
+    if ($rodadas -ge $rodadasMax) {
+      Set-Content -Path $arqFalhou -Value $novo -Encoding ascii
+      if (Test-Path $arqBuildFalhou) { Remove-Item -Force $arqBuildFalhou }
+      Registrar "Desistindo de $($novo.Substring(0,7)) depois de $rodadas rodadas - so tenta de novo com commit novo ou -Forcar"
+    } else {
+      Set-Content -Path $arqBuildFalhou -Value "$novo $rodadas" -Encoding ascii
+      Registrar "Tenta $($novo.Substring(0,7)) de novo em $esperaRodada min (rodada $($rodadas + 1) de $rodadasMax)"
+    }
+  }
 } finally {
   if (Test-Path $arqPausado) { Remove-Item -Force $arqPausado }
   $trava.Close()

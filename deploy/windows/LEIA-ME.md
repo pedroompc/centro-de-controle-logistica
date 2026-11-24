@@ -22,8 +22,12 @@ Push na `main` → em até ~3 min o servidor percebe, builda e troca de versão 
     (`.next-a` / `.next-b`), troca e reinicia (~10 s fora do ar);
   - **sem `npm ci`**: o `node_modules` do servidor fica como está. Se um commit trouxer dependência nova,
     o log avisa; rode `npm install` à mão e depois o deploy com `-Forcar`;
-  - build quebrou ou versão nova não respondeu → **continua o build anterior** e o commit fica
-    marcado em `logs\falhou.txt` (não tenta de novo até chegar outro commit).
+  - build quebrou → **continua o build anterior**. Tenta de novo na hora (30 s depois),
+    porque o `next/font/google` do Turbopack às vezes falha ao baixar as fontes sem erro no código.
+    Falhou de novo → volta a tentar o mesmo commit a cada 15 min (`logs\build-falhou.txt`),
+    até 4 rodadas; aí marca em `logs\falhou.txt` e só tenta com commit novo ou `-Forcar`;
+  - versão nova não respondeu → volta para o build anterior e o commit vai direto para
+    `logs\falhou.txt` (não tenta de novo até chegar outro commit).
 
 > `git reset --hard`: qualquer arquivo versionado editado à mão no servidor é descartado.
 > `.env.local`, `logs\` e `node_modules` não são tocados.
