@@ -20,7 +20,7 @@ export default async function FrotaCustosPage() {
 
   return (
     <div>
-      <BackLink href="/custos">Custos</BackLink>
+      <BackLink href="/custos/lancamentos">Lançamentos</BackLink>
       <PageHeader title="Frota" subtitle="Consumo e custos de referência para o custo estimado da frota" />
 
       {cadastro === null ? (

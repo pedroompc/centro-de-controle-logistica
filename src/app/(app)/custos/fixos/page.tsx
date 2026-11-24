@@ -14,7 +14,7 @@ export default async function CustosFixosPage() {
 
   return (
     <div>
-      <BackLink href="/custos">Custos</BackLink>
+      <BackLink href="/custos/lancamentos">Lançamentos</BackLink>
       <PageHeader title="Custos fixos" subtitle="Molde recorrente — vale para os próximos meses">
         {admin && <CustoFixoForm />}
       </PageHeader>

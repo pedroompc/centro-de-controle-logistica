@@ -21,7 +21,7 @@ export default async function EquipamentosPage() {
 
   return (
     <div>
-      <BackLink href="/custos">Custos</BackLink>
+      <BackLink href="/custos/lancamentos">Lançamentos</BackLink>
       <PageHeader title="Equipamentos" subtitle="Quantidade × custo mensal por unidade — entra no custo do setor que usa">
         {admin && <EquipamentoForm setores={setores.map((s) => s.nome)} />}
       </PageHeader>

@@ -194,6 +194,7 @@ const notaValida = (f: NotaForm) => !!f.data && !!f.fornecedorId && f.pesoKg > 0
 function revalidarReceitas() {
   revalidatePath("/receitas");
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
   revalidatePath("/setores", "layout");
 }

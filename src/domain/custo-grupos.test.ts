@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { custoGruposDoMes, ehAluguelGalpao, fracao, grupoDoLancamento, grupoDoSetor, projetarMes, somarMeses } from "./custo-grupos";
+import { custoGruposDoMes, ehAluguelGalpao, fracao, grupoDoLancamento, grupoDoSetor, juntarMeses, projetarMes, somarMeses } from "./custo-grupos";
 
 describe("grupoDoSetor", () => {
   it("separa entrega, administrativo e galpão", () => {
@@ -84,5 +84,27 @@ describe("fracao e projeção", () => {
   });
   it("projeta pelo ritmo dos dias corridos", () => {
     expect(projetarMes(100, new Date(2026, 10, 10))).toBe(300); // nov = 30 dias
+  });
+});
+
+describe("juntarMeses (relatório com período)", () => {
+  const jul = custoGruposDoMes("2026-07-01", [{ setor: "Expedição", custo: 100, ativos: 10 }], [
+    { nome: "Galpão", tipo: "fixo", valor: 400 },
+    { nome: "Frota · Diesel", tipo: "variavel", valor: 50 },
+  ]);
+  const ago = custoGruposDoMes("2026-08-01", [{ setor: "Expedição", custo: 120, ativos: 12 }], [
+    { nome: "Galpão", tipo: "fixo", valor: 400 },
+    { nome: "Frota · Diesel", tipo: "variavel", valor: 70 },
+  ]);
+  it("soma R$, mantém o headcount do último mês e junta linhas de mesmo nome", () => {
+    const j = juntarMeses([ago, jul]);
+    expect(j.mes).toBe("2026-07-01");
+    expect(j.aluguel).toBe(800);
+    expect(j.totalComAluguel).toBe(jul.totalComAluguel + ago.totalComAluguel);
+    expect(j.setores).toHaveLength(1);
+    expect(j.setores[0]).toMatchObject({ folha: 220, pessoas: 12 });
+    expect(j.lancamentos.find((l) => l.nome === "Frota · Diesel")?.valor).toBe(120);
+    const pessoas = Object.values(j.grupos).reduce((t, g) => t + g.pessoas, 0);
+    expect(pessoas).toBe(12);
   });
 });

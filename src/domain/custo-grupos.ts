@@ -154,3 +154,35 @@ export function projetarMes(valorAteHoje: number, hoje: Date = new Date()): numb
   if (dia <= 0) return valorAteHoje;
   return (valorAteHoje / dia) * diasNoMes;
 }
+
+/**
+ * Junta vários meses num período só (relatório com período escolhido): R$ somam,
+ * pessoas NÃO somam (headcount) — vale a foto do último mês. Lançamentos e setores
+ * de mesmo nome viram uma linha.
+ */
+export function juntarMeses(meses: CustoGruposMes[]): CustoGruposMes {
+  if (meses.length === 1) return meses[0];
+  const ordem = [...meses].sort((a, b) => a.mes.localeCompare(b.mes));
+  const ultimo = ordem[ordem.length - 1];
+  const soma = somarMeses(ordem);
+  for (const { chave } of GRUPOS) soma.grupos[chave].pessoas = ultimo?.grupos[chave].pessoas ?? 0;
+  const setores = new Map<string, CustoGruposMes["setores"][number]>();
+  const lancs = new Map<string, LancamentoGrupo>();
+  for (const m of ordem) {
+    for (const s of m.setores) {
+      const k = `${s.grupo}|${s.setor}`;
+      const atual = setores.get(k);
+      setores.set(k, { ...s, folha: (atual?.folha ?? 0) + s.folha, pessoas: s.pessoas });
+    }
+    for (const l of m.lancamentos) {
+      const k = `${l.grupo}|${l.tipo}|${l.nome}`;
+      lancs.set(k, { ...l, valor: (lancs.get(k)?.valor ?? 0) + l.valor });
+    }
+  }
+  return {
+    mes: ordem[0]?.mes ?? "",
+    ...soma,
+    setores: [...setores.values()].sort((a, b) => b.folha - a.folha),
+    lancamentos: [...lancs.values()].sort((a, b) => b.valor - a.valor),
+  };
+}

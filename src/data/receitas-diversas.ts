@@ -116,6 +116,7 @@ function toRow(f: ReturnType<typeof parseForm>) {
 function revalidar() {
   revalidatePath("/receitas");
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
 }
 

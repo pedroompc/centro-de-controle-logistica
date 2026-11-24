@@ -12,7 +12,7 @@ import { fotoSetorAtual } from "@/domain/efetivo";
 import { liquidoEntregaRetira } from "@/domain/faturamento";
 import { custoGruposDoMes, type CustoGruposMes } from "@/domain/custo-grupos";
 import { hojeISO } from "@/domain/fechamento";
-import { INICIO_HISTORICO, inicioFimDoMes, mesAnterior, mesesDoPeriodo, primeiroDiaDoMes } from "@/domain/periodo";
+import { INICIO_HISTORICO, inicioFimDoMes, mesAnterior, mesesDoPeriodo, primeiroDiaDoMes, type Periodo } from "@/domain/periodo";
 import { lerBaseRegioes, type BaseRegioesMes } from "@/data/custo-regioes";
 import { serieReceitasMensais } from "@/data/receitas";
 import { lerEntregasMeses } from "@/data/winthor-entregas";
@@ -27,10 +27,15 @@ export interface MesRelatorio {
 }
 
 export interface RelatorioCustos {
-  ano: number;
-  meses: MesRelatorio[]; // do início do histórico (ou janeiro) até o mês corrente
-  /** Venda líquida do mês corrente que saiu em entrega (sem retira), até hoje. */
-  vendaEntregaMesAtual: number | null;
+  ano: number; // ano do fim do período (acumulado do ano)
+  /** Meses carregados: de janeiro (ou do início do histórico) até o último mês do período. */
+  meses: MesRelatorio[];
+  /** Meses do período escolhido (topo, divisão, entrega). */
+  mesesPeriodo: string[];
+  /** Meses da tabela mês a mês: período de vários meses = ele; um mês só = ano até ele. */
+  mesesTabela: string[];
+  /** Venda líquida do período que saiu em entrega (sem retira), até hoje. */
+  vendaEntregaPeriodo: number | null;
   /** Quem está na folha do mês corrente, por nome de setor (ativos, maior custo primeiro). */
   pessoasPorSetor: Record<string, { nome: string; cargo: string; custo: number }[]>;
   /** Base por região do último mês fechado (`null` = Winthor fora). */
@@ -39,26 +44,35 @@ export interface RelatorioCustos {
   faturamentoMesAtualIndisponivel: boolean;
 }
 
-export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<RelatorioCustos> {
-  const ano = hoje.getFullYear();
+export async function carregarRelatorioCustos(periodo: Periodo, hoje: Date = new Date()): Promise<RelatorioCustos> {
   const mesAtual = primeiroDiaDoMes(hoje);
-  const inicioAno = `${ano}-01-01`;
-  const de = inicioAno > INICIO_HISTORICO ? inicioAno : INICIO_HISTORICO;
-  const meses = mesesDoPeriodo({ de, ate: hojeISO() });
+  // Custo é mensal: o período vira meses inteiros, sem passar do mês corrente nem
+  // voltar antes do histórico.
+  const ateMes = [primeiroDiaDoMes(periodo.ate), mesAtual].sort()[0];
+  const deMes = [primeiroDiaDoMes(periodo.de), INICIO_HISTORICO].sort()[1];
+  const mesesPeriodo = mesesDoPeriodo({ de: deMes <= ateMes ? deMes : ateMes, ate: ateMes });
+  const ano = Number(ateMes.slice(0, 4));
+  const inicioAno = [`${ano}-01-01`, INICIO_HISTORICO].sort()[1];
+  const de = [inicioAno, mesesPeriodo[0]].sort()[0];
+  const meses = mesesDoPeriodo({ de, ate: ateMes });
+  const mesesTabela = mesesPeriodo.length > 1 ? mesesPeriodo : meses.filter((m) => m >= inicioAno);
+  const fimPeriodo = [inicioFimDoMes(ateMes).fim, hojeISO()].sort()[0];
+  const mesesAteHoje = mesesDoPeriodo({ de, ate: hojeISO() }).length;
 
-  const mesRegioes = mesAnterior(mesAtual);
+  // Regiões: último mês do período se já fechou; aberto = o mês anterior (fechado).
+  const mesRegioes = ateMes === mesAtual ? mesAnterior(mesAtual) : ateMes;
   const faixaRegioes = inicioFimDoMes(mesRegioes);
   const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira, baseRegioes, serieReceitas, entregasMeses] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarLancamentosDosMeses(meses),
-    serieEfetivoSetorMensal(meses.length + 1),
-    getSerieTendencias(12),
-    getResumoFaturamentoDashboard(mesAtual).catch(() => null),
-    getFaturadoEntregaRetira(mesAtual, hojeISO()),
+    serieEfetivoSetorMensal(mesesAteHoje + 1),
+    getSerieTendencias(Math.max(12, mesesAteHoje + 1)),
+    meses.includes(mesAtual) ? getResumoFaturamentoDashboard(mesAtual).catch(() => null) : Promise.resolve(null),
+    getFaturadoEntregaRetira(mesesPeriodo[0], fimPeriodo),
     lerBaseRegioes(faixaRegioes.inicio, faixaRegioes.fim),
     serieReceitasMensais(24).catch(() => null),
-    lerEntregasMeses(meses[0], mesAtual).catch(() => null),
+    lerEntregasMeses(meses[0], ateMes).catch(() => null),
   ]);
   const entregasPorMes = entregasMeses ? new Map(entregasMeses.map((e) => [e.mes, e.entregas])) : null;
   const entregasDo = (mes: string) => (entregasPorMes ? (entregasPorMes.get(mes) ?? null) : null);
@@ -97,9 +111,11 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
   return {
     ano,
     meses: linhas,
-    vendaEntregaMesAtual: entregaRetira ? liquidoEntregaRetira(entregaRetira).entrega : null,
+    mesesPeriodo,
+    mesesTabela,
+    vendaEntregaPeriodo: entregaRetira ? liquidoEntregaRetira(entregaRetira).entrega : null,
     pessoasPorSetor,
     regioes: { mes: mesRegioes, base: baseRegioes },
-    faturamentoMesAtualIndisponivel: fatAtual === null,
+    faturamentoMesAtualIndisponivel: meses.includes(mesAtual) && fatAtual === null,
   };
 }

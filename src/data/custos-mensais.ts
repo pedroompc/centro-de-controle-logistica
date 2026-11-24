@@ -106,6 +106,7 @@ export async function materializarMes(mes: string): Promise<void> {
   // Equipamentos saem do cadastro (fonte única, a mesma dos BIs), não do molde.
   await sincronizarEquipamentosDoMes(supabase, mes);
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
 }
 
@@ -127,6 +128,7 @@ export async function adicionarLancamento(formData: FormData): Promise<void> {
   const { error } = await supabase.from("custos_mensais").insert({ ...registro, valor });
   if (error) throw new Error(error.message);
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
 }
 
@@ -139,6 +141,7 @@ export async function editarLancamento(formData: FormData): Promise<void> {
   const { error } = await supabase.from("custos_mensais").update({ valor }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
 }
 
@@ -148,5 +151,6 @@ export async function removerLancamento(id: string): Promise<void> {
   const { error } = await supabase.from("custos_mensais").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
 }

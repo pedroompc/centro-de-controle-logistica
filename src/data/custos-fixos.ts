@@ -49,6 +49,7 @@ export async function criarCustoFixo(formData: FormData): Promise<void> {
 
   revalidatePath("/custos/fixos");
   revalidatePath("/custos");
+  revalidatePath("/custos/lancamentos");
   revalidatePath("/");
 }
 
