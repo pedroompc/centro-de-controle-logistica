@@ -2,7 +2,8 @@ import { carregarRelatorioCustos, type MesRelatorio } from "@/data/relatorio-cus
 import { GRUPOS, fracao, projetarMes, somarMeses, type GrupoCusto } from "@/domain/custo-grupos";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
-import { PageHeader, Card, BackLink, StatCard, SectionTitle, BarList } from "@/components/ui";
+import { PageHeader, Card, BackLink, StatCard, SectionTitle, BarList, HeroStat } from "@/components/ui";
+import { CustoPorRegiao } from "./regioes";
 
 const COR: Record<GrupoCusto, string> = {
   galpao: "bg-[#1b2168]",
@@ -26,20 +27,47 @@ export default async function RelatorioCustosPage() {
   const fatMesProjetado = fatMes === null ? null : projetarMes(fatMes);
   const custoMes = atual.custo;
   const entregaMes = custoMes.grupos.entrega.total;
+  const custoRegioes = rel.meses.find((m) => m.custo.mes === rel.regioes.mes)?.custo ?? null;
+  const pessoas = GRUPOS.reduce((t, { chave }) => t + custoMes.grupos[chave].pessoas, 0);
 
   return (
     <div>
       <BackLink href="/custos">Custos</BackLink>
       <PageHeader title="Relatório geral" subtitle={`Custo logístico × faturamento · ${rel.ano}`} />
 
+      {/* Totalizador: o custo do mês inteiro e quanto ele come do faturamento */}
+      <HeroStat label={`Custo logístico · ${formatMesAno(custoMes.mes)}`} value={formatBRL(custoMes.total)}>
+        <p className="mt-2 text-sm text-white/60">Tudo o que a logística custa no mês: folha, aluguel do galpão, equipamentos e frota · {pessoas} pessoas</p>
+        <div className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-6">
+          {GRUPOS.map(({ chave, label }) => (
+            <Totalizador key={chave} rotulo={label} valor={formatBRL(custoMes.grupos[chave].total)} sub={`${pct(fracao(custoMes.grupos[chave].total, custoMes.total))} do custo`} cor={COR[chave]} />
+          ))}
+          <Totalizador
+            rotulo="Faturamento até hoje"
+            valor={brl(fatMes)}
+            sub={fatMesProjetado === null ? "Winthor indisponível" : `no ritmo, fecha em ${formatBRL(fatMesProjetado)}`}
+          />
+          <Totalizador
+            rotulo="Custo a cada R$ 100 faturados"
+            valor={fatMesProjetado ? formatBRL((custoMes.total / fatMesProjetado) * 100) : "—"}
+            sub={`${pct(fracao(custoMes.total, fatMesProjetado))} do faturamento, no ritmo do mês`}
+          />
+          <Totalizador
+            rotulo={`Média · ${n} ${n === 1 ? "mês fechado" : "meses fechados"}`}
+            valor={n ? formatBRL(acum.total / n) : "—"}
+            sub={n ? `por mês · ${pct(fracao(acum.total, fatAcum))} do faturamento` : "sem mês fechado"}
+          />
+        </div>
+      </HeroStat>
+
       {/* Os 4 números pedidos */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Galpão no custo"
           value={pct(fracao(custoMes.grupos.galpao.total, custoMes.total))}
           hint={`${formatBRL(custoMes.grupos.galpao.total)} · ${custoMes.grupos.galpao.pessoas} pessoas`}
           accent="navy"
-          title="Folha de quem trabalha no galpão + equipamentos + casa, sobre o custo total do mês"
+          title="Folha de quem trabalha no galpão + aluguel do galpão + equipamentos + casa, sobre o custo total do mês"
         />
         <StatCard
           label="Entrega no custo"
@@ -75,6 +103,10 @@ export default async function RelatorioCustosPage() {
       {/* Divisão do custo do mês */}
       <section className="mt-6">
         <SectionTitle>Divisão do custo · {formatMesAno(custoMes.mes)}</SectionTitle>
+        <Explica>
+          Galpão = quem separa, confere e carrega + aluguel, equipamentos e casa. Entrega = motoristas, ajudantes e frota (diesel, desgaste,
+          manutenção). Galpão Administrativo = monitoramento e escritório.
+        </Explica>
         <Card className="p-5">
           <div className="flex h-4 w-full overflow-hidden rounded-full bg-slate-100">
             {GRUPOS.map(({ chave, label }) => {
@@ -112,6 +144,7 @@ export default async function RelatorioCustosPage() {
       {/* Indicadores de entrega */}
       <section className="mt-6">
         <SectionTitle>Entrega · {formatMesAno(custoMes.mes)}</SectionTitle>
+        <Explica>Quanto custa levar a mercadoria até o cliente, comparado com o que foi vendido em entrega (sem a retira no balcão).</Explica>
         <div className="grid gap-4 sm:grid-cols-3">
           <StatCard
             label="Custo de entrega ÷ venda entregue"
@@ -139,9 +172,19 @@ export default async function RelatorioCustosPage() {
         </div>
       </section>
 
+      {custoRegioes && (
+        <CustoPorRegiao
+          mes={rel.regioes.mes}
+          base={rel.regioes.base}
+          custoEntrega={custoRegioes.grupos.entrega.total}
+          custoGalpao={custoRegioes.grupos.galpao.total + custoRegioes.grupos.administrativo.total}
+        />
+      )}
+
       {/* Mês a mês */}
       <section className="mt-6">
         <SectionTitle>Mês a mês</SectionTitle>
+        <Explica>Custo de cada mês e quanto ele representa do faturamento daquele mês.</Explica>
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
@@ -150,7 +193,7 @@ export default async function RelatorioCustosPage() {
                   <th className="px-4 py-3 font-semibold">Mês</th>
                   <th className="px-4 py-3 text-right font-semibold">Galpão</th>
                   <th className="px-4 py-3 text-right font-semibold">Entrega</th>
-                  <th className="px-4 py-3 text-right font-semibold">Administrativo</th>
+                  <th className="px-4 py-3 text-right font-semibold">Galpão Adm.</th>
                   <th className="px-4 py-3 text-right font-semibold">Custo total</th>
                   <th className="px-4 py-3 text-right font-semibold">Faturamento</th>
                   <th className="px-4 py-3 text-right font-semibold">Custo ÷ fat.</th>
@@ -194,6 +237,7 @@ export default async function RelatorioCustosPage() {
       {/* Folha por setor */}
       <section className="mt-6">
         <SectionTitle>Folha por setor · {formatMesAno(custoMes.mes)}</SectionTitle>
+        <Explica>Salário + encargos de quem está ativo hoje, por setor (entre parênteses, nº de pessoas).</Explica>
         <div className="grid gap-4 lg:grid-cols-3">
           {GRUPOS.map(({ chave, label }) => {
             const itens = custoMes.setores.filter((s) => s.grupo === chave);
@@ -213,6 +257,23 @@ export default async function RelatorioCustosPage() {
       {rel.faturamentoMesAtualIndisponivel && (
         <p className="mt-4 text-xs text-amber-700">Winthor indisponível agora: o faturamento do mês corrente não carregou.</p>
       )}
+    </div>
+  );
+}
+
+function Explica({ children }: { children: React.ReactNode }) {
+  return <p className="-mt-1 mb-4 max-w-4xl text-sm text-slate-500">{children}</p>;
+}
+
+function Totalizador({ rotulo, valor, sub, cor }: { rotulo: string; valor: string; sub: string; cor?: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/55">
+        {cor && <span className={`h-2 w-2 shrink-0 rounded-full ${cor} ring-1 ring-white/40`} />}
+        <span className="truncate" title={rotulo}>{rotulo}</span>
+      </p>
+      <p className="mt-1 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums whitespace-nowrap text-white">{valor}</p>
+      <p className="text-xs text-white/50">{sub}</p>
     </div>
   );
 }

@@ -12,7 +12,8 @@ import { fotoSetorAtual } from "@/domain/efetivo";
 import { liquidoEntregaRetira } from "@/domain/faturamento";
 import { custoGruposDoMes, type CustoGruposMes } from "@/domain/custo-grupos";
 import { hojeISO } from "@/domain/fechamento";
-import { INICIO_HISTORICO, mesesDoPeriodo, primeiroDiaDoMes } from "@/domain/periodo";
+import { INICIO_HISTORICO, inicioFimDoMes, mesAnterior, mesesDoPeriodo, primeiroDiaDoMes } from "@/domain/periodo";
+import { lerBaseRegioes, type BaseRegioesMes } from "@/data/custo-regioes";
 
 export interface MesRelatorio {
   custo: CustoGruposMes;
@@ -26,6 +27,8 @@ export interface RelatorioCustos {
   meses: MesRelatorio[]; // do início do histórico (ou janeiro) até o mês corrente
   /** Venda líquida do mês corrente que saiu em entrega (sem retira), até hoje. */
   vendaEntregaMesAtual: number | null;
+  /** Base por região do último mês fechado (`null` = Winthor fora). */
+  regioes: { mes: string; base: BaseRegioesMes | null };
   /** Faturamento do mês corrente caiu (Winthor fora). */
   faturamentoMesAtualIndisponivel: boolean;
 }
@@ -37,7 +40,9 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
   const de = inicioAno > INICIO_HISTORICO ? inicioAno : INICIO_HISTORICO;
   const meses = mesesDoPeriodo({ de, ate: hojeISO() });
 
-  const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira] = await Promise.all([
+  const mesRegioes = mesAnterior(mesAtual);
+  const faixaRegioes = inicioFimDoMes(mesRegioes);
+  const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira, baseRegioes] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarLancamentosDosMeses(meses),
@@ -45,6 +50,7 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
     getSerieTendencias(12),
     getResumoFaturamentoDashboard(mesAtual).catch(() => null),
     getFaturadoEntregaRetira(mesAtual, hojeISO()),
+    lerBaseRegioes(faixaRegioes.inicio, faixaRegioes.fim),
   ]);
 
   const folhaAtual = fotoSetorAtual(funcionarios, setores).map((l) => ({ setor: l.setor, custo: l.custoAtivos, ativos: l.ativos }));
@@ -71,6 +77,7 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
     ano,
     meses: linhas,
     vendaEntregaMesAtual: entregaRetira ? liquidoEntregaRetira(entregaRetira).entrega : null,
+    regioes: { mes: mesRegioes, base: baseRegioes },
     faturamentoMesAtualIndisponivel: fatAtual === null,
   };
 }

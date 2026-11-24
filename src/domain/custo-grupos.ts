@@ -4,14 +4,14 @@
 //
 //   Galpão         — quem trabalha dentro do galpão + equipamentos + casa
 //   Entrega        — motoristas, ajudantes de entrega e toda a frota
-//   Administrativo — monitoramento (roteiristas) e ADM (gerência/escritório)
+//   Galpão Administrativo — monitoramento (roteiristas) e ADM (gerência/escritório)
 
 export type GrupoCusto = "galpao" | "entrega" | "administrativo";
 
 export const GRUPOS: { chave: GrupoCusto; label: string }[] = [
   { chave: "galpao", label: "Galpão" },
   { chave: "entrega", label: "Entrega" },
-  { chave: "administrativo", label: "Administrativo" },
+  { chave: "administrativo", label: "Galpão Administrativo" },
 ];
 
 const norm = (s: string) =>
