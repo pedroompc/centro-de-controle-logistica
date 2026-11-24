@@ -26,7 +26,6 @@ export default async function RelatorioCustosPage() {
   const faixa = n ? `${formatMesAno(fechados[0].custo.mes)} a ${formatMesAno(fechados[n - 1].custo.mes)}` : "—";
 
   const fatMes = atual.vendaLiquida;
-  const fatMesProjetado = fatMes === null ? null : projetarMes(fatMes);
   const custoMes = atual.custo;
   const entregaMes = custoMes.grupos.entrega.total;
   const custoRegioes = rel.meses.find((m) => m.custo.mes === rel.regioes.mes)?.custo ?? null;
@@ -56,22 +55,22 @@ export default async function RelatorioCustosPage() {
           <Totalizador
             rotulo="Faturamento até hoje"
             valor={brl(fatMes)}
-            sub={fatMesProjetado === null ? "Winthor indisponível" : `no ritmo, o mês fecha em ${formatBRL(fatMesProjetado)}`}
+            sub={fatMes === null ? "Winthor indisponível" : "venda líquida do mês, puxada agora do Winthor"}
           />
           <Totalizador
             rotulo="Custo logístico"
-            valor={pct(fracao(custoMes.totalComAluguel, fatMesProjetado), 2)}
-            sub={fatMesProjetado ? `do faturamento · custo do mês ÷ ${formatBRL(fatMesProjetado)} (fechamento no ritmo)` : "Winthor indisponível"}
+            valor={pct(fracao(custoMes.totalComAluguel, fatMes), 2)}
+            sub={fatMes ? `do faturamento · ${formatBRL(custoMes.totalComAluguel)} ÷ ${formatBRL(fatMes)}` : "Winthor indisponível"}
           />
           <Totalizador
-            rotulo={`Média · ${n} ${n === 1 ? "mês fechado" : "meses fechados"}`}
-            valor={n ? formatBRL(acum.totalComAluguel / n) : "—"}
-            sub={n ? `por mês · ${pct(fracao(acum.totalComAluguel, fatAcum))} do faturamento (${faixa})` : "sem mês fechado"}
+            rotulo={`Custo logístico · acumulado do ano`}
+            valor={n ? pct(fracao(acum.totalComAluguel, fatAcum), 2) : "—"}
+            sub={n ? `média ${formatBRL(acum.totalComAluguel / n)} de custo ÷ ${formatBRL(fatAcum / n)} faturados por mês · ${faixa}` : "sem mês fechado"}
           />
         </div>
       </HeroStat>
 
-      <Divisao custo={custoMes} fatProjetado={fatMesProjetado} pessoasPorSetor={rel.pessoasPorSetor} />
+      <Divisao custo={custoMes} fatMes={fatMes} pessoasPorSetor={rel.pessoasPorSetor} />
 
       {/* Indicadores de entrega */}
       <section className="mt-8">
@@ -80,10 +79,10 @@ export default async function RelatorioCustosPage() {
         <div className="grid gap-4 sm:grid-cols-3">
           <StatCard
             label="Custo de entrega ÷ venda entregue"
-            value={pct(fracao(entregaMes, rel.vendaEntregaMesAtual === null ? null : projetarMes(rel.vendaEntregaMesAtual)))}
+            value={pct(fracao(entregaMes, rel.vendaEntregaMesAtual))}
             hint={rel.vendaEntregaMesAtual === null ? "Winthor indisponível" : `venda entregue até hoje ${formatBRL(rel.vendaEntregaMesAtual)}`}
             accent="gold"
-            title="Custo do grupo Entrega sobre a venda líquida que saiu em carga com motorista (sem retira), no ritmo do mês"
+            title="Custo do grupo Entrega sobre a venda líquida que saiu em carga com motorista (sem retira), até agora"
           />
           <StatCard
             label="Custo por PDV atendido"
@@ -174,11 +173,11 @@ export default async function RelatorioCustosPage() {
 /** Divisão do custo das equipes (sem o aluguel), com folha/fixos/variáveis abrindo em detalhe. */
 function Divisao({
   custo,
-  fatProjetado,
+  fatMes,
   pessoasPorSetor,
 }: {
   custo: CustoGruposMes;
-  fatProjetado: number | null;
+  fatMes: number | null;
   pessoasPorSetor: RelatorioCustos["pessoasPorSetor"];
 }) {
   return (
@@ -210,7 +209,7 @@ function Divisao({
                 <p className="mt-1 font-[family-name:var(--font-sora)] text-2xl font-extrabold tabular-nums text-[#141a4d]">{formatBRL(g.total)}</p>
                 <p className="text-sm text-slate-500">
                   {pct(fracao(g.total, custo.total))} das equipes ·{" "}
-                  <span title="Sobre o faturamento projetado do mês">{pct(fracao(g.total, fatProjetado), 2)} do faturamento</span>
+                  <span title="Sobre o faturamento do mês até agora">{pct(fracao(g.total, fatMes), 2)} do faturamento</span>
                 </p>
 
                 <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100 text-sm">
