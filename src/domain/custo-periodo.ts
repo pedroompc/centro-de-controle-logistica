@@ -5,6 +5,7 @@
 export interface CustoDoMes {
   fixos: number;
   variaveis: number;
+  aluguel?: number; // parte dos fixos que é o aluguel do galpão
 }
 
 /** Soma dos meses pedidos que existem no mapa; `null` se nenhum existe. */

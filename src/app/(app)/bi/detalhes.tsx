@@ -186,21 +186,29 @@ export async function DetalheCusto({ periodo, funcionarios }: { periodo: Periodo
   );
 }
 
-// --- Custo ÷ faturamento mês a mês -----------------------------------------------------------
+// --- Custo logístico % mês a mês -----------------------------------------------------------
 
 export async function DetalheCustoSobreFat({ pontos }: { pontos: Promise<PontoCasa[]> }) {
   const ps = (await pontos).filter((p) => p.custo !== null || p.faturamento !== null).reverse();
   if (ps.length === 0) return <Aviso>Sem meses com faturamento e custo.</Aviso>;
+  // Acumulado do ano: só meses fechados com custo e faturamento (o mês aberto distorce).
+  const ano = new Date().getFullYear().toString();
+  const fechados = ps.filter((p) => !p.parcial && p.mes.startsWith(ano) && p.custo !== null && p.faturamento !== null && p.faturamento > 0);
+  const n = fechados.length;
+  const somaCusto = fechados.reduce((t, p) => t + p.custo!, 0);
+  const somaAluguel = fechados.reduce((t, p) => t + (p.aluguel ?? 0), 0);
+  const somaFat = fechados.reduce((t, p) => t + p.faturamento!, 0);
   return (
     <Caixa>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[30rem] text-sm">
+        <table className="w-full min-w-[36rem] text-sm">
           <thead>
             <tr className="text-left">
               <th className={TH}>Mês</th>
               <th className={`${TH} text-right`}>Faturamento líquido</th>
               <th className={`${TH} text-right`}>Custo logístico</th>
-              <th className={`${TH} text-right`}>Custo ÷ faturamento</th>
+              <th className={`${TH} text-right`}>Custo logístico %</th>
+              <th className={`${TH} text-right`}>Sem o aluguel</th>
             </tr>
           </thead>
           <tbody>
@@ -212,9 +220,23 @@ export async function DetalheCustoSobreFat({ pontos }: { pontos: Promise<PontoCa
                 <td className="py-1.5 text-right tabular-nums">{p.faturamento === null ? "—" : reais(p.faturamento)}</td>
                 <td className="py-1.5 text-right tabular-nums">{p.custo === null ? "—" : reais(p.custo)}</td>
                 <td className="py-1.5 text-right font-semibold tabular-nums text-white">{p.custoSobreFat === null ? "—" : formatPercent(p.custoSobreFat, 2)}</td>
+                <td className="py-1.5 text-right tabular-nums">{p.custoSemAluguelSobreFat === null ? "—" : formatPercent(p.custoSemAluguelSobreFat, 2)}</td>
               </tr>
             ))}
           </tbody>
+          {n > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-white/15 font-semibold text-white">
+                <td className="py-2">
+                  Acumulado do ano <span className="text-xs font-normal text-white/40">média de {n} {n === 1 ? "mês fechado" : "meses fechados"}</span>
+                </td>
+                <td className="py-2 text-right tabular-nums">{reais(somaFat / n)}</td>
+                <td className="py-2 text-right tabular-nums">{reais(somaCusto / n)}</td>
+                <td className="py-2 text-right tabular-nums">{formatPercent(somaCusto / somaFat, 2)}</td>
+                <td className="py-2 text-right tabular-nums">{formatPercent((somaCusto - somaAluguel) / somaFat, 2)}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </Caixa>

@@ -9,7 +9,7 @@ describe("montarEvolucaoCasa", () => {
     qtd: 12,
     fechados: [fech("2026-06-01", 40e6, 9000), fech("2026-09-01", 45e6, 10000), fech("2026-10-01", 50e6, 11000)],
     folhaPorMes: new Map([["2026-09-01", 1e6], ["2026-10-01", 1.1e6]]),
-    custosPorMes: new Map([["2026-09-01", { fixos: 200e3, variaveis: 300e3 }], ["2026-10-01", { fixos: 200e3, variaveis: 200e3 }]]),
+    custosPorMes: new Map([["2026-09-01", { fixos: 200e3, variaveis: 300e3 }], ["2026-10-01", { fixos: 200e3, variaveis: 200e3, aluguel: 150e3 }]]),
     hojeMes: "2026-11-01",
   };
 
@@ -26,14 +26,22 @@ describe("montarEvolucaoCasa", () => {
   });
 
   it("o mês escolhido usa os números dos cartões (os mesmos da tela) e o mês corrente sai como parcial", () => {
-    const atual = { mes: "2026-11-01", faturamento: 27e6, custo: 1.4e6, clientes: 6000 };
+    const atual = { mes: "2026-11-01", faturamento: 27e6, custo: 1.4e6, aluguel: 400e3, clientes: 6000 };
     const r = montarEvolucaoCasa({ ...base, ateMes: "2026-11-01", atual });
     expect(r[r.length - 1]).toMatchObject({ mes: "2026-11-01", faturamento: 27e6, custo: 1.4e6, clientes: 6000, parcial: true });
     expect(r[r.length - 1].custoSobreFat).toBeCloseTo(1.4e6 / 27e6);
+    expect(r[r.length - 1].custoSemAluguelSobreFat).toBeCloseTo(1e6 / 27e6);
+  });
+
+  it("sem o aluguel: tira o aluguel do galpão do custo do mês (mês sem aluguel lançado = custo cheio)", () => {
+    const r = montarEvolucaoCasa({ ...base, ateMes: "2026-10-01", atual: null });
+    expect(r[2]).toMatchObject({ mes: "2026-10-01", aluguel: 150e3 });
+    expect(r[2].custoSemAluguelSobreFat).toBeCloseTo((1.5e6 - 150e3) / 50e6);
+    expect(r[1].custoSemAluguelSobreFat).toBeCloseTo(1.5e6 / 45e6);
   });
 
   it("o cartão do mês fechado escolhido substitui a foto daquele mês", () => {
-    const atual = { mes: "2026-10-01", faturamento: 51e6, custo: 1.6e6, clientes: 11500 };
+    const atual = { mes: "2026-10-01", faturamento: 51e6, custo: 1.6e6, aluguel: 400e3, clientes: 11500 };
     const r = montarEvolucaoCasa({ ...base, ateMes: "2026-10-01", atual });
     expect(r.filter((p) => p.mes === "2026-10-01")).toEqual([
       expect.objectContaining({ faturamento: 51e6, custo: 1.6e6, clientes: 11500, parcial: false }),

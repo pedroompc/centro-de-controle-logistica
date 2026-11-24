@@ -10,6 +10,8 @@ export interface PontoCasa {
   faturamento: number | null;
   custo: number | null;
   custoSobreFat: number | null; // fração 0..1
+  aluguel: number | null; // aluguel do galpão dentro do custo
+  custoSemAluguelSobreFat: number | null; // fração 0..1
   clientes: number | null;
   parcial: boolean; // mês corrente, ainda aberto
 }
@@ -18,6 +20,7 @@ export interface MesCasaAtual {
   mes: string;
   faturamento: number | null;
   custo: number | null;
+  aluguel: number | null;
   clientes: number | null;
 }
 
@@ -41,23 +44,27 @@ export function montarEvolucaoCasa(e: {
   const fotos = new Map(e.fechados.map((f) => [f.mes, f]));
   const pontos: PontoCasa[] = [];
   for (const mes of meses) {
-    let fat: number | null, custo: number | null, clientes: number | null;
+    let fat: number | null, custo: number | null, clientes: number | null, aluguel: number | null;
     if (e.atual && e.atual.mes === mes) {
-      ({ faturamento: fat, custo, clientes } = e.atual);
+      ({ faturamento: fat, custo, clientes, aluguel } = e.atual);
     } else {
       const f = fotos.get(mes);
       // Foto zerada = a métrica ainda não existia naquele mês: sem dado, não 0.
       fat = f && f.vendaLiquida > 0 ? f.vendaLiquida : null;
       clientes = f && f.atendimentos > 0 ? f.atendimentos : null;
       custo = mes >= INICIO_HISTORICO ? custoBrutoDoPeriodo([mes], e.folhaPorMes, e.custosPorMes) : null;
+      aluguel = custo === null ? null : e.custosPorMes.get(mes)?.aluguel ?? 0;
     }
+    const ok = custo !== null && fat !== null && fat > 0;
     if (fat === null && custo === null && clientes === null) continue;
     pontos.push({
       mes,
       faturamento: fat,
       custo,
       clientes,
-      custoSobreFat: custo === null || fat === null || fat <= 0 ? null : custo / fat,
+      custoSobreFat: ok ? custo! / fat! : null,
+      aluguel,
+      custoSemAluguelSobreFat: ok ? (custo! - (aluguel ?? 0)) / fat! : null,
       parcial: mes === e.hojeMes,
     });
   }

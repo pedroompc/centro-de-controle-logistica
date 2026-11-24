@@ -6,6 +6,7 @@ import { listarLancamentosDoMes, serieCustosMensais } from "@/data/custos-mensai
 import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { custoLogisticoDoPeriodo } from "@/domain/custo-periodo";
+import { ehAluguelGalpao } from "@/domain/custo-grupos";
 import { totaisEfetivoPorMes } from "@/domain/efetivo";
 import { percentualCustoLogistico } from "@/domain/faturamento";
 import { hojeISO } from "@/domain/fechamento";
@@ -18,6 +19,7 @@ export interface ResumoCasa {
   clientesAtendidos: number | null; // cliente distinto por dia (PDVs atendidos)
   custoLogistico: number | null;
   custoSobreFat: number | null; // fração 0..1
+  aluguel: number | null; // aluguel do galpão dentro do custo logístico
 }
 
 export async function carregarResumoCasa(periodo: Periodo): Promise<ResumoCasa> {
@@ -26,7 +28,7 @@ export async function carregarResumoCasa(periodo: Periodo): Promise<ResumoCasa> 
   } catch (e) {
     const erro = e instanceof Error ? e.message : String(e);
     console.error("[resumo-casa]", erro);
-    return { efetivo: null, faturamentoLiquido: null, clientesAtendidos: null, custoLogistico: null, custoSobreFat: null, erro };
+    return { efetivo: null, faturamentoLiquido: null, clientesAtendidos: null, custoLogistico: null, custoSobreFat: null, aluguel: null, erro };
   }
 }
 
@@ -54,12 +56,20 @@ async function ler(periodo: Periodo): Promise<ResumoCasa> {
     custosPorMes: new Map(serieCustos.map((c) => [c.mes, c])),
   });
   const venda = fat?.vendaLiquida ?? null;
+  const meses = new Set(mesesDoPeriodo(periodo));
+  const aluguel =
+    custo === null
+      ? null
+      : mesUnico
+        ? lancamentosMes.filter((c) => ehAluguelGalpao(c.nome)).reduce((t, c) => t + c.valor, 0)
+        : serieCustos.filter((c) => meses.has(c.mes)).reduce((t, c) => t + c.aluguel, 0);
   return {
     efetivo: ativos.length, // como o Início: ativos de HOJE (não há foto confiável por mês)
     faturamentoLiquido: venda,
     clientesAtendidos: fat?.atendimentos ?? null,
     custoLogistico: custo,
     custoSobreFat: custo === null || venda === null ? null : percentualCustoLogistico(custo, venda),
+    aluguel,
     erro: null,
   };
 }

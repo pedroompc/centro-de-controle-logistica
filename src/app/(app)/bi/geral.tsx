@@ -104,7 +104,7 @@ const fmt = (i: IndicadorGeral): string => {
 /** Liga/desliga a visão do cartão no palco (o 2º clique fecha). */
 type Nav = (v: VisaoGeral) => { href: string; ativo: boolean };
 
-function CartaoCasa({ rotulo, valor, sub, nav }: { rotulo: string; valor: string; sub?: ReactNode; nav?: { href: string; ativo: boolean } }) {
+function CartaoCasa({ rotulo, valor, sub, extra, nav }: { rotulo: string; valor: string; sub?: ReactNode; extra?: string; nav?: { href: string; ativo: boolean } }) {
   const corpo = (
     <>
       <span className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/50">
@@ -112,6 +112,7 @@ function CartaoCasa({ rotulo, valor, sub, nav }: { rotulo: string; valor: string
         {nav && <span className={`normal-case tracking-normal transition ${nav.ativo ? "text-amber-300" : "text-white/25 group-hover:text-amber-300"}`}>{nav.ativo ? "fechar ×" : "detalhar ›"}</span>}
       </span>
       <div className="mt-1 whitespace-nowrap font-[family-name:var(--font-sora)] text-[clamp(1.25rem,2.4vw,2rem)] font-extrabold leading-none tabular-nums text-white">{valor}</div>
+      {extra && <div className="mt-1.5 text-sm font-semibold tabular-nums text-white/80">{extra}</div>}
       <div className="mt-2 min-h-4 text-xs">{sub}</div>
     </>
   );
@@ -145,10 +146,21 @@ async function NumerosCasa({ comparacao, cargas, nav }: { comparacao: PeriodoCom
         nav={nav("efetivo")}
       />
       <CartaoCasa rotulo="Faturamento líquido" valor={brl(a.faturamentoLiquido)} sub={pct("faturamentoLiquido", true)} nav={nav("faturamento")} />
-      <CartaoCasa rotulo="Custo logístico" valor={brl(a.custoLogistico)} sub={pct("custoLogistico", false)} nav={nav("custo")} />
       <CartaoCasa
-        rotulo="Custo ÷ faturamento"
+        rotulo="Custo logístico"
+        valor={brl(a.custoLogistico)}
+        extra={a.custoLogistico === null || a.aluguel === null ? undefined : `Sem o aluguel: ${reais(a.custoLogistico - a.aluguel)}`}
+        sub={pct("custoLogistico", false)}
+        nav={nav("custo")}
+      />
+      <CartaoCasa
+        rotulo="Custo logístico %"
         valor={a.custoSobreFat === null ? "—" : formatPercent(a.custoSobreFat, 2)}
+        extra={
+          a.custoLogistico === null || a.aluguel === null || !a.faturamentoLiquido
+            ? undefined
+            : `Sem o aluguel: ${formatPercent((a.custoLogistico - a.aluguel) / a.faturamentoLiquido, 2)}`
+        }
         sub={v(compararTaxa(a.custoSobreFat, b?.custoSobreFat, false, { casas: 2 }))}
         nav={nav("custoSobreFat")}
       />
@@ -159,7 +171,7 @@ async function NumerosCasa({ comparacao, cargas, nav }: { comparacao: PeriodoCom
 function CasaCarregando() {
   return (
     <div className={GRADE_CASA}>
-      {["Efetivo", "Faturamento líquido", "Custo logístico", "Custo ÷ faturamento"].map((r) => (
+      {["Efetivo", "Faturamento líquido", "Custo logístico", "Custo logístico %"].map((r) => (
         <CartaoCasa key={r} rotulo={r} valor="…" />
       ))}
     </div>
@@ -206,7 +218,7 @@ async function carregarPontos(periodo: Periodo, cargas: Cargas): Promise<PontoCa
     fechados,
     folhaPorMes: new Map(efetivo.map((e) => [e.mes, e.folhaTotal])),
     custosPorMes: new Map(custos.map((c) => [c.mes, c])),
-    atual: mes && !a.erro ? { mes, faturamento: a.faturamentoLiquido, custo: a.custoLogistico, clientes: a.clientesAtendidos } : null,
+    atual: mes && !a.erro ? { mes, faturamento: a.faturamentoLiquido, custo: a.custoLogistico, aluguel: a.aluguel, clientes: a.clientesAtendidos } : null,
   });
 }
 
@@ -219,7 +231,7 @@ async function EvolucaoCasa({ cargas, q, ver }: { cargas: Cargas; q: Record<stri
   const pontos = await cargas.pontos();
   const h = hrefDoMes(q, ver);
   const series = [
-    serie("Custo ÷ faturamento", pontos, (p) => p.custoSobreFat, (v) => formatPercent(v, 2), h),
+    serie("Custo logístico %", pontos, (p) => p.custoSobreFat, (v) => formatPercent(v, 2), h),
     serie("Faturamento líquido", pontos, (p) => p.faturamento, reais, h),
     serie("Custo logístico", pontos, (p) => p.custo, reais, h),
     serie("Clientes atendidos", pontos, (p) => p.clientes, (v) => Math.round(v).toLocaleString("pt-BR"), h),
@@ -396,7 +408,7 @@ export function AbaGeral({
     ver === "efetivo" ? detalhe("Efetivo", <DetalheEfetivo funcionarios={funcionarios} setores={todosSetores} admin={admin} />)
     : ver === "faturamento" ? detalhe("Faturamento dia a dia", <DetalheFaturamento periodo={periodo} />)
     : ver === "custo" ? detalhe("Custo logístico", <DetalheCusto periodo={periodo} funcionarios={funcionarios} />)
-    : ver === "custoSobreFat" ? detalhe("Custo ÷ faturamento mês a mês", <DetalheCustoSobreFat pontos={cargas.pontos()} />)
+    : ver === "custoSobreFat" ? detalhe("Custo logístico % mês a mês", <DetalheCustoSobreFat pontos={cargas.pontos()} />)
     : { chave: "setores", titulo: "Setores", conteudo: blocos };
   return (
     <BIShell

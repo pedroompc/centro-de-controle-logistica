@@ -1,5 +1,6 @@
 "use server";
 
+import { ehAluguelGalpao } from "@/domain/custo-grupos";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { umDe, valorBR } from "@/domain/formulario";
@@ -42,6 +43,7 @@ export interface CustoMesTotais {
   mes: string; // "yyyy-mm-01"
   fixos: number;
   variaveis: number;
+  aluguel: number; // parte dos fixos que é o aluguel do galpão
 }
 
 /**
@@ -57,7 +59,7 @@ export async function serieCustosMensais(qtdMeses = 12): Promise<CustoMesTotais[
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("custos_mensais")
-    .select("mes, tipo, valor")
+    .select("mes, tipo, valor, nome")
     .gte("mes", inicio)
     .order("mes", { ascending: true });
   if (error) throw new Error(error.message);
@@ -65,8 +67,9 @@ export async function serieCustosMensais(qtdMeses = 12): Promise<CustoMesTotais[
   const porMes = new Map<string, CustoMesTotais>();
   for (const row of data ?? []) {
     const mes = primeiroDiaDoMes(String(row.mes));
-    const t = porMes.get(mes) ?? { mes, fixos: 0, variaveis: 0 };
+    const t = porMes.get(mes) ?? { mes, fixos: 0, variaveis: 0, aluguel: 0 };
     const valor = Number(row.valor) || 0;
+    if (ehAluguelGalpao(String(row.nome ?? ""))) t.aluguel += valor;
     if (row.tipo === "fixo") t.fixos += valor;
     else t.variaveis += valor;
     porMes.set(mes, t);
