@@ -28,6 +28,7 @@ async function Conteudo() {
   const enriquecidos: PedidoLista[] = pedidos
     .map((p) => ({
       numeroPedido: p.numeroPedido,
+      codigoCliente: p.codigoCliente,
       nomeCliente: p.nomeCliente,
       cidadeCliente: p.cidadeCliente,
       nomeRca: p.nomeRca,

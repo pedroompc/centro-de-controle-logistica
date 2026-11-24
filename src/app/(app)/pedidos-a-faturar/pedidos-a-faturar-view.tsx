@@ -13,7 +13,7 @@ import type { PedidoPendente } from "@/domain/pedidos-a-faturar/tipos";
  */
 export type PedidoLista = Pick<
   PedidoPendente,
-  "numeroPedido" | "nomeCliente" | "cidadeCliente" | "nomeRca" | "nomeSupervisor" | "valorPedido" | "pesoPedido" | "horasParado" | "statusWinthor" | "reentrega"
+  "numeroPedido" | "codigoCliente" | "nomeCliente" | "cidadeCliente" | "nomeRca" | "nomeSupervisor" | "valorPedido" | "pesoPedido" | "horasParado" | "statusWinthor" | "reentrega"
 > & { regiao: string | null };
 
 /** Linhas renderizadas por vez; "Mostrar mais" soma outro lote. */
@@ -22,6 +22,7 @@ const LOTE_LINHAS = 200;
 /** Colunas ordenáveis: chave do pedido, rótulo, tipo (p/ comparador) e alinhamento. */
 const COLUNAS = [
   { chave: "numeroPedido", label: "Pedido", tipo: "num", align: "left" },
+  { chave: "codigoCliente", label: "Cód. cliente", tipo: "num", align: "left" },
   { chave: "nomeCliente", label: "Cliente", tipo: "texto", align: "left" },
   { chave: "cidadeCliente", label: "Cidade", tipo: "texto", align: "left" },
   { chave: "nomeRca", label: "Vendedor (RCA)", tipo: "texto", align: "left" },
@@ -95,7 +96,7 @@ export function PedidosAFaturarView({
       if (rca && p.nomeRca !== rca) return false;
       if (status && p.statusWinthor !== status) return false;
       if (termo) {
-        const alvo = `${p.nomeCliente} ${p.numeroPedido}`.toLowerCase();
+        const alvo = `${p.nomeCliente} ${p.codigoCliente} ${p.numeroPedido}`.toLowerCase();
         if (!alvo.includes(termo)) return false;
       }
       return true;
@@ -195,7 +196,7 @@ export function PedidosAFaturarView({
               type="search"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar cliente ou nº do pedido…"
+              placeholder="Buscar cliente, código ou nº do pedido…"
               className={selectClass}
             />
           </div>
@@ -299,6 +300,7 @@ export function PedidosAFaturarView({
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-2.5 tabular-nums text-slate-600">{p.codigoCliente}</td>
                   <td className="px-4 py-2.5 font-medium text-[#141a4d]">{p.nomeCliente}</td>
                   <td className="px-4 py-2.5">
                     <span className="text-slate-700">{p.cidadeCliente ?? "—"}</span>
@@ -306,8 +308,8 @@ export function PedidosAFaturarView({
                   </td>
                   <td className="px-4 py-2.5 text-slate-600">{p.nomeRca}</td>
                   <td className="px-4 py-2.5 text-slate-600">{p.nomeSupervisor ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-700">{formatBRL(p.valorPedido)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[#141a4d]">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-slate-700">{formatBRL(p.valorPedido)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums font-semibold text-[#141a4d]">
                     {tempoParado(p.horasParado)}
                   </td>
                   <td className="px-4 py-2.5">
@@ -368,6 +370,7 @@ export function PedidosAFaturarView({
                           ↩
                         </span>
                       )}
+                      {" · "}Cód. <span className="tabular-nums text-slate-600">{p.codigoCliente}</span>
                     </p>
                   </div>
                   <Pill tone={p.statusWinthor === "M" ? "gold" : "navy"}>{statusLabel(p.statusWinthor)}</Pill>
