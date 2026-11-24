@@ -131,16 +131,18 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
   const { de, ate } = periodo;
   const chave = `${de}|${ate}`;
   const pAnt = periodoAnterior(periodo, hoje);
+  // Mês corrente (aberto): compara com o mês anterior ATÉ O MESMO DIA (pAnt já vem cortado).
+  const mensalAberto = mensal && periodoAberto(periodo, hoje);
 
   // Só os quadros (comparação do BI Geral): sem o individual de admin.
   const admin = opcoes.soQuadros ? false : await isAdmin();
-  // Comparação individual: mês anterior inteiro (recorte mensal) ou o período anterior.
+  // Comparação individual: mês anterior inteiro (mês fechado), até o mesmo dia (mês aberto) ou o período anterior.
   const mesAnt = mesAnterior(mes);
-  const indivAnt: Periodo | null = mensal ? (mesAnt >= INICIO_SEPARADOR ? periodoDoMes(mesAnt) : null) : pAnt.de >= INICIO_SEPARADOR ? pAnt : null;
+  const indivAnt: Periodo | null = mensal && !mensalAberto ? (mesAnt >= INICIO_SEPARADOR ? periodoDoMes(mesAnt) : null) : pAnt.de >= INICIO_SEPARADOR ? pAnt : null;
   const ttl = ttlDoPeriodo(periodo);
   // Período longo: SKUs por turno agregados no Oracle depois (2ª fase), sem trazer cada produto.
   const longo = eixoDoPeriodo(periodo) === "mes";
-  const [equipamentos, fotos, harpia, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior, totais, totaisAnt] = await Promise.all([
+  const [equipamentos, fotos, harpia, mesesH, ligacoes, fatMes, fatFotos, indiv, anterior, totais, totaisAnt, fatAnt] = await Promise.all([
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
     // Leituras do Oracle ficam em cache (5 min com hoje no recorte, 60 min fechado);
@@ -159,7 +161,8 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
       ? lembrar(`lerProducaoIndividual:${indivAnt.de}|${indivAnt.ate}`, ttlDoPeriodo(indivAnt), () => lerProducaoIndividual(indivAnt.de, indivAnt.ate)).catch(() => null)
       : Promise.resolve(null),
     mensal ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${chave}`, ttl, () => lerTotaisSeparacaoHarpia(de, ate)).catch(() => null),
-    mensal || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerTotaisSeparacaoHarpia(pAnt.de, pAnt.ate)).catch(() => null),
+    (mensal && !mensalAberto) || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerTotaisSeparacaoHarpia:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerTotaisSeparacaoHarpia(pAnt.de, pAnt.ate)).catch(() => null),
+    mensalAberto && !opcoes.soQuadros ? lembrar(`getResumoFaturamentoPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => getResumoFaturamentoPeriodo(pAnt.de, pAnt.ate)).catch(() => null) : Promise.resolve(null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -309,6 +312,17 @@ export async function carregarBISeparacao(setor: { id: string; nome: string }, f
     const i = historico.findIndex((x) => x.mes === mes);
     ref = i >= 0 ? historico[i] : null;
     refAnterior = i > 0 ? historico[i - 1] : null;
+    // Mês aberto: produção e faturamento do mês anterior até o mesmo dia; custo segue o mês cheio.
+    if (mensalAberto && !opcoes.soQuadros && refAnterior) {
+      refAnterior = {
+        ...refAnterior,
+        faturamentoLiquido: fatAnt?.vendaLiquida ?? null,
+        linhas: totaisAnt?.linhas ?? null,
+        kg: totaisAnt?.kg ?? null,
+        pedidos: totaisAnt?.pedidos ?? null,
+        dias: totaisAnt?.dias ?? null,
+      };
+    }
   } else {
     const recAnt = custoDoRecorte(pAnt, custoPorMes, hoje);
     ref = {

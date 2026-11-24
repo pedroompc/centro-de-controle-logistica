@@ -3,7 +3,7 @@
 import { precosPraticados, type PrecosPraticados } from "@/domain/receitas-metrics";
 import { fracaoCustoDoMes } from "@/domain/custo-periodo";
 import { assertAdmin, isAdmin } from "@/data/auth";
-import { lerViagensMes } from "@/data/winthor-entregas";
+import { lerViagensMes, lerViagensPeriodo } from "@/data/winthor-entregas";
 import { lerHodometroPeriodo } from "@/data/frota-km";
 import { lerCadastroFrota } from "@/data/frota-custos";
 import { mapaKmDia, resumoKm, type ResumoKm } from "@/domain/frota";
@@ -11,17 +11,17 @@ import { custoFrota } from "@/domain/frota-custo";
 import { totaisEntregas } from "@/domain/motoristas";
 import { getNucleoDevolucao, getResumoCoorteFaturamento, getDevolucaoPorBairro } from "@/data/devolucoes";
 import type { BairroDevolucao } from "@/domain/devolucoes-mapa";
-import { getResumoFaturamentoDashboard } from "@/data/faturamento-mensal";
+import { getResumoFaturamentoDashboard, getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { getPedidosPendentes } from "@/data/pedidos-a-faturar";
-import { listarReceitasDoMes, listarReceitasDoPeriodo, serieReceitasMensais } from "@/data/receitas";
+import { listarReceitasDoMes, listarReceitasDoPeriodo, receitaTotalDoPeriodo, serieReceitasMensais } from "@/data/receitas";
 import { listarTotaisDiariosDoMes, listarTotaisDiariosDoPeriodo } from "@/data/receitas-diario";
 import { listarCarrosDia } from "@/data/carros-dia";
 import { totalDiversasDoMes, serieDiversasPorMaterialMensal } from "@/data/receitas-diversas";
 import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
-import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
+import { agregarPorMes, diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import type { DescarregamentoTipo, Equipamento, Funcionario, Turno } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
-import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, somarDias, INICIO_HISTORICO } from "@/domain/periodo";
+import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesProximo, somarDias, periodoAnterior, periodoDoMes, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
@@ -58,6 +58,16 @@ function periodo(mes: string) {
 }
 function mesNorm(mes: string) {
   return limitarAoHistorico(mes || primeiroDiaDoMes());
+}
+
+/**
+ * Mês anterior COMPARÁVEL — base de toda variação "vs mês anterior" do Painel:
+ * mês na tela em andamento = mês anterior do dia 1 até o mesmo dia de hoje;
+ * mês fechado = mês anterior inteiro.
+ */
+function anteriorEquivalente(mes: string): { inicio: string; fim: string } {
+  const p = periodoAnterior(periodoDoMes(mesNorm(mes)));
+  return { inicio: p.de, fim: p.ate };
 }
 
 // --- Devolução (placar + motivos) --------------------------------------------
@@ -111,10 +121,24 @@ const DEV_VAZIO: ResumoDevolucao = {
  */
 export async function carregarResumoDevolucao(mes: string): Promise<ResumoDevolucao> {
   const { inicio, fim } = periodo(mes);
+  return resumoDevolucaoDe(inicio, fim, getResumoFaturamentoDashboard(mesNorm(mes)));
+}
+
+/** Placar do mês anterior comparável (mês aberto = até o mesmo dia) — base do ▲▼ do cabeçalho. */
+export async function carregarResumoDevolucaoAnterior(mes: string): Promise<ResumoDevolucao> {
+  const { inicio, fim } = anteriorEquivalente(mes);
+  return resumoDevolucaoDe(inicio, fim, getResumoFaturamentoPeriodo(inicio, fim));
+}
+
+async function resumoDevolucaoDe(
+  inicio: string,
+  fim: string,
+  faturamento: Promise<Awaited<ReturnType<typeof getResumoFaturamentoDashboard>>>,
+): Promise<ResumoDevolucao> {
   const [nucleo, coorte, fat] = await Promise.all([
     getNucleoDevolucao(inicio, fim, undefined, undefined, undefined, "faturamento"),
     getResumoCoorteFaturamento(inicio, fim),
-    getResumoFaturamentoDashboard(mesNorm(mes)),
+    faturamento,
   ]);
   if (!nucleo && !fat) return DEV_VAZIO;
   const total = nucleo?.total ?? coorte?.valor ?? 0;
@@ -238,7 +262,7 @@ export interface ResumoTempoFaturar extends ResumoTempos {
 export async function carregarTempoFaturar(mes: string): Promise<ResumoTempoFaturar> {
   const m = mesNorm(mes);
   const { inicio, fim } = inicioFimDoMes(m);
-  const ant = inicioFimDoMes(mesAnterior(m));
+  const ant = anteriorEquivalente(m);
   const [atual, anterior] = await Promise.all([
     lerTemposFaturamento(inicio, fim),
     lerTemposFaturamento(ant.inicio, ant.fim).catch(() => null),
@@ -258,17 +282,20 @@ export interface ResumoReceitas {
   diarios: number; // origem: totais diários de descarregamento
   diversas: number; // origem: reciclagem etc.
   serie: { mes: string; valor: number }[]; // últimos meses (soma das 3 origens)
+  totalAnterior: number | null; // mês anterior comparável (aberto = até o mesmo dia)
 }
 
 /** Receitas do mês por origem + série mensal (mesmas fontes da página Receitas). */
 export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
   await assertAdmin(); // R$ — fora da conta de leitura (TV)
   const m = mesNorm(mes);
-  const [descLista, diariosLista, diversas, serie] = await Promise.all([
+  const ant = anteriorEquivalente(m);
+  const [descLista, diariosLista, diversas, serie, totalAnterior] = await Promise.all([
     listarReceitasDoMes(m),
     listarTotaisDiariosDoMes(m),
     totalDiversasDoMes(m),
     serieReceitasMensais(6),
+    receitaTotalDoPeriodo(ant.inicio, ant.fim).catch(() => null),
   ]);
   const descarregamento = descLista.reduce((t, r) => t + r.receita, 0);
   const diarios = diariosLista.reduce((t, r) => t + r.receita, 0);
@@ -278,6 +305,7 @@ export async function carregarReceitas(mes: string): Promise<ResumoReceitas> {
     diarios,
     diversas,
     serie,
+    totalAnterior,
   };
 }
 
@@ -341,6 +369,8 @@ export interface ResumoDescarregos {
   receitaMes: number; // receita de descarrego no mês (total do dia + por fornecedor)
   porDia: { data: string; descarregos: number }[]; // dias com lançamento, em ordem
   porSemana: { rotulo: string; descarregos: number }[]; // agrupado por semana do mês
+  mes: PontoDescarregoMensal | null; // o mês na tela (carros, caixas, peso)
+  anterior: PontoDescarregoMensal | null; // mês anterior comparável (aberto = até o mesmo dia)
 }
 
 /** Número da semana do mês (1ª..5ª) a partir do dia. */
@@ -361,12 +391,17 @@ export async function carregarSerieDescarrego(qtdMeses = 6): Promise<PontoDescar
 export async function carregarDescarregos(mes: string): Promise<ResumoDescarregos> {
   const m = mesNorm(mes);
   const { inicio, fim } = inicioFimDoMes(m);
-  const [totais, lancamentos, carros] = await Promise.all([
+  const ant = anteriorEquivalente(m);
+  const [totais, lancamentos, carros, totaisAnt, lancAnt, carrosAnt] = await Promise.all([
     listarTotaisDiariosDoMes(m),
     listarReceitasDoMes(m),
     listarCarrosDia(inicio, fim),
+    listarTotaisDiariosDoPeriodo(ant.inicio, ant.fim),
+    listarReceitasDoPeriodo(ant.inicio, ant.fim),
+    listarCarrosDia(ant.inicio, ant.fim),
   ]);
   const linhas = [...totais, ...diariosDosLancamentos(lancamentos, carros)];
+  const linhasAnt = [...totaisAnt, ...diariosDosLancamentos(lancAnt, carrosAnt)];
 
   const dias = new Map<string, number>();
   for (const l of linhas) dias.set(l.data, (dias.get(l.data) ?? 0) + l.descarregos);
@@ -388,6 +423,8 @@ export async function carregarDescarregos(mes: string): Promise<ResumoDescarrego
     receitaMes: linhas.reduce((t, l) => t + l.receita, 0),
     porDia,
     porSemana,
+    mes: agregarPorMes(linhas)[0] ?? null,
+    anterior: agregarPorMes(linhasAnt)[0] ?? null,
   };
 }
 
@@ -561,14 +598,22 @@ async function kmDoMes(m: string): Promise<{ r: ResumoKm; entregas: number } | n
   return { r: resumoKm(vs, mapaKmDia(hod), null), entregas: totaisEntregas(vs).entregas };
 }
 
+/** KM de um intervalo qualquer (mês anterior comparável). */
+async function kmDoPeriodo(inicio: string, fim: string): Promise<{ r: ResumoKm; entregas: number } | null> {
+  const [vs, hod] = await Promise.all([lerViagensPeriodo(inicio, fim), lerHodometroPeriodo(inicio, fim)]);
+  if (!hod) return null;
+  return { r: resumoKm(vs, mapaKmDia(hod), null), entregas: totaisEntregas(vs).entregas };
+}
+
 /** KM real da frota de entrega no mês, vs o mês anterior. `null` = sem telemetria. */
 export async function carregarFrotaTV(mes: string): Promise<ResumoFrotaTV | null> {
   const m = mesNorm(mes);
-  const [atual, ant, admin] = await Promise.all([kmDoMes(m), m > INICIO_HISTORICO ? kmDoMes(mesAnterior(m)).catch(() => null) : null, isAdmin()]);
+  const pAnt = anteriorEquivalente(m);
+  const [atual, ant, admin] = await Promise.all([kmDoMes(m), m > INICIO_HISTORICO ? kmDoPeriodo(pAnt.inicio, pAnt.fim).catch(() => null) : null, isAdmin()]);
   if (!atual || atual.r.rastreados === 0) return null;
   const { r, entregas } = atual;
   const cadastro = admin ? await lerCadastroFrota().catch(() => null) : null;
-  const c = cadastro ? custoFrota(r, cadastro, fracaoDoMes(m)) : null;
+  const c = cadastro ? custoFrota(r, cadastro, fracaoCustoDoMes(m)) : null;
   return {
     km: r.km,
     rastreados: r.rastreados,
@@ -592,7 +637,7 @@ export async function carregarFrotaTV(mes: string): Promise<ResumoFrotaTV | null
  */
 export async function carregarCortesTV(mes: string): Promise<CortesTV> {
   const { inicio, fim } = periodo(mes);
-  const ant = inicioFimDoMes(mesAnterior(mesNorm(mes)));
+  const ant = anteriorEquivalente(mes);
   const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Recife" });
   const [linhas, linhasAnt] = await Promise.all([lerCortes(inicio, fim), lerCortes(ant.inicio, ant.fim)]);
   return cortesParaTV(linhas, linhasAnt, inicio, hoje < fim ? hoje : fim);

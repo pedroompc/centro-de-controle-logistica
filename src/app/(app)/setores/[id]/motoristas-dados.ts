@@ -94,8 +94,10 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
   const chave = `${de}|${ate}`;
   const ttl = ttlDoPeriodo(periodo);
   const pAnt = periodoAnterior(periodo, hoje);
+  // Mês corrente (aberto): compara com o mês anterior ATÉ O MESMO DIA (pAnt já vem cortado).
+  const mensalAberto = mensal && periodoAberto(periodo, hoje);
 
-  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro, cadastroFrota, cidadesMot, viagensAnt] = await Promise.all([
+  const [admin, equipamentos, fotos, viagens, mesesW, fatMes, fatFotos, devol, hodometro, cadastroFrota, cidadesMot, viagensAnt, fatAnt] = await Promise.all([
     // Só os quadros (comparação do BI Geral): sem o individual de admin nem o período anterior.
     opcoes.soQuadros ? Promise.resolve(false) : isAdmin(),
     listarEquipamentos().catch(() => null),
@@ -118,7 +120,8 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     lerCadastroFrota().catch(() => null),
     lembrar(`motoristaCidades:${chave}`, ttl, () => getMotoristaCidades(de, ate)).catch(() => null),
     // Período: viagens do período anterior para comparar entregas por dia.
-    mensal || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerViagensPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate)).catch(() => null),
+    (mensal && !mensalAberto) || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerViagensPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate)).catch(() => null),
+    mensalAberto && !opcoes.soQuadros ? lembrar(`getResumoFaturamentoPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => getResumoFaturamentoPeriodo(pAnt.de, pAnt.ate)).catch(() => null) : Promise.resolve(null),
   ]);
 
   const ativos = funcionarios.filter((f) => f.setorId === setor.id && f.status === "ativo");
@@ -190,6 +193,18 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     const i = historico.findIndex((x) => x.mes === mes);
     ref = i >= 0 ? historico[i] : null;
     refAnterior = i > 0 ? historico[i - 1] : null;
+    // Mês aberto: entregas e faturamento do mês anterior até o mesmo dia; custo segue o mês cheio.
+    if (mensalAberto && !opcoes.soQuadros && refAnterior) {
+      const t = viagensAnt ? totaisEntregas(viagensAnt) : null;
+      refAnterior = {
+        ...refAnterior,
+        faturamentoLiquido: fatAnt?.vendaLiquida ?? null,
+        viagens: t?.viagens ?? null,
+        entregas: t?.entregas ?? null,
+        kg: t?.kg ?? null,
+        dias: viagensAnt ? new Set(viagensAnt.map((v) => v.dia)).size : null,
+      };
+    }
   } else {
     ref = pontoDe("viagens" in viagens ? viagens.viagens : null, recorte, mes, fatMes?.vendaLiquida ?? null, periodoAberto(periodo, hoje));
     refAnterior = pontoDe(viagensAnt, custoDoRecorte(pAnt, custoPorMes, hoje), primeiroDiaDoMes(pAnt.ate), null, false);

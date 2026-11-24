@@ -138,7 +138,7 @@ function construirSlides(d: Dados, dev: ResumoDevolucao, devAnt: ResumoDevolucao
   if (admin && d.receitas)
     s.push({ id: "receitas", titulo: "Receitas", contexto: "por que um mês rendeu mais: carros, peso e diversas", icon: <IconeUsuario className="h-6 w-6" />, dwell: DWELL_MAPA, node: <SecaoReceitas dados={d.receitas} detalhe={d.receitasDrivers} recebimento={recSerie} /> });
   if (d.descarregos)
-    s.push({ id: "descarregos", titulo: "Descarrego", contexto: "comparação com o mês anterior e o dia a dia do mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos dados={d.descarregos} serie={d.serieDescarrego} mesLabel={mesLabel} /> });
+    s.push({ id: "descarregos", titulo: "Descarrego", contexto: "comparação com o mês anterior e o dia a dia do mês", icon: <IconeCaminhao className="h-6 w-6" />, dwell: DWELL_PADRAO, node: <SecaoDescarregos prevLabel={prevLabel} dados={d.descarregos} serie={d.serieDescarrego} mesLabel={mesLabel} /> });
   return s;
 }
 
@@ -337,7 +337,8 @@ export default function PainelView({
   const janelaTrimestre = recSerie.filter((r) => r.mes <= mesRef && r.mes >= mesAnterior(mesAnterior(mesRef)));
 
   // Comparação com o mês passado no cabeçalho (▲/▼ vs Ago).
-  const prevLabel = formatMesAno(mesAnterior(mesRef)).slice(0, 3);
+  // Mês em andamento: o anterior é cortado no mesmo dia de hoje ("vs Out até 24").
+  const prevLabel = `${formatMesAno(mesAnterior(mesRef)).slice(0, 3)}${mes ? "" : ` até ${new Date().getDate()}`}`;
   const slides = construirSlides(dados, dev, devAnt?.disponivel ? devAnt : undefined, mesLabel, recSerie, admin, pausado, prevLabel);
   const nSlides = slides.length;
   // Módulo sempre positivo: voltar (←) a partir do 1º slide deixa idx negativo.
@@ -345,7 +346,8 @@ export default function PainelView({
   const atual = nSlides > 0 ? slides[posicao] : null;
 
   const antOk = devAnt?.disponivel ? devAnt : undefined;
-  const receitaAnt = dados.receitas?.serie.find((p) => p.mes === mesAnterior(mesRef))?.valor;
+  // Mês anterior comparável (mês aberto = até o mesmo dia de hoje).
+  const receitaAnt = dados.receitas?.totalAnterior ?? undefined;
   const mesAtual = primeiroDiaDoMes();
   const podeVoltar = mesRef > INICIO_HISTORICO;
   const podeAvancar = mesRef < mesAtual;

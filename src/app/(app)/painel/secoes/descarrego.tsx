@@ -16,13 +16,14 @@ function KpiComp({ label, value, atual, ant, prevLabel }: { label: string; value
 }
 
 /** Descarregamento · comparação vs mês anterior + dia a dia do mês corrente. */
-export function SecaoDescarregos({ dados, serie, mesLabel }: { dados: ResumoDescarregos; serie: PontoDescarregoMensal[]; mesLabel: string }) {
+export function SecaoDescarregos({ dados, serie, mesLabel, prevLabel: rotuloAnt }: { dados: ResumoDescarregos; serie: PontoDescarregoMensal[]; mesLabel: string; prevLabel?: string }) {
   // Rótulo = dia/mês (dd/mm) para ficar claro que o eixo é a data.
   const porDia = dados.porDia.map((d) => ({ rotulo: `${d.data.slice(8, 10)}/${d.data.slice(5, 7)}`, valor: d.descarregos }));
 
-  const atual = serie.length > 0 ? serie[serie.length - 1] : null;
-  const ant = serie.length > 1 ? serie[serie.length - 2] : null;
-  const prevLabel = ant ? formatMesAno(ant.mes).slice(0, 3) : "";
+  // Mês na tela e o mês anterior comparável (mês aberto = até o mesmo dia de hoje).
+  const atual = dados.mes ?? (serie.length > 0 ? serie[serie.length - 1] : null);
+  const ant = dados.anterior;
+  const prevLabel = rotuloAnt ?? (ant ? formatMesAno(ant.mes).slice(0, 3) : "");
   const carros = atual?.carros ?? dados.totalMes;
   const caixas = atual?.caixas ?? 0;
   const peso = atual?.pesoKg ?? 0;

@@ -1,10 +1,11 @@
 "use server";
 
 import { isAdmin } from "@/data/auth";
-import { mesAnterior, primeiroDiaDoMes, lerPeriodo } from "@/domain/periodo";
+import { lerPeriodo } from "@/domain/periodo";
 import { carregarClientes, carregarVendedores, carregarMotoristas, carregarMapa } from "../devolucoes/actions";
 import {
   carregarResumoDevolucao,
+  carregarResumoDevolucaoAnterior,
   carregarDevBairrosRMR,
   carregarAFaturar,
   carregarReceitas,
@@ -80,7 +81,7 @@ export async function carregarPainelLote(mes: string, comPlacar: boolean): Promi
       bloco("recebimento", () => carregarRecebimento(), admin),
       bloco("frota", () => carregarFrotaTV(mes)),
       bloco("cortes", () => carregarCortesTV(mes)),
-      bloco("mês anterior", () => carregarResumoDevolucao(mesAnterior(mes || primeiroDiaDoMes()))),
+      bloco("mês anterior", () => carregarResumoDevolucaoAnterior(mes)),
       bloco("placar", () => carregarResumoDevolucao(mes), comPlacar),
     ]);
 
