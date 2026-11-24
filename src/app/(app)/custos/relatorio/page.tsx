@@ -78,7 +78,7 @@ export default async function RelatorioCustosPage() {
               fatMes
                 ? [
                     `Sem o aluguel: ${pct(fracao(custoMes.total, fatMes), 2)}`,
-                    ...(receitaMes === null ? [] : [`Com a receita: ${pct(fracao(custoLiquido(custoMes.totalComAluguel, receitaMes), fatMes), 2)}`]),
+                    ...(receitaMes === null ? [] : [`Sem o aluguel, com a receita: ${pct(fracao(custoLiquido(custoMes.total, receitaMes), fatMes), 2)}`]),
                   ]
                 : undefined
             }
@@ -92,7 +92,7 @@ export default async function RelatorioCustosPage() {
               n
                 ? [
                     `Sem o aluguel: ${pct(fracao(acum.total, fatAcum), 2)}`,
-                    ...(receitaAcum === null ? [] : [`Com a receita: ${pct(fracao(custoLiquido(acum.totalComAluguel, receitaAcum), fatAcum), 2)}`]),
+                    ...(receitaAcum === null ? [] : [`Sem o aluguel, com a receita: ${pct(fracao(custoLiquido(acum.total, receitaAcum), fatAcum), 2)}`]),
                   ]
                 : undefined
             }
