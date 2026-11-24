@@ -74,3 +74,30 @@ describe("carro lançado com várias notas", () => {
     expect(resumir(filtrarFatos(f, { fornecedor: "YPIOCA" })).carros).toBe(0);
   });
 });
+
+describe("abonado (FOB) nos fatos", () => {
+  const precos = { porTonelada: { batido: 63, paletizado: 30, pal_rem: 52 }, porCaixa: 0.8 };
+  const comIsenta = [
+    ...lancs,
+    { ...lanc("2026-09-02", "NESTLE", "pal_rem", 10_000, 0), isento: true, minimoAplicado: 25 },
+    { ...lanc("2026-09-02", "BRF", "batido", 100, 0), isento: true, minimoAplicado: 25 },
+  ];
+  const fs = fatosDoMes(comIsenta, totais, carrosDia, precos);
+
+  it("cada nota isenta vira R$ ao preço praticado (com mínimo); nota cobrada fica 0", () => {
+    const r = resumir(fs);
+    expect(r.abonado).toBe(520 + 25);
+    expect(r.notasIsentas).toBe(2);
+    expect(r.receita).toBe(resumir(fatos).receita); // abonado não mexe na receita
+  });
+
+  it("respeita os filtros cruzados do BI", () => {
+    expect(resumir(filtrarFatos(fs, { fornecedor: "NESTLE" })).abonado).toBe(520);
+    expect(resumir(filtrarFatos(fs, { tipo: "batido" })).abonado).toBe(25);
+    expect(resumir(filtrarFatos(fs, { dia: "2026-09-01" })).abonado).toBe(0);
+  });
+
+  it("sem preços de referência, abonado = 0 (não inventa)", () => {
+    expect(resumir(fatosDoMes(comIsenta, totais, carrosDia)).abonado).toBe(0);
+  });
+});

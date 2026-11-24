@@ -348,7 +348,7 @@ export function precosPraticados(rs: Receita[]): PrecosPraticados {
 }
 
 /** Quanto a nota isenta renderia cobrada (null = não isenta ou sem preço praticado do tipo). */
-export function valorAbonado(r: Receita, precos: PrecosPraticados): number | null {
+export function valorAbonado(r: Pick<Receita, "isento" | "tipo" | "quantidade" | "pesoKg" | "minimoAplicado">, precos: PrecosPraticados): number | null {
   if (!r.isento) return null;
   if (r.tipo === "volume") {
     return precos.porCaixa === null ? null : calcularReceitaVolume(r.quantidade ?? 0, precos.porCaixa, r.minimoAplicado);

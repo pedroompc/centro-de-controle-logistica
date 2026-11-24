@@ -1,5 +1,6 @@
 "use server";
 
+import { precosPraticados, type PrecosPraticados } from "@/domain/receitas-metrics";
 import { fracaoCustoDoMes } from "@/domain/custo-periodo";
 import { assertAdmin, isAdmin } from "@/data/auth";
 import { lerViagensMes } from "@/data/winthor-entregas";
@@ -20,7 +21,7 @@ import { serieDescarregoMensal } from "@/data/descarregamento-mensal";
 import { diariosDosLancamentos, type PontoDescarregoMensal } from "@/domain/descarregamento-tendencia";
 import type { DescarregamentoTipo, Equipamento, Funcionario, Turno } from "@/domain/types";
 import { taxaDevolucao, taxaDevolucaoNotas } from "@/domain/faturamento";
-import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, INICIO_HISTORICO } from "@/domain/periodo";
+import { inicioFimDoMes, limitarAoHistorico, primeiroDiaDoMes, mesAnterior, mesProximo, somarDias, INICIO_HISTORICO } from "@/domain/periodo";
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarSetores } from "@/data/setores";
 import { listarFotosEquipeCargo, registrarFotoEquipeCargo } from "@/data/efetivo-mensal-cargo";
@@ -523,14 +524,19 @@ export async function carregarDetalheCusto(): Promise<DetalheCusto> {
 export async function carregarFatosDescarrego(mes: string): Promise<FatoDescarrego[]> {
   const m = mesNorm(mes);
   const { inicio, fim } = inicioFimDoMes(m);
-  const [lancs, totais, carros] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m), listarCarrosDia(inicio, fim)]);
-  return fatosDoMes(lancs, totais, carros);
+  const [lancs, totais, carros, precos] = await Promise.all([listarReceitasDoMes(m), listarTotaisDiariosDoMes(m), listarCarrosDia(inicio, fim), precosDeReferencia(fim)]);
+  return fatosDoMes(lancs, totais, carros, precos);
 }
 
 /** Fatos do descarrego de [de, ate] (BI do Recebimento por período). */
 export async function carregarFatosDescarregoPeriodo(de: string, ate: string): Promise<FatoDescarrego[]> {
-  const [lancs, totais, carros] = await Promise.all([listarReceitasDoPeriodo(de, ate), listarTotaisDiariosDoPeriodo(de, ate), listarCarrosDia(de, ate)]);
-  return fatosDoMes(lancs, totais, carros);
+  const [lancs, totais, carros, precos] = await Promise.all([listarReceitasDoPeriodo(de, ate), listarTotaisDiariosDoPeriodo(de, ate), listarCarrosDia(de, ate), precosDeReferencia(ate)]);
+  return fatosDoMes(lancs, totais, carros, precos);
+}
+
+/** Preço praticado (base do "abonado" FOB): notas cobradas dos 90 dias até `ate`. Mesma regra da tela de Receitas. */
+async function precosDeReferencia(ate: string): Promise<PrecosPraticados | null> {
+  return listarReceitasDoPeriodo(somarDias(ate, -90), ate).then(precosPraticados).catch(() => null);
 }
 
 // --- Frota (telemetria Fulltrack) ---------------------------------------------

@@ -12,8 +12,13 @@ export function VisaoReceita(p: PropsVisao) {
   if (!x.temFatos) return <Vazio>Carregando a receita do período…</Vazio>;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
         <Mini rotulo="Receita de descarrego" valor={formatBRL(sel.receita)} sub={rotuloPeriodo(p.dados.periodo)} />
+        <Mini
+          rotulo="Abonado (FOB) · se cobrado"
+          valor={formatBRL(sel.abonado)}
+          sub={`${sel.notasIsentas} ${sel.notasIsentas === 1 ? "nota isenta" : "notas isentas"} · preço praticado`}
+        />
         <Mini rotulo="Custo do recebimento" valor={formatBRL(x.custo)} sub={x.criterioCusto ?? (p.dados.mensal ? "do mês" : "do período")} />
         <Mini rotulo="Sobra (receita − custo)" valor={formatBRL(sel.receita - x.custo)} />
         <Mini rotulo="Custo consome" valor={sel.receita > 0 ? formatPercent(x.custo / sel.receita) : "—"} sub="da receita" />

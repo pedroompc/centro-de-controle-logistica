@@ -18,6 +18,7 @@
  */
 import type { CarrosDia, DescarregamentoTipo, Receita, TotalDiarioDescarregamento } from "./types";
 import { TIPOS_CARRO } from "./descarregamento";
+import { valorAbonado, type PrecosPraticados } from "./receitas-metrics";
 
 export interface FatoDescarrego {
   data: string; // "yyyy-mm-dd"
@@ -28,6 +29,7 @@ export interface FatoDescarrego {
   caixas: number;
   pesoKg: number;
   receita: number;
+  abonado: number; // isento (FOB): quanto renderia cobrado, ao preço praticado
   notas: number; // lançamentos por fornecedor
   ajuste?: boolean; // correção pela contagem real de carros do dia
 }
@@ -41,13 +43,16 @@ const vazio = (data: string, fornecedor: string | null, tipo: DescarregamentoTip
   caixas: 0,
   pesoKg: 0,
   receita: 0,
+  abonado: 0,
   notas: 0,
 });
 
 export function fatosDoMes(
-  lancamentos: Pick<Receita, "data" | "fornecedorNome" | "tipo" | "quantidade" | "carros" | "pesoKg" | "receita">[],
+  lancamentos: (Pick<Receita, "data" | "fornecedorNome" | "tipo" | "quantidade" | "carros" | "pesoKg" | "receita"> &
+    Partial<Pick<Receita, "isento" | "minimoAplicado">>)[],
   totais: TotalDiarioDescarregamento[],
   carrosDia: CarrosDia[],
+  precos: PrecosPraticados | null = null,
 ): FatoDescarrego[] {
   const fatos: FatoDescarrego[] = [];
   // Contagem por dia/tipo vinda das notas, para o ajuste da contagem real.
@@ -57,6 +62,7 @@ export function fatosDoMes(
     f.notas = 1;
     f.pesoKg = l.pesoKg;
     f.receita = l.receita;
+    if (precos && l.isento) f.abonado = valorAbonado({ ...l, isento: true, minimoAplicado: l.minimoAplicado ?? 0 }, precos) ?? 0;
     if (l.tipo === "volume") {
       f.descargasVolume = l.carros ?? 1;
       f.caixas = l.quantidade ?? 0;
@@ -121,13 +127,15 @@ export interface ResumoFatos {
   caixas: number;
   pesoKg: number;
   receita: number;
+  abonado: number; // isento (FOB) se cobrado
+  notasIsentas: number;
   notas: number;
   dias: number; // dias com algum movimento
   fornecedores: number;
 }
 
 export function resumir(fatos: FatoDescarrego[]): ResumoFatos {
-  const r: ResumoFatos = { carros: 0, descargasVolume: 0, caixas: 0, pesoKg: 0, receita: 0, notas: 0, dias: 0, fornecedores: 0 };
+  const r: ResumoFatos = { carros: 0, descargasVolume: 0, caixas: 0, pesoKg: 0, receita: 0, abonado: 0, notasIsentas: 0, notas: 0, dias: 0, fornecedores: 0 };
   const dias = new Set<string>();
   const forn = new Set<string>();
   for (const x of fatos) {
@@ -136,6 +144,8 @@ export function resumir(fatos: FatoDescarrego[]): ResumoFatos {
     r.caixas += x.caixas;
     r.pesoKg += x.pesoKg;
     r.receita += x.receita;
+    r.abonado += x.abonado;
+    if (x.abonado > 0) r.notasIsentas += x.notas;
     r.notas += x.notas;
     if (x.carros || x.notas || x.pesoKg || x.caixas) dias.add(x.data);
     if (x.fornecedor) forn.add(x.fornecedor);
