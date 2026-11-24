@@ -6,7 +6,7 @@ import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin, exigirAdminPagina } from "@/data/auth";
 import {
   resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas, carrosDoLancamento,
-  precosPraticados, resumoAbonado, valorAbonado, type PrecosPraticados,
+  precosPraticados, resumoAbonado, valorAbonado, medioPorToneladaComAbonado, type PrecosPraticados,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import {
@@ -249,7 +249,12 @@ export default async function ReceitasPage({
       {/* Indicadores */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <div className="lg:col-span-1">
-          <HeroStat label="Receita total" value={formatBRL(resumo.total)} />
+          <HeroStat label="Receita total" value={formatBRL(resumo.total + abonado.valor)}>
+            <p className="mt-2 text-sm text-white/60" title="Descarrego + outras receitas + abonado (FOB) ao preço praticado">com o abonado</p>
+            <p className="mt-1 text-base text-white/70">
+              Recebido: <span className="font-[family-name:var(--font-sora)] font-bold tabular-nums text-emerald-400">{formatBRL(resumo.total)}</span>
+            </p>
+          </HeroStat>
           {!filtrandoDescarregamento && comparacao && (
             <ComparaPeriodos
               className="mt-1.5 px-1"
@@ -270,17 +275,18 @@ export default async function ReceitasPage({
           accent="green"
         />
         <StatCard
-          label="Valor médio / tonelada"
-          value={formatBRL(resumo.medioPorTonelada)}
-          hint="só descarrego"
-          accent="gold"
-        />
-        <StatCard
           label="Abonado (FOB) · se cobrado"
           value={formatBRL(abonado.valor)}
           hint={`${abonado.notas} ${abonado.notas === 1 ? "nota isenta" : "notas isentas"} · ${fmtTon(abonado.toneladas)}${abonado.semPreco ? ` · ${abonado.semPreco} sem preço de referência` : ""}`}
           accent="navy"
           title={`Quanto renderia cobrar da indústria as cargas isentas (FOB), ao preço praticado nas notas cobradas dos últimos 90 dias, com o mínimo do descarrego. ${textoPrecos(praticados)}`}
+        />
+        <StatCard
+          label="Valor médio / tonelada"
+          value={formatBRL(medioPorToneladaComAbonado(resumo, receitas, praticados))}
+          hint={`Recebido: ${formatBRL(resumo.medioPorTonelada)}/t`}
+          accent="gold"
+          title="Descarrego por peso (Volume fora) com o abonado ao preço praticado; embaixo, só o que foi de fato pago"
         />
       </div>
 

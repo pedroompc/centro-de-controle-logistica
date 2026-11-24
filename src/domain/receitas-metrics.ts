@@ -272,6 +272,9 @@ export interface ResumoReceitas {
   toneladas: number;
   /** Divide SÓ a receita de descarregamento pelas toneladas. */
   medioPorTonelada: number;
+  /** Numerador e denominador do médio (tipos por peso cobrados + totais do dia). */
+  receitaPorPeso: number;
+  toneladasPorPeso: number;
 }
 
 /**
@@ -307,6 +310,8 @@ export function resumoReceitas(
     total: arredonda2(totalDescarregamento + totalDiversas),
     toneladas: tons,
     medioPorTonelada: tonsPorPeso === 0 ? 0 : arredonda2(receitaPorPeso / tonsPorPeso),
+    receitaPorPeso,
+    toneladasPorPeso: tonsPorPeso,
   };
 }
 
@@ -378,4 +383,22 @@ export function resumoAbonado(rs: Receita[], precos: PrecosPraticados): ResumoAb
     else valor += v;
   }
   return { valor: arredonda2(valor), notas, toneladas: arredonda2(toneladas(kg)), semPreco };
+}
+
+/**
+ * Valor médio por tonelada contando o abonado: soma às notas cobradas por peso
+ * as isentas por peso (Volume fora, como no médio) valorizadas ao preço
+ * praticado. Isenta sem preço de referência fica fora do numerador E do denominador.
+ */
+export function medioPorToneladaComAbonado(resumo: ResumoReceitas, rs: Receita[], precos: PrecosPraticados): number {
+  let valor = resumo.receitaPorPeso;
+  let tons = resumo.toneladasPorPeso;
+  for (const r of rs) {
+    if (!r.isento || r.tipo === "volume") continue;
+    const v = valorAbonado(r, precos);
+    if (v === null) continue;
+    valor += v;
+    tons += toneladas(r.pesoKg);
+  }
+  return tons === 0 ? 0 : arredonda2(valor / tons);
 }

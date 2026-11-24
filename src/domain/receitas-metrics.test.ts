@@ -4,7 +4,7 @@ import {
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
   receitaPorDia, calcularReceitaVolume, carrosDoLancamento, liderDoCarro, valorDaNota,
-  precosPraticados, valorAbonado, resumoAbonado,
+  precosPraticados, valorAbonado, resumoAbonado, medioPorToneladaComAbonado,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 
@@ -410,5 +410,20 @@ describe("abonado (FOB): quanto renderia cobrado", () => {
 
   it("resumo soma o que renderia e conta as isentas sem preço praticado", () => {
     expect(resumoAbonado([...cobradas, ...isentas], precos)).toEqual({ valor: 1005, notas: 4, toneladas: 15.25, semPreco: 1 });
+  });
+});
+
+describe("valor médio por tonelada com o abonado", () => {
+  const precos = { porTonelada: { batido: 63, paletizado: null, pal_rem: 52 }, porCaixa: 0.8 };
+  const rs = [
+    r({ tipo: "batido", pesoKg: 2000, precoPorTonelada: 50, receita: 100 }),
+    r({ isento: true, tipo: "batido", pesoKg: 2000, precoPorTonelada: 1815, receita: 0 }), // 2 t × 63 = 126
+    r({ isento: true, tipo: "paletizado", pesoKg: 5000, receita: 0 }), // sem preço praticado: fora
+    r({ isento: true, tipo: "volume", pesoKg: 300, quantidade: 100, receita: 0 }), // Volume fora do médio
+  ];
+  it("soma o abonado por peso ao numerador e as toneladas dele ao denominador", () => {
+    const resumo = resumoReceitas(rs, [], []);
+    expect(resumo.medioPorTonelada).toBe(50); // recebido: só a nota paga
+    expect(medioPorToneladaComAbonado(resumo, rs, precos)).toBe((100 + 126) / 4);
   });
 });
