@@ -144,53 +144,7 @@ export default async function RelatorioCustosPage() {
       <section className="mt-8">
         <SectionTitle>Mês a mês</SectionTitle>
         <Explica>Custo de cada mês e quanto ele representa do faturamento daquele mês.</Explica>
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Mês</th>
-                  <th className="px-4 py-3 text-right font-semibold">Aluguel</th>
-                  <th className="px-4 py-3 text-right font-semibold">Galpão</th>
-                  <th className="px-4 py-3 text-right font-semibold">Entrega</th>
-                  <th className="px-4 py-3 text-right font-semibold">Galpão Adm.</th>
-                  <th className="px-4 py-3 text-right font-semibold">Custo total</th>
-                  <th className="px-4 py-3 text-right font-semibold">Faturamento</th>
-                  <th className="px-4 py-3 text-right font-semibold">Custo ÷ fat.</th>
-                </tr>
-              </thead>
-              <tbody className="tabular-nums">
-                {rel.meses.map((m) => (
-                  <LinhaMes key={m.custo.mes} m={m} />
-                ))}
-                {n > 0 && (
-                  <>
-                    <tr className="border-t-2 border-slate-200 bg-slate-50/60 font-semibold text-[#141a4d]">
-                      <td className="px-4 py-3" title={faixa}>Acumulado ({n} {n === 1 ? "mês fechado" : "meses fechados"})</td>
-                      <td className="px-4 py-3 text-right">{formatBRL(acum.aluguel)}</td>
-                      {GRUPOS.map(({ chave }) => (
-                        <td key={chave} className="px-4 py-3 text-right">{formatBRL(acum.grupos[chave].total)}</td>
-                      ))}
-                      <td className="px-4 py-3 text-right">{formatBRL(acum.totalComAluguel)}</td>
-                      <td className="px-4 py-3 text-right">{formatBRL(fatAcum)}</td>
-                      <td className="px-4 py-3 text-right">{pct(fracao(acum.totalComAluguel, fatAcum), 2)}</td>
-                    </tr>
-                    <tr className="bg-slate-50/60 text-slate-600">
-                      <td className="px-4 py-3">Média mensal</td>
-                      <td className="px-4 py-3 text-right">{formatBRL(acum.aluguel / n)}</td>
-                      {GRUPOS.map(({ chave }) => (
-                        <td key={chave} className="px-4 py-3 text-right">{formatBRL(acum.grupos[chave].total / n)}</td>
-                      ))}
-                      <td className="px-4 py-3 text-right">{formatBRL(acum.totalComAluguel / n)}</td>
-                      <td className="px-4 py-3 text-right">{formatBRL(fatAcum / n)}</td>
-                      <td className="px-4 py-3 text-right">{pct(fracao(acum.totalComAluguel, fatAcum), 2)}</td>
-                    </tr>
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <TabelaMesAMes meses={rel.meses} acum={acum} fatAcum={fatAcum} n={n} faixa={faixa} />
       </section>
 
       {rel.faturamentoMesAtualIndisponivel && (
@@ -357,24 +311,79 @@ function Totalizador({ rotulo, valor, sub, cor, extra, titulo }: { rotulo: strin
   );
 }
 
-function LinhaMes({ m }: { m: MesRelatorio }) {
-  const c = m.custo;
+/**
+ * Mês a mês no formato que a diretoria lê: meses nas COLUNAS, indicadores nas
+ * LINHAS, fechando com Acumulado (meses fechados) e Média mensal.
+ */
+function TabelaMesAMes({ meses, acum, fatAcum, n, faixa }: { meses: MesRelatorio[]; acum: Pick<CustoGruposMes, "grupos" | "aluguel" | "totalComAluguel">; fatAcum: number; n: number; faixa: string }) {
+  const pessoasDe = (c: CustoGruposMes) => GRUPOS.reduce((t, { chave }) => t + c.grupos[chave].pessoas, 0);
+  const fechados = meses.filter((m) => m.fechado);
+  const mediaPessoas = n ? fechados.reduce((t, m) => t + pessoasDe(m.custo), 0) / n : 0;
+  type Linha = { rotulo: string; mes: (m: MesRelatorio) => string; acum: string; media: string; forte?: boolean; titulo?: (m: MesRelatorio) => string | undefined };
+  const linhas: Linha[] = [
+    { rotulo: "Funcionários", mes: (m) => pessoasDe(m.custo).toLocaleString("pt-BR"), acum: "—", media: n ? Math.round(mediaPessoas).toLocaleString("pt-BR") : "—" },
+    { rotulo: "Aluguel do galpão", mes: (m) => (m.custo.aluguel > 0 ? formatBRL(m.custo.aluguel) : "—"), acum: formatBRL(acum.aluguel), media: formatBRL(acum.aluguel / (n || 1)) },
+    ...GRUPOS.map(({ chave, label }) => ({
+      rotulo: label,
+      mes: (m: MesRelatorio) => formatBRL(m.custo.grupos[chave].total),
+      acum: formatBRL(acum.grupos[chave].total),
+      media: formatBRL(acum.grupos[chave].total / (n || 1)),
+    })),
+    { rotulo: "Custo total", forte: true, mes: (m) => formatBRL(m.custo.totalComAluguel), acum: formatBRL(acum.totalComAluguel), media: formatBRL(acum.totalComAluguel / (n || 1)) },
+    { rotulo: "Faturamento", mes: (m) => brl(m.vendaLiquida), titulo: (m) => (m.fechado ? undefined : "Até hoje"), acum: formatBRL(fatAcum), media: formatBRL(fatAcum / (n || 1)) },
+    {
+      rotulo: "Custo logístico %",
+      forte: true,
+      mes: (m) => pct(fracao(m.custo.totalComAluguel, m.vendaLiquida), 2),
+      titulo: (m) => (m.fechado ? undefined : "Sobre o faturamento até hoje"),
+      acum: pct(fracao(acum.totalComAluguel, fatAcum), 2),
+      media: pct(fracao(acum.totalComAluguel, fatAcum), 2),
+    },
+  ];
   return (
-    <tr className="border-b border-slate-50 last:border-0">
-      <td className="px-4 py-3 font-medium text-[#141a4d]">
-        {formatMesAno(c.mes)}
-        {!m.fechado && <span className="ml-2 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">em aberto</span>}
-      </td>
-      <td className="px-4 py-3 text-right text-slate-600">{c.aluguel > 0 ? formatBRL(c.aluguel) : "—"}</td>
-      {GRUPOS.map(({ chave }) => (
-        <td key={chave} className="px-4 py-3 text-right text-slate-600">{formatBRL(c.grupos[chave].total)}</td>
-      ))}
-      <td className="px-4 py-3 text-right font-semibold text-[#141a4d]">{formatBRL(c.totalComAluguel)}</td>
-      <td className="px-4 py-3 text-right text-slate-600" title={m.fechado ? undefined : "Até hoje"}>{brl(m.vendaLiquida)}</td>
-      <td className="px-4 py-3 text-right font-semibold text-[#141a4d]" title={m.fechado ? undefined : "Sobre o faturamento até hoje"}>
-        {pct(fracao(c.totalComAluguel, m.vendaLiquida), 2)}
-      </td>
-    </tr>
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
+            <tr>
+              <th className="sticky left-0 bg-slate-50 px-4 py-3 font-semibold" />
+              {meses.map((m) => (
+                <th key={m.custo.mes} className="whitespace-nowrap px-4 py-3 text-right font-semibold">
+                  {formatMesAno(m.custo.mes)}
+                  {!m.fechado && <span className="ml-1.5 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">em aberto</span>}
+                </th>
+              ))}
+              {n > 0 && (
+                <>
+                  <th className="whitespace-nowrap border-l-2 border-slate-200 px-4 py-3 text-right font-semibold text-[#141a4d]" title={faixa}>
+                    Acumulado ({n} {n === 1 ? "mês" : "meses"})
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Média mensal</th>
+                </>
+              )}
+            </tr>
+          </thead>
+          <tbody className="tabular-nums">
+            {linhas.map((l) => (
+              <tr key={l.rotulo} className={`border-b border-slate-50 last:border-0 ${l.forte ? "font-semibold text-[#141a4d]" : "text-slate-600"}`}>
+                <td className="sticky left-0 whitespace-nowrap bg-white px-4 py-3 font-medium text-[#141a4d]">{l.rotulo}</td>
+                {meses.map((m) => (
+                  <td key={m.custo.mes} className="whitespace-nowrap px-4 py-3 text-right" title={l.titulo?.(m)}>
+                    {l.mes(m)}
+                  </td>
+                ))}
+                {n > 0 && (
+                  <>
+                    <td className="whitespace-nowrap border-l-2 border-slate-200 bg-slate-50/60 px-4 py-3 text-right font-semibold text-[#141a4d]">{l.acum}</td>
+                    <td className="whitespace-nowrap bg-slate-50/60 px-4 py-3 text-right">{l.media}</td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 
