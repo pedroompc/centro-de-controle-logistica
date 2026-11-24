@@ -309,3 +309,73 @@ export function resumoReceitas(
     medioPorTonelada: tonsPorPeso === 0 ? 0 : arredonda2(receitaPorPeso / tonsPorPeso),
   };
 }
+
+// --- Abonado (FOB): quanto renderia se fosse cobrado ---------------------------
+//
+// Carga isenta (FOB) não é cobrada: o descarrego já está no preço do produto.
+// Para mostrar quanto se ganharia cobrando da indústria, cada nota isenta é
+// valorizada pelo PREÇO PRATICADO do tipo — o que de fato se cobra nas notas
+// pagas — com o mínimo do descarrego. O preço digitado na nota isenta não serve
+// (não é cobrado, ninguém confere, e vem com valores sem sentido).
+
+export interface PrecosPraticados {
+  porTonelada: Record<Exclude<DescarregamentoTipo, "volume">, number | null>;
+  porCaixa: number | null;
+}
+
+function mediana(xs: number[]): number | null {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * Preço praticado por tipo, das notas COBRADAS: por tonelada = mediana do R$/t
+ * digitado (sem valor fechado); por caixa (Volume) = receita ÷ caixas, que
+ * inclui o Volume de valor fechado (lá o R$/cx não é digitado).
+ */
+export function precosPraticados(rs: Receita[]): PrecosPraticados {
+  const cobradas = rs.filter((r) => !r.isento);
+  const porT = (tipo: Exclude<DescarregamentoTipo, "volume">) =>
+    mediana(cobradas.filter((r) => r.tipo === tipo && !r.valorFechado && r.precoPorTonelada > 0).map((r) => r.precoPorTonelada));
+  const vol = cobradas.filter((r) => r.tipo === "volume" && (r.quantidade ?? 0) > 0 && r.receita > 0);
+  const caixas = vol.reduce((t, r) => t + (r.quantidade ?? 0), 0);
+  return {
+    porTonelada: { batido: porT("batido"), paletizado: porT("paletizado"), pal_rem: porT("pal_rem") },
+    porCaixa: caixas > 0 ? vol.reduce((t, r) => t + r.receita, 0) / caixas : null,
+  };
+}
+
+/** Quanto a nota isenta renderia cobrada (null = não isenta ou sem preço praticado do tipo). */
+export function valorAbonado(r: Receita, precos: PrecosPraticados): number | null {
+  if (!r.isento) return null;
+  if (r.tipo === "volume") {
+    return precos.porCaixa === null ? null : calcularReceitaVolume(r.quantidade ?? 0, precos.porCaixa, r.minimoAplicado);
+  }
+  const p = precos.porTonelada[r.tipo];
+  return p === null ? null : calcularReceita(r.pesoKg, p, r.minimoAplicado);
+}
+
+export interface ResumoAbonado {
+  valor: number; // R$ que renderia cobrando as notas isentas
+  notas: number; // notas isentas
+  toneladas: number;
+  semPreco: number; // isentas de tipo sem preço praticado (ficam fora do valor)
+}
+
+export function resumoAbonado(rs: Receita[], precos: PrecosPraticados): ResumoAbonado {
+  let valor = 0;
+  let notas = 0;
+  let semPreco = 0;
+  let kg = 0;
+  for (const r of rs) {
+    if (!r.isento) continue;
+    notas++;
+    kg += r.pesoKg;
+    const v = valorAbonado(r, precos);
+    if (v === null) semPreco++;
+    else valor += v;
+  }
+  return { valor: arredonda2(valor), notas, toneladas: arredonda2(toneladas(kg)), semPreco };
+}

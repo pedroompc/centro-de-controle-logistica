@@ -4,6 +4,7 @@ import {
   valorMedioPorTonelada, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, custoLiquido,
   calcularValorDiversa, valorTotalDiversas, resumoReceitas, resolverValorDiversa,
   receitaPorDia, calcularReceitaVolume, carrosDoLancamento, liderDoCarro, valorDaNota,
+  precosPraticados, valorAbonado, resumoAbonado,
 } from "./receitas-metrics";
 import type { Receita, ReceitaDiversa, TotalDiarioDescarregamento } from "./types";
 
@@ -373,5 +374,41 @@ describe("carro com várias notas, isento e valor fechado", () => {
     const rs = [r({ carros: 1, carroId: "c" }), r({ carros: 0, carroId: "c" }), r({ carros: 0, carroId: "c", tipo: "volume", quantidade: 10 })];
     expect(receitaPorDia(rs)[0].descarregos).toBe(1);
     expect(quantidadePorTipo(rs).batido).toBe(1);
+  });
+});
+
+describe("abonado (FOB): quanto renderia cobrado", () => {
+  const cobradas = [
+    r({ tipo: "batido", precoPorTonelada: 63, receita: 63 }),
+    r({ tipo: "batido", precoPorTonelada: 63, receita: 63 }),
+    r({ tipo: "batido", precoPorTonelada: 70, receita: 70 }),
+    r({ tipo: "pal_rem", precoPorTonelada: 52, receita: 52 }),
+    r({ tipo: "pal_rem", precoPorTonelada: 999, receita: 500, valorFechado: true }), // valor fechado não entra no R$/t
+    r({ tipo: "volume", precoPorTonelada: 0, quantidade: 1000, precoPorUnidade: 0.8, receita: 800 }),
+    r({ tipo: "volume", precoPorTonelada: 0, quantidade: 1000, precoPorUnidade: null, receita: 600, valorFechado: true }),
+  ];
+  const isentas = [
+    r({ isento: true, tipo: "batido", pesoKg: 10_000, precoPorTonelada: 1815, receita: 0, minimoAplicado: 25 }),
+    r({ isento: true, tipo: "pal_rem", pesoKg: 200, precoPorTonelada: 1432, receita: 0, minimoAplicado: 25 }),
+    r({ isento: true, tipo: "volume", pesoKg: 50, quantidade: 500, precoPorUnidade: 861, receita: 0, minimoAplicado: 25 }),
+    r({ isento: true, tipo: "paletizado", pesoKg: 5000, precoPorTonelada: 690, receita: 0, minimoAplicado: 25 }),
+  ];
+  const precos = precosPraticados([...cobradas, ...isentas]);
+
+  it("preço praticado vem só das notas cobradas: mediana do R$/t; caixa = receita ÷ caixas", () => {
+    expect(precos.porTonelada).toEqual({ batido: 63, paletizado: null, pal_rem: 52 });
+    expect(precos.porCaixa).toBeCloseTo(1400 / 2000);
+  });
+
+  it("nota isenta vale o preço praticado (ignora o preço digitado nela), com o mínimo", () => {
+    expect(valorAbonado(isentas[0], precos)).toBe(630); // 10 t × 63
+    expect(valorAbonado(isentas[1], precos)).toBe(25); // 0,2 t × 52 = 10,40 → mínimo
+    expect(valorAbonado(isentas[2], precos)).toBe(350); // 500 cx × 0,70
+    expect(valorAbonado(isentas[3], precos)).toBeNull(); // sem paletizado cobrado
+    expect(valorAbonado(cobradas[0], precos)).toBeNull(); // nota cobrada não é abonada
+  });
+
+  it("resumo soma o que renderia e conta as isentas sem preço praticado", () => {
+    expect(resumoAbonado([...cobradas, ...isentas], precos)).toEqual({ valor: 1005, notas: 4, toneladas: 15.25, semPreco: 1 });
   });
 });

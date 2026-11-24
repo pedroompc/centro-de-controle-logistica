@@ -6,6 +6,7 @@ import { lerConfig } from "@/data/config-descarregamento";
 import { isAdmin, exigirAdminPagina } from "@/data/auth";
 import {
   resumoReceitas, receitaPorFornecedor, receitaPorTipo, quantidadePorTipo, receitaPorDia, toneladas, carrosDoLancamento,
+  precosPraticados, resumoAbonado, valorAbonado, type PrecosPraticados,
 } from "@/domain/receitas-metrics";
 import { formatBRL, formatKg, formatDataBR } from "@/domain/format";
 import {
@@ -17,6 +18,7 @@ import {
   paramsDoPeriodo,
   lerComparacao,
   rotuloCurto,
+  somarDias,
   temHistoricoSupabase,
   type Periodo,
 } from "@/domain/periodo";
@@ -42,6 +44,22 @@ import type { CarrosDia } from "@/domain/types";
 
 const field =
   "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-300/50";
+
+/** Selo da nota isenta + quanto ela renderia cobrada (preço praticado). */
+function Isento({ r, precos }: { r: Receita; precos: PrecosPraticados }) {
+  const v = valorAbonado(r, precos);
+  return (
+    <span className="inline-flex items-center gap-1.5" title="Isento (FOB): quanto renderia se fosse cobrado, ao preço praticado do tipo">
+      <Pill tone="slate">Isento</Pill>
+      {v !== null && <span className="text-xs font-medium text-slate-500">{formatBRL(v)}</span>}
+    </span>
+  );
+}
+
+function textoPrecos(p: PrecosPraticados): string {
+  const t = (v: number | null) => (v === null ? "—" : formatBRL(v));
+  return `Preços praticados: Batido ${t(p.porTonelada.batido)}/t · Paletizado ${t(p.porTonelada.paletizado)}/t · Pal/Rem ${t(p.porTonelada.pal_rem)}/t · Volume ${p.porCaixa === null ? "—" : formatBRL(p.porCaixa)}/cx.`;
+}
 
 function fmtTon(t: number): string {
   return `${t.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} t`;
@@ -153,7 +171,7 @@ export default async function ReceitasPage({
 
   const { de: inicioMes, ate: fimMes } = periodo;
   const totalOuNull = (p: Periodo) => (temHistoricoSupabase(p) ? receitaTotalDoPeriodo(p.de, p.ate).catch(() => null) : Promise.resolve(null));
-  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia, totalCmp] = await Promise.all([
+  const [receitas, fornecedores, precos, config, serie, admin, diversas, totais, carrosDia, totalCmp, referencia] = await Promise.all([
     listarReceitasDoPeriodo(inicioMes, fimMes, filtros),
     listarFornecedores(),
     listarPrecos(),
@@ -164,6 +182,8 @@ export default async function ReceitasPage({
     listarTotaisDiariosDoPeriodo(inicioMes, fimMes),
     listarCarrosDia(inicioMes, fimMes),
     comparacao ? totalOuNull(comparacao.periodo) : Promise.resolve(null),
+    // Preço praticado (base do "abonado"): notas cobradas dos 90 dias até o fim do período, sem filtro.
+    listarReceitasDoPeriodo(somarDias(fimMes, -90), fimMes).catch(() => [] as Receita[]),
   ]);
 
   // Fornecedor e tipo são conceitos exclusivos de descarregamento — reciclagem não
@@ -180,6 +200,8 @@ export default async function ReceitasPage({
   const carrosVisiveis = filtrandoDescarregamento ? [] : carrosDia;
 
   const resumo = resumoReceitas(receitas, diversasVisiveis, totaisVisiveis);
+  const praticados = precosPraticados(referencia);
+  const abonado = resumoAbonado(receitas, praticados);
   const porFornecedor = receitaPorFornecedor(receitas);
   const porTipo = receitaPorTipo(receitas);
   const porDia = receitaPorDia(receitas, totaisVisiveis, carrosVisiveis);
@@ -225,7 +247,7 @@ export default async function ReceitasPage({
       </PageHeader>
 
       {/* Indicadores */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <div className="lg:col-span-1">
           <HeroStat label="Receita total" value={formatBRL(resumo.total)} />
           {!filtrandoDescarregamento && comparacao && (
@@ -252,6 +274,13 @@ export default async function ReceitasPage({
           value={formatBRL(resumo.medioPorTonelada)}
           hint="só descarrego"
           accent="gold"
+        />
+        <StatCard
+          label="Abonado (FOB) · se cobrado"
+          value={formatBRL(abonado.valor)}
+          hint={`${abonado.notas} ${abonado.notas === 1 ? "nota isenta" : "notas isentas"} · ${fmtTon(abonado.toneladas)}${abonado.semPreco ? ` · ${abonado.semPreco} sem preço de referência` : ""}`}
+          accent="navy"
+          title={`Quanto renderia cobrar da indústria as cargas isentas (FOB), ao preço praticado nas notas cobradas dos últimos 90 dias, com o mínimo do descarrego. ${textoPrecos(praticados)}`}
         />
       </div>
 
@@ -495,7 +524,7 @@ export default async function ReceitasPage({
                       <td className="px-5 py-3 tabular-nums text-slate-600">
                         {precoDaNota(r)}
                       </td>
-                      <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{r.isento ? <Pill tone="slate">Isento</Pill> : formatBRL(r.receita)}</td>
+                      <td className="px-5 py-3 font-semibold tabular-nums text-emerald-700">{r.isento ? <Isento r={r} precos={praticados} /> : formatBRL(r.receita)}</td>
                       <td className="px-5 py-3 max-w-[16rem] truncate text-slate-500" title={r.observacao ?? ""}>{r.observacao ?? "—"}</td>
                       {admin && (
                         <td className="px-5 py-3">
@@ -525,7 +554,7 @@ export default async function ReceitasPage({
                         {formatDataBR(r.data)} · {formatKg(r.pesoKg)}
                       </p>
                     </div>
-                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{r.isento ? <Pill tone="slate">Isento</Pill> : formatBRL(r.receita)}</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-emerald-700">{r.isento ? <Isento r={r} precos={praticados} /> : formatBRL(r.receita)}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <Pill tone={r.tipo === "paletizado" ? "gold" : r.tipo === "pal_rem" ? "navy" : "slate"}>
