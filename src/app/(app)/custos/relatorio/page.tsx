@@ -38,8 +38,9 @@ export default async function RelatorioCustosPage() {
 
       {/* Totalizador: tudo o que a logística custa no mês */}
       <HeroStat label={`Custo logístico · ${formatMesAno(custoMes.mes)}`} value={formatBRL(custoMes.totalComAluguel)}>
-        <p className="mt-2 text-sm text-white/60">Aluguel do galpão + folha + equipamentos + frota · {pessoas} pessoas
-          <span className="text-white/35"> · sem aluguel {formatBRL(custoMes.total)}</span>
+        <p className="mt-2 text-sm text-white/60">Aluguel do galpão + folha + equipamentos + frota · {pessoas} pessoas</p>
+        <p className="mt-1.5 text-base text-white/70">
+          Sem o aluguel: <span className="font-[family-name:var(--font-sora)] font-bold tabular-nums text-white">{formatBRL(custoMes.total)}</span>
         </p>
         <div className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
           <Totalizador rotulo="Aluguel do galpão" valor={formatBRL(custoMes.aluguel)} sub="estrutura, à parte das equipes" cor={COR_ALUGUEL} />
@@ -63,13 +64,13 @@ export default async function RelatorioCustosPage() {
             rotulo="Custo logístico"
             valor={pct(fracao(custoMes.totalComAluguel, fatMes), 2)}
             sub={fatMes ? `do faturamento · ${formatBRL(custoMes.totalComAluguel)} ÷ ${formatBRL(fatMes)}` : "Winthor indisponível"}
-            extra={fatMes ? `sem aluguel ${pct(fracao(custoMes.total, fatMes), 2)}` : undefined}
+            extra={fatMes ? `Sem o aluguel: ${pct(fracao(custoMes.total, fatMes), 2)}` : undefined}
           />
           <Totalizador
             rotulo={`Custo logístico · acumulado do ano`}
             valor={n ? pct(fracao(acum.totalComAluguel, fatAcum), 2) : "—"}
             sub={n ? `média ${formatBRL(acum.totalComAluguel / n)} de custo ÷ ${formatBRL(fatAcum / n)} faturados por mês · ${faixa}` : "sem mês fechado"}
-            extra={n ? `sem aluguel ${pct(fracao(acum.total, fatAcum), 2)} · média ${formatBRL(acum.total / n)} por mês` : undefined}
+            extra={n ? `Sem o aluguel: ${pct(fracao(acum.total, fatAcum), 2)} · média ${formatBRL(acum.total / n)} por mês` : undefined}
           />
         </div>
       </HeroStat>
@@ -323,7 +324,7 @@ function Totalizador({ rotulo, valor, sub, cor, extra }: { rotulo: string; valor
       </p>
       <p className="mt-1 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums whitespace-nowrap text-white">{valor}</p>
       <p className="text-xs text-white/50">{sub}</p>
-      {extra && <p className="mt-0.5 text-[11px] text-white/35">{extra}</p>}
+      {extra && <p className="mt-1.5 text-sm font-semibold text-white/80">{extra}</p>}
     </div>
   );
 }
