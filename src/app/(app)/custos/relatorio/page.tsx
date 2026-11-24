@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { carregarRelatorioCustos, type MesRelatorio, type RelatorioCustos } from "@/data/relatorio-custos";
 import { GRUPOS, fracao, projetarMes, somarMeses, type CustoGruposMes, type GrupoCusto } from "@/domain/custo-grupos";
+import { custoLiquido } from "@/domain/receitas-metrics";
 import { formatBRL, formatPercent } from "@/domain/format";
 import { formatMesAno } from "@/domain/periodo";
 import { PageHeader, Card, BackLink, StatCard, SectionTitle, HeroStat } from "@/components/ui";
@@ -26,6 +27,9 @@ export default async function RelatorioCustosPage() {
   const faixa = n ? `${formatMesAno(fechados[0].custo.mes)} a ${formatMesAno(fechados[n - 1].custo.mes)}` : "—";
 
   const fatMes = atual.vendaLiquida;
+  const receitaMes = atual.receita;
+  // Receita dos meses fechados (mesma janela do acumulado); null se algum mês não carregou.
+  const receitaAcum = fechados.some((m) => m.receita === null) ? null : fechados.reduce((t, m) => t + (m.receita ?? 0), 0);
   const custoMes = atual.custo;
   const entregaMes = custoMes.grupos.entrega.total;
   const custoRegioes = rel.meses.find((m) => m.custo.mes === rel.regioes.mes)?.custo ?? null;
@@ -41,6 +45,12 @@ export default async function RelatorioCustosPage() {
         <p className="mt-2 text-sm text-white/60">Aluguel do galpão + folha + equipamentos + frota · {pessoas} pessoas</p>
         <p className="mt-1.5 text-base text-white/70">
           Sem o aluguel: <span className="font-[family-name:var(--font-sora)] font-bold tabular-nums text-white">{formatBRL(custoMes.total)}</span>
+          {receitaMes !== null && (
+            <>
+              <span className="mx-3 text-white/25">·</span>
+              Receita: <span className="font-[family-name:var(--font-sora)] font-bold tabular-nums text-emerald-400">{formatBRL(receitaMes)}</span>
+            </>
+          )}
         </p>
         <div className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
           <Totalizador rotulo="Aluguel do galpão" valor={formatBRL(custoMes.aluguel)} sub="estrutura, à parte das equipes" cor={COR_ALUGUEL} />
@@ -63,14 +73,29 @@ export default async function RelatorioCustosPage() {
           <Totalizador
             rotulo="Custo logístico"
             valor={pct(fracao(custoMes.totalComAluguel, fatMes), 2)}
-            sub={fatMes ? `do faturamento · ${formatBRL(custoMes.totalComAluguel)} ÷ ${formatBRL(fatMes)}` : "Winthor indisponível"}
-            extra={fatMes ? `Sem o aluguel: ${pct(fracao(custoMes.total, fatMes), 2)}` : undefined}
+            sub={fatMes ? undefined : "Winthor indisponível"}
+            extra={
+              fatMes
+                ? [
+                    `Sem o aluguel: ${pct(fracao(custoMes.total, fatMes), 2)}`,
+                    ...(receitaMes === null ? [] : [`Com a receita: ${pct(fracao(custoLiquido(custoMes.totalComAluguel, receitaMes), fatMes), 2)}`]),
+                  ]
+                : undefined
+            }
           />
           <Totalizador
             rotulo={`Custo logístico · acumulado do ano`}
             valor={n ? pct(fracao(acum.totalComAluguel, fatAcum), 2) : "—"}
-            sub={n ? `média ${formatBRL(acum.totalComAluguel / n)} de custo ÷ ${formatBRL(fatAcum / n)} faturados por mês · ${faixa}` : "sem mês fechado"}
-            extra={n ? `Sem o aluguel: ${pct(fracao(acum.total, fatAcum), 2)} · média ${formatBRL(acum.total / n)} por mês` : undefined}
+            sub={n ? undefined : "sem mês fechado"}
+            titulo={n ? `Média ${formatBRL(acum.totalComAluguel / n)} de custo ÷ ${formatBRL(fatAcum / n)} faturados por mês · ${faixa}` : undefined}
+            extra={
+              n
+                ? [
+                    `Sem o aluguel: ${pct(fracao(acum.total, fatAcum), 2)}`,
+                    ...(receitaAcum === null ? [] : [`Com a receita: ${pct(fracao(custoLiquido(acum.totalComAluguel, receitaAcum), fatAcum), 2)}`]),
+                  ]
+                : undefined
+            }
           />
         </div>
       </HeroStat>
@@ -315,16 +340,19 @@ function Explica({ children }: { children: ReactNode }) {
   return <p className="-mt-1 mb-4 max-w-4xl text-sm text-slate-500">{children}</p>;
 }
 
-function Totalizador({ rotulo, valor, sub, cor, extra }: { rotulo: string; valor: string; sub: string; cor?: string; extra?: string }) {
+function Totalizador({ rotulo, valor, sub, cor, extra, titulo }: { rotulo: string; valor: string; sub?: string; cor?: string; extra?: string | string[]; titulo?: string }) {
+  const extras = extra === undefined ? [] : Array.isArray(extra) ? extra : [extra];
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" title={titulo}>
       <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/55">
         {cor && <span className={`h-2 w-2 shrink-0 rounded-full ${cor} ring-1 ring-white/40`} />}
         <span className="truncate" title={rotulo}>{rotulo}</span>
       </p>
       <p className="mt-1 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums whitespace-nowrap text-white">{valor}</p>
-      <p className="text-xs text-white/50">{sub}</p>
-      {extra && <p className="mt-1.5 text-sm font-semibold text-white/80">{extra}</p>}
+      {sub && <p className="text-xs text-white/50">{sub}</p>}
+      {extras.map((e) => (
+        <p key={e} className="mt-1.5 text-sm font-semibold text-white/80">{e}</p>
+      ))}
     </div>
   );
 }

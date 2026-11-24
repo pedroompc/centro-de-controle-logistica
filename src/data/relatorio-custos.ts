@@ -14,11 +14,13 @@ import { custoGruposDoMes, type CustoGruposMes } from "@/domain/custo-grupos";
 import { hojeISO } from "@/domain/fechamento";
 import { INICIO_HISTORICO, inicioFimDoMes, mesAnterior, mesesDoPeriodo, primeiroDiaDoMes } from "@/domain/periodo";
 import { lerBaseRegioes, type BaseRegioesMes } from "@/data/custo-regioes";
+import { serieReceitasMensais } from "@/data/receitas";
 
 export interface MesRelatorio {
   custo: CustoGruposMes;
   vendaLiquida: number | null;
   atendimentos: number | null; // PDVs atendidos (cliente distinto por dia)
+  receita: number | null; // receitas logísticas do mês (descarrego + totais do dia + diversas); null = indisponível
   fechado: boolean;
 }
 
@@ -44,7 +46,7 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
 
   const mesRegioes = mesAnterior(mesAtual);
   const faixaRegioes = inicioFimDoMes(mesRegioes);
-  const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira, baseRegioes] = await Promise.all([
+  const [funcionarios, setores, lancamentos, fotos, serieFat, fatAtual, entregaRetira, baseRegioes, serieReceitas] = await Promise.all([
     listarFuncionarios(),
     listarSetores(),
     listarLancamentosDosMeses(meses),
@@ -53,7 +55,10 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
     getResumoFaturamentoDashboard(mesAtual).catch(() => null),
     getFaturadoEntregaRetira(mesAtual, hojeISO()),
     lerBaseRegioes(faixaRegioes.inicio, faixaRegioes.fim),
+    serieReceitasMensais(24).catch(() => null),
   ]);
+  const receitaPorMes = serieReceitas ? new Map(serieReceitas.map((r) => [r.mes, r.valor])) : null;
+  const receitaDo = (mes: string) => (receitaPorMes ? (receitaPorMes.get(mes) ?? 0) : null);
 
   const folhaAtual = fotoSetorAtual(funcionarios, setores).map((l) => ({ setor: l.setor, custo: l.custoAtivos, ativos: l.ativos }));
   const nomeSetor = new Map(setores.map((s) => [s.id, s.nome]));
@@ -78,10 +83,10 @@ export async function carregarRelatorioCustos(hoje: Date = new Date()): Promise<
       lancamentos.filter((l) => l.mes === mes),
     );
     if (mes === mesAtual) {
-      return { custo, vendaLiquida: fatAtual?.vendaLiquida ?? null, atendimentos: fatAtual?.atendimentos ?? null, fechado: false };
+      return { custo, vendaLiquida: fatAtual?.vendaLiquida ?? null, atendimentos: fatAtual?.atendimentos ?? null, receita: receitaDo(mes), fechado: false };
     }
     const f = fatPorMes.get(mes);
-    return { custo, vendaLiquida: f?.vendaLiquida ?? null, atendimentos: f?.atendimentos ?? null, fechado: true };
+    return { custo, vendaLiquida: f?.vendaLiquida ?? null, atendimentos: f?.atendimentos ?? null, receita: receitaDo(mes), fechado: true };
   });
 
   return {
