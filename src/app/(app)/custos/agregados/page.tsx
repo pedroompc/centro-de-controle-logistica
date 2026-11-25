@@ -47,10 +47,10 @@ export default async function AgregadosPage({ searchParams }: { searchParams: Pr
           periodo: rotulo,
           geradoEm: new Date(),
           kpis: [
-            ["Custo dos agregados", formatBRL(resumo.custo)],
-            ["Custo por dia (agregado × CLT)", `${brl0(resumo.porDia)} × ${brl0(resumo.porDiaClt)}`],
-            ["Devolução (agregado × CLT)", `${pct(resumo.dev)} × ${pct(resumo.devClt)}`],
-            ["Diferença vs CLT", sinal(resumo.dif)],
+            ["Faturado pelos agregados", brl0(resumo.tot.faturado)],
+            ["Devolução", `${brl0(resumo.tot.devolvido)} (${pct(resumo.dev)})`],
+            ["Custo total", formatBRL(resumo.custo)],
+            ["Custo médio por dia rodado", brl0(resumo.porDia)],
           ],
         })
       : "";
@@ -109,40 +109,35 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
   const linhas = ordenar(rel);
   const casaDe = (a: LinhaAgregado) => (a.papel ? rel.casa[a.papel] : undefined);
   const maxDev = Math.max(0.1, ...linhas.map((a) => indicadores(a).devolucao ?? 0));
-  const caro = r.dif > 0;
 
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Custo dos agregados"
+          label="Faturado pelos agregados"
+          value={brl0(r.tot.faturado)}
+          hint={`${n0(r.tot.entregas)} entregas · ${n0(r.tot.notas)} notas`}
+          title="Valor das notas que os agregados levaram no período"
+        />
+        <StatCard
+          label="Devolução"
+          value={brl0(r.tot.devolvido)}
+          hint={`${pct(r.dev)} do faturado · ${n0(r.tot.notasDevolvidas)} notas`}
+          accent="red"
+          title="Valor devolvido das notas que eles levaram (líquido de IPI e ST)"
+        />
+        <StatCard
+          label="Custo total"
           value={formatBRL(r.custo)}
-          hint={`${rel.agregados.length} agregados · ${n0(r.tot.dias)} dias rodados`}
+          hint={`${rel.agregados.length} agregados · ${pct(r.custo / (r.tot.faturado - r.tot.devolvido || 1), 2)} do faturado líquido`}
           accent="gold"
           title="Pago no período pelo contas a pagar do Winthor (conta 13), pela data do lançamento"
         />
         <StatCard
-          label="Custo por dia rodado"
+          label="Custo médio por dia rodado"
           value={brl0(r.porDia)}
-          hint={`CLT: ${brl0(r.porDiaClt)} por motorista`}
-          hintRuim={r.porDia !== null && r.porDiaClt !== null && r.porDia > r.porDiaClt}
-          title="Agregado: pago ÷ dias com carga. CLT: folha dos motoristas no período ÷ dias com carga deles (só pessoal, sem veículo nem diesel)"
-        />
-        <StatCard
-          label="Devolução"
-          value={pct(r.dev)}
-          hint={`CLT: ${pct(r.devClt)}`}
-          hintRuim={r.dev !== null && r.devClt !== null && r.dev > r.devClt}
-          accent="red"
-          title="Valor devolvido ÷ valor faturado das notas que eles levaram no período"
-        />
-        <StatCard
-          label="Diferença vs CLT"
-          value={sinal(r.dif)}
-          hint={caro ? "agregados saíram mais caros" : "agregados saíram mais baratos"}
-          hintRuim={caro}
-          accent={caro ? "red" : "navy"}
-          title="Soma de cada agregado: custo dele − custo por dia do CLT × dias que ele rodou"
+          hint={`${n0(r.tot.dias)} dias rodados no total`}
+          title="Custo total ÷ dias em que os agregados saíram com carga (dias do carregamento no Winthor)"
         />
       </div>
 
