@@ -46,11 +46,12 @@ export function liquidoEntregaRetira(f: FaturadoEntregaRetira): { entrega: numbe
   return { entrega: f.entrega - f.devEntrega, retira: f.retira - f.devRetira };
 }
 
-/** Taxa de devolução (0..1) de cada lado sobre o próprio faturado. */
+/** Taxa de devolução (0..1) de cada lado sobre a própria venda líquida (faturado − devolução do lado). */
 export function taxaDevEntregaRetira(f: FaturadoEntregaRetira): { entrega: number; retira: number } {
+  const l = liquidoEntregaRetira(f);
   return {
-    entrega: f.entrega > 0 ? f.devEntrega / f.entrega : 0,
-    retira: f.retira > 0 ? f.devRetira / f.retira : 0,
+    entrega: l.entrega > 0 ? f.devEntrega / l.entrega : 0,
+    retira: l.retira > 0 ? f.devRetira / l.retira : 0,
   };
 }
 
@@ -67,6 +68,14 @@ export function taxaDevolucao(
 ): number {
   if (r.vendaFaturada <= 0) return 0;
   return r.valorDevolucao / r.vendaFaturada;
+}
+
+/** Taxa de devolução (0..1) sobre a VENDA LÍQUIDA (regra do Dashboard, 25/11/2026). 0 se não houve venda líquida. */
+export function taxaDevolucaoLiquida(
+  r: Pick<ResumoFaturamento, "valorDevolucao" | "vendaLiquida">,
+): number {
+  if (r.vendaLiquida <= 0) return 0;
+  return r.valorDevolucao / r.vendaLiquida;
 }
 
 /** Taxa de devolução por NOTA (0..1) = NFs devolvidas / NFs emitidas. 0 se não houve emissão. */

@@ -8,7 +8,7 @@ import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-perio
 import { Suspense } from "react";
 import Link from "next/link";
 import {
-  taxaDevolucao, percentualCustoLogistico, partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira,
+  taxaDevolucaoLiquida, percentualCustoLogistico, partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira,
   type ResumoFaturamento, type FaturadoEntregaRetira,
 } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
@@ -113,8 +113,8 @@ function DevolucaoEntregaRetira({ f, hrefRetira }: { f: FaturadoEntregaRetira; h
   return (
     <BlocosEntregaRetira
       lados={[
-        { lado: "entrega", valor: f.devEntrega, selo: formatPercent(t.entrega), seloTexto: "do faturado entrega", detalhe: `${f.notasDevEntrega.toLocaleString("pt-BR")} NFs devolvidas` },
-        { lado: "retira", valor: f.devRetira, selo: formatPercent(t.retira), seloTexto: "do faturado retira", detalhe: `${f.notasDevRetira.toLocaleString("pt-BR")} NFs devolvidas`, href: hrefRetira },
+        { lado: "entrega", valor: f.devEntrega, selo: formatPercent(t.entrega), seloTexto: "da venda líquida entrega", detalhe: `${f.notasDevEntrega.toLocaleString("pt-BR")} NFs devolvidas` },
+        { lado: "retira", valor: f.devRetira, selo: formatPercent(t.retira), seloTexto: "da venda líquida retira", detalhe: `${f.notasDevRetira.toLocaleString("pt-BR")} NFs devolvidas`, href: hrefRetira },
       ]}
     />
   );
@@ -273,7 +273,7 @@ export async function FaturamentoCards({
     );
   }
 
-  const taxaDevol = taxaDevolucao(r);
+  const taxaDevol = taxaDevolucaoLiquida(r);
   const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
     comparacoes(r[campo], (x) => x[campo], comparar, maiorEhBom);
 
@@ -321,7 +321,7 @@ export async function FaturamentoCards({
           label="Taxa de devolução"
           value={formatPercent(taxaDevol)}
           accent="red"
-          extra={comparacoes(taxaDevol, taxaDevolucao, comparar, false, true)}
+          extra={comparacoes(taxaDevol, taxaDevolucaoLiquida, comparar, false, true)}
         />
       </div>
     </div>
@@ -332,10 +332,10 @@ export async function FaturamentoCards({
  * Custo logístico (% da venda líquida) — fica na linha de custos do dashboard.
  * Reusa a leitura memoizada do faturamento; em Suspense próprio.
  */
-export async function CardCustoLogistico({ periodo, custoTotal }: { periodo: Periodo; custoTotal: number | null }) {
+export async function CardCustoLogistico({ periodo, custoTotal }: { periodo: Periodo; custoTotal: number | null /* bruto SEM o aluguel do galpão */ }) {
   const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null);
   const pct = custoTotal === null || !r ? null : percentualCustoLogistico(custoTotal, r.vendaLiquida);
-  return <StatCard label="Custo logístico" value={pct === null ? "sem dado" : formatPercent(pct)} hint="custo bruto ÷ venda líquida" accent="gold" />;
+  return <StatCard label="Custo logístico" value={pct === null ? "sem dado" : formatPercent(pct)} hint="custo bruto sem o aluguel do galpão ÷ venda líquida" accent="gold" />;
 }
 
 /** Fallback do <Suspense> dos cards, enquanto o Oracle responde. */

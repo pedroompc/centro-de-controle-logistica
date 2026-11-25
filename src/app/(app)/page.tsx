@@ -142,6 +142,8 @@ export default async function Dashboard({
   const folhaPorMes = new Map(efTotais.map((t) => [t.mes, t.folhaTotal]));
   const custoDe = (p: Periodo) => custoBrutoDoPeriodo(mesesDoPeriodo(p), folhaPorMes, custosPorMes);
   const custoTotalMes = custoLogisticoDoPeriodo({ comHistorico, mesUnico, lancamentosMes, folhaAtual: custoEfetivo, meses, folhaPorMes, custosPorMes });
+  // Aluguel do galpão (~400k/mês) fica fora do % do custo logístico.
+  const aluguelPeriodo = meses.reduce((t, m) => t + (custosPorMes.get(m)?.aluguel ?? 0), 0);
   const liquidoDe = (c: number | null, r: number | null) => (c === null || r === null ? null : custoLiquido(c, r));
   const custoLiquidoMes = liquidoDe(custoTotalMes, receitasMes);
   const custoCmp = pCmp ? custoDe(pCmp) : null;
@@ -306,7 +308,7 @@ export default async function Dashboard({
           extra={chips(custoLiquidoMes, liquidoDe(custoCmp, receitasCmp), false)}
         />
         <Suspense fallback={<div className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />}>
-          <CardCustoLogistico periodo={periodo} custoTotal={custoTotalMes} />
+          <CardCustoLogistico periodo={periodo} custoTotal={custoTotalMes === null ? null : custoTotalMes - aluguelPeriodo} />
         </Suspense>
         <StatCard
           label={mesUnico ? "Faltas no mês" : "Faltas no período"}

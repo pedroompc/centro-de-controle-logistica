@@ -49,7 +49,7 @@ describe("somarResumos", () => {
   });
 });
 
-import { partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira } from "./faturamento";
+import { partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira, taxaDevolucaoLiquida } from "./faturamento";
 
 const DEV0 = { devEntrega: 0, devRetira: 0, notasDevEntrega: 0, notasDevRetira: 0 };
 
@@ -69,8 +69,19 @@ describe("liquido/taxa entrega × retira", () => {
   it("líquido de cada lado = faturado − devolução do lado", () => {
     expect(liquidoEntregaRetira(f)).toEqual({ entrega: 950, retira: 160 });
   });
-  it("taxa de cada lado sobre o próprio faturado", () => {
-    expect(taxaDevEntregaRetira(f)).toEqual({ entrega: 0.05, retira: 0.2 });
-    expect(taxaDevEntregaRetira({ ...f, retira: 0 }).retira).toBe(0);
+  it("taxa de cada lado sobre a própria venda líquida", () => {
+    const t = taxaDevEntregaRetira(f);
+    expect(t.entrega).toBeCloseTo(50 / 950, 10);
+    expect(t.retira).toBeCloseTo(40 / 160, 10);
+    expect(taxaDevEntregaRetira({ ...f, retira: 0, devRetira: 0 }).retira).toBe(0);
+  });
+});
+
+describe("taxaDevolucaoLiquida", () => {
+  it("devolução ÷ venda líquida (out/2026 do Dashboard)", () => {
+    expect(taxaDevolucaoLiquida({ valorDevolucao: 1_563_489.01, vendaLiquida: 51_754_478.69 })).toBeCloseTo(0.0302, 4);
+  });
+  it("sem venda líquida → 0", () => {
+    expect(taxaDevolucaoLiquida({ valorDevolucao: 10, vendaLiquida: 0 })).toBe(0);
   });
 });
