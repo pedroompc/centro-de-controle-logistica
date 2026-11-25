@@ -152,13 +152,6 @@ export default async function RelatorioCustosPage({ searchParams }: { searchPara
         <Explica>Quanto custa levar a mercadoria até o cliente, comparado com o que foi vendido em entrega (sem a retira no balcão).</Explica>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Ticket médio por entrega"
-            value={rel.vendaEntregaPeriodo !== null && entregasAteHoje ? formatBRL(rel.vendaEntregaPeriodo / entregasAteHoje) : "—"}
-            hint={rel.vendaEntregaPeriodo === null || !entregasAteHoje ? "Winthor indisponível" : `venda entregue ÷ ${entregasAteHoje.toLocaleString("pt-BR")} entregas`}
-            accent="navy"
-            title="Venda líquida que saiu em carga com motorista (sem retira) ÷ entregas, na mesma janela (até hoje no mês aberto)"
-          />
-          <StatCard
             label="Custo de entrega ÷ venda entregue"
             value={pct(fracao(entregaMes, rel.vendaEntregaPeriodo))}
             hint={rel.vendaEntregaPeriodo === null ? "Winthor indisponível" : `venda entregue${temAberto ? " até hoje" : ""} ${formatBRL(rel.vendaEntregaPeriodo)}`}
@@ -171,6 +164,13 @@ export default async function RelatorioCustosPage({ searchParams }: { searchPara
             hint={entregasAteHoje ? `${entregasAteHoje.toLocaleString("pt-BR")} entregas${temAberto ? " até hoje" : ""}` : "Winthor indisponível"}
             accent="navy"
             title="Custo da Logística Entrega (mês cheio) ÷ entregas do mês no ritmo de hoje. Entrega = cliente distinto por viagem (veículo + motorista + dia), sem a retira no balcão — mesma conta do BI Motoristas"
+          />
+          <StatCard
+            label="Ticket médio por entrega"
+            value={rel.vendaEntregaPeriodo !== null && entregasAteHoje ? formatBRL(rel.vendaEntregaPeriodo / entregasAteHoje) : "—"}
+            hint={rel.vendaEntregaPeriodo === null || !entregasAteHoje ? "Winthor indisponível" : `venda entregue ÷ ${entregasAteHoje.toLocaleString("pt-BR")} entregas`}
+            accent="navy"
+            title="Venda líquida que saiu em carga com motorista (sem retira) ÷ entregas, na mesma janela (até hoje no mês aberto)"
           />
           <StatCard
             label="Custo por entrega · média do ano"
