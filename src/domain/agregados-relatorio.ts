@@ -70,7 +70,7 @@ export const COLUNAS: Coluna[] = [
   { titulo: "Custo", formato: "brl" },
   { titulo: "Custo por dia", formato: "brl" },
   { titulo: "Custo por entrega", formato: "brl" },
-  { titulo: "Custo ÷ faturado líquido", formato: "pct" },
+  { titulo: "Custo % do faturado líquido", formato: "pct" },
   { titulo: "Último pagamento", formato: "texto" },
 ];
 

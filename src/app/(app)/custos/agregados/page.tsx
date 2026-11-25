@@ -180,7 +180,7 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
                 <th className={`${GRUPO} px-3 pb-3 pt-1 text-right font-semibold`} title="Pago no período (data do lançamento)">Pago</th>
                 <th className="px-3 pb-3 pt-1 text-right font-semibold">Por dia</th>
                 <th className="px-3 pb-3 pt-1 text-right font-semibold">Por entrega</th>
-                <th className="px-3 pb-3 pt-1 text-right font-semibold" title="Custo ÷ (faturado − devolvido)">÷ Faturado</th>
+                <th className="px-3 pb-3 pt-1 text-right font-semibold" title="Quanto do faturado líquido (faturado − devolvido) foi para pagar o agregado">% do faturado</th>
                 <th className={`${GRUPO} px-4 pb-3 pt-1 text-right font-semibold`}>Últ. pgto.</th>
               </tr>
             </thead>
@@ -203,14 +203,17 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
   );
 }
 
-function BarraDevolucao({ v, max, alta }: { v: number | null; max: number; alta: boolean }) {
+function BarraDevolucao({ v, valor, max, alta }: { v: number | null; valor: number; max: number; alta: boolean }) {
   if (v === null) return <span className="text-slate-300">—</span>;
   return (
-    <div className="flex items-center gap-2">
-      <span className={`w-12 text-right ${alta ? "font-semibold text-rose-600" : "text-slate-600"}`}>{pct(v)}</span>
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full rounded-full ${alta ? "bg-rose-400" : "bg-slate-300"}`} style={{ width: `${Math.min(100, (v / max) * 100)}%` }} />
+    <div>
+      <div className="flex items-center gap-2">
+        <span className={`w-12 text-right ${alta ? "font-semibold text-rose-600" : "text-slate-600"}`}>{pct(v)}</span>
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+          <div className={`h-full rounded-full ${alta ? "bg-rose-400" : "bg-slate-300"}`} style={{ width: `${Math.min(100, (v / max) * 100)}%` }} />
+        </div>
       </div>
+      <p className="mt-0.5 text-xs text-slate-400">{brl0(valor)}</p>
     </div>
   );
 }
@@ -237,7 +240,7 @@ function LinhaTabela({ a, casa, maxDev }: { a: LinhaAgregado; casa: Casa | undef
       <td className="px-3 py-3 text-right text-slate-600">{sem ? "—" : n0(a.entregas)}</td>
       <td className="px-3 py-3 text-right text-slate-600">{sem ? "—" : brl0(a.faturado)}</td>
       <td className="border-l border-slate-100 px-3 py-3" title={sem ? undefined : `${a.notasDevolvidas} de ${a.notas} notas · ${formatBRL(a.devolvido)} devolvidos`}>
-        <BarraDevolucao v={i.devolucao} max={maxDev} alta={alta} />
+        <BarraDevolucao v={i.devolucao} valor={a.devolvido} max={maxDev} alta={alta} />
       </td>
       <td className="border-l border-slate-100 px-3 py-3 text-right font-semibold text-[#141a4d]">{brl0(a.custo)}</td>
       <td className="px-3 py-3 text-right text-slate-600">{brl0(i.custoPorDia)}</td>
@@ -258,6 +261,7 @@ function LinhaTotal({ rotulo, x }: { rotulo: string; x: Numeros & { custo: numbe
       <td className="px-3 py-3 text-right">{brl0(x.faturado)}</td>
       <td className="border-l border-slate-100 px-3 py-3">
         <span className="inline-block w-12 text-right">{pct(i.devolucao)}</span>
+        <p className="mt-0.5 text-xs font-normal text-slate-500">{brl0(x.devolvido)}</p>
       </td>
       <td className="border-l border-slate-100 px-3 py-3 text-right">{brl0(x.custo)}</td>
       <td className="px-3 py-3 text-right">{brl0(i.custoPorDia)}</td>
@@ -288,7 +292,7 @@ function CartaoAgregado({ a, casa }: { a: LinhaAgregado; casa: Casa | undefined 
         <dt className="text-slate-500">Faturado</dt>
         <dd className="text-right text-slate-700">{a.papel ? brl0(a.faturado) : "—"}</dd>
         <dt className="text-slate-500">Devolução</dt>
-        <dd className="text-right text-slate-700">{pct(i.devolucao)}</dd>
+        <dd className="text-right text-slate-700">{a.papel ? `${brl0(a.devolvido)} · ${pct(i.devolucao)}` : "—"}</dd>
         <dt className="text-slate-500">Custo por dia</dt>
         <dd className="text-right text-slate-700">{brl0(i.custoPorDia)}</dd>
       </dl>

@@ -5,7 +5,7 @@ import { tabelaAgregados } from "@/domain/agregados-relatorio";
 import { periodoDoPadrao } from "../periodo";
 import { criarXlsx } from "@/lib/xlsx";
 
-const LARGURA: Record<string, number> = { Agregado: 38, Papel: 11, Observação: 15, "Custo ÷ faturado líquido": 16, "Diferença vs CLT": 16, "Último pagamento": 14 };
+const LARGURA: Record<string, number> = { Agregado: 38, Papel: 11, Observação: 15, "Custo % do faturado líquido": 16, "Último pagamento": 14 };
 
 export async function GET(req: NextRequest) {
   if (!(await isAdmin())) return new Response("Acesso restrito a administradores.", { status: 403 });
