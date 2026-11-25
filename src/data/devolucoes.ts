@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
-import { notaExpedida, motoristaDeEntrega } from "./regras-winthor";
+import { notaExpedida, motoristaDeEntrega, diaEntrega, faixaEntrega } from "./regras-winthor";
 import type { DevolucaoRetira } from "@/domain/devolucoes-retira";
 import { agregarPorSetor } from "@/domain/devolucoes";
 import { classificarRegiao } from "@/domain/pe-regioes";
@@ -692,18 +692,19 @@ export const getDevolucaoPorBairro = cache(async (
 // QUALQUER data a partir do início do período (devolução não antecede a venda).
 // Diferente da tela Devoluções, que conta pela data da devolução: aqui a taxa do
 // mês corrente ainda sobe conforme as devoluções das notas dele entram.
-const sqlMotoristaFaturamento = `
+// `porEntrega` (BI Motoristas): DIA = dia de entrega (faturada ≥ 19:00 → dia seguinte).
+const sqlMotoristaFaturamento = (porEntrega: boolean) => `
 WITH vendas AS (
-  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, TRUNC(nf.DTSAIDA) DIA, NVL(nf.VLTOTAL, 0) VLVENDA
+  SELECT nf.NUMTRANSVENDA, nf.NUMCAR, ${porEntrega ? diaEntrega("nf") : "TRUNC(nf.DTSAIDA)"} DIA, NVL(nf.VLTOTAL, 0) VLVENDA
   FROM PCNFSAID nf
-  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${porEntrega ? faixaEntrega("nf") : faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
     AND ${notaExpedida("nf")}
 ),
 ed AS (
   SELECT v.NUMTRANSENT, MAX(v.CODDEVOL) CODDEVOL, MAX(v.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${VL_VIEW}) VL
   FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
-  WHERE ${filialIn("v.CODFILIAL")} AND v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD') AND v.DTCANCEL IS NULL
+  WHERE ${filialIn("v.CODFILIAL")} AND v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD')${porEntrega ? " - 1" : ""} AND v.DTCANCEL IS NULL
     AND v.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
   GROUP BY v.NUMTRANSENT
 ),
@@ -731,18 +732,18 @@ GROUP BY car.CODMOTORISTA, v.DIA`;
 // (notas de venda em carga saídas no período; devolução LOGÍSTICA dessas notas,
 // em qualquer data a partir do início do período). Mostra onde cada motorista
 // entrega e quais clientes devolveram.
-const sqlMotoristaCidade = `
+const sqlMotoristaCidade = (porEntrega: boolean) => `
 WITH vendas AS (
   SELECT nf.NUMTRANSVENDA, nf.NUMCAR, nf.CODCLI
   FROM PCNFSAID nf
-  WHERE ${filialIn("nf.CODFILIAL")} AND ${faixa("nf.DTSAIDA")}
+  WHERE ${filialIn("nf.CODFILIAL")} AND ${porEntrega ? faixaEntrega("nf") : faixa("nf.DTSAIDA")}
     AND NVL(nf.NUMCAR, 0) != 0
     AND ${notaExpedida("nf")}
 ),
 ed AS (
   SELECT v.NUMTRANSENT, MAX(v.CODDEVOL) CODDEVOL, MAX(v.NUMTRANSVENDA) NUMTRANSVENDA, SUM(${VL_VIEW}) VL
   FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
-  WHERE ${filialIn("v.CODFILIAL")} AND v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD') AND v.DTCANCEL IS NULL
+  WHERE ${filialIn("v.CODFILIAL")} AND v.DTENT >= TO_DATE(:ini,'YYYY-MM-DD')${porEntrega ? " - 1" : ""} AND v.DTCANCEL IS NULL
     AND v.NUMTRANSVENDA IN (SELECT NUMTRANSVENDA FROM vendas)
   GROUP BY v.NUMTRANSENT
 ),
@@ -768,11 +769,11 @@ WHERE ${motoristaDeEntrega("car.CODMOTORISTA")}
 GROUP BY car.CODMOTORISTA, NVL(ci.NOMECIDADE, 'Sem cidade'), ci.UF`;
 
 /** Motorista × cidade das notas faturadas (saídas) entre `ini` e `fim`, com a devolução logística delas. */
-export async function getMotoristaCidades(ini: string, fim: string): Promise<MotoristaCidade[]> {
+export async function getMotoristaCidades(ini: string, fim: string, { porEntrega = false }: { porEntrega?: boolean } = {}): Promise<MotoristaCidade[]> {
   const rows = await queryWinthor<{
     CODMOTORISTA: number; CIDADE: string; UF: string | null; NOTAS: number; CLIENTES: number;
     DEVOLVIDAS: number; CLIENTES_DEV: number; VALOR_DEVOLVIDO: number;
-  }>(sqlMotoristaCidade, { ini, fim });
+  }>(sqlMotoristaCidade(porEntrega), { ini, fim });
   return rows.map((r) => ({
     codMotorista: n(r.CODMOTORISTA),
     cidade: r.UF ? `${r.CIDADE} · ${r.UF}` : r.CIDADE,
@@ -785,8 +786,8 @@ export async function getMotoristaCidades(ini: string, fim: string): Promise<Mot
 }
 
 /** Devolução LOGÍSTICA por motorista × dia das notas faturadas (saídas) entre `ini` e `fim`. */
-export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: string): Promise<DevolucaoMotDia[]> {
-  const rows = await queryWinthor<Omit<LinhaMotorista, "TAXA"> & { DIA: string }>(sqlMotoristaFaturamento, { ini, fim });
+export async function getDevolucaoLogisticaPorFaturamento(ini: string, fim: string, { porEntrega = false }: { porEntrega?: boolean } = {}): Promise<DevolucaoMotDia[]> {
+  const rows = await queryWinthor<Omit<LinhaMotorista, "TAXA"> & { DIA: string }>(sqlMotoristaFaturamento(porEntrega), { ini, fim });
   return rows.map((r) => ({
     dia: String(r.DIA),
     codMotorista: n(r.CODMOTORISTA),

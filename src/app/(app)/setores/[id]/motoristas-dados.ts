@@ -77,6 +77,9 @@ export interface DadosBIMotoristas {
   motoristas: MotoristaBI[] | null;
 }
 
+// Dia = dia de ENTREGA: faturada das 19:00 às 08:30 → entrega do dia seguinte (regras-winthor).
+const ENTREGA = { porEntrega: true };
+
 const erroMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function carregarBIMotoristas(setor: { id: string; nome: string }, funcionarios: Funcionario[], periodo: Periodo, opcoes: OpcoesCarga = {}): Promise<DadosBIMotoristas> {
@@ -102,25 +105,25 @@ export async function carregarBIMotoristas(setor: { id: string; nome: string }, 
     opcoes.soQuadros ? Promise.resolve(false) : isAdmin(),
     listarEquipamentos().catch(() => null),
     serieEfetivoSetorMensal(24),
-    lembrar(`lerViagensPeriodo:${chave}`, ttl, () => lerViagensPeriodo(de, ate)).then(
+    lembrar(`lerViagensEntrega:${chave}`, ttl, () => lerViagensPeriodo(de, ate, ENTREGA)).then(
       (v) => ({ viagens: v }),
       (e) => {
         console.error("[winthor-entregas]", erroMsg(e));
         return { erro: erroMsg(e) };
       },
     ),
-    lembrar(`lerEntregasMeses:${inicioSerie}|${mes}`, ttl, () => lerEntregasMeses(inicioSerie, mes)).catch(() => null as EntregasDoMes[] | null),
+    lembrar(`lerEntregasMesesEntrega:${inicioSerie}|${mes}`, ttl, () => lerEntregasMeses(inicioSerie, mes, ENTREGA)).catch(() => null as EntregasDoMes[] | null),
     (mensal
       ? lembrar(`getResumoFaturamentoDashboard:${mes}`, ttl, () => getResumoFaturamentoDashboard(mes))
       : lembrar(`getResumoFaturamentoPeriodo:${chave}`, ttl, () => getResumoFaturamentoPeriodo(de, ate))
     ).catch(() => null),
     vendaLiquidaDasFotos(fechados).catch(() => new Map<string, number>()),
-    lembrar(`devolucaoLogisticaPorFaturamentoDia:${chave}`, ttl, () => getDevolucaoLogisticaPorFaturamento(de, ate)).catch(() => null),
+    lembrar(`devolucaoLogisticaPorEntregaDia:${chave}`, ttl, () => getDevolucaoLogisticaPorFaturamento(de, ate, ENTREGA)).catch(() => null),
     lerHodometroPeriodo(de, ate).catch(() => null), // Supabase: sem cache
     lerCadastroFrota().catch(() => null),
-    lembrar(`motoristaCidades:${chave}`, ttl, () => getMotoristaCidades(de, ate)).catch(() => null),
+    lembrar(`motoristaCidadesEntrega:${chave}`, ttl, () => getMotoristaCidades(de, ate, ENTREGA)).catch(() => null),
     // Período: viagens do período anterior para comparar entregas por dia.
-    (mensal && !mensalAberto) || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerViagensPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate)).catch(() => null),
+    (mensal && !mensalAberto) || opcoes.soQuadros ? Promise.resolve(null) : lembrar(`lerViagensEntrega:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => lerViagensPeriodo(pAnt.de, pAnt.ate, ENTREGA)).catch(() => null),
     mensalAberto && !opcoes.soQuadros ? lembrar(`getResumoFaturamentoPeriodo:${pAnt.de}|${pAnt.ate}`, ttlDoPeriodo(pAnt), () => getResumoFaturamentoPeriodo(pAnt.de, pAnt.ate)).catch(() => null) : Promise.resolve(null),
   ]);
 

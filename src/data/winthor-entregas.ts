@@ -1,18 +1,23 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
-import { notaExpedida, motoristaDeEntrega } from "./regras-winthor";
+import { notaExpedida, motoristaDeEntrega, diaEntrega, faixaEntrega } from "./regras-winthor";
 import type { TipoMotorista, ViagemEntrega } from "@/domain/motoristas";
 
 // Universo: notas de VENDA em carga, das filiais do dashboard, pela data de
 // saída da nota (mesmo universo das "expedidas" da devolução por motorista —
 // bonificação/brinde/transferência fora pelo CONDVENDA). Motorista 9996 é o
 // pseudo-motorista DIALOG (balcão), fora.
-const NF = `
+// `porEntrega` = DIA é o dia de ENTREGA (faturada ≥ 19:00 → dia seguinte; só o
+// BI Motoristas); senão é a data da nota.
+export interface OpcoesDia {
+  porEntrega?: boolean;
+}
+const NF = ({ porEntrega = false }: OpcoesDia = {}) => `
 nf AS (
-  SELECT n.NUMCAR, TRUNC(n.DTSAIDA) DIA, n.CODCLI, NVL(n.TOTPESO, 0) PESO, NVL(n.VLTOTAL, 0) VL
+  SELECT n.NUMCAR, ${porEntrega ? diaEntrega("n") : "TRUNC(n.DTSAIDA)"} DIA, n.CODCLI, NVL(n.TOTPESO, 0) PESO, NVL(n.VLTOTAL, 0) VL
   FROM PCNFSAID n
   WHERE ${filialIn("n.CODFILIAL")}
-    AND n.DTSAIDA >= TO_DATE(:ini, 'YYYY-MM-DD') AND n.DTSAIDA < TO_DATE(:fim, 'YYYY-MM-DD') + 1
+    AND ${porEntrega ? faixaEntrega("n") : "n.DTSAIDA >= TO_DATE(:ini, 'YYYY-MM-DD') AND n.DTSAIDA < TO_DATE(:fim, 'YYYY-MM-DD') + 1"}
     AND NVL(n.NUMCAR, 0) != 0
     AND ${notaExpedida("n")}
 ),
@@ -27,8 +32,8 @@ viagem AS (
   GROUP BY nf.DIA, NVL(c.CODVEICULO, 0), c.CODMOTORISTA
 )`;
 
-const SQL_VIAGENS = `
-WITH ${NF}
+const SQL_VIAGENS = (o: OpcoesDia) => `
+WITH ${NF(o)}
 SELECT TO_CHAR(vg.DIA, 'YYYY-MM-DD') DIA, vg.CODVEICULO, ve.PLACA, ve.DESCRICAO, ve.PESOCARGAKG,
        vg.CODMOTORISTA, mo.NOME NOME_MOT, mo.TIPOMOTORISTA, vg.CODAJUD, aj.NOME NOME_AJUD,
        vg.CARGAS, vg.NOTAS, vg.ENTREGAS, vg.KG, vg.VALOR
@@ -42,8 +47,8 @@ ORDER BY vg.DIA, vg.CODVEICULO`;
 // dia, a mesma regra do card "Entregas realizadas" do Dashboard: o cliente que
 // recebeu dois caminhões no mesmo dia conta uma entrega (somar as viagens
 // contaria duas).
-const SQL_MESES = `
-WITH ${NF},
+const SQL_MESES = (o: OpcoesDia) => `
+WITH ${NF(o)},
 ent AS (
   SELECT TRUNC(nf.DIA, 'MM') M, COUNT(DISTINCT nf.CODCLI || '|' || TO_CHAR(nf.DIA, 'YYYYMMDD')) ENTREGAS
   FROM nf
@@ -69,13 +74,13 @@ function ultimoDia(mes: string): string {
 }
 
 /** Viagens (veículo + motorista + dia) do mês "yyyy-mm-01". */
-export async function lerViagensMes(mes: string): Promise<ViagemEntrega[]> {
-  return lerViagensPeriodo(mes, ultimoDia(mes));
+export async function lerViagensMes(mes: string, o: OpcoesDia = {}): Promise<ViagemEntrega[]> {
+  return lerViagensPeriodo(mes, ultimoDia(mes), o);
 }
 
 /** Viagens de um intervalo [ini, fim] qualquer. */
-export async function lerViagensPeriodo(ini: string, fim: string): Promise<ViagemEntrega[]> {
-  const rows = await queryWinthor<Record<string, unknown>>(SQL_VIAGENS, { ini, fim });
+export async function lerViagensPeriodo(ini: string, fim: string, o: OpcoesDia = {}): Promise<ViagemEntrega[]> {
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_VIAGENS(o), { ini, fim });
   return rows.map((r) => {
     const tipo = str(r.TIPOMOTORISTA);
     return {
@@ -108,8 +113,8 @@ export interface EntregasDoMes {
 }
 
 /** Totais por mês de `ini` ("yyyy-mm-01") até o fim do mês `fim`. */
-export async function lerEntregasMeses(ini: string, fim: string): Promise<EntregasDoMes[]> {
-  const rows = await queryWinthor<Record<string, unknown>>(SQL_MESES, { ini, fim: ultimoDia(fim) });
+export async function lerEntregasMeses(ini: string, fim: string, o: OpcoesDia = {}): Promise<EntregasDoMes[]> {
+  const rows = await queryWinthor<Record<string, unknown>>(SQL_MESES(o), { ini, fim: ultimoDia(fim) });
   return rows.map((r) => ({
     mes: String(r.MES),
     viagens: num(r.VIAGENS),
