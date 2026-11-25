@@ -65,6 +65,13 @@ export interface Casa extends Numeros {
   custo: number; // folha do setor no período
 }
 
+export interface RelatorioAgregados {
+  agregados: LinhaAgregado[];
+  casa: Partial<Record<Papel, Casa>>;
+  /** Quem rodou carga sem ser agregado nem da casa (ex.: DIA LOG, cadastro faltando). */
+  outros: { matricula: number; nome: string | null; papel: string; dias: number }[];
+}
+
 const DIG = /\D/g;
 export const normNome = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ").replace(/\s+/g, " ").trim();

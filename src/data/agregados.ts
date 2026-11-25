@@ -13,8 +13,7 @@ import {
   montarAgregados,
   normNome,
   totaisCasa,
-  type Casa,
-  type LinhaAgregado,
+  type RelatorioAgregados,
   type OperacaoPessoa,
   type PagamentoFornecedor,
 } from "@/domain/agregados";
@@ -84,12 +83,7 @@ GROUP BY p.MAT, p.PAPEL`;
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 const str = (v: unknown) => (v == null || String(v).trim() === "" ? null : String(v).trim());
 
-export interface RelatorioAgregados {
-  agregados: LinhaAgregado[];
-  casa: Partial<Record<"motorista" | "ajudante", Casa>>;
-  /** Quem rodou carga sem ser agregado nem da casa (ex.: DIA LOG, cadastro faltando). */
-  outros: { matricula: number; nome: string | null; papel: string; dias: number }[];
-}
+export type { RelatorioAgregados };
 
 /** Folha do setor que cai dentro do período (pró-rata pelos dias; mês aberto até hoje). */
 function folhaNoPeriodo(serie: { mes: string; setor: string; custoAtivos: number }[], filtroSetor: (s: string) => boolean, p: Periodo): number {
