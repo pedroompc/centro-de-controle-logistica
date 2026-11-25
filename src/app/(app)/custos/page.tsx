@@ -71,6 +71,13 @@ export default async function RelatorioCustosPage({ searchParams }: { searchPara
           >
             + Lançamento
           </Link>
+          <Link
+            href="/custos/agregados"
+            title="Custo, faturado e devolução de cada agregado, comparado com a casa"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-50"
+          >
+            Agregados
+          </Link>
           <PeriodoNav periodo={periodo} hrefFor={hrefRelatorio} />
         </div>
       </PageHeader>
