@@ -29,6 +29,7 @@ export function FuncionarioForm({ setores, inicial }: { setores: Setor[]; inicia
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>(inicial?.status ?? "ativo");
   // Texto cru de cada rubrica: "" = não informada (vira null, mostra "—").
   const [rubricas, setRubricas] = useState<Record<keyof ComposicaoCusto, string>>(() => {
     const txt = (v: number | null | undefined) => (v == null ? "" : String(v));
@@ -140,12 +141,18 @@ export function FuncionarioForm({ setores, inicial }: { setores: Setor[]; inicia
       </label>
       <label>
         <span className={lbl}>Status</span>
-        <select name="status" defaultValue={inicial?.status ?? "ativo"} className={`${field} w-full`}>
+        <select name="status" value={status} onChange={(e) => setStatus(e.target.value)} className={`${field} w-full`}>
           {STATUS.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </label>
+      {status === "desligado" && (
+        <label>
+          <span className={lbl}>Desligamento (último dia)</span>
+          <input name="data_desligamento" type="date" required defaultValue={inicial?.dataDesligamento ?? ""} className={`${field} w-full`} />
+        </label>
+      )}
       {erro && (
         <p className="col-span-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           Não salvou: {erro}

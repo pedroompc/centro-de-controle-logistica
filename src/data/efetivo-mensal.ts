@@ -1,8 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
-import { primeiroDiaDoMes, mesAnterior, INICIO_HISTORICO } from "@/domain/periodo";
-import { totaisEfetivoPorMes, type LinhaEfetivoSetor, type TotalEfetivoMes } from "@/domain/efetivo";
-
-const FILIAL = "1";
+import { listarFuncionarios } from "@/data/funcionarios";
+import { listarSetores } from "@/data/setores";
+import { primeiroDiaDoMes, mesAnterior, mesesDoPeriodo, INICIO_HISTORICO } from "@/domain/periodo";
+import { hojeISO } from "@/domain/fechamento";
+import { efetivoSetorNoMes, totaisEfetivoPorMes, type LinhaEfetivoSetor, type TotalEfetivoMes } from "@/domain/efetivo";
 
 export interface FotoEfetivoSetorMes extends LinhaEfetivoSetor {
   mes: string; // "yyyy-mm-01"
@@ -15,61 +15,26 @@ function inicioJanela(qtdMeses: number): string {
   return m < INICIO_HISTORICO ? INICIO_HISTORICO : m;
 }
 
-/** Fotos por setor dos últimos `qtdMeses` meses (mais antigo → mais novo). */
+/**
+ * Efetivo por setor dos últimos `qtdMeses` meses (mais antigo → mais novo),
+ * reconstruído pelas datas de admissão/desligamento do cadastro — ver
+ * `efetivoSetorNoMes`. Corrigir uma data no cadastro corrige todos os meses.
+ */
 export async function serieEfetivoSetorMensal(qtdMeses = 12): Promise<FotoEfetivoSetorMes[]> {
-  const inicio = inicioJanela(qtdMeses);
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("efetivo_mensal_setor")
-    .select("mes, setor, ativos, afastados, desligados, custo_ativos")
-    .eq("filial", FILIAL)
-    .gte("mes", inicio)
-    .order("mes", { ascending: true });
-  if (error) {
-    // Tabela ainda não migrada / Supabase fora: sem histórico, a página segue.
-    console.error("[efetivo-mensal-setor] indisponível:", error.message);
+  try {
+    const [funcionarios, setores] = await Promise.all([listarFuncionarios(), listarSetores()]);
+    const hoje = hojeISO();
+    return mesesDoPeriodo({ de: inicioJanela(qtdMeses), ate: hoje }).flatMap((mes) =>
+      efetivoSetorNoMes(funcionarios, setores, mes, hoje).map((l) => ({ mes, ...l })),
+    );
+  } catch (e) {
+    // Supabase fora: sem histórico, a página segue.
+    console.error("[efetivo-mensal-setor] indisponível:", e instanceof Error ? e.message : e);
     return [];
   }
-  return (data ?? []).map((r) => ({
-    mes: primeiroDiaDoMes(String(r.mes)),
-    setor: String(r.setor),
-    ativos: Number(r.ativos) || 0,
-    afastados: Number(r.afastados) || 0,
-    desligados: Number(r.desligados) || 0,
-    custoAtivos: Number(r.custo_ativos) || 0,
-  }));
 }
 
 /** Totais por mês (soma dos setores) — usado pela aba Efetivos. */
 export async function serieEfetivoMensal(qtdMeses = 12): Promise<TotalEfetivoMes[]> {
   return totaisEfetivoPorMes(await serieEfetivoSetorMensal(qtdMeses));
-}
-
-/**
- * Grava/atualiza a foto do MÊS CORRENTE por setor (upsert). Best-effort: qualquer
- * falha (tabela ausente, RLS, offline) é engolida — nunca quebra o render.
- */
-export async function registrarFotoEfetivoSetor(linhas: LinhaEfetivoSetor[]): Promise<void> {
-  if (linhas.length === 0) return;
-  try {
-    const supabase = await createClient();
-    const mes = primeiroDiaDoMes();
-    const now = new Date().toISOString();
-    const rows = linhas.map((l) => ({
-      mes,
-      filial: FILIAL,
-      setor: l.setor,
-      ativos: l.ativos,
-      afastados: l.afastados,
-      desligados: l.desligados,
-      custo_ativos: l.custoAtivos,
-      atualizado_em: now,
-    }));
-    const { error } = await supabase
-      .from("efetivo_mensal_setor")
-      .upsert(rows, { onConflict: "mes,filial,setor" });
-    if (error) console.error("[efetivo-mensal-setor] falha ao registrar foto:", error.message);
-  } catch (e) {
-    console.error("[efetivo-mensal-setor] falha ao registrar foto:", e);
-  }
 }

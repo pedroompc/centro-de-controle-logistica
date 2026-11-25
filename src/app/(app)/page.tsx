@@ -27,11 +27,11 @@ import { PeriodoNav } from "@/components/periodo-nav";
 import { ComparaPeriodos } from "@/components/compara-periodos";
 import { custoBrutoDoPeriodo, custoLogisticoDoPeriodo, somaNosMeses } from "@/domain/custo-periodo";
 import { listarLancamentosDoMes, serieCustosMensais } from "@/data/custos-mensais";
-import { serieEfetivoSetorMensal, registrarFotoEfetivoSetor } from "@/data/efetivo-mensal";
+import { serieEfetivoSetorMensal } from "@/data/efetivo-mensal";
 import { receitaTotalDoPeriodo } from "@/data/receitas";
 import { somaLancamentos } from "@/domain/custos-metrics";
 import { custoLiquido } from "@/domain/receitas-metrics";
-import { fotoSetorAtual, totaisEfetivoPorMes } from "@/domain/efetivo";
+import { totaisEfetivoPorMes } from "@/domain/efetivo";
 import { compararSerie, type PontoValor } from "@/domain/comparativo-mensal";
 import { PageHeader, StatCard, Card, SectionTitle } from "@/components/ui";
 import { SeloVivo } from "@/components/movimento";
@@ -117,9 +117,7 @@ export default async function Dashboard({
   const fixos = somaLancamentos(lancamentosMes, "fixo");
   const variaveis = somaLancamentos(lancamentosMes, "variavel");
 
-  // Congela a foto do mês corrente por setor (best-effort) e lê o histórico —
-  // fonte do comparativo mês a mês. Registrar ANTES de ler p/ o mês entrar já.
-  await registrarFotoEfetivoSetor(fotoSetorAtual(funcionarios, setores));
+  // Histórico do efetivo: reconstruído pelas datas do cadastro (fonte do comparativo mês a mês).
   // Janela da série: tudo desde o início do histórico (≥ 12 meses).
   const qtdSerie = Math.max(12, mesesDoPeriodo({ de: INICIO_HISTORICO, ate: hojeISO() }).length);
   const [serieSetor, serieCustos] = await Promise.all([

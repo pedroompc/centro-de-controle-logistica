@@ -1,8 +1,9 @@
 /**
  * Efetivo (headcount + folha) — parte pura do "método de gestão" aplicado às
  * pessoas. A foto do AGORA vem do cadastro vivo (`funcionarios`); o histórico
- * mês a mês vem da tabela `efetivo_mensal` (fotos congeladas), porque o cadastro
- * não guarda data de desligamento e o passado não é reconstruível.
+ * mês a mês é reconstruído pelas datas de admissão/desligamento do mesmo
+ * cadastro (`efetivoSetorNoMes`). As fotos congeladas (`efetivo_mensal_setor`)
+ * ficaram só de arquivo: congelavam o cadastro atrasado de cada mês.
  */
 import type { Funcionario } from "./types";
 
@@ -117,6 +118,62 @@ export function fotoSetorAtual(
       };
     })
     .filter((l) => l.ativos > 0 || l.afastados > 0 || l.custoAtivos > 0);
+}
+
+const diaUTC = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const diasEntre = (de: string, ate: string) => Math.round((diaUTC(ate) - diaUTC(de)) / 86_400_000) + 1;
+function ultimoDiaDoMes(mes: string): string {
+  const [a, m] = mes.split("-").map(Number);
+  return `${mes.slice(0, 7)}-${String(new Date(Date.UTC(a, m, 0)).getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Efetivo por setor num mês, RECONSTRUÍDO pelas datas do cadastro — não por foto
+ * congelada: lançamento atrasado (admissão/desligamento) corrige o passado sozinho.
+ *
+ *  - Pessoas = quem estava na empresa no último dia do mês (mês aberto: hoje).
+ *    Admitido até esse dia e, se desligado, com o último dia ≥ ele.
+ *  - Desligado SEM data de desligamento nunca conta (ex.: faturistas, que não
+ *    são do efetivo).
+ *  - Custo = custo mensal ATUAL de cada um × dias na empresa no mês ÷ dias do mês
+ *    (quem entrou/saiu no meio paga a fração). Mês aberto: quem está hoje paga o
+ *    mês cheio (regra do custo fixo do mês).
+ *  - Afastado conta como afastado desde a admissão (não há histórico do afastamento).
+ *  - Setor é o de HOJE (o cadastro não guarda transferências).
+ */
+export function efetivoSetorNoMes(
+  funcionarios: Funcionario[],
+  setores: { id: string; nome: string }[],
+  mes: string,
+  hoje: string,
+): LinhaEfetivoSetor[] {
+  const ini = mes.slice(0, 7) + "-01";
+  const fim = ultimoDiaDoMes(ini);
+  if (ini > hoje) return [];
+  const ref = hoje < fim ? hoje : fim;
+  const totalDias = diasEntre(ini, fim);
+  const porSetor = new Map<string, LinhaEfetivoSetor>();
+  const nome = new Map(setores.map((s) => [s.id, s.nome]));
+  for (const f of funcionarios) {
+    const setor = nome.get(f.setorId);
+    if (!setor) continue;
+    const saida = f.status === "desligado" ? (f.dataDesligamento ?? null) : null;
+    if (f.status === "desligado" && !saida) continue;
+    const l = porSetor.get(setor) ?? { setor, ativos: 0, afastados: 0, desligados: 0, custoAtivos: 0 };
+    porSetor.set(setor, l);
+    if (saida && saida >= ini && saida <= fim) l.desligados += 1;
+    if (f.dataAdmissao > ref) continue;
+    const presente = !saida || saida >= ref;
+    if (f.status === "afastado") {
+      if (presente) l.afastados += 1;
+      continue;
+    }
+    if (presente) l.ativos += 1;
+    const de = f.dataAdmissao > ini ? f.dataAdmissao : ini;
+    const ate = saida && saida < fim ? saida : fim;
+    if (ate >= de) l.custoAtivos += (f.custoMensal * diasEntre(de, ate)) / totalDias;
+  }
+  return [...porSetor.values()].filter((l) => l.ativos > 0 || l.afastados > 0 || l.custoAtivos > 0);
 }
 
 export interface TotalEfetivoMes {

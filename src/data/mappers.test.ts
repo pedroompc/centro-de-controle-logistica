@@ -19,6 +19,7 @@ describe("mapFuncionario", () => {
       setorId: "s1",
       custoMensal: 2500.5,
       dataAdmissao: "2024-03-01",
+      dataDesligamento: null,
       status: "ativo",
       // rubricas ausentes na linha → null (funcionário sem detalhamento importado)
       salarioBase: null,

@@ -11,6 +11,7 @@ export function mapFuncionario(row: {
   setor_id: string;
   custo_mensal: string | number;
   data_admissao: string;
+  data_desligamento?: string | null;
   status: string;
   turno?: string | null;
   salario_base?: string | number | null;
@@ -32,6 +33,7 @@ export function mapFuncionario(row: {
     setorId: row.setor_id,
     custoMensal: Number(row.custo_mensal),
     dataAdmissao: row.data_admissao,
+    dataDesligamento: row.data_desligamento ?? null,
     status: row.status as StatusFuncionario,
     turno: (row.turno ?? "manha") as Turno,
     salarioBase: num(row.salario_base),

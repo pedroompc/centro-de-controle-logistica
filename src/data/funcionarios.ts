@@ -10,7 +10,7 @@ import type { Funcionario } from "@/domain/types";
 
 // Literal único (não concatenar): o Supabase infere as colunas a partir do tipo
 // literal da string; um `string` genérico degrada a inferência.
-const COLUNAS = "id, nome, cargo, setor_id, custo_mensal, data_admissao, status, turno, salario_base, passagem, alimentacao, plano_saude, ajuda_custo, premiacao, adicional_noturno";
+const COLUNAS = "id, nome, cargo, setor_id, custo_mensal, data_admissao, data_desligamento, status, turno, salario_base, passagem, alimentacao, plano_saude, ajuda_custo, premiacao, adicional_noturno";
 
 export async function listarFuncionarios(): Promise<Funcionario[]> {
   const supabase = await createClient();
@@ -57,13 +57,20 @@ export async function salvarFuncionario(formData: FormData): Promise<{ erro: str
   // Com rubricas, o custo é calculado aqui (salário × 1,85 + demais) — o valor
   // vindo do navegador é só prévia. Sem nenhuma, vale o custo digitado.
   const calculado = custoMensalDaComposicao(composicao);
+  const status = umDe(formData.get("status"), ["ativo", "afastado", "desligado"] as const, "ativo");
+  const admissao = String(formData.get("data_admissao") ?? "");
+  // O efetivo de cada mês sai das datas: desligado sem data some de todos os meses.
+  const desligamento = status === "desligado" ? String(formData.get("data_desligamento") ?? "").trim() : "";
+  if (status === "desligado" && !desligamento) return { erro: "informe a data de desligamento (último dia na empresa)." };
+  if (desligamento && desligamento < admissao) return { erro: "a data de desligamento é anterior à admissão." };
   const registro = {
     nome: String(formData.get("nome") ?? "").trim(),
     cargo: String(formData.get("cargo") ?? "").trim(),
     setor_id: String(formData.get("setor_id") ?? ""),
     custo_mensal: calculado ?? Number(formData.get("custo_mensal") ?? 0),
-    data_admissao: String(formData.get("data_admissao") ?? ""),
-    status: umDe(formData.get("status"), ["ativo", "afastado", "desligado"] as const, "ativo"),
+    data_admissao: admissao,
+    data_desligamento: desligamento || null,
+    status,
     turno: umDe(formData.get("turno"), ["manha", "tarde", "noite"] as const, "manha"),
     salario_base: composicao.salarioBase,
     passagem: composicao.passagem,

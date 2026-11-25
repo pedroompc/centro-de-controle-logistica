@@ -1,8 +1,8 @@
 import { listarFuncionarios } from "@/data/funcionarios";
 import { listarFaltas } from "@/data/faltas";
 import { listarSetores } from "@/data/setores";
-import { serieEfetivoMensal, registrarFotoEfetivoSetor } from "@/data/efetivo-mensal";
-import { fotoAtual, composicaoFolha, fotoSetorAtual } from "@/domain/efetivo";
+import { serieEfetivoMensal } from "@/data/efetivo-mensal";
+import { fotoAtual, composicaoFolha } from "@/domain/efetivo";
 import { absenteismoPorMes } from "@/domain/absenteismo-mensal";
 import { custoDoSetor } from "@/domain/metrics";
 import { compararPct, compararAbs } from "@/domain/comparacao";
@@ -72,9 +72,6 @@ export default async function EfetivosTendenciaPage({ searchParams }: { searchPa
 
   const foto = fotoAtual(funcionarios);
 
-  // Congela a foto do mês corrente por setor (best-effort) antes de ler a série,
-  // para o mês atual já entrar na curva.
-  await registrarFotoEfetivoSetor(fotoSetorAtual(funcionarios, setores));
   const snapshots = (await serieEfetivoMensal(Math.max(j.qtd, 1))).filter((s) => noJanela.has(s.mes));
 
   // Absenteísmo mês a mês (comparativo real — faltas têm data).

@@ -24,6 +24,8 @@ export interface Funcionario {
   setorId: string;
   custoMensal: number;
   dataAdmissao: string; // ISO date "yyyy-mm-dd"
+  /** Último dia na empresa ("yyyy-mm-dd"). Só desligado tem; desligado SEM data = nunca contou no efetivo. */
+  dataDesligamento?: string | null;
   status: StatusFuncionario;
   turno: Turno;
   // Composição do custo (rubricas da folha). null = não veio na importação
