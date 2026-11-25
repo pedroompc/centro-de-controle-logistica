@@ -20,7 +20,10 @@ describe("linhasDeEquipamento", () => {
         { id: "2", nome: "Patinha", setor: "Separação", quantidade: 4, custoUnitario: 0 },
         { id: "3", nome: "Transpaleteira", setor: "Recebimento", quantidade: 2, custoUnitario: 0 },
       ]),
-    ).toEqual([{ nome: "Equipamento · Patinha (45 un · 4 grátis)", valor: 3157 }]);
+    ).toEqual([
+      { nome: "Equipamento · Patinha (45 un · 4 grátis)", valor: 3157 },
+      { nome: "Equipamento · Transpaleteira (2 un · grátis)", valor: 0 },
+    ]);
     expect(ehLinhaDeEquipamento("Galpão")).toBe(false);
   });
 });

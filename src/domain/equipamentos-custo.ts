@@ -10,7 +10,8 @@ export const ehLinhaDeEquipamento = (nome: string) => nome.startsWith(PREFIXO_EQ
  * geral da empresa (soma dos setores) — onde cada um está fica só no cadastro,
  * que é o que os BIs e a tela de Setores usam para o custo de cada setor.
  * Unidade com custo zero no cadastro é grátis: entra na quantidade, não no
- * valor ("Patinha (45 un · 4 grátis)"). Equipamento todo grátis não vira linha.
+ * valor ("Patinha (45 un · 4 grátis)"). Equipamento todo grátis aparece com R$ 0
+ * ("Transpaleteira (2 un · grátis)").
  */
 export function linhasDeEquipamento(equipamentos: Equipamento[]): { nome: string; valor: number }[] {
   const porNome = new Map<string, { quantidade: number; gratis: number; valor: number }>();
@@ -23,9 +24,9 @@ export function linhasDeEquipamento(equipamentos: Equipamento[]): { nome: string
     porNome.set(e.nome, t);
   }
   return [...porNome.entries()]
-    .filter(([, t]) => t.valor > 0)
     .map(([nome, t]) => {
-      const qtd = t.quantidade > 1 ? `${t.quantidade} un${t.gratis ? ` · ${t.gratis} grátis` : ""}` : "";
+      const gratis = t.gratis === t.quantidade ? "grátis" : t.gratis ? `${t.gratis} grátis` : "";
+      const qtd = [t.quantidade > 1 ? `${t.quantidade} un` : "", gratis].filter(Boolean).join(" · ");
       return { nome: `${PREFIXO_EQUIPAMENTO}${nome}${qtd ? ` (${qtd})` : ""}`, valor: Math.round(t.valor * 100) / 100 };
     })
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
