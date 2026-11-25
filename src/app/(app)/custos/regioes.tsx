@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { ratearPorRegiao, type CustoRegiao, type RegiaoCusto } from "@/domain/custo-regioes";
 import { fracao } from "@/domain/custo-grupos";
 import { formatBRL, formatPercent } from "@/domain/format";
@@ -36,25 +39,48 @@ export function CustoPorRegiao({
   custoEntrega: number;
   custoGalpao: number; // galpão + galpão administrativo
 }) {
+  const [comGalpao, setComGalpao] = useState(false);
   return (
     <section className="mt-8">
-      <SectionTitle>Quanto custa atender cada região · {formatMesAno(mes)}</SectionTitle>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <SectionTitle>Quanto custa atender cada região · {formatMesAno(mes)}</SectionTitle>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={comGalpao}
+          onClick={() => setComGalpao((v) => !v)}
+          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          title="Incluir o custo do galpão (galpão + galpão administrativo) na conta de cada região"
+        >
+          <span className={`relative h-4 w-7 rounded-full transition ${comGalpao ? "bg-[#181d55]" : "bg-slate-300"}`}>
+            <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${comGalpao ? "left-3.5" : "left-0.5"}`} />
+          </span>
+          Incluir galpão
+        </button>
+      </div>
       <p className="-mt-1 mb-4 max-w-4xl text-sm text-slate-500">
         O custo das equipes no mês (sem o aluguel do galpão) dividido entre as regiões. A <b className="font-semibold text-slate-700">entrega</b> (motoristas,
-        ajudantes e frota) vai pelo km que os caminhões rodaram em cada região. O{" "}
-        <b className="font-semibold text-slate-700">galpão</b> (galpão + galpão administrativo) vai pelo número de notas separadas.
+        ajudantes e frota) vai pelo km que os caminhões rodaram em cada região.
+        {comGalpao ? (
+          <>
+            {" "}O <b className="font-semibold text-slate-700">galpão</b> (galpão + galpão administrativo) vai pelo número de notas separadas.
+          </>
+        ) : (
+          " Galpão fora da conta."
+        )}
       </p>
       {base === null ? (
         <Card className="p-5 text-sm text-amber-700">Winthor indisponível agora: a divisão por região não carregou.</Card>
       ) : (
-        <Conteudo base={base} custoEntrega={custoEntrega} custoGalpao={custoGalpao} />
+        <Conteudo base={base} custoEntrega={custoEntrega} custoGalpao={comGalpao ? custoGalpao : 0} comGalpao={comGalpao} />
       )}
     </section>
   );
 }
 
-function Conteudo({ base, custoEntrega, custoGalpao }: { base: BaseRegioesMes; custoEntrega: number; custoGalpao: number }) {
-  const linhas = ratearPorRegiao(base.regioes, custoEntrega, custoGalpao);
+function Conteudo({ base, custoEntrega, custoGalpao, comGalpao }: { base: BaseRegioesMes; custoEntrega: number; custoGalpao: number; comGalpao: boolean }) {
+  // Sem galpão, a retira no balcão não tem custo nenhum (não usa caminhão): sai da tela.
+  const linhas = ratearPorRegiao(base.regioes, custoEntrega, custoGalpao).filter((l) => comGalpao || l.regiao !== "Retira");
   const tot = linhas.reduce(
     (t, l) => ({
       custo: t.custo + l.custo, entrega: t.entrega + l.custoEntrega, galpao: t.galpao + l.custoGalpao, valor: t.valor + l.valor,
@@ -70,7 +96,7 @@ function Conteudo({ base, custoEntrega, custoGalpao }: { base: BaseRegioesMes; c
       {/* Um cartão por região: o número que importa é "a cada R$ 100 vendidos" */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {linhas.map((l) => (
-          <CartaoRegiao key={l.regiao} l={l} totalCusto={tot.custo} media={media} maior={maiorPorCem} />
+          <CartaoRegiao key={l.regiao} l={l} totalCusto={tot.custo} media={media} maior={maiorPorCem} comGalpao={comGalpao} />
         ))}
       </div>
 
@@ -81,9 +107,9 @@ function Conteudo({ base, custoEntrega, custoGalpao }: { base: BaseRegioesMes; c
             <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Região</th>
-                <th className="px-4 py-3 text-right font-semibold" title="Entrega + galpão">Custo para atender</th>
+                <th className="px-4 py-3 text-right font-semibold" title={comGalpao ? "Entrega + galpão" : "Entrega"}>Custo para atender</th>
                 <th className="px-4 py-3 text-right font-semibold" title="Motoristas, ajudantes e frota, pelo km rodado">Entrega</th>
-                <th className="px-4 py-3 text-right font-semibold" title="Galpão + galpão administrativo, pelas notas">Galpão</th>
+                {comGalpao && <th className="px-4 py-3 text-right font-semibold" title="Galpão + galpão administrativo, pelas notas">Galpão</th>}
                 <th className="px-4 py-3 text-right font-semibold" title="Venda líquida (mesma base do faturamento do Início)">Venda</th>
                 <th className="px-4 py-3 text-right font-semibold" title="Custo para atender ÷ venda">Custo a cada R$ 100</th>
                 <th className="px-4 py-3 text-right font-semibold" title="Cliente atendido por dia">Entregas</th>
@@ -98,7 +124,7 @@ function Conteudo({ base, custoEntrega, custoGalpao }: { base: BaseRegioesMes; c
                   <td className="px-4 py-3 font-medium text-[#141a4d]">{NOME[l.regiao]}</td>
                   <td className="px-4 py-3 text-right font-semibold text-[#141a4d]">{formatBRL(l.custo)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{formatBRL(l.custoEntrega)}</td>
-                  <td className="px-4 py-3 text-right text-slate-600">{formatBRL(l.custoGalpao)}</td>
+                  {comGalpao && <td className="px-4 py-3 text-right text-slate-600">{formatBRL(l.custoGalpao)}</td>}
                   <td className="px-4 py-3 text-right text-slate-600">{formatBRL(l.valor)}</td>
                   <td className="px-4 py-3 text-right font-semibold text-[#141a4d]">{porCem(l.custo, l.valor)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{num(l.entregas)}</td>
@@ -111,7 +137,7 @@ function Conteudo({ base, custoEntrega, custoGalpao }: { base: BaseRegioesMes; c
                 <td className="px-4 py-3">Total</td>
                 <td className="px-4 py-3 text-right">{formatBRL(tot.custo)}</td>
                 <td className="px-4 py-3 text-right">{formatBRL(tot.entrega)}</td>
-                <td className="px-4 py-3 text-right">{formatBRL(tot.galpao)}</td>
+                {comGalpao && <td className="px-4 py-3 text-right">{formatBRL(tot.galpao)}</td>}
                 <td className="px-4 py-3 text-right">{formatBRL(tot.valor)}</td>
                 <td className="px-4 py-3 text-right">{porCem(tot.custo, tot.valor)}</td>
                 <td className="px-4 py-3 text-right">{num(tot.entregas)}</td>
@@ -132,7 +158,7 @@ function Conteudo({ base, custoEntrega, custoGalpao }: { base: BaseRegioesMes; c
   );
 }
 
-function CartaoRegiao({ l, totalCusto, media, maior }: { l: CustoRegiao; totalCusto: number; media: number | null; maior: number }) {
+function CartaoRegiao({ l, totalCusto, media, maior, comGalpao }: { l: CustoRegiao; totalCusto: number; media: number | null; maior: number; comGalpao: boolean }) {
   const f = l.valor > 0 ? l.custo / l.valor : null;
   const acima = f !== null && media !== null && f > media;
   return (
@@ -168,7 +194,7 @@ function CartaoRegiao({ l, totalCusto, media, maior }: { l: CustoRegiao; totalCu
 
       <dl className="mt-3 space-y-1 text-sm">
         <Linha rotulo="Entrega" valor={formatBRL(l.custoEntrega)} />
-        <Linha rotulo="Galpão" valor={formatBRL(l.custoGalpao)} />
+        {comGalpao && <Linha rotulo="Galpão" valor={formatBRL(l.custoGalpao)} />}
         <Linha rotulo="Venda" valor={formatBRL(l.valor)} />
         <Linha rotulo="Custo por entrega" valor={l.entregas > 0 ? formatBRL(l.custo / l.entregas) : "—"} dica="Cliente atendido por dia" />
       </dl>
