@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { carregarAgregados } from "@/data/agregados";
-import { diferencaVsCasa, indicadores, type Casa, type LinhaAgregado, type Numeros, type RelatorioAgregados } from "@/domain/agregados";
+import { indicadores, type Casa, type LinhaAgregado, type Numeros, type RelatorioAgregados } from "@/domain/agregados";
 import {
   diferencaTotal,
   documentoAgregados,
@@ -23,7 +23,6 @@ const brl = (v: number | null) => (v === null ? "—" : formatBRL(v));
 const pct = (v: number | null, casas = 1) => (v === null ? "—" : formatPercent(v, casas));
 const n0 = (v: number) => v.toLocaleString("pt-BR");
 const dataCurta = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "—");
-const sinal = (v: number) => `${v > 0 ? "+" : "−"}${brl0(Math.abs(v))}`;
 
 const href = (p: Record<string, string>) => `/custos/agregados?${new URLSearchParams(p)}`;
 const BOTAO = "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#141a4d] transition hover:bg-slate-50";
@@ -170,7 +169,7 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
                 <th colSpan={3} className={`${GRUPO} px-3 pt-3 text-center font-semibold`}>Operação</th>
                 <th className={`${GRUPO} px-3 pt-3 text-center font-semibold`}>Qualidade</th>
                 <th colSpan={4} className={`${GRUPO} px-3 pt-3 text-center font-semibold`}>Custo</th>
-                <th colSpan={2} className={`${GRUPO} px-3 pt-3 text-center font-semibold`}>Comparação</th>
+                <th className={`${GRUPO} px-4 pt-3`} />
               </tr>
               <tr className="border-b border-slate-100 bg-slate-50/70">
                 <th className="px-4 pb-3 pt-1 font-semibold">Agregado</th>
@@ -182,17 +181,14 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
                 <th className="px-3 pb-3 pt-1 text-right font-semibold">Por dia</th>
                 <th className="px-3 pb-3 pt-1 text-right font-semibold">Por entrega</th>
                 <th className="px-3 pb-3 pt-1 text-right font-semibold" title="Custo ÷ (faturado − devolvido)">÷ Faturado</th>
-                <th className={`${GRUPO} px-3 pb-3 pt-1 text-right font-semibold`} title="Custo dele − custo por dia do CLT × dias que ele rodou. + = mais caro que o CLT">vs CLT</th>
-                <th className="px-4 pb-3 pt-1 text-right font-semibold">Últ. pgto.</th>
+                <th className={`${GRUPO} px-4 pb-3 pt-1 text-right font-semibold`}>Últ. pgto.</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
               {linhas.map((a) => (
                 <LinhaTabela key={a.chave} a={a} casa={casaDe(a)} maxDev={maxDev} />
               ))}
-              <LinhaResumo rotulo={`Agregados · ${rel.agregados.filter((a) => a.papel).length}`} x={r.tot} vs={r.dif} destaque />
-              {rel.casa.motorista && <LinhaResumo rotulo={`CLT · motoristas · ${rel.casa.motorista.pessoas}`} x={rel.casa.motorista} />}
-              {rel.casa.ajudante && <LinhaResumo rotulo={`CLT · ajudantes · ${rel.casa.ajudante.pessoas}`} x={rel.casa.ajudante} />}
+              <LinhaTotal rotulo={`Total · ${rel.agregados.length} agregados`} x={{ ...r.tot, custo: r.custo }} />
             </tbody>
           </table>
         </div>
@@ -204,18 +200,6 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
         </p>
       )}
     </>
-  );
-}
-
-function Vs({ a, casa }: { a: LinhaAgregado; casa: Casa | undefined }) {
-  const v = diferencaVsCasa(a, casa);
-  if (v === null) return <span className="text-slate-300">—</span>;
-  const porDia = casa && casa.dias > 0 ? casa.custo / casa.dias : 0;
-  const conta = `${formatBRL(a.custo)} − ${brl0(porDia)} × ${a.dias} dias = ${sinal(v)}`;
-  return (
-    <span title={conta} className={`inline-block rounded-md px-1.5 py-0.5 font-semibold ${v > 0 ? "bg-rose-50 text-rose-600" : "text-[#141a4d]"}`}>
-      {sinal(v)}
-    </span>
   );
 }
 
@@ -259,18 +243,15 @@ function LinhaTabela({ a, casa, maxDev }: { a: LinhaAgregado; casa: Casa | undef
       <td className="px-3 py-3 text-right text-slate-600">{brl0(i.custoPorDia)}</td>
       <td className="px-3 py-3 text-right text-slate-600">{brl(i.custoPorEntrega)}</td>
       <td className="px-3 py-3 text-right text-slate-600">{pct(i.custoSobreFaturado, 2)}</td>
-      <td className="border-l border-slate-100 px-3 py-3 text-right">
-        <Vs a={a} casa={casa} />
-      </td>
-      <td className="px-4 py-3 text-right text-slate-500">{dataCurta(a.ultimoPagamento)}</td>
+      <td className="border-l border-slate-100 px-4 py-3 text-right text-slate-500">{dataCurta(a.ultimoPagamento)}</td>
     </tr>
   );
 }
 
-function LinhaResumo({ rotulo, x, vs, destaque = false }: { rotulo: string; x: Numeros & { custo: number }; vs?: number; destaque?: boolean }) {
+function LinhaTotal({ rotulo, x }: { rotulo: string; x: Numeros & { custo: number } }) {
   const i = indicadores(x);
   return (
-    <tr className={`${destaque ? "border-t-2 border-slate-200" : "border-t border-slate-100"} bg-slate-50/60 font-semibold text-[#141a4d]`}>
+    <tr className="border-t-2 border-slate-200 bg-slate-50/60 font-semibold text-[#141a4d]">
       <td className="px-4 py-3">{rotulo}</td>
       <td className="border-l border-slate-100 px-3 py-3 text-right">{n0(x.dias)}</td>
       <td className="px-3 py-3 text-right">{n0(x.entregas)}</td>
@@ -278,12 +259,11 @@ function LinhaResumo({ rotulo, x, vs, destaque = false }: { rotulo: string; x: N
       <td className="border-l border-slate-100 px-3 py-3">
         <span className="inline-block w-12 text-right">{pct(i.devolucao)}</span>
       </td>
-      <td className="border-l border-slate-100 px-3 py-3 text-right" title={destaque ? undefined : "Folha do setor no período"}>{brl0(x.custo)}</td>
+      <td className="border-l border-slate-100 px-3 py-3 text-right">{brl0(x.custo)}</td>
       <td className="px-3 py-3 text-right">{brl0(i.custoPorDia)}</td>
       <td className="px-3 py-3 text-right">{brl(i.custoPorEntrega)}</td>
       <td className="px-3 py-3 text-right">{pct(i.custoSobreFaturado, 2)}</td>
-      <td className={`border-l border-slate-100 px-3 py-3 text-right ${vs !== undefined && vs > 0 ? "text-rose-600" : ""}`}>{vs === undefined ? "" : sinal(vs)}</td>
-      <td className="px-4 py-3" />
+      <td className="border-l border-slate-100 px-4 py-3" />
     </tr>
   );
 }
@@ -311,10 +291,6 @@ function CartaoAgregado({ a, casa }: { a: LinhaAgregado; casa: Casa | undefined 
         <dd className="text-right text-slate-700">{pct(i.devolucao)}</dd>
         <dt className="text-slate-500">Custo por dia</dt>
         <dd className="text-right text-slate-700">{brl0(i.custoPorDia)}</dd>
-        <dt className="text-slate-500">vs CLT</dt>
-        <dd className="text-right">
-          <Vs a={a} casa={casa} />
-        </dd>
       </dl>
     </div>
   );

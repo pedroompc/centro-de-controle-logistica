@@ -27,17 +27,17 @@ it("nomeProprio", () => expect(nomeProprio("JOSE DA SILVA DOS SANTOS")).toBe("Jo
 describe("tabela e documentos", () => {
   const rel: RelatorioAgregados = { agregados: [agregado(4_000, 3_000)], casa: { motorista: casa }, outros: [] };
   const t = tabelaAgregados(rel);
-  it("linha com diferença vs CLT e totais com CLT", () => {
-    const iVs = t.colunas.findIndex((c) => c.titulo === "Diferença vs CLT");
+  it("linha do agregado e só o total dos agregados (sem CLT)", () => {
+    expect(t.colunas.some((c) => c.titulo.includes("CLT"))).toBe(false);
     expect(t.linhas[0][0]).toBe("Jose da Silva Sauro");
-    expect(t.linhas[0][iVs]).toBe(1_000); // 4.000 − 300 × 10
-    expect(t.totais.map((l) => l[0])).toEqual(["Agregados (1)", "CLT · motoristas (1)"]);
+    expect(t.totais.map((l) => l[0])).toEqual(["Total (1 agregados)"]);
     expect(t.linhas[0]).toHaveLength(t.colunas.length);
   });
-  it("PDF traz a tabela e o + em vermelho", () => {
+  it("PDF traz a tabela, sem CLT", () => {
     const h = documentoAgregados(t, { periodo: "Outubro/2026", geradoEm: new Date(2026, 10, 25), kpis: [["Custo", "R$ 1"]] });
     expect(h).toContain("<title>Agregados - Outubro-2026</title>");
-    expect(h).toContain('class="n mais">+R$');
+    expect(h).toContain("Jose da Silva Sauro");
+    expect(h).not.toContain("CLT");
   });
   it("xlsx é um zip com a aba e número como número", () => {
     const buf = criarXlsx("Agregados", t.colunas, t.linhas, t.totais);

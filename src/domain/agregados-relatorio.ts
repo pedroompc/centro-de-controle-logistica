@@ -71,7 +71,6 @@ export const COLUNAS: Coluna[] = [
   { titulo: "Custo por dia", formato: "brl" },
   { titulo: "Custo por entrega", formato: "brl" },
   { titulo: "Custo ÷ faturado líquido", formato: "pct" },
-  { titulo: "Diferença vs CLT", formato: "brl" },
   { titulo: "Último pagamento", formato: "texto" },
 ];
 
@@ -102,10 +101,11 @@ export function somarAgregados(as: LinhaAgregado[]): Numeros & { custo: number }
 export const diferencaTotal = (rel: RelatorioAgregados) =>
   rel.agregados.reduce((t, a) => t + (diferencaVsCasa(a, a.papel ? rel.casa[a.papel] : undefined) ?? 0), 0);
 
-/** Ordem da tela: quem mais custa a mais que o CLT primeiro; sem carga no fim. */
+/** Ordem da tela: vermelho, âmbar, cinza, sem carga; dentro de cada um, maior custo primeiro. */
+const PESO_TOM: Record<Tom, number> = { red: 0, gold: 1, navy: 2, slate: 3 };
 export function ordenar(rel: RelatorioAgregados): LinhaAgregado[] {
-  const vs = (a: LinhaAgregado) => diferencaVsCasa(a, a.papel ? rel.casa[a.papel] : undefined) ?? -Infinity;
-  return [...rel.agregados].sort((a, b) => vs(b) - vs(a));
+  const peso = (a: LinhaAgregado) => PESO_TOM[situacao(a, a.papel ? rel.casa[a.papel] : undefined).tom];
+  return [...rel.agregados].sort((a, b) => peso(a) - peso(b) || b.custo - a.custo);
 }
 
 export function tabelaAgregados(rel: RelatorioAgregados): TabelaAgregados {
@@ -118,16 +118,11 @@ export function tabelaAgregados(rel: RelatorioAgregados): TabelaAgregados {
       a.papel ?? "—",
       NIVEL_OBSERVACAO[situacao(a, casa).tom],
       ...(sem ? n.map((v, i) => (i === 8 ? v : null)) : n), // sem carga: só o custo
-      diferencaVsCasa(a, casa),
       dataBR(a.ultimoPagamento),
     ];
   });
-  const com = rel.agregados.filter((a) => a.papel);
-  const totais: Celula[][] = [[`Agregados (${com.length})`, "", "", ...numeros(somarAgregados(com)), diferencaTotal(rel), null]];
-  for (const papel of ["motorista", "ajudante"] as const) {
-    const c = rel.casa[papel];
-    if (c) totais.push([`CLT · ${papel === "motorista" ? "motoristas" : "ajudantes"} (${c.pessoas})`, "", "", ...numeros(c), null, null]);
-  }
+  const tot = { ...somarAgregados(rel.agregados.filter((a) => a.papel)), custo: rel.agregados.reduce((t, a) => t + a.custo, 0) };
+  const totais: Celula[][] = [[`Total (${rel.agregados.length} agregados)`, "", "", ...numeros(tot), null]];
   return { colunas: COLUNAS, linhas, totais };
 }
 
@@ -173,20 +168,16 @@ td { padding: 3pt 4pt; border-bottom: .6pt solid #e2e8f0; }
 tbody tr:nth-child(even) td { background: #f8fafc; }
 tr.tot td { font-weight: bold; background: #eef0fb; border-top: 1pt solid #1b2168; }
 .n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.mais { color: #e11d48; font-weight: bold; }
 .nota { margin-top: 6pt; font-size: 7pt; color: #64748b; }
 @media screen { body { max-width: 280mm; margin: 10mm auto; } }
 `;
 
 export function documentoAgregados(t: TabelaAgregados, ctx: { periodo: string; geradoEm: Date; kpis: [string, string][] }): string {
-  const iVs = t.colunas.findIndex((c) => c.titulo === "Diferença vs CLT");
   const linha = (l: Celula[], cls = "") =>
     `<tr class="${cls}">${l
       .map((v, i) => {
         const f = t.colunas[i].formato;
-        const mais = i === iVs && typeof v === "number" && v > 0 ? " mais" : "";
-        const txt = i === iVs && typeof v === "number" ? `${v > 0 ? "+" : "−"}${formatBRL(Math.abs(v))}` : formatarCelula(v, f);
-        return `<td class="${f === "texto" ? "" : "n"}${mais}">${esc(txt)}</td>`;
+        return `<td class="${f === "texto" ? "" : "n"}">${esc(formatarCelula(v, f))}</td>`;
       })
       .join("")}</tr>`;
   const gerado = `${ctx.geradoEm.toLocaleDateString("pt-BR")} ${ctx.geradoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -197,6 +188,6 @@ export function documentoAgregados(t: TabelaAgregados, ctx: { periodo: string; g
 <div class="kpis">${ctx.kpis.map(([r, v]) => `<div class="kpi"><span>${esc(r)}</span><b>${esc(v)}</b></div>`).join("")}</div>
 <table><thead><tr>${t.colunas.map((c) => `<th class="${c.formato === "texto" ? "" : "n"}">${esc(c.titulo)}</th>`).join("")}</tr></thead>
 <tbody>${t.linhas.map((l) => linha(l)).join("")}${t.totais.map((l) => linha(l, "tot")).join("")}</tbody></table>
-<p class="nota">Devolução = valor devolvido ÷ valor faturado das notas que o agregado levou no período. Diferença vs CLT = custo do agregado − (folha dos CLT do mesmo papel ÷ dias que eles rodaram) × dias que o agregado rodou; + = agregado mais caro. Folha CLT só pessoal, sem veículo nem diesel.</p>
+<p class="nota">Devolução = valor devolvido ÷ valor faturado das notas que o agregado levou no período. Dias = dias em que saiu com carga (carregamento no Winthor). Custo = pago no período, pela data do lançamento.</p>
 </body></html>`;
 }
