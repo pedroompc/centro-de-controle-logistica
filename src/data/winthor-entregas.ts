@@ -38,13 +38,24 @@ LEFT JOIN PCEMPR mo ON mo.MATRICULA = vg.CODMOTORISTA
 LEFT JOIN PCEMPR aj ON aj.MATRICULA = vg.CODAJUD
 ORDER BY vg.DIA, vg.CODVEICULO`;
 
-// Mês a mês (histórico do custo por entrega / tonelada).
+// Mês a mês (histórico do custo por entrega / tonelada). ENTREGAS = cliente ×
+// dia, a mesma regra do card "Entregas realizadas" do Dashboard: o cliente que
+// recebeu dois caminhões no mesmo dia conta uma entrega (somar as viagens
+// contaria duas).
 const SQL_MESES = `
-WITH ${NF}
-SELECT TO_CHAR(TRUNC(DIA, 'MM'), 'YYYY-MM-DD') MES, COUNT(*) VIAGENS, SUM(ENTREGAS) ENTREGAS,
-       SUM(NOTAS) NOTAS, SUM(KG) KG, COUNT(DISTINCT DIA) DIAS
-FROM viagem
-GROUP BY TRUNC(DIA, 'MM')
+WITH ${NF},
+ent AS (
+  SELECT TRUNC(nf.DIA, 'MM') M, COUNT(DISTINCT nf.CODCLI || '|' || TO_CHAR(nf.DIA, 'YYYYMMDD')) ENTREGAS
+  FROM nf
+  JOIN PCCARREG c ON c.NUMCAR = nf.NUMCAR
+  WHERE ${motoristaDeEntrega("c.CODMOTORISTA")} AND c.DT_CANCEL IS NULL
+  GROUP BY TRUNC(nf.DIA, 'MM')
+)
+SELECT TO_CHAR(TRUNC(v.DIA, 'MM'), 'YYYY-MM-DD') MES, COUNT(*) VIAGENS, MAX(e.ENTREGAS) ENTREGAS,
+       SUM(v.NOTAS) NOTAS, SUM(v.KG) KG, COUNT(DISTINCT v.DIA) DIAS
+FROM viagem v
+JOIN ent e ON e.M = TRUNC(v.DIA, 'MM')
+GROUP BY TRUNC(v.DIA, 'MM')
 ORDER BY 1`;
 
 const str = (v: unknown): string | null => (v == null || String(v).trim() === "" ? null : String(v).trim());

@@ -14,6 +14,13 @@ describe("linhasDeEquipamento", () => {
       { nome: "Equipamento · Patinha (30 un)", valor: 2310 },
     ]);
     expect(l.every((x) => ehLinhaDeEquipamento(x.nome))).toBe(true);
+    expect(
+      linhasDeEquipamento([
+        { id: "1", nome: "Patinha", setor: "Separação", quantidade: 41, custoUnitario: 77 },
+        { id: "2", nome: "Patinha", setor: "Separação", quantidade: 4, custoUnitario: 0 },
+        { id: "3", nome: "Transpaleteira", setor: "Recebimento", quantidade: 2, custoUnitario: 0 },
+      ]),
+    ).toEqual([{ nome: "Equipamento · Patinha (45 un · 4 grátis)", valor: 3157 }]);
     expect(ehLinhaDeEquipamento("Galpão")).toBe(false);
   });
 });
