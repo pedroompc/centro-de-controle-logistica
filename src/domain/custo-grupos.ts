@@ -40,10 +40,15 @@ export function ehAluguelGalpao(nome: string): boolean {
   return n === "galpao" || n.startsWith("aluguel");
 }
 
-/** Grupo de um lançamento de custos_mensais: frota/agregado/combustível = entrega; o resto é do galpão. */
+/**
+ * Grupo de um lançamento de custos_mensais: frota/agregado/combustível e os
+ * terceiros do Winthor ("Terceiros · Agregados", "Terceiros · Chapa e
+ * descarrego" — chapa/descarrego é despesa da carga na rota) = entrega; o resto
+ * é do galpão.
+ */
 export function grupoDoLancamento(nome: string): GrupoCusto {
   const n = norm(nome);
-  if (/^frota\b|agregad|combust|diesel/.test(n)) return "entrega";
+  if (/^frota\b|^terceiros\b|agregad|combust|diesel/.test(n)) return "entrega";
   return "galpao";
 }
 

@@ -21,6 +21,8 @@ describe("grupoDoLancamento", () => {
   it("frota é entrega; equipamento e casa são galpão", () => {
     expect(grupoDoLancamento("Frota · Diesel (estimado)")).toBe("entrega");
     expect(grupoDoLancamento("Frota · Manutenção")).toBe("entrega");
+    expect(grupoDoLancamento("Terceiros · Agregados")).toBe("entrega");
+    expect(grupoDoLancamento("Terceiros · Chapa e descarrego")).toBe("entrega");
     expect(grupoDoLancamento("Agregado")).toBe("entrega");
     expect(grupoDoLancamento("Equipamento · Empilhadeira (Recebimento)")).toBe("galpao");
     expect(grupoDoLancamento("Casa (Moreno)")).toBe("galpao");

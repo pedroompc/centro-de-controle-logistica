@@ -40,3 +40,12 @@ nssm start ColetorFrota
 
 `node scripts/importar-historico-siga.mjs "<gestao_logistica.db>" > importar-siga.sql`
 e rodar o SQL no SQL Editor do Supabase (é idempotente).
+
+## Custo dos terceirizados (Winthor → custos_mensais)
+
+A cada hora grava, por mês desde 07/2026, as linhas `Terceiros · Agregados` e
+`Terceiros · Chapa e descarrego`, lidas do contas a pagar (PCLANC) pela data do
+lançamento — regra em `custo-terceiros.mjs`. Precisa das `DB_*` do Winthor no
+`.env.local`. Só esse ciclo: `npm run coletor:frota -- --uma-vez --so=terceiros`.
+
+O coletor se reinicia sozinho quando o auto-deploy traz um commit novo.
