@@ -14,7 +14,7 @@ import {
 import { formatBRL, formatPercent } from "@/domain/format";
 import { paramsDoPeriodo, rotuloPeriodo } from "@/domain/periodo";
 import { PeriodoNav } from "@/components/periodo-nav";
-import { Card, PageHeader, Pill, StatCard } from "@/components/ui";
+import { Card, PageHeader, StatCard } from "@/components/ui";
 import { periodoDoPadrao } from "./periodo";
 import { Exportar } from "./exportar";
 
@@ -71,16 +71,27 @@ export default async function AgregadosPage({ searchParams }: { searchParams: Pr
   );
 }
 
+/** Grau de observação: cinza = nada a observar, âmbar = atenção, vermelho = rever. */
+const NIVEIS = [
+  { tom: "navy", rotulo: "Sem observação", cor: "bg-slate-300" },
+  { tom: "gold", rotulo: "Atenção", cor: "bg-amber-400" },
+  { tom: "red", rotulo: "Rever", cor: "bg-rose-500" },
+  { tom: "slate", rotulo: "Sem carga no período", cor: "bg-white ring-2 ring-inset ring-slate-300" },
+] as const;
+const nivel = (s: Situacao) => NIVEIS.find((n) => n.tom === s.tom) ?? NIVEIS[0];
+
+function Ponto({ s }: { s: Situacao }) {
+  return <span title={s.motivo} className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${nivel(s).cor}`} />;
+}
+
 function resumir(rel: RelatorioAgregados) {
   const tot = somarAgregados(rel.agregados.filter((a) => a.papel));
   const i = indicadores(tot);
   const clt = rel.casa.motorista ? indicadores(rel.casa.motorista) : null;
-  const contagem = new Map<string, { s: Situacao; n: number }>();
+  const contagem = new Map<string, number>();
   for (const a of rel.agregados) {
-    const s = situacao(a, a.papel ? rel.casa[a.papel] : undefined);
-    const c = contagem.get(s.rotulo) ?? { s, n: 0 };
-    c.n++;
-    contagem.set(s.rotulo, c);
+    const t = situacao(a, a.papel ? rel.casa[a.papel] : undefined).tom;
+    contagem.set(t, (contagem.get(t) ?? 0) + 1);
   }
   return {
     tot,
@@ -90,7 +101,7 @@ function resumir(rel: RelatorioAgregados) {
     dev: i.devolucao,
     devClt: clt?.devolucao ?? null,
     dif: diferencaTotal(rel),
-    situacoes: [...contagem.values()],
+    niveis: NIVEIS.map((n) => ({ ...n, qtd: contagem.get(n.tom) ?? 0 })).filter((n) => n.qtd > 0),
   };
 }
 
@@ -135,12 +146,15 @@ function Conteudo({ rel, r }: { rel: RelatorioAgregados; r: ReturnType<typeof re
         />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {r.situacoes.map(({ s, n }) => (
-          <span key={s.rotulo} title={s.motivo}>
-            <Pill tone={s.tom}>
-              {s.rotulo} · {n}
-            </Pill>
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500">
+        {r.niveis.map((n) => (
+          <span
+            key={n.tom}
+            className="flex items-center gap-1.5"
+            title={n.tom === "gold" ? "Mais caro que o CLT ou devolução acima de 1,5× a do CLT" : n.tom === "red" ? "Mais caro que o CLT e devolução acima de 1,5× a do CLT" : undefined}
+          >
+            <span className={`inline-block h-2.5 w-2.5 rounded-full ${n.cor}`} />
+            {n.rotulo} <span className="font-semibold tabular-nums text-[#141a4d]">{n.qtd}</span>
           </span>
         ))}
       </div>
@@ -232,12 +246,10 @@ function LinhaTabela({ a, casa, maxDev }: { a: LinhaAgregado; casa: Casa | undef
     <tr className="border-b border-slate-50 transition last:border-0 hover:bg-slate-50/60">
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
+          <Ponto s={s} />
           <p className="font-medium text-[#141a4d]">{nomeProprio(a.nome)}</p>
-          <span title={s.motivo}>
-            <Pill tone={s.tom}>{s.rotulo}</Pill>
-          </span>
         </div>
-        <p className="text-xs text-slate-400">
+        <p className="pl-[18px] text-xs text-slate-400">
           {a.papel ?? "sem carga no período"}
           {a.fornecedores.length > 1 ? ` · ${a.fornecedores.length} CNPJs` : ""}
         </p>
@@ -289,11 +301,11 @@ function CartaoAgregado({ a, casa }: { a: LinhaAgregado; casa: Casa | undefined 
       <span className="absolute inset-y-0 left-0 w-1 bg-amber-400" />
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-[#141a4d]">{nomeProprio(a.nome)}</p>
-          <p className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
-            <Pill tone={s.tom}>{s.rotulo}</Pill>
-            {a.papel ? `${a.dias} dias` : ""}
+          <p className="flex items-center gap-2 truncate font-semibold text-[#141a4d]">
+            <Ponto s={s} />
+            {nomeProprio(a.nome)}
           </p>
+          <p className="mt-0.5 pl-[18px] text-xs text-slate-400">{a.papel ? `${a.dias} dias` : "sem carga no período"}</p>
         </div>
         <p className="shrink-0 font-[family-name:var(--font-sora)] text-lg font-bold tabular-nums text-[#141a4d]">{brl0(a.custo)}</p>
       </div>

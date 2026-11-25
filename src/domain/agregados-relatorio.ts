@@ -29,6 +29,9 @@ export function situacao(a: LinhaAgregado, casa: Casa | undefined): Situacao {
   return { rotulo: "Compensa", tom: "navy", motivo: "Mais barato que o CLT e devolução dentro da casa" };
 }
 
+/** Grau de observação (tela: ponto colorido; PDF/Excel: texto). */
+export const NIVEL_OBSERVACAO: Record<Tom, string> = { navy: "Sem observação", gold: "Atenção", red: "Rever", slate: "Sem carga" };
+
 const MINUSCULAS = new Set(["DE", "DA", "DO", "DAS", "DOS", "E"]);
 /** "JOSE DA SILVA" → "Jose da Silva". */
 export const nomeProprio = (s: string) =>
@@ -55,7 +58,7 @@ export interface TabelaAgregados {
 export const COLUNAS: Coluna[] = [
   { titulo: "Agregado", formato: "texto" },
   { titulo: "Papel", formato: "texto" },
-  { titulo: "Situação", formato: "texto" },
+  { titulo: "Observação", formato: "texto" },
   { titulo: "Dias rodados", formato: "int" },
   { titulo: "Viagens", formato: "int" },
   { titulo: "Entregas", formato: "int" },
@@ -113,7 +116,7 @@ export function tabelaAgregados(rel: RelatorioAgregados): TabelaAgregados {
     return [
       nomeProprio(a.nome),
       a.papel ?? "—",
-      situacao(a, casa).rotulo,
+      NIVEL_OBSERVACAO[situacao(a, casa).tom],
       ...(sem ? n.map((v, i) => (i === 8 ? v : null)) : n), // sem carga: só o custo
       diferencaVsCasa(a, casa),
       dataBR(a.ultimoPagamento),
