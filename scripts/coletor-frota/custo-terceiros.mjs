@@ -8,11 +8,13 @@
 //                                   lote diz "agregado" no histórico (ex.:
 //                                   "TRANSPORTE DE MERCADORIAS"), por isso vai
 //                                   pelo fornecedor e não pelo texto.
-//   Terceiros · Chapa e descarrego  qualquer lançamento com "chapa"/"descarrego"/
-//                                   "descarga" no histórico (despesa da carga,
-//                                   rotina 631; serviço de descarga da T&A),
-//                                   menos a conta 402008, que é a RECEITA de
-//                                   descarga cobrada do fornecedor.
+//   Terceiros · Chapa               lançamento com "chapa" no histórico.
+//   Terceiros · Descarrego          lançamento com "descarrego"/"descarga" no
+//                                   histórico (despesa da rotina 631; serviço de
+//                                   carga e descarga da T&A).
+//                                   Nos dois, fora a conta 402008 (receita). O
+//                                   lançamento não diz de qual carga/fornecedor
+//                                   é: carregamento, veículo e nota vêm zerados.
 //
 // Filiais 1 e 11. Lançamento cancelado fica fora; estorno (valor negativo) abate.
 // Todo ciclo recalcula desde julho/2026: lançamento atrasado no Winthor corrige
@@ -20,7 +22,8 @@
 
 export const PREFIXO_TERCEIROS = "Terceiros · ";
 export const LINHA_AGREGADOS = `${PREFIXO_TERCEIROS}Agregados`;
-export const LINHA_CHAPA = `${PREFIXO_TERCEIROS}Chapa e descarrego`;
+export const LINHA_CHAPA = `${PREFIXO_TERCEIROS}Chapa`;
+export const LINHA_DESCARREGO = `${PREFIXO_TERCEIROS}Descarrego`;
 
 const FILIAIS = "('1', '11')";
 const TEXTO_CHAPA = `(UPPER(l.HISTORICO) LIKE '%CHAPA%' OR UPPER(l.HISTORICO) LIKE '%DESCARREG%' OR UPPER(l.HISTORICO) LIKE '%DESCARGA%')`;
@@ -34,7 +37,8 @@ WITH agregados AS (
 base AS (
   SELECT l.DTLANC, l.VALOR,
          CASE WHEN l.CODCONTA = 13 AND ag.CODFORNEC IS NOT NULL THEN 'agregados'
-              WHEN ${TEXTO_CHAPA} THEN 'chapa' END LINHA
+              WHEN UPPER(l.HISTORICO) LIKE '%CHAPA%' THEN 'chapa'
+              WHEN ${TEXTO_CHAPA} THEN 'descarrego' END LINHA
   FROM PCLANC l
   LEFT JOIN agregados ag ON ag.CODFORNEC = l.CODFORNEC
   WHERE l.CODFILIAL IN ${FILIAIS} AND l.DTCANCEL IS NULL
@@ -49,7 +53,7 @@ const centavos = (v) => Math.round(v * 100) / 100;
 
 /**
  * Linhas por mês a partir do resultado do SQL. Todo mês de `meses` sai com as
- * duas linhas (zero quando não teve lançamento), para a linha antiga sumir se o
+ * três linhas (zero quando não teve lançamento), para a linha antiga sumir se o
  * lançamento for cancelado no Winthor.
  * @returns Map mes → [{nome, tipo, valor}]
  */
@@ -65,6 +69,7 @@ export function linhasCustoTerceiros(rows, meses) {
       [
         { nome: LINHA_AGREGADOS, tipo: "variavel", valor: centavos(soma.get(`${mes}|agregados`) ?? 0) },
         { nome: LINHA_CHAPA, tipo: "variavel", valor: centavos(soma.get(`${mes}|chapa`) ?? 0) },
+        { nome: LINHA_DESCARREGO, tipo: "variavel", valor: centavos(soma.get(`${mes}|descarrego`) ?? 0) },
       ],
     ]),
   );

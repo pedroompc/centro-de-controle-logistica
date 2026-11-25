@@ -43,8 +43,8 @@ e rodar o SQL no SQL Editor do Supabase (é idempotente).
 
 ## Custo dos terceirizados (Winthor → custos_mensais)
 
-A cada hora grava, por mês desde 07/2026, as linhas `Terceiros · Agregados` e
-`Terceiros · Chapa e descarrego`, lidas do contas a pagar (PCLANC) pela data do
+A cada hora grava, por mês desde 07/2026, as linhas `Terceiros · Agregados`,
+`Terceiros · Chapa` e `Terceiros · Descarrego`, lidas do contas a pagar (PCLANC) pela data do
 lançamento — regra em `custo-terceiros.mjs`. Precisa das `DB_*` do Winthor no
 `.env.local`. Só esse ciclo: `npm run coletor:frota -- --uma-vez --so=terceiros`.
 
