@@ -150,7 +150,14 @@ export default async function RelatorioCustosPage({ searchParams }: { searchPara
       <section className="mt-8">
         <SectionTitle>Entrega · {rotulo}</SectionTitle>
         <Explica>Quanto custa levar a mercadoria até o cliente, comparado com o que foi vendido em entrega (sem a retira no balcão).</Explica>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Ticket médio por entrega"
+            value={rel.vendaEntregaPeriodo !== null && entregasAteHoje ? formatBRL(rel.vendaEntregaPeriodo / entregasAteHoje) : "—"}
+            hint={rel.vendaEntregaPeriodo === null || !entregasAteHoje ? "Winthor indisponível" : `venda entregue ÷ ${entregasAteHoje.toLocaleString("pt-BR")} entregas`}
+            accent="navy"
+            title="Venda líquida que saiu em carga com motorista (sem retira) ÷ entregas, na mesma janela (até hoje no mês aberto)"
+          />
           <StatCard
             label="Custo de entrega ÷ venda entregue"
             value={pct(fracao(entregaMes, rel.vendaEntregaPeriodo))}
