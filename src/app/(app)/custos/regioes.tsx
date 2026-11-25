@@ -103,7 +103,7 @@ function Conteudo({ base, custoEntrega, custoGalpao, comGalpao }: { base: BaseRe
       {/* Detalhe com todos os números e o total que fecha com o custo do mês */}
       <Card className="mt-4 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Região</th>
@@ -114,6 +114,7 @@ function Conteudo({ base, custoEntrega, custoGalpao, comGalpao }: { base: BaseRe
                 <th className="px-4 py-3 text-right font-semibold" title="Custo para atender ÷ venda">Custo a cada R$ 100</th>
                 <th className="px-4 py-3 text-right font-semibold" title="Cliente atendido por dia">Entregas</th>
                 <th className="px-4 py-3 text-right font-semibold">Custo por entrega</th>
+                <th className="px-4 py-3 text-right font-semibold" title="Venda ÷ entregas">Ticket médio</th>
                 <th className="px-4 py-3 text-right font-semibold">Notas</th>
                 <th className="px-4 py-3 text-right font-semibold">KM rodado</th>
               </tr>
@@ -129,6 +130,7 @@ function Conteudo({ base, custoEntrega, custoGalpao, comGalpao }: { base: BaseRe
                   <td className="px-4 py-3 text-right font-semibold text-[#141a4d]">{porCem(l.custo, l.valor)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{num(l.entregas)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{l.entregas > 0 ? formatBRL(l.custo / l.entregas) : "—"}</td>
+                  <td className="px-4 py-3 text-right text-slate-600">{l.entregas > 0 ? formatBRL(l.valor / l.entregas) : "—"}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{num(l.notas)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{l.km > 0 ? num(l.km) : "—"}</td>
                 </tr>
@@ -142,6 +144,7 @@ function Conteudo({ base, custoEntrega, custoGalpao, comGalpao }: { base: BaseRe
                 <td className="px-4 py-3 text-right">{porCem(tot.custo, tot.valor)}</td>
                 <td className="px-4 py-3 text-right">{num(tot.entregas)}</td>
                 <td className="px-4 py-3 text-right">{tot.entregas > 0 ? formatBRL(tot.custo / tot.entregas) : "—"}</td>
+                <td className="px-4 py-3 text-right">{tot.entregas > 0 ? formatBRL(tot.valor / tot.entregas) : "—"}</td>
                 <td className="px-4 py-3 text-right">{num(tot.notas)}</td>
                 <td className="px-4 py-3 text-right">{num(tot.km)}</td>
               </tr>
@@ -197,6 +200,7 @@ function CartaoRegiao({ l, totalCusto, media, maior, comGalpao }: { l: CustoRegi
         {comGalpao && <Linha rotulo="Galpão" valor={formatBRL(l.custoGalpao)} />}
         <Linha rotulo="Venda" valor={formatBRL(l.valor)} />
         <Linha rotulo="Custo por entrega" valor={l.entregas > 0 ? formatBRL(l.custo / l.entregas) : "—"} dica="Cliente atendido por dia" />
+        <Linha rotulo="Ticket médio" valor={l.entregas > 0 ? formatBRL(l.valor / l.entregas) : "—"} dica="Venda ÷ entregas (cliente atendido por dia)" />
       </dl>
     </div>
   );
