@@ -48,9 +48,9 @@ export function ArteFechamento({
   resumo: ResumoFechamento; ini: string; fim: string; geradoEm: string;
 }): ReactElement {
   const { eyebrow, titulo } = rotuloPeriodo(ini, fim);
-  const fatur = resumo.faturamentoBruto === null ? "—" : formatBRL(resumo.faturamentoBruto);
+  const fatur = resumo.faturamentoLiquido === null ? "—" : formatBRL(resumo.faturamentoLiquido);
   const sub =
-    resumo.faturamentoBruto === null
+    resumo.faturamentoLiquido === null
       ? "Faturamento indisponível (fora da rede)"
       : `${resumo.pdvsAtendidos} PDVs atendidos`;
   const peso = resumo.pesoFaturadoKg === null ? "—" : formatKg(resumo.pesoFaturadoKg);
@@ -85,12 +85,12 @@ export function ArteFechamento({
         <div style={{ fontSize: 42, fontWeight: 700, color: WHITE, marginTop: 8 }}>{titulo}</div>
       </div>
 
-      {/* Herói — faturamento bruto */}
+      {/* Herói — faturamento líquido (bruto saiu em 26/11/2026, como no Dashboard) */}
       <div style={{ display: "flex", marginTop: 32 }}>
         <div style={{ width: 10, backgroundColor: AMBER, borderRadius: 6, marginRight: 24 }} />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 3, color: MUTED, textTransform: "uppercase" }}>
-            Faturamento bruto
+            Faturamento líquido
           </div>
           <div style={{ fontSize: 90, fontWeight: 800, letterSpacing: -2, color: WHITE, marginTop: 6 }}>{fatur}</div>
           <div style={{ fontSize: 24, fontWeight: 600, color: "rgba(255,255,255,0.5)", marginTop: 8 }}>{sub}</div>

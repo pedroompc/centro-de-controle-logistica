@@ -6,7 +6,7 @@ import { INICIO_HISTORICO } from "./periodo";
 export interface ResumoFechamento {
   isPeriodo: boolean;
   // Vindos do Winthor — null quando indisponível (fora da rede).
-  faturamentoBruto: number | null;
+  faturamentoLiquido: number | null;
   pdvsAtendidos: number | null;
   notasEmitidas: number | null;
   pesoFaturadoKg: number | null;
@@ -24,7 +24,7 @@ export interface ResumoFechamento {
  * enxuta — o operacional não produz um `ResumoFaturamento` completo.
  */
 export interface FaturamentoPeriodoView {
-  vendaFaturada: number;
+  vendaLiquida: number;
   atendimentos: number;
   emitidas: number;
   pesoFaturadoKg: number;
@@ -43,7 +43,7 @@ export function montarResumoFechamento(input: {
   const mes = input.faturamentoMes;
   return {
     isPeriodo: input.ini !== input.fim,
-    faturamentoBruto: f ? f.vendaFaturada : null,
+    faturamentoLiquido: f ? f.vendaLiquida : null,
     pdvsAtendidos: f ? f.atendimentos : null,
     notasEmitidas: f ? f.emitidas : null,
     pesoFaturadoKg: f ? f.pesoFaturadoKg : null,

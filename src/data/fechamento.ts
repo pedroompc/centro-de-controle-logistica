@@ -26,7 +26,7 @@ export async function montarFechamento(ini: string, fim: string): Promise<Resumo
   // 12/08). A versão pela janela operacional está parada em ./faturamento-operacional.
   const faturamentoPeriodo = faturamentoDia
     ? {
-        vendaFaturada: faturamentoDia.vendaFaturada,
+        vendaLiquida: faturamentoDia.vendaLiquida,
         atendimentos: faturamentoDia.atendimentos,
         emitidas: faturamentoDia.emitidas,
         pesoFaturadoKg: faturamentoDia.pesoFaturado,

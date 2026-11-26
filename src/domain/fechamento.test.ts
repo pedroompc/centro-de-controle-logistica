@@ -21,12 +21,12 @@ describe("montarResumoFechamento", () => {
   it("mapeia faturamento presente e calcula a taxa do mês", () => {
     const r = montarResumoFechamento({
       ini: "2026-08-10", fim: "2026-08-10",
-      faturamentoPeriodo: { vendaFaturada: 487320, atendimentos: 318, emitidas: 1240, pesoFaturadoKg: 128400 },
+      faturamentoPeriodo: { vendaLiquida: 487320, atendimentos: 318, emitidas: 1240, pesoFaturadoKg: 128400 },
       faturamentoMes: fatur({ vendaFaturada: 1000000, valorDevolucao: 48000, pesoDevolucao: 12000 }),
       receitasLogisticas: 3210, faltas: 2, faltasSetores: ["Expedição", "Recebimento"],
     });
     expect(r.isPeriodo).toBe(false);
-    expect(r.faturamentoBruto).toBe(487320);
+    expect(r.faturamentoLiquido).toBe(487320);
     expect(r.pdvsAtendidos).toBe(318);
     expect(r.notasEmitidas).toBe(1240);
     expect(r.pesoFaturadoKg).toBe(128400);
@@ -45,7 +45,7 @@ describe("montarResumoFechamento", () => {
       receitasLogisticas: 500, faltas: 0, faltasSetores: [],
     });
     expect(r.isPeriodo).toBe(true);
-    expect(r.faturamentoBruto).toBeNull();
+    expect(r.faturamentoLiquido).toBeNull();
     expect(r.taxaDevolucaoMes).toBeNull();
     expect(r.devolucaoMesValor).toBeNull();
     expect(r.devolucaoMesPesoKg).toBeNull();
