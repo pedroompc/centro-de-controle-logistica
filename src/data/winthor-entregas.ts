@@ -7,7 +7,7 @@ import type { TipoMotorista, ViagemEntrega } from "@/domain/motoristas";
 // saída da nota (mesmo universo das "expedidas" da devolução por motorista —
 // bonificação/brinde/transferência fora pelo CONDVENDA). Motorista 9996 é o
 // pseudo-motorista DIALOG (balcão), fora.
-// `porEntrega` = DIA é o dia de ENTREGA (faturada ≥ 19:00 → dia seguinte; só o
+// `porEntrega` = DIA é o dia de ENTREGA (faturada ≥ 16:00 → dia seguinte; só o
 // BI Motoristas); senão é a data da nota.
 export interface OpcoesDia {
   porEntrega?: boolean;

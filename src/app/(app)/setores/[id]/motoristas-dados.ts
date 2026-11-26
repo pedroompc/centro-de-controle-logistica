@@ -77,7 +77,7 @@ export interface DadosBIMotoristas {
   motoristas: MotoristaBI[] | null;
 }
 
-// Dia = dia de ENTREGA: faturada das 19:00 às 08:30 → entrega do dia seguinte (regras-winthor).
+// Dia = dia de ENTREGA: faturada a partir das 16:00 → entrega do dia seguinte (regras-winthor).
 const ENTREGA = { porEntrega: true };
 
 const erroMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));

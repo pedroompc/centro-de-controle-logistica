@@ -24,12 +24,16 @@ export const notaExpedida = (a: string) =>
 /** Motorista de verdade na carga: preenchido e não o DIALOG. `col` = coluna do código do motorista. */
 export const motoristaDeEntrega = (col: string) => `NVL(${col}, 0) NOT IN (0, ${MOTORISTA_DIALOG})`;
 
-// Dia de ENTREGA da nota (BI Motoristas; regra do Pedro, 25/11/2026): o que é
-// faturado das 19:00 às 08:30 do dia seguinte sai para entrega nesse dia
-// seguinte. Ex.: faturada quarta 19:30 ou quinta 07:00 → entrega de quinta.
-// Antes das 19:00 a nota é entrega do próprio dia. Hora = HORALANC/MINUTOLANC
-// (lançamento da nota no Winthor, 100% preenchido; DTSAIDA só tem a data).
-export const CORTE_ENTREGA_HHMM = 1900;
+// Dia de ENTREGA da nota (BI Motoristas): o que é faturado a partir das 16:00
+// sai para entrega no dia seguinte. Ex.: faturada quarta 18:00 ou quinta 05:00
+// → entrega de quinta. Antes das 16:00 a nota é entrega do próprio dia.
+// Hora = HORALANC/MINUTOLANC (lançamento da nota no Winthor, 100% preenchido;
+// DTSAIDA só tem a data). Corte era 19:00 (Pedro, 25/11/2026); foi para 16:00 em
+// 26/11 por conferência cega com a planilha de montagem (ENT = clientes
+// distintos por caminhão): o faturamento da montagem do dia seguinte começa por
+// volta das 18h, e o vão entre um dia e outro fica entre 15h e 16h (out–nov/2026).
+// Em 25/11 as 4 placas onde 16h e 19h discordavam bateram com o corte das 16h.
+export const CORTE_ENTREGA_HHMM = 1600;
 
 const hhmm = (a: string) =>
   `CASE WHEN REGEXP_LIKE(${a}.HORALANC, '^[0-9]+$') THEN TO_NUMBER(${a}.HORALANC) * 100 ELSE 0 END` +

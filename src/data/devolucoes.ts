@@ -692,7 +692,7 @@ export const getDevolucaoPorBairro = cache(async (
 // QUALQUER data a partir do início do período (devolução não antecede a venda).
 // Diferente da tela Devoluções, que conta pela data da devolução: aqui a taxa do
 // mês corrente ainda sobe conforme as devoluções das notas dele entram.
-// `porEntrega` (BI Motoristas): DIA = dia de entrega (faturada ≥ 19:00 → dia seguinte).
+// `porEntrega` (BI Motoristas): DIA = dia de entrega (faturada ≥ 16:00 → dia seguinte).
 const sqlMotoristaFaturamento = (porEntrega: boolean) => `
 WITH vendas AS (
   SELECT nf.NUMTRANSVENDA, nf.NUMCAR, ${porEntrega ? diaEntrega("nf") : "TRUNC(nf.DTSAIDA)"} DIA, NVL(nf.VLTOTAL, 0) VLVENDA
