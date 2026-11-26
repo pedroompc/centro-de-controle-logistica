@@ -14,10 +14,13 @@ const faixa = (col: string) =>
 
 // Universo de NFs de venda (rotina 111): tipo VP/VV, não canceladas, filiais 1 e
 // 11 e período. "Todos os tipos de venda" na tela = VP + VV (SR/DF/transferências
-// ficam fora). Usado só para CONTAGENS (Emitidas/Positivados) e PESO — os VALORES
+// ficam fora). Usado só para CONTAGENS (Emitidas/Positivados) — PESO e VALORES
 // (faturada, devolução, avulsa) vêm da VIEW_BI_FATURAMENTO (ver SQL).
+// Filtro de venda da VIEW_BI_FATURAMENTO sobre a VIEW_VENDAS_RESUMO_FATURAMENTO.
+const CONDICAO_VENDA_BI = (a: string) =>
+  `${a}.CONDVENDA IN (0, 1, 5, 7, 9, 11, 14) AND ${a}.CODFISCAL NOT IN (522, 622, 722, 532, 632, 732)`;
+
 const FILTRO_NF = `${filialIn("n.CODFILIAL")} AND ${faixa("n.DTSAIDA")} AND ${notaDeVenda("n")}`;
-const UNIVERSO_VENDA = `SELECT n.NUMTRANSVENDA FROM PCNFSAID n WHERE ${FILTRO_NF} AND n.NUMTRANSVENDA > 0`;
 
 // Peso do item = PESOBRUTO gravado no PCMOV × QT. Exceção: erro de digitação de
 // vírgula no cadastro (peso ≥ 500× o do PCPRODUT) — o TI corrige o cadastro, mas
@@ -37,17 +40,18 @@ const VENDA_LINK = `(SELECT NUMTRANSENT, MAX(NVL(NUMTRANSVENDA, 0)) NUMTRANSVEND
                        FROM PCESTCOM GROUP BY NUMTRANSENT)`;
 const EH_AVULSA = `NVL(vlink.NUMTRANSVENDA, 0) = 0`;
 
-// Quatro agregados de uma linha cada, combinados por cross join. Cada bloco varre
+// Cinco agregados de uma linha cada, combinados por cross join. Cada bloco varre
 // sua fonte uma única vez.
 //   • VALORES (faturada, devolução, avulsa) → VIEW_BI_FATURAMENTO: view oficial
 //     de BI que já embute as regras do diretor (deduz ST, IPI, bonificação e
 //     avulsa). Bate no centavo com o "Deduzir Devol;ST;Bonif;IPI" do 111.
-//   • CONTAGENS (Emitidas/Positivados/Devolvidas) e PESO → PCNFSAID/PCMOV, pois a
-//     view não tem número de nota nem peso (kg).
+//   • PESO → VIEW_VENDAS/VIEW_DEVOL_RESUMO_FATURAMENTO (as do 111).
+//   • CONTAGENS (Emitidas/Positivados/Devolvidas) → PCNFSAID/PCMOV, pois a
+//     view BI não tem número de nota.
 const SQL = `
 SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
        h.EMITIDAS, h.POSITIVADOS, h.ATENDIMENTOS, s.PESO_VENDA,
-       d.DEVOLVIDAS, d.DEVOLVIDAS_AVULSAS, d.PESO_DEVOLUCAO
+       d.DEVOLVIDAS, d.DEVOLVIDAS_AVULSAS, pd.PESO_DEVOLUCAO
   FROM
   (SELECT NVL(SUM(v.VENDAS), 0) VENDA_FATURADA,
           NVL(SUM(v.DEVOLUCAO), 0) VALOR_DEVOLUCAO,
@@ -59,17 +63,21 @@ SELECT val.VENDA_FATURADA, val.VALOR_DEVOLUCAO, val.VALOR_DEVOLUCAO_AVULSA,
   (SELECT COUNT(*) EMITIDAS, COUNT(DISTINCT n.CODCLI) POSITIVADOS,
           COUNT(DISTINCT n.CODCLI || '|' || TO_CHAR(n.DTSAIDA, 'YYYYMMDD')) ATENDIMENTOS
      FROM PCNFSAID n WHERE ${FILTRO_NF}) h,
-  (SELECT NVL(SUM(${PESO_ITEM}), 0) PESO_VENDA
-     FROM PCMOV m
-     ${JOIN_PESO_PRODUTO}
-    WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'S'
-      AND m.NUMTRANSVENDA IN (${UNIVERSO_VENDA})) s,
+  -- PESO = mesmas views do 111: venda (PESOBRUTO, filtros da VIEW_BI) menos a
+  -- devolução VINCULADA (TOTPESO; a avulsa o 111 mostra à parte). Conferido
+  -- 01–26/11/2026: 2.602.329,38 − 223.438,77 = 2.378.890,61 = "Peso fatur." do
+  -- 111 no quilo. A view já traz o peso corrigido de erro de cadastro (NF 2526254).
+  (SELECT NVL(SUM(a.PESOBRUTO), 0) PESO_VENDA
+     FROM VIEW_VENDAS_RESUMO_FATURAMENTO a
+    WHERE ${CONDICAO_VENDA_BI("a")} AND ${filialIn("a.CODFILIAL")} AND ${faixa("a.DTSAIDA")}) s,
+  (SELECT NVL(SUM(v.TOTPESO), 0) PESO_DEVOLUCAO
+     FROM VIEW_DEVOL_RESUMO_FATURAMENTO v
+    WHERE v.DTCANCEL IS NULL AND ${filialIn("v.CODFILIAL")} AND ${faixa("v.DTENT")}
+      AND NVL(v.NUMTRANSVENDA, 0) > 0) pd,
   (SELECT COUNT(DISTINCT CASE WHEN NOT (${EH_AVULSA}) THEN m.NUMNOTA END) DEVOLVIDAS,
-          COUNT(DISTINCT CASE WHEN ${EH_AVULSA} THEN m.NUMNOTA END) DEVOLVIDAS_AVULSAS,
-          NVL(SUM(${PESO_ITEM}), 0) PESO_DEVOLUCAO
+          COUNT(DISTINCT CASE WHEN ${EH_AVULSA} THEN m.NUMNOTA END) DEVOLVIDAS_AVULSAS
      FROM PCMOV m
      LEFT JOIN ${VENDA_LINK} vlink ON vlink.NUMTRANSENT = m.NUMTRANSENT
-     ${JOIN_PESO_PRODUTO}
     WHERE ${filialIn("m.CODFILIAL")} AND ${faixa("m.DTMOV")} AND m.CODOPER = 'ED'
       AND m.DTCANCEL IS NULL) d`;
 
@@ -124,7 +132,7 @@ export async function getResumoFaturamento(
       valorDevolucao,
       valorDevolucaoAvulsa,
       vendaLiquida: vendaFaturada - valorDevolucao - valorDevolucaoAvulsa,
-      // Peso líquido de devolução (bate ~exato com a tela do 111; refino fino pendente).
+      // Peso líquido da devolução vinculada = "Peso fatur. (Kg)" do 111.
       pesoFaturado: pesoVenda - pesoDevolucao,
       pesoDevolucao,
     };
@@ -144,8 +152,7 @@ WITH v AS (
   SELECT a.NUMTRANSVENDA,
          SUM(NVL(a.VLVENDA, 0) - NVL(a.ICMSRETIDO, 0) - NVL(a.VLIPI, 0) - NVL(a.VLDEVOLCLI, 0)) VL
     FROM VIEW_VENDAS_RESUMO_FATURAMENTO a
-   WHERE a.CONDVENDA IN (0, 1, 5, 7, 9, 11, 14)
-     AND a.CODFISCAL NOT IN (522, 622, 722, 532, 632, 732)
+   WHERE ${CONDICAO_VENDA_BI("a")}
      AND ${filialIn("a.CODFILIAL")} AND ${faixa("a.DTSAIDA")}
    GROUP BY a.NUMTRANSVENDA
 ),

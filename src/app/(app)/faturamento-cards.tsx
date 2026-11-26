@@ -2,7 +2,7 @@ import { getResumoFaturamentoPeriodo } from "@/data/faturamento-mensal";
 import { getFaturadoEntregaRetira } from "@/data/faturamento";
 import { lerEntregaRetira } from "@/data/telemetria";
 import type { EntregaRetira } from "@/domain/telemetria";
-import { rotuloCurto, paramsDoPeriodo, type Periodo } from "@/domain/periodo";
+import { rotuloCurto, paramsDoPeriodo, periodoAnoPassado, type Periodo } from "@/domain/periodo";
 import { compararPct, compararTaxa } from "@/domain/comparacao";
 import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-periodos";
 import { Suspense } from "react";
@@ -176,18 +176,38 @@ function EntregaRetiraFaixa({ f }: { f: FaturadoEntregaRetira }) {
  * período aparece na hora e as comparações chegam quando o Winthor responde
  * (as leituras são memoizadas por request — todos os cards dividem as mesmas).
  */
-async function Chips({ atual, medida, cmp, maiorEhBom, taxa = false }: { atual: number; medida: Medida; cmp: Periodo; maiorEhBom: boolean; taxa?: boolean }) {
-  const b = await getResumoFaturamentoPeriodo(cmp.de, cmp.ate).catch(() => null);
-  const c = !b ? null : taxa ? compararTaxa(atual, medida(b), maiorEhBom) : compararPct(atual, medida(b), maiorEhBom);
-  const itens: ItemComparacao[] = [{ c, referencia: `vs ${rotuloCurto(cmp)}` }];
+async function Chips({ atual, medida, refs, maiorEhBom, taxa = false }: { atual: number; medida: Medida; refs: Referencia[]; maiorEhBom: boolean; taxa?: boolean }) {
+  const itens: ItemComparacao[] = await Promise.all(
+    refs.map(async ({ periodo, semaforo }) => {
+      const b = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null);
+      const c = !b ? null : taxa ? compararTaxa(atual, medida(b), maiorEhBom) : compararPct(atual, medida(b), maiorEhBom);
+      return { c, referencia: `vs ${rotuloCurto(periodo)}`, semaforo };
+    }),
+  );
   return <ComparaPeriodos itens={itens} />;
 }
 
 /** Comparação do card de entregas (mesma regra da Telemetria nos dois períodos). */
-async function ChipsEntrega({ atual, cmp }: { atual: number; cmp: Periodo }) {
-  const b = await lerEntregaRetira(cmp.de, cmp.ate).catch(() => null);
-  const itens: ItemComparacao[] = [{ c: b ? compararPct(atual, b.entregas, true) : null, referencia: `vs ${rotuloCurto(cmp)}` }];
+async function ChipsEntrega({ atual, refs }: { atual: number; refs: Referencia[] }) {
+  const itens: ItemComparacao[] = await Promise.all(
+    refs.map(async ({ periodo, semaforo }) => {
+      const b = await lerEntregaRetira(periodo.de, periodo.ate).catch(() => null);
+      return { c: b ? compararPct(atual, b.entregas, true) : null, referencia: `vs ${rotuloCurto(periodo)}`, semaforo };
+    }),
+  );
   return <ComparaPeriodos itens={itens} />;
+}
+
+/** Período contra o qual um card se compara; `semaforo` = verde/vermelho. */
+type Referencia = { periodo: Periodo; semaforo: boolean };
+
+/**
+ * Referências dos cards: sempre o MESMO período do ano passado (semáforo) e,
+ * se o usuário escolheu outra comparação em "Comparar", ela antes (neutra).
+ */
+export function referenciasFaturamento(comparar: Periodo | null, anoPassado: Periodo): Referencia[] {
+  const outra = comparar && (comparar.de !== anoPassado.de || comparar.ate !== anoPassado.ate);
+  return [...(outra ? [{ periodo: comparar, semaforo: false }] : []), { periodo: anoPassado, semaforo: true }];
 }
 
 /**
@@ -195,7 +215,7 @@ async function ChipsEntrega({ atual, cmp }: { atual: number; cmp: Periodo }) {
  * com a Telemetria); embaixo, o que foi retira/balcão. Sem a leitura (Winthor
  * fora), volta ao total de PDVs atendidos da 111.
  */
-function CardEntregas({ er, atendimentos, comparar }: { er: EntregaRetira | null; atendimentos: number; comparar: Periodo | null }) {
+function CardEntregas({ er, atendimentos, refs }: { er: EntregaRetira | null; atendimentos: number; refs: Referencia[] }) {
   if (!er) {
     return <StatCard label="Entregas realizadas" value={`${atendimentos}`} hint="PDVs atendidos · sem separar retira" accent="navy" />;
   }
@@ -212,11 +232,11 @@ function CardEntregas({ er, atendimentos, comparar }: { er: EntregaRetira | null
       hint={`retira / balcão: ${er.retira}`}
       title={title}
       accent="navy"
-      extra={comparar ? (
+      extra={
         <Suspense fallback={<ChipsEsperando />}>
-          <ChipsEntrega atual={er.entregas} cmp={comparar} />
+          <ChipsEntrega atual={er.entregas} refs={refs} />
         </Suspense>
-      ) : undefined}
+      }
     />
   );
 }
@@ -225,11 +245,10 @@ function ChipsEsperando() {
   return <span className="inline-block h-3 w-32 animate-pulse rounded bg-slate-100" />;
 }
 
-function comparacoes(atual: number, medida: Medida, cmp: Periodo | null, maiorEhBom: boolean, taxa = false) {
-  if (!cmp) return undefined; // comparação desligada: só o número
+function comparacoes(atual: number, medida: Medida, refs: Referencia[], maiorEhBom: boolean, taxa = false) {
   return (
     <Suspense fallback={<ChipsEsperando />}>
-      <Chips atual={atual} medida={medida} cmp={cmp} maiorEhBom={maiorEhBom} taxa={taxa} />
+      <Chips atual={atual} medida={medida} refs={refs} maiorEhBom={maiorEhBom} taxa={taxa} />
     </Suspense>
   );
 }
@@ -245,13 +264,14 @@ export async function FaturamentoCards({
   comparar,
 }: {
   periodo: Periodo;
-  /** Período escolhido em "Comparar"; null = cards só com o número. */
+  /** Período escolhido em "Comparar"; null = só o "vs ano passado". */
   comparar: Periodo | null;
 }) {
-  // Dispara a comparação já (memoizada), sem esperar por ela.
-  if (comparar) {
-    void getResumoFaturamentoPeriodo(comparar.de, comparar.ate).catch(() => null);
-    void lerEntregaRetira(comparar.de, comparar.ate).catch(() => null);
+  const refs = referenciasFaturamento(comparar, periodoAnoPassado(periodo));
+  // Dispara as comparações já (memoizadas), sem esperar por elas.
+  for (const { periodo: p } of refs) {
+    void getResumoFaturamentoPeriodo(p.de, p.ate).catch(() => null);
+    void lerEntregaRetira(p.de, p.ate).catch(() => null);
   }
   const [r, er, fer] = await Promise.all([
     getResumoFaturamentoPeriodo(periodo.de, periodo.ate),
@@ -275,7 +295,7 @@ export async function FaturamentoCards({
 
   const taxaDevol = taxaDevolucaoLiquida(r);
   const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
-    comparacoes(r[campo], (x) => x[campo], comparar, maiorEhBom);
+    comparacoes(r[campo], (x) => x[campo], refs, maiorEhBom);
 
   return (
     <div>
@@ -291,7 +311,7 @@ export async function FaturamentoCards({
               {fer && !r.foto && <EntregaRetiraFaixa f={fer} />}
             </HeroStat>
           </div>
-          {comparar && <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>}
+          <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>
         </div>
         <StatCard
           label="Valor devolução"
@@ -314,14 +334,14 @@ export async function FaturamentoCards({
           extra={<>{cmp("vendaLiquida", true)}{fer && !r.foto && <LiquidoEntregaRetira f={fer} />}</>}
         />
         </div>
-        <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} comparar={comparar} />
+        <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} refs={refs} />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" extra={cmp("pesoFaturado", true)} />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" extra={cmp("emitidas", true)} />
         <StatCard
           label="Taxa de devolução"
           value={formatPercent(taxaDevol)}
           accent="red"
-          extra={comparacoes(taxaDevol, taxaDevolucaoLiquida, comparar, false, true)}
+          extra={comparacoes(taxaDevol, taxaDevolucaoLiquida, refs, false, true)}
         />
       </div>
     </div>

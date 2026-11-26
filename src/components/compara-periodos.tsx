@@ -5,6 +5,8 @@ export interface ItemComparacao {
   c: Comparacao | null;
   /** "vs 2º tri/26" */
   referencia: string;
+  /** Verde/vermelho (ver `COR_SEMAFORO`). */
+  semaforo?: boolean;
 }
 
 /**
@@ -17,7 +19,7 @@ export function ComparaPeriodos({ itens, className = "" }: { itens: ItemComparac
       {itens.map((i) => (
         <span key={i.referencia} className="inline-flex items-center gap-1">
           {i.c ? (
-            <Variacao c={i.c} referencia={i.referencia} />
+            <Variacao c={i.c} referencia={i.referencia} semaforo={i.semaforo} />
           ) : (
             <span className="text-xs text-slate-300" title="sem dado no período de comparação">
               — <span className="text-slate-400">{i.referencia}</span>

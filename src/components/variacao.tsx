@@ -2,6 +2,9 @@ import type { Comparacao } from "@/domain/comparacao";
 
 // Cores da comparação no tema claro: boa/neutra = slate, ruim = rose. Verde nunca.
 export const COR_VARIACAO = { boa: "#64748b", ruim: "#e11d48" } as const; // slate-500 · rose-600
+// Exceção pedida pelo Pedro (26/11/2026): nos cards de faturamento do Winthor o
+// "vs ano passado" é semáforo — melhor = verde, pior = vermelho.
+export const COR_SEMAFORO = { boa: "#059669", ruim: "#e11d48" } as const; // emerald-600 · rose-600
 
 export function SetaVariacao({ subindo, className = "h-3 w-3" }: { subindo: boolean; className?: string }) {
   return (
@@ -21,16 +24,20 @@ export function Variacao({
   referencia,
   tamanho = "xs",
   className = "",
+  semaforo = false,
 }: {
   c: Comparacao | null;
   referencia?: string;
   tamanho?: "xs" | "sm";
   className?: string;
+  /** Verde quando melhora, vermelho quando piora (em vez de neutro/rose). */
+  semaforo?: boolean;
 }) {
+  const cores = semaforo ? COR_SEMAFORO : COR_VARIACAO;
   const fonte = tamanho === "sm" ? "text-sm font-bold" : "text-xs font-semibold";
   if (!c) return <span className={`text-xs text-slate-300 ${className}`} title="sem período anterior para comparar">—</span>;
   return (
-    <span className={`inline-flex items-center gap-1 tabular-nums ${fonte} ${className}`} style={{ color: c.positivo ? COR_VARIACAO.boa : COR_VARIACAO.ruim }}>
+    <span className={`inline-flex items-center gap-1 tabular-nums ${fonte} ${className}`} style={{ color: c.positivo ? cores.boa : cores.ruim }}>
       <SetaVariacao subindo={c.subindo} className={tamanho === "sm" ? "h-3.5 w-3.5" : "h-3 w-3"} />
       {c.texto}
       {referencia && <span className="font-normal text-slate-400">{referencia}</span>}
