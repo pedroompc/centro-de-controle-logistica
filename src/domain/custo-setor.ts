@@ -43,3 +43,35 @@ export function composicaoDoCusto(c: CustoMensalSetor): string {
   if (c.empilhador > 0) partes.push(`empilhador ${formatBRL(c.empilhador)}`);
   return partes.join(" + ");
 }
+
+/** Setor num período passado (ou de vários meses): pessoas no fim e custo somado. */
+export interface SetorNoPeriodo {
+  custo: CustoMensalSetor;
+  ativos: number;
+  afastados: number;
+}
+
+/**
+ * Custo e pessoas de um setor num período, a partir do efetivo reconstruído mês
+ * a mês (`efetivoSetorNoMes`, uma lista por mês do período, em ordem).
+ *  - Folha = soma da folha (pró-rata) de cada mês.
+ *  - Equipamentos/empilhador não têm histórico: o valor mensal de HOJE (`atual`)
+ *    vezes o nº de meses.
+ *  - Pessoas = o último mês do período (quem estava no fim dele).
+ */
+export function setorNoPeriodo(
+  setor: string,
+  linhasPorMes: { setor: string; ativos: number; afastados: number; custoAtivos: number }[][],
+  atual: CustoMensalSetor,
+): SetorNoPeriodo {
+  const meses = linhasPorMes.length;
+  const folha = linhasPorMes.reduce((t, ls) => t + (ls.find((l) => l.setor === setor)?.custoAtivos ?? 0), 0);
+  const equipamentos = atual.equipamentos * meses;
+  const empilhador = atual.empilhador * meses;
+  const ultimo = linhasPorMes.at(-1)?.find((l) => l.setor === setor);
+  return {
+    custo: { folha, equipamentos, empilhador, total: folha + equipamentos + empilhador },
+    ativos: ultimo?.ativos ?? 0,
+    afastados: ultimo?.afastados ?? 0,
+  };
+}
