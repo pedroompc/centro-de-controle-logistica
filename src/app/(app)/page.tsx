@@ -290,7 +290,7 @@ export default async function Dashboard({
       </Suspense>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Funcionários ativos" value={`${ativos.length}`} hint={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
+        <StatCard label="Funcionários ativos" value={`${ativos.length}`} title={`${funcionarios.length} no efetivo`} accent="navy" href="/funcionarios" />
         <StatCard
           label={mesUnico ? "Custo bruto do mês" : "Custo bruto do período"}
           value={custoTotalMes === null ? semDado : formatBRL(custoTotalMes)}

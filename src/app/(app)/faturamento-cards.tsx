@@ -333,7 +333,7 @@ export async function FaturamentoCards({
 export async function CardCustoLogistico({ periodo, custoTotal }: { periodo: Periodo; custoTotal: number | null /* bruto SEM o aluguel do galpão */ }) {
   const r = await getResumoFaturamentoPeriodo(periodo.de, periodo.ate).catch(() => null);
   const pct = custoTotal === null || !r ? null : percentualCustoLogistico(custoTotal, r.vendaLiquida);
-  return <StatCard label="Custo logístico" value={pct === null ? "sem dado" : formatPercent(pct)} hint="custo bruto sem o aluguel do galpão ÷ venda líquida" accent="gold" />;
+  return <StatCard label="Custo logístico" value={pct === null ? "sem dado" : formatPercent(pct)} title="custo bruto sem o aluguel do galpão ÷ venda líquida" accent="gold" />;
 }
 
 /** Fallback do <Suspense> dos cards, enquanto o Oracle responde. */
