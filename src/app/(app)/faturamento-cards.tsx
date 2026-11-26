@@ -8,7 +8,7 @@ import { ComparaPeriodos, type ItemComparacao } from "@/components/compara-perio
 import { Suspense } from "react";
 import Link from "next/link";
 import {
-  taxaDevolucaoLiquida, percentualCustoLogistico, partesEntregaRetira, liquidoEntregaRetira, taxaDevEntregaRetira,
+  taxaDevolucaoLiquida, percentualCustoLogistico, liquidoEntregaRetira, taxaDevEntregaRetira,
   type ResumoFaturamento, type FaturadoEntregaRetira,
 } from "@/domain/faturamento";
 import { formatBRL, formatKg, formatPercent } from "@/domain/format";
@@ -120,30 +120,19 @@ function DevolucaoEntregaRetira({ f, hrefRetira }: { f: FaturadoEntregaRetira; h
   );
 }
 
-function LiquidoEntregaRetira({ f }: { f: FaturadoEntregaRetira }) {
-  const l = liquidoEntregaRetira(f);
-  const total = l.entrega + l.retira;
-  const pct = (v: number) => (total > 0 ? formatPercent(v / total) : "—");
-  return (
-    <BlocosEntregaRetira
-      lados={[
-        { lado: "entrega", valor: l.entrega, selo: pct(l.entrega), seloTexto: "da venda líquida" },
-        { lado: "retira", valor: l.retira, selo: pct(l.retira), seloTexto: "da venda líquida" },
-      ]}
-    />
-  );
-}
-
 /**
- * Dentro do card "Venda faturada": quanto saiu em ENTREGA (carga com motorista)
- * e quanto foi RETIRA (balcão). Barra proporcional + valor e % de cada lado.
+ * Dentro do card "Venda líquida": quanto foi ENTREGA (carga com motorista) e
+ * quanto foi RETIRA (balcão), cada lado líquido da própria devolução. Barra
+ * proporcional + valor, % e NFs de venda de cada lado.
  */
 function EntregaRetiraFaixa({ f }: { f: FaturadoEntregaRetira }) {
-  const p = partesEntregaRetira(f);
-  if (f.entrega + f.retira <= 0) return null;
+  const l = liquidoEntregaRetira(f);
+  const total = l.entrega + l.retira;
+  if (total <= 0) return null;
+  const p = { entrega: l.entrega / total, retira: l.retira / total };
   const lados = [
-    { rotulo: "Faturado entrega", valor: f.entrega, pct: p.entrega, notas: f.notasEntrega, cor: "bg-amber-400" },
-    { rotulo: "Faturado retira", valor: f.retira, pct: p.retira, notas: f.notasRetira, cor: "bg-white/45" },
+    { rotulo: "Líquido entrega", valor: l.entrega, pct: p.entrega, notas: f.notasEntrega, cor: "bg-amber-400" },
+    { rotulo: "Líquido retira", valor: l.retira, pct: p.retira, notas: f.notasRetira, cor: "bg-white/45" },
   ];
   return (
     <div className="mt-5">
@@ -294,7 +283,7 @@ export async function FaturamentoCards({
   }
 
   const taxaDevol = taxaDevolucaoLiquida(r);
-  const cmp = (campo: "vendaFaturada" | "valorDevolucao" | "vendaLiquida" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
+  const cmp = (campo: "valorDevolucao" | "vendaLiquida" | "pesoFaturado" | "emitidas", maiorEhBom: boolean) =>
     comparacoes(r[campo], (x) => x[campo], refs, maiorEhBom);
 
   return (
@@ -302,16 +291,16 @@ export async function FaturamentoCards({
       <Heading />
       {r.foto && <AvisoFoto />}
 
-      {/* Herói = Venda faturada (headline pedido pela gerência) + o contraponto
-          direto dele (o que voltou). A Venda líquida continua visível abaixo. */}
+      {/* Herói = Venda líquida (a faturada bruta saiu em 26/11/2026 — tela mais
+          limpa, pedido do Pedro) + o contraponto direto dela (o que voltou). */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="flex flex-col lg:col-span-2">
           <div className="flex-1">
-            <HeroStat label="Venda faturada" value={formatBRL(r.vendaFaturada)}>
+            <HeroStat label="Venda líquida" value={formatBRL(r.vendaLiquida)}>
               {fer && !r.foto && <EntregaRetiraFaixa f={fer} />}
             </HeroStat>
           </div>
-          <div className="mt-1.5 px-1">{cmp("vendaFaturada", true)}</div>
+          <div className="mt-1.5 px-1">{cmp("vendaLiquida", true)}</div>
         </div>
         <StatCard
           label="Valor devolução"
@@ -322,18 +311,7 @@ export async function FaturamentoCards({
         />
       </div>
 
-      {/* Venda líquida (com entrega × retira) ocupa duas linhas; os 4 cards
-          curtos ficam num 2×2 ao lado, sem esticar para a altura dela. */}
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="sm:row-span-2 [&>*]:h-full">
-        <StatCard
-          label="Venda líquida"
-          value={formatBRL(r.vendaLiquida)}
-          hint="faturada − devolução − avulsa"
-          accent="navy"
-          extra={<>{cmp("vendaLiquida", true)}{fer && !r.foto && <LiquidoEntregaRetira f={fer} />}</>}
-        />
-        </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <CardEntregas er={r.foto ? null : er} atendimentos={r.atendimentos} refs={refs} />
         <StatCard label="Peso faturado" value={formatKg(r.pesoFaturado)} accent="navy" extra={cmp("pesoFaturado", true)} />
         <StatCard label="NFs emitidas" value={`${r.emitidas}`} accent="navy" extra={cmp("emitidas", true)} />
@@ -367,8 +345,8 @@ export function FaturamentoSkeleton() {
         <div className="h-[132px] animate-pulse rounded-2xl bg-slate-200/70 lg:col-span-2" />
         <div className="h-[132px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-[104px] animate-pulse rounded-2xl border border-slate-200/80 bg-slate-100" />
         ))}
       </div>
