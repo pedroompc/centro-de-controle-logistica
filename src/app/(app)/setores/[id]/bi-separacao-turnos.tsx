@@ -5,7 +5,7 @@ import { formatBRL, formatPercent } from "@/domain/format";
 import type { CriterioTurno, ResumoTurno } from "@/domain/separacao";
 import type { TurnoSep } from "@/domain/turnos-separacao";
 import { Bloco, ddmm, semCentavos } from "./bi-ui";
-import { Aviso, COR_TURNO, DUAS_COLUNAS, GRADE_CARDS, VISAO, n0, n1, t1, sinalPct, varRel } from "./bi-separacao-comum";
+import { Aviso, COR_TURNO, DUAS_COLUNAS, GRADE_CARDS, VISAO, n0, n1, t1, pctDeMil, sinalPct, varRel } from "./bi-separacao-comum";
 import type { DivergenciasTurno, ProducaoBI } from "./separacao-dados";
 
 // --- Medidas clicáveis (cada uma tem série dia a dia por turno) -------------------
@@ -51,12 +51,12 @@ const MEDIDAS: Record<Medida, DefMedida> = {
     fmt: semCentavos,
   },
   erros: {
-    rotulo: "Erros a cada 1.000 endereços",
-    curto: "erros/1.000",
+    rotulo: "Endereços com erro",
+    curto: "% com erro",
     menor: true,
     media: (t) => t.errosPorMil,
     doDia: (x) => (x.linhas > 0 ? (x.erros / x.linhas) * 1000 : null),
-    fmt: n1,
+    fmt: pctDeMil,
   },
 };
 
@@ -66,8 +66,8 @@ const CRITERIOS: { id: CriterioTurno; rotulo: string; explica: string; medida: M
   { id: "linhasPorSeparadorDia", rotulo: "Maior produtividade por separador", explica: "endereços ÷ separadores ÷ dias", medida: "linhas" },
   { id: "custoPorPedido", rotulo: "Menor custo por pedido", explica: "custo do turno ÷ pedidos (rateio)", medida: "pedidos" },
   { id: "custoPorTonelada", rotulo: "Menor custo por tonelada", explica: "custo do turno ÷ t", medida: "custoT" },
-  { id: "qualidade", rotulo: "Melhor qualidade", explica: "menos erros do separador a cada 1.000 endereços", medida: "erros" },
-  { id: "equilibrio", rotulo: "Melhor equilíbrio", explica: "menor soma das posições em endereços/hora, custo/endereço e erros/1.000", medida: null },
+  { id: "qualidade", rotulo: "Melhor qualidade", explica: "menor % de endereços com erro do separador", medida: "erros" },
+  { id: "equilibrio", rotulo: "Melhor equilíbrio", explica: "menor soma das posições em endereços/hora, custo/endereço e % com erro", medida: null },
 ];
 
 /** Produção de cada dia × turno a partir do que já veio agregado do servidor. */
@@ -481,7 +481,7 @@ const LINHAS: LinhaComparativo[] = [
   { grupo: "Custo", rotulo: "Custo por endereço", valor: (t) => t.custoPorLinha, fmt: formatBRL, sentido: "menor", total: razao((t) => t.custo, (t) => t.linhas) },
   { grupo: "Custo", rotulo: "Custo por tonelada", valor: (t) => t.custoPorTonelada, fmt: semCentavos, sentido: "menor", total: razao((t) => t.custo, (t) => t.kg, 1000) },
   { grupo: "Qualidade", rotulo: "Itens com erro do separador", valor: (t) => t.errosSeparador, fmt: n0, sentido: null, total: soma((t) => t.errosSeparador) },
-  { grupo: "Qualidade", rotulo: "Erros a cada 1.000 endereços", valor: (t) => t.errosPorMil, fmt: n1, sentido: "menor", total: razao((t) => t.errosSeparador, (t) => t.linhas, 1000) },
+  { grupo: "Qualidade", rotulo: "Endereços com erro", valor: (t) => t.errosPorMil, fmt: pctDeMil, sentido: "menor", total: razao((t) => t.errosSeparador, (t) => t.linhas, 1000) },
   { grupo: "Perfil do trabalho", rotulo: "Kg por endereço", valor: (t) => t.kgPorLinha, fmt: n1, sentido: null, total: razao((t) => t.kg, (t) => t.linhas) },
   { grupo: "Perfil do trabalho", rotulo: "Unidades por endereço", valor: (t) => t.unidadesPorLinha, fmt: n1, sentido: null, total: razao((t) => t.unidades, (t) => t.linhas) },
   { grupo: "Perfil do trabalho", rotulo: "Endereços em mapa consolidado", valor: (t) => t.mapasConsolidados, fmt: (v) => formatPercent(v, 0), sentido: null },

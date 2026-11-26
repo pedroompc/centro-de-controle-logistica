@@ -7,7 +7,7 @@ import { rotuloTurno, type SinalOperador } from "@/domain/separacao";
 import { TURNOS_SEPARACAO } from "@/domain/turnos-separacao";
 import type { TurnoSep } from "@/domain/turnos-separacao";
 import { Bloco, ChipTV, Mini } from "./bi-ui";
-import { COR_TURNO, GRADE_CARDS, VISAO, n0, n1, ou, sinalPct, varRel } from "./bi-separacao-comum";
+import { COR_TURNO, GRADE_CARDS, VISAO, n0, n1, ou, pctDeMil, sinalPct, varRel } from "./bi-separacao-comum";
 import type { DadosIndividuais, SeparadorBI } from "./separacao-dados";
 
 type Ordem = "linhasPorHora" | "linhas" | "kgPorHora" | "errosPorMil";
@@ -90,7 +90,7 @@ export function VisaoOperadores({ ind, periodo }: { ind: DadosIndividuais; perio
                   <th className="py-2 text-right font-semibold">× geral</th>
                   <th className="py-2 text-right font-semibold">× {ind.rotuloAnterior ?? "ant."}</th>
                   <th className="py-2 text-right font-semibold">Kg/end.</th>
-                  <th className="py-2 text-right font-semibold">Erros ‰</th>
+                  <th className="py-2 text-right font-semibold">Erros %</th>
                   <th className="py-2 text-right font-semibold">R$/end.</th>
                   <th className="py-2 text-right font-semibold">Sinal</th>
                 </tr>
@@ -118,7 +118,7 @@ export function VisaoOperadores({ ind, periodo }: { ind: DadosIndividuais; perio
                       <td className="py-1.5 text-right tabular-nums">{sinalPct(varRel(s.linhasPorHora, ind.mediaGeral))}</td>
                       <td className="py-1.5 text-right tabular-nums">{sinalPct(varRel(s.linhasPorHora, s.anteriorLinhasPorHora))}</td>
                       <td className="py-1.5 text-right tabular-nums">{ou(s.kgPorLinha, n1)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{ou(s.errosPorMil, n1)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{ou(s.errosPorMil, pctDeMil)}</td>
                       <td className="py-1.5 text-right tabular-nums">{ou(s.custoPorLinha, formatBRL)}</td>
                       <td className="py-1.5 text-right text-xs">
                         {s.sinal ? (

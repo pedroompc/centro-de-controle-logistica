@@ -9,6 +9,8 @@ export const t1 = (kg: number) => `${(kg / 1000).toLocaleString("pt-BR", { maxim
 export const ou = <T,>(v: T | null | undefined, f: (x: T) => string) => (v === null || v === undefined ? "—" : f(v));
 export const brl = (v: number | null) => ou(v, formatBRL);
 export const pct = (v: number | null, casas = 1) => ou(v, (x) => formatPercent(x, casas));
+/** Taxa guardada por mil (erros a cada 1.000 endereços) exibida em %: 47,2 → "4,7%". */
+export const pctDeMil = (v: number) => formatPercent(v / 1000, 1);
 export const sinalPct = (v: number | null) => ou(v, (x) => pctComSinal(x));
 export const varRel = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b - 1);
 

@@ -21,7 +21,7 @@ import { indicadoresSeparacao } from "./separacao-indicadores";
 import {
   Quadro, Vazio, Bloco, Mini, useSub, Dica, BarrasTV, BarraComposicao, TabelaEquipe, ListaEquipamentos, SubFolha, CalendarioBI, ChipTV, ddmm, semCentavos, type PapelBI, VariacaoTV,
 } from "./bi-ui";
-import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, sinalPct, varRel } from "./bi-separacao-comum";
+import { DUAS_COLUNAS, GRADE_CARDS, GRADE_MENU, VISAO, Tabela, n0, n1, t1, brl, pct, pctDeMil, sinalPct, varRel } from "./bi-separacao-comum";
 import { VisaoTurnos } from "./bi-separacao-turnos";
 import { VisaoOperadores } from "./bi-separacao-operadores";
 import { VisaoQualidade } from "./bi-separacao-analises";
@@ -102,7 +102,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial 
       <Quadro
         {...q("qualidade")}
         rotulo={dia ? `Qualidade · ${ddmm(dia)}` : "Qualidade"}
-        valor={ind.taxaErro === null ? "—" : `${n1(ind.taxaErro)} ‰`}
+        valor={ind.taxaErro === null ? "—" : pctDeMil(ind.taxaErro)}
         sub={semProd ?? `${n0(ind.erros!.separador.itens)} itens com erro`}
         variacao={vq("qualidade")}
       />

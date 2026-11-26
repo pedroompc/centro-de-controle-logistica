@@ -31,7 +31,7 @@ describe("numerosSeparacao", () => {
     const r = numerosSeparacao(d);
     expect(r.map((i) => i.chave)).toEqual(["custo", "producao", "turnos", "qualidade"]);
     expect(mapa(r)).toEqual({ custo: 4000, producao: 20, turnos: 1200, qualidade: 0 });
-    expect(r.find((i) => i.chave === "qualidade")!.formato).toBe("permil");
+    expect(r.find((i) => i.chave === "qualidade")!.formato).toBe("pct");
   });
   it("Harpia fora: produção sem número (custo segue)", () => {
     const d = { ref: { custo: 4000, custoPeriodo: 4000 }, fracaoMes: 1, faturamentoLiquido: null, folhaRef: null, producao: { erro: "x" } } as unknown as DadosBISeparacao;

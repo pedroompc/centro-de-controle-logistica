@@ -113,7 +113,7 @@ pausas), unidades/h só dos dias com 1 h ou mais.
 | Unidades divergentes | Σ abs(carga − bipado) |
 | Falta × sobra | ocorrências com bipado < carga × bipado > carga |
 | Erros do conferente / sem origem | o mesmo para `C` e para origem nula ou outra |
-| A cada 1.000 linhas | itens com erro do separador ÷ linhas separadas × 1000 |
+| Endereços com erro (%) | itens com erro do separador ÷ endereços separados. Exibido em % desde 26/11/2026 (era ‰); os cards "Do conferente" e "Atribuídos" saíram da tela |
 | Atribuído a separador | o item só vai para uma pessoa quando todas as linhas da chave mapa × produto × pedido estão em páginas do mesmo separador registrado |
 
 ## Mudanças em relação ao BI anterior (até 26/10/2026)

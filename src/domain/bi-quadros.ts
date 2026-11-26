@@ -37,7 +37,7 @@ export function numerosSeparacao(d: DadosBISeparacao): IndicadorGeral[] {
     q("custo", i.custo, "brl", false),
     q("producao", i.tot?.linhas ?? null, "int", true),
     q("turnos", i.tot ? i.turnos.reduce((x, t) => x + Math.round(t.kg), 0) : null, "kg", true),
-    q("qualidade", i.taxaErro, "permil", false),
+    q("qualidade", i.taxaErro === null ? null : i.taxaErro / 1000, "pct", false),
   ];
 }
 
