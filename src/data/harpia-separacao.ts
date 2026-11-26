@@ -1,7 +1,7 @@
 import { queryWinthor } from "@/lib/oracle/client";
 import { filialIn } from "./filiais";
 import { inicioFimDoMes } from "@/domain/periodo";
-import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlJanelaOperacional, sqlTurnoDaHora, type TurnoSep } from "@/domain/turnos-separacao";
+import { CORTE_DIA_OPERACIONAL as C, sqlDiaOperacional, sqlTurnoDaHora, type TurnoSep } from "@/domain/turnos-separacao";
 import { aplicarPesoWinthor, type DiaSep, type ErroSep, type LinhaSep, type MapaSep, type PaginaSep, type ProdutoTurnoSep } from "@/domain/separacao";
 
 /**
@@ -43,28 +43,52 @@ const ERRO = "HARPIAW2.PLAN_SEP_MAPA_MERC_ERRO_1199";
 // caem no dia operacional seguinte) ou abastecimento — sem esse corte o
 // conferente da noite que bipou às 07h teria a noite inteira jogada no Dia.
 const INICIO_SESSAO = 12;
+// A noite não tem hora para acabar: vai até a demanda zerar (07h–09h é comum,
+// e no sábado/feriado a turma do dia nem vem — quem bipa de manhã é a noite).
+// Mapa com 1ª conferência entre 07h e 12h, por conferente que JÁ bipava na
+// madrugada (04h–07h do mesmo dia), é a noite anterior continuando: vai para o
+// dia operacional anterior e a sessão dele começa na madrugada (→ turno Noite).
+// A turma do dia não bipa de madrugada, então não é afetada (Pedro, 26/11/2026).
+const INICIO_MADRUGADA = 4;
+const sqlHora = (col: string) => `TO_NUMBER(TO_CHAR(${col}, 'HH24'))`;
 const CTE_MAPA = `
 conf AS (
   SELECT a.SEQ_PLANILHA_PF_1197 AS MAPA, a.USU_AVERIG_1197 AS USU, a.DTHR_AVERIG_1197 AS DTHR
     FROM ${AVERIG} a
    WHERE a.DTHR_AVERIG_1197 >= TO_DATE(:ini, 'YYYY-MM-DD') + ${C}/24 - 7
-     AND a.DTHR_AVERIG_1197 < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${C}/24
+     AND a.DTHR_AVERIG_1197 < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${INICIO_SESSAO}/24
 ), sessao AS (
   SELECT USU, ${sqlDiaOperacional("DTHR")} AS DIA, MIN(DTHR) AS INI
     FROM conf
-   WHERE TO_NUMBER(TO_CHAR(DTHR, 'HH24')) >= ${INICIO_SESSAO}
+   WHERE ${sqlHora("DTHR")} >= ${INICIO_SESSAO}
    GROUP BY USU, ${sqlDiaOperacional("DTHR")}
+), madrugada AS (
+  SELECT USU, TRUNC(DTHR) AS DIA, MIN(DTHR) AS INI
+    FROM conf
+   WHERE ${sqlHora("DTHR")} >= ${INICIO_MADRUGADA} AND ${sqlHora("DTHR")} < ${C}
+   GROUP BY USU, TRUNC(DTHR)
 ), mapa0 AS (
   SELECT MAPA, MIN(DTHR) AS CONF_INI, STATS_MODE(USU) AS CONF
     FROM conf
    GROUP BY MAPA
-  HAVING ${sqlJanelaOperacional("MIN(DTHR)")}
-), mapa AS (
+  HAVING MIN(DTHR) >= TO_DATE(:ini, 'YYYY-MM-DD') + ${C}/24
+     AND MIN(DTHR) < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${INICIO_SESSAO}/24
+), mapa1 AS (
   SELECT m.MAPA, m.CONF_INI, m.CONF,
-         CASE WHEN TO_NUMBER(TO_CHAR(m.CONF_INI, 'HH24')) >= ${INICIO_SESSAO}
-              THEN LEAST(NVL(s.INI, m.CONF_INI), m.CONF_INI) ELSE m.CONF_INI END AS SESSAO_INI
+         CASE WHEN ${sqlHora("m.CONF_INI")} >= ${C} AND ${sqlHora("m.CONF_INI")} < ${INICIO_SESSAO} THEN md.INI END AS MADRUG_INI,
+         s.INI AS TARDE_INI
     FROM mapa0 m
     LEFT JOIN sessao s ON s.USU = m.CONF AND s.DIA = ${sqlDiaOperacional("m.CONF_INI")}
+    LEFT JOIN madrugada md ON md.USU = m.CONF AND md.DIA = TRUNC(m.CONF_INI)
+), mapa AS (
+  SELECT * FROM (
+    SELECT MAPA, CONF_INI, CONF,
+           ${sqlDiaOperacional("CONF_INI")} - CASE WHEN MADRUG_INI IS NOT NULL THEN 1 ELSE 0 END AS DIA_OP,
+           CASE WHEN MADRUG_INI IS NOT NULL THEN MADRUG_INI
+                WHEN ${sqlHora("CONF_INI")} >= ${INICIO_SESSAO} THEN LEAST(NVL(TARDE_INI, CONF_INI), CONF_INI)
+                ELSE CONF_INI END AS SESSAO_INI
+      FROM mapa1)
+   WHERE DIA_OP BETWEEN TO_DATE(:ini, 'YYYY-MM-DD') AND TO_DATE(:fim, 'YYYY-MM-DD')
 )`;
 
 // Peso do Winthor de cada mapa: pedidos não cancelados da carga (filiais 1 e 11).
@@ -78,7 +102,7 @@ peso_wt AS (
    GROUP BY mp.MAPA
 )`;
 
-const DIA = `TO_CHAR(${sqlDiaOperacional("mp.CONF_INI")}, 'YYYY-MM-DD')`;
+const DIA = `TO_CHAR(mp.DIA_OP, 'YYYY-MM-DD')`;
 const UNIDADES = `(NVL(x.QTD_FATURADA_CX_1196, 0) * NVL(pr.QTUNITCX, 1) + NVL(x.QTD_FATURADA_UN_1196, 0))`;
 // Página com separador: chave (mapa, nº da OS da página) é única na 1236.
 const JOIN_PAGINA = `LEFT JOIN ${PAGINA} pg ON pg.SEQ_PLANILHA_PF_1236 = x.SEQ_PLANILHA_PF_1196 AND pg.N_OS_PAGINA_1236 = x.N_OS_PAGINA_1196 AND pg.USU_SEP_FK_1236 IS NOT NULL`;
@@ -95,7 +119,7 @@ SELECT mp.MAPA, ${DIA} AS DIA, pg.USU_SEP_FK_1236 AS USU, ${HORA_REF} AS HORA,
   JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA
   ${JOIN_PAGINA}
   LEFT JOIN PCPRODUT pr ON pr.CODPROD = x.MERC_PF_1196
- GROUP BY mp.MAPA, ${sqlDiaOperacional("mp.CONF_INI")}, pg.USU_SEP_FK_1236, ${HORA_REF}`;
+ GROUP BY mp.MAPA, mp.DIA_OP, pg.USU_SEP_FK_1236, ${HORA_REF}`;
 
 export const SQL_MAPAS = `
 WITH ${CTE_MAPA}
@@ -105,7 +129,7 @@ SELECT mp.MAPA, ${DIA} AS DIA, MAX(m.TIPO_SEPARACAO_1195) AS TIPO,
   FROM mapa mp
   JOIN ${MAPA} m ON m.SEQ_PLANILHA_PK_1195 = mp.MAPA
   LEFT JOIN ${GUIAS} g ON g.SEQ_PLANILHA_PF_1198 = mp.MAPA
- GROUP BY mp.MAPA, ${sqlDiaOperacional("mp.CONF_INI")}`;
+ GROUP BY mp.MAPA, mp.DIA_OP`;
 
 export const SQL_PESO_MAPA = `
 WITH ${CTE_MAPA}, ${CTE_PESO_WT}
@@ -115,7 +139,7 @@ SELECT MAPA, KG FROM peso_wt`;
 // Carga de venda balcão (mapa tipo 3) é carga de sistema, não carregamento: fica fora.
 export const SQL_DIAS = `
 WITH ${CTE_MAPA}
-SELECT CASE WHEN GROUPING(${sqlDiaOperacional("mp.CONF_INI")}) = 1 THEN NULL ELSE ${DIA} END AS DIA,
+SELECT CASE WHEN GROUPING(mp.DIA_OP) = 1 THEN NULL ELSE ${DIA} END AS DIA,
        COUNT(DISTINCT g.NUM_PEDCONF_FK_1198) AS PEDIDOS,
        COUNT(DISTINCT NULLIF(g.CLI_FK_1198, 0)) AS CLIENTES,
        COUNT(DISTINCT CASE WHEN m.TIPO_SEPARACAO_1195 <> 3 THEN m.CARGA_1195 END) AS CARGAS,
@@ -123,7 +147,7 @@ SELECT CASE WHEN GROUPING(${sqlDiaOperacional("mp.CONF_INI")}) = 1 THEN NULL ELS
   FROM mapa mp
   JOIN ${MAPA} m ON m.SEQ_PLANILHA_PK_1195 = mp.MAPA
   LEFT JOIN ${GUIAS} g ON g.SEQ_PLANILHA_PF_1198 = mp.MAPA
- GROUP BY GROUPING SETS ((${sqlDiaOperacional("mp.CONF_INI")}), ())`;
+ GROUP BY GROUPING SETS ((mp.DIA_OP), ())`;
 
 export const SQL_SKUS = `
 WITH ${CTE_MAPA}
@@ -193,18 +217,18 @@ lin AS (
    GROUP BY e.SEQ_PLANILHA_PF_1199, e.MERC_PF_1199, e.NUM_PEDCONF_FK_1199,
             CASE e.ORIGEM_ERRO_1199 WHEN 'S' THEN 'separador' WHEN 'C' THEN 'conferente' ELSE 'sem_origem' END
 ), e AS (
-  SELECT i.*, mp.CONF_INI,
+  SELECT i.*, mp.DIA_OP,
          CASE WHEN l.N = l.NU AND l.U1 = l.U2 THEN l.U1 END AS USU,
          CASE WHEN l.N = l.NU AND l.U1 = l.U2 THEN l.PINI ELSE mp.SESSAO_INI END AS REF
     FROM item i
     JOIN mapa mp ON mp.MAPA = i.MAPA
     LEFT JOIN lin l ON l.MAPA = i.MAPA AND l.MERC = i.MERC AND l.PED = i.PED
 )
-SELECT e.MAPA, TO_CHAR(${sqlDiaOperacional("e.CONF_INI")}, 'YYYY-MM-DD') AS DIA,
+SELECT e.MAPA, TO_CHAR(e.DIA_OP, 'YYYY-MM-DD') AS DIA,
        e.USU, TO_NUMBER(TO_CHAR(e.REF, 'HH24')) AS HORA, e.ORIGEM,
        SUM(e.OCORR) AS OCORR, COUNT(*) AS ITENS, SUM(e.UN) AS UN, SUM(e.FALTA) AS FALTA, SUM(e.SOBRA) AS SOBRA
   FROM e
- GROUP BY e.MAPA, ${sqlDiaOperacional("e.CONF_INI")}, e.USU, TO_NUMBER(TO_CHAR(e.REF, 'HH24')), e.ORIGEM`;
+ GROUP BY e.MAPA, e.DIA_OP, e.USU, TO_NUMBER(TO_CHAR(e.REF, 'HH24')), e.ORIGEM`;
 
 // ROWNUM (e não FETCH FIRST): o Oracle de produção não aceita a sintaxe ANSI.
 const SQL_PRODUTOS = `
@@ -249,18 +273,33 @@ SELECT pg.USU_SEP_FK_1236 AS USU, TO_CHAR(${sqlDiaOperacional("pg.DT_HR_INI_SEP_
  WHERE pg.USU_SEP_FK_1236 IS NOT NULL AND pg.DT_HR_INI_SEP_1236 IS NOT NULL AND pg.DT_HR_FIM_SEP_1236 IS NOT NULL`;
 
 // Conferência por conferente e dia operacional (horas = 1ª à última bipagem do dia).
+// Mesma regra da noite continuando (ver CTE_MAPA): bipagem das 07h às 12h de
+// quem já bipava na madrugada conta no dia operacional anterior.
 const SQL_CONFERENTES = `
-SELECT TO_CHAR(${sqlDiaOperacional("a.DTHR_AVERIG_1197")}, 'YYYY-MM-DD') AS DIA,
-       a.USU_AVERIG_1197 AS USU,
+WITH b AS (
+  SELECT a.USU_AVERIG_1197 AS USU, a.DTHR_AVERIG_1197 AS DTHR, a.SEQ_PLANILHA_PF_1197 AS MAPA,
+         NVL(a.QTD_AVERIG_TOTAL_UN_1197, 0) AS UN,
+         MAX(CASE WHEN ${sqlHora("a.DTHR_AVERIG_1197")} >= ${INICIO_MADRUGADA} AND ${sqlHora("a.DTHR_AVERIG_1197")} < ${C} THEN 1 ELSE 0 END)
+           OVER (PARTITION BY a.USU_AVERIG_1197, TRUNC(a.DTHR_AVERIG_1197)) AS MADRUG
+    FROM ${AVERIG} a
+   WHERE a.DTHR_AVERIG_1197 >= TO_DATE(:ini, 'YYYY-MM-DD') + ${C}/24
+     AND a.DTHR_AVERIG_1197 < TO_DATE(:fim, 'YYYY-MM-DD') + 1 + ${INICIO_SESSAO}/24
+), d AS (
+  SELECT b.*, ${sqlDiaOperacional("DTHR")}
+           - CASE WHEN MADRUG = 1 AND ${sqlHora("DTHR")} >= ${C} AND ${sqlHora("DTHR")} < ${INICIO_SESSAO} THEN 1 ELSE 0 END AS DIA_OP
+    FROM b
+)
+SELECT TO_CHAR(d.DIA_OP, 'YYYY-MM-DD') AS DIA,
+       d.USU,
        MAX(u.DESCR_COMPLETO_754) AS NOME,
        COUNT(*) AS BIPAGENS,
-       SUM(NVL(a.QTD_AVERIG_TOTAL_UN_1197, 0)) AS UN,
-       COUNT(DISTINCT a.SEQ_PLANILHA_PF_1197) AS MAPAS,
-       (MAX(a.DTHR_AVERIG_1197) - MIN(a.DTHR_AVERIG_1197)) * 24 AS HORAS
-  FROM ${AVERIG} a
-  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = a.USU_AVERIG_1197
- WHERE ${sqlJanelaOperacional("a.DTHR_AVERIG_1197")}
- GROUP BY ${sqlDiaOperacional("a.DTHR_AVERIG_1197")}, a.USU_AVERIG_1197`;
+       SUM(d.UN) AS UN,
+       COUNT(DISTINCT d.MAPA) AS MAPAS,
+       (MAX(d.DTHR) - MIN(d.DTHR)) * 24 AS HORAS
+  FROM d
+  LEFT JOIN HARPIAW2.USUARIO_754 u ON u.USU_PK_754 = d.USU
+ WHERE d.DIA_OP BETWEEN TO_DATE(:ini, 'YYYY-MM-DD') AND TO_DATE(:fim, 'YYYY-MM-DD')
+ GROUP BY d.DIA_OP, d.USU`;
 
 const SQL_NOMES = (n: number) =>
   `SELECT USU_PK_754 AS USU, DESCR_COMPLETO_754 AS NOME FROM HARPIAW2.USUARIO_754 WHERE USU_PK_754 IN (${Array.from({ length: n }, (_, i) => `:u${i}`).join(",")})`;
@@ -269,11 +308,11 @@ const SQL_NOMES = (n: number) =>
 const SQL_MESES = `
 WITH ${CTE_MAPA}, ${CTE_PESO_WT},
 lin AS (
-  SELECT mp.MAPA, TRUNC(${sqlDiaOperacional("mp.CONF_INI")}, 'MM') AS MES, ${sqlDiaOperacional("mp.CONF_INI")} AS DIA,
+  SELECT mp.MAPA, TRUNC(mp.DIA_OP, 'MM') AS MES, mp.DIA_OP AS DIA,
          COUNT(*) AS LINHAS, SUM(${UNIDADES} * NVL(pr.PESOBRUTO, 0)) AS KG
     FROM mapa mp JOIN ${MERC} x ON x.SEQ_PLANILHA_PF_1196 = mp.MAPA
     LEFT JOIN PCPRODUT pr ON pr.CODPROD = x.MERC_PF_1196
-   GROUP BY mp.MAPA, TRUNC(${sqlDiaOperacional("mp.CONF_INI")}, 'MM'), ${sqlDiaOperacional("mp.CONF_INI")}
+   GROUP BY mp.MAPA, TRUNC(mp.DIA_OP, 'MM'), mp.DIA_OP
 ), ped AS (
   SELECT g.SEQ_PLANILHA_PF_1198 AS MAPA, COUNT(DISTINCT g.NUM_PEDCONF_FK_1198) AS PEDIDOS
     FROM ${GUIAS} g WHERE g.SEQ_PLANILHA_PF_1198 IN (SELECT MAPA FROM mapa) GROUP BY g.SEQ_PLANILHA_PF_1198
