@@ -35,7 +35,7 @@ const VISOES: { id: VisaoSep; titulo: string; admin?: boolean }[] = [
   { id: "producao", titulo: "Produção" },
   { id: "turnos", titulo: "Dia × Noite" },
   { id: "operadores", titulo: "Operadores", admin: true },
-  { id: "qualidade", titulo: "Qualidade" },
+  { id: "qualidade", titulo: "Erro na separação" },
 ];
 
 const PAPEIS: PapelBI[] = [
@@ -101,7 +101,7 @@ export function BISeparacao({ dados, hrefMes, hrefSair, abas, cmp, visaoInicial 
       )}
       <Quadro
         {...q("qualidade")}
-        rotulo={dia ? `Qualidade · ${ddmm(dia)}` : "Qualidade"}
+        rotulo={dia ? `Erro na separação · ${ddmm(dia)}` : "Erro na separação"}
         valor={ind.taxaErro === null ? "—" : pctDeMil(ind.taxaErro)}
         sub={semProd ?? `${n0(ind.erros!.separador.itens)} itens com erro`}
         variacao={vq("qualidade")}
